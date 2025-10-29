@@ -1,0 +1,239 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../api/posts_api.dart';
+import '../providers/user_provider.dart';
+import '../services/auth_service.dart';
+import '../components/post_card.dart';
+import 'view_profile_screen.dart';
+
+class PostsScreen extends StatefulWidget {
+  const PostsScreen({super.key});
+
+  @override
+  State<PostsScreen> createState() => _PostsScreenState();
+}
+
+class _PostsScreenState extends State<PostsScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  final ScrollController _scrollController = ScrollController();
+  final AuthService _auth = AuthService();
+
+  // Separate lists for each tab
+  List<dynamic> latestPosts = [];
+  List<dynamic> followingPosts = [];
+
+  int latestPage = 1;
+  int followingPage = 1;
+
+  bool isLoading = false;
+  bool hasMoreLatest = true;
+  bool hasMoreFollowing = true;
+
+  bool showFollowing = false; // current tab state
+
+  @override
+  void initState() {
+    super.initState();
+    fetchPosts(); // load Latest initially
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 300 &&
+        !isLoading) {
+      fetchPosts(); // fetch more based on active tab
+    }
+  }
+
+  Future<void> fetchPosts({bool refresh = false}) async {
+    if (isLoading) return;
+
+    setState(() => isLoading = true);
+
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final user = userProvider.user;
+    final token = await _auth.getToken();
+
+    if (user == null || token == null) {
+      setState(() => isLoading = false);
+      return;
+    }
+
+    final followingOnly = showFollowing ? 1 : 0;
+
+    // Which feed are we updating?
+    int currentPage = showFollowing ? followingPage : latestPage;
+
+    // Refresh handling
+    if (refresh) {
+      currentPage = 1;
+      if (showFollowing) {
+        followingPosts.clear();
+        hasMoreFollowing = true;
+      } else {
+        latestPosts.clear();
+        hasMoreLatest = true;
+      }
+    }
+
+    final newPosts = await PostsAPI.getPosts(
+      token: token,
+      userId: user['id'],
+      page: currentPage,
+      limit: 10,
+      followingOnly: followingOnly,
+    );
+
+    final sampleVideos = [
+      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+      'https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4',
+      'https://media.w3.org/2010/05/sintel/trailer.mp4',
+      'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+      'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    ];
+
+    for (var post in newPosts) {
+      if (post['media'] is List && post['media'].isNotEmpty) {
+        // 30% chance to convert 1 media item into a "video"
+        if (post.hashCode % 3 == 0) {
+          final randomVideo = sampleVideos[post.hashCode % sampleVideos.length];
+          post['media'][0] = {'media_url': randomVideo, 'type': 'video'};
+        }
+      }
+    }
+
+    setState(() {
+      if (showFollowing) {
+        followingPosts.addAll(newPosts);
+        followingPage++;
+        hasMoreFollowing = newPosts.isNotEmpty;
+      } else {
+        latestPosts.addAll(newPosts);
+        latestPage++;
+        hasMoreLatest = newPosts.isNotEmpty;
+      }
+      isLoading = false;
+    });
+  }
+
+  void _switchTab(bool following) {
+    setState(() => showFollowing = following);
+
+    // Only fetch once per tab, unless it’s empty
+    if (following && followingPosts.isEmpty) {
+      fetchPosts();
+    } else if (!following && latestPosts.isEmpty) {
+      fetchPosts();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+
+    // Pick which feed to show
+    final posts = showFollowing ? followingPosts : latestPosts;
+    final hasMore = showFollowing ? hasMoreFollowing : hasMoreLatest;
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Column(
+        children: [
+          // --- Tabs ---
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _tabButton('Latest', !showFollowing, () => _switchTab(false)),
+                const SizedBox(width: 12),
+                _tabButton('Following', showFollowing, () => _switchTab(true)),
+              ],
+            ),
+          ),
+
+          // --- Feed ---
+          Expanded(
+            child: RefreshIndicator(
+              color: Colors.black,
+              onRefresh: () => fetchPosts(refresh: true),
+              child: ListView.builder(
+                controller: _scrollController,
+                itemCount: posts.length + (hasMore ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index == posts.length) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+
+                  final post = posts[index];
+                  return PostCard(
+                    post: post,
+                    onTapProfile: () {
+                      Navigator.push(
+                        context,
+                        PageRouteBuilder(
+                          transitionDuration: const Duration(milliseconds: 400),
+                          pageBuilder: (_, __, ___) => ViewProfileScreen(
+                            userId: post['user_id'],
+                            username: post['username'],
+                          ),
+                          transitionsBuilder: (_, animation, __, child) {
+                            final tween = Tween<Offset>(
+                              begin: const Offset(1.0, 0.0),
+                              end: Offset.zero,
+                            ).chain(CurveTween(curve: Curves.easeOut));
+                            return SlideTransition(
+                              position: animation.drive(tween),
+                              child: child,
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tabButton(String label, bool active, VoidCallback onTap) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          height: 34,
+          decoration: BoxDecoration(
+            color: active ? const Color(0xFFD5B56B) : Colors.grey[200],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: active ? Colors.white : Colors.black,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
