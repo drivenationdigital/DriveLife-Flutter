@@ -4,7 +4,6 @@ import '../api/posts_api.dart';
 import '../providers/user_provider.dart';
 import '../services/auth_service.dart';
 import '../components/post_card.dart';
-import 'view_profile_screen.dart';
 
 class PostsScreen extends StatefulWidget {
   const PostsScreen({super.key});
