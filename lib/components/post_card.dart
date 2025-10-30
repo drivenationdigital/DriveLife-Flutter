@@ -8,7 +8,15 @@ class PostCard extends StatefulWidget {
   final Map<String, dynamic> post;
   final VoidCallback? onTapProfile;
 
-  const PostCard({super.key, required this.post, this.onTapProfile});
+  /// Notify parent so it can persist to posts[index]
+  final ValueChanged<bool>? onLikeChanged;
+
+  const PostCard({
+    super.key,
+    required this.post,
+    this.onTapProfile,
+    this.onLikeChanged,
+  });
 
   @override
   State<PostCard> createState() => _PostCardState();
@@ -24,11 +32,21 @@ class _PostCardState extends State<PostCard>
   @override
   void initState() {
     super.initState();
-    _liked = widget.post['is_liked'] ?? false;
+    _liked = (widget.post['is_liked'] ?? false) == true;
     _heartController = AnimationController(
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant PostCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keep local state in sync with parent when list re-creates this widget
+    final incomingLiked = (widget.post['is_liked'] ?? false) == true;
+    if (incomingLiked != _liked) {
+      _liked = incomingLiked;
+    }
   }
 
   @override
@@ -43,14 +61,13 @@ class _PostCardState extends State<PostCard>
       _optimisticLike();
     }
 
-    // Always show the animation (every double-tap)
+    // Always show the animation
     setState(() {
       _showHeart = true;
       _heartController.forward(from: 0);
     });
 
-    // Hide animation after a short delay
-    await Future.delayed(const Duration(milliseconds: 1000));
+    await Future.delayed(const Duration(milliseconds: 900));
     if (mounted) setState(() => _showHeart = false);
   }
 
@@ -59,40 +76,44 @@ class _PostCardState extends State<PostCard>
 
     setState(() {
       _liked = true;
-      widget.post['likes_count'] = previousLikes + 1;
+      // widget.post['is_liked'] = true;
+      // widget.post['likes_count'] = previousLikes + 1;
     });
+    widget.onLikeChanged?.call(true);
 
     final res = await InteractionsAPI.maybeLikePost(widget.post['id']);
 
-    if (res == null || res['success'] == false) {
-      // Rollback if request failed
-      if (mounted) {
-        setState(() {
-          _liked = false;
-          widget.post['likes_count'] = previousLikes;
-        });
-      }
+    if (res == null || res['success'] != true) {
+      if (!mounted) return;
+      setState(() {
+        _liked = false;
+        // widget.post['is_liked'] = false;
+        // widget.post['likes_count'] = previousLikes;
+      });
+      widget.onLikeChanged?.call(false);
     }
   }
 
   Future<void> _toggleUnlike() async {
+    if (!_liked) return;
     final previousLikes = widget.post['likes_count'] ?? 0;
 
     setState(() {
       _liked = false;
-      widget.post['likes_count'] = (previousLikes > 0) ? previousLikes - 1 : 0;
+      // widget.post['is_liked'] = false;
+      // widget.post['likes_count'] = (previousLikes > 0) ? previousLikes - 1 : 0;
     });
+    widget.onLikeChanged?.call(false);
 
     final res = await InteractionsAPI.maybeLikePost(widget.post['id']);
-
-    if (res == null || res['success'] == false) {
-      // Rollback if failed
-      if (mounted) {
-        setState(() {
-          _liked = true;
-          widget.post['likes_count'] = previousLikes;
-        });
-      }
+    if (res == null || res['success'] != true) {
+      if (!mounted) return;
+      setState(() {
+        _liked = true;
+        // widget.post['is_liked'] = true;
+        // widget.post['likes_count'] = previousLikes;
+      });
+      widget.onLikeChanged?.call(true);
     }
   }
 
@@ -107,8 +128,6 @@ class _PostCardState extends State<PostCard>
 
     try {
       await Share.share(shareText, subject: postDescription);
-
-      // Optionally notify backend (like your onPostShared)
       await InteractionsAPI.markPostShared(postId);
     } catch (e) {
       debugPrint('Error sharing post: $e');
@@ -116,26 +135,45 @@ class _PostCardState extends State<PostCard>
   }
 
   String formatPostDate(String dateStr) {
-    final DateTime postDate = DateTime.parse(dateStr);
-    final Duration diff = DateTime.now().difference(postDate);
+    try {
+      final DateTime postDate = DateTime.parse(dateStr);
+      final Duration diff = DateTime.now().difference(postDate);
 
-    if (diff.inDays >= 30) {
-      final months = (diff.inDays / 30).floor();
-      return months == 1 ? '1 month ago' : '$months months ago';
-    } else if (diff.inDays >= 7) {
-      final weeks = (diff.inDays / 7).floor();
-      return weeks == 1 ? '1 week ago' : '$weeks weeks ago';
-    } else if (diff.inDays >= 1) {
-      return diff.inDays == 1 ? '1 day ago' : '${diff.inDays} days ago';
-    } else if (diff.inHours >= 1) {
-      return diff.inHours == 1 ? '1 hour ago' : '${diff.inHours} hours ago';
-    } else if (diff.inMinutes >= 1) {
-      return diff.inMinutes == 1
-          ? '1 minute ago'
-          : '${diff.inMinutes} minutes ago';
-    } else {
-      return 'Just now';
+      if (diff.inDays >= 30) {
+        final months = (diff.inDays / 30).floor();
+        return months == 1 ? '1 month ago' : '$months months ago';
+      } else if (diff.inDays >= 7) {
+        final weeks = (diff.inDays / 7).floor();
+        return weeks == 1 ? '1 week ago' : '$weeks weeks ago';
+      } else if (diff.inDays >= 1) {
+        return diff.inDays == 1 ? '1 day ago' : '${diff.inDays} days ago';
+      } else if (diff.inHours >= 1) {
+        return diff.inHours == 1 ? '1 hour ago' : '${diff.inHours} hours ago';
+      } else if (diff.inMinutes >= 1) {
+        return diff.inMinutes == 1
+            ? '1 minute ago'
+            : '${diff.inMinutes} minutes ago';
+      } else {
+        return 'Just now';
+      }
+    } catch (_) {
+      return '';
     }
+  }
+
+  double _controllerAspectOrFallback(Map<String, dynamic> mediaItem) {
+    try {
+      // If FeedVideoPlayer stored its controller, use it — but since we don’t expose it,
+      // we fallback to metadata if provided.
+      final w =
+          double.tryParse(mediaItem['media_width']?.toString() ?? '') ?? 1;
+      final h =
+          double.tryParse(mediaItem['media_height']?.toString() ?? '') ?? 1;
+      if (w > 0 && h > 0) return w / h;
+    } catch (_) {}
+
+    // Fallback to square
+    return 1.0;
   }
 
   void _openComments(BuildContext context) {
@@ -156,18 +194,30 @@ class _PostCardState extends State<PostCard>
     );
   }
 
+  // --- Media helpers ---
+  double _parseDouble(dynamic v, {double fallback = 1}) {
+    if (v == null) return fallback;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? fallback;
+  }
+
+  /// Returns a bounded height for media (~65% of screen).
+  double _maxFeedHeight(BuildContext context) =>
+      MediaQuery.of(context).size.height * 0.65;
+
   @override
   Widget build(BuildContext context) {
     final media = (widget.post['media'] ?? []) as List<dynamic>;
+    final maxH = MediaQuery.of(context).size.height * 0.65;
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
       color: Colors.white,
+      margin: EdgeInsets.zero,
       elevation: 0,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          /// Header
           ListTile(
             leading: GestureDetector(
               onTap: widget.onTapProfile,
@@ -180,164 +230,91 @@ class _PostCardState extends State<PostCard>
             title: Text(
               widget.post['username'] ?? '',
               style: const TextStyle(
-                color: Colors.black,
                 fontWeight: FontWeight.w600,
+                color: Colors.black,
               ),
             ),
             subtitle: Text(
-              formatPostDate(widget.post['post_date'] ?? 'N/A'),
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
+              widget.post['post_date'] ?? '',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ),
 
-          // Media Carousel + Double Tap
+          /// Media (Images / Videos)
           if (media.isNotEmpty)
             GestureDetector(
               onDoubleTap: _handleDoubleTap,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  AspectRatio(
-                    aspectRatio: 1,
-                    child: PageView.builder(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxH),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    PageView.builder(
                       itemCount: media.length,
                       onPageChanged: (i) => setState(() => _currentPage = i),
                       itemBuilder: (context, i) {
                         final item = media[i];
-                        final url = item['media_url'];
-                        final maxHeight =
-                            MediaQuery.of(context).size.height *
-                            0.65; // ~65% screen
+                        final isVideo = item['media_type'] == 'video';
 
-                        if (url.endsWith('.mp4')) {
-                          // return FeedVideoPlayer(
-                          //   url: url,
-                          //   isActive: _currentPage == i,
-                          // );
-                          return Container(
-                            constraints: BoxConstraints(maxHeight: maxHeight),
-                            color: Colors.black,
+                        if (isVideo) {
+                          return Center(
                             child: FeedVideoPlayer(
-                              url: url,
+                              url: item['media_url'],
                               isActive: _currentPage == i,
-                              fit: BoxFit.cover, // ✅ center crop video
-                              alignment: Alignment.center,
+                              fit: BoxFit.contain, // ✅ no crop
                             ),
                           );
                         }
 
-                        // return Image.network(url, fit: BoxFit.cover);
-                        return ClipRRect(
-                          borderRadius: BorderRadius.circular(0),
-                          child: FadeInImage(
-                            placeholder: NetworkImage(
-                              item['blurred_url'] ?? item['media_url'],
-                            ),
-                            image: NetworkImage(item['media_url']),
-                            fit: BoxFit.cover,
-                            fadeInDuration: const Duration(milliseconds: 300),
+                        return FadeInImage(
+                          placeholder: NetworkImage(
+                            item['blurred_url'] ?? item['media_url'],
                           ),
+                          image: NetworkImage(item['media_url']),
+                          fit: BoxFit.cover,
                         );
                       },
                     ),
-                  ),
-                  // Heart animation overlay
-                  if (_showHeart)
-                    AnimatedOpacity(
-                      opacity: 1,
-                      duration: const Duration(milliseconds: 1000),
-                      curve: Curves.easeOut,
-                      child: AnimatedBuilder(
-                        animation: _heartController,
-                        builder: (context, child) {
-                          final scale = TweenSequence<double>([
-                            // Pop up quickly
-                            TweenSequenceItem(
-                              tween: Tween(
-                                begin: 0.8,
-                                end: 1.3,
-                              ).chain(CurveTween(curve: Curves.easeOutCubic)),
-                              weight: 25,
-                            ),
-                            // Gentle bounce down
-                            TweenSequenceItem(
-                              tween: Tween(
-                                begin: 1.3,
-                                end: 1.15,
-                              ).chain(CurveTween(curve: Curves.easeInOut)),
-                              weight: 25,
-                            ),
-                            // Soft rebound
-                            TweenSequenceItem(
-                              tween: Tween(
-                                begin: 1.15,
-                                end: 1.25,
-                              ).chain(CurveTween(curve: Curves.easeOutBack)),
-                              weight: 25,
-                            ),
-                            // Settle back
-                            TweenSequenceItem(
-                              tween: Tween(
-                                begin: 1.25,
-                                end: 1.0,
-                              ).chain(CurveTween(curve: Curves.easeIn)),
-                              weight: 25,
-                            ),
-                          ]).evaluate(_heartController);
 
-                          final rotation = TweenSequence<double>([
-                            TweenSequenceItem(
-                              tween: Tween(begin: -0.02, end: 0.02),
-                              weight: 50,
-                            ),
-                            TweenSequenceItem(
-                              tween: Tween(begin: 0.02, end: 0.0),
-                              weight: 50,
-                            ),
-                          ]).evaluate(_heartController);
-
-                          return Transform.rotate(
-                            angle: rotation,
-                            child: Transform.scale(
-                              scale: scale,
-                              child: const Icon(
-                                Icons.favorite,
-                                color: Colors.white,
-                                size: 90,
-                              ),
-                            ),
-                          );
-                        },
+                    /// Heart animation overlay
+                    if (_showHeart)
+                      AnimatedOpacity(
+                        opacity: 1,
+                        duration: const Duration(milliseconds: 800),
+                        child: Icon(
+                          Icons.favorite,
+                          color: Colors.white.withOpacity(0.9),
+                          size: 90,
+                        ),
                       ),
-                    ),
 
-                  // Page indicators
-                  if (media.length > 1)
-                    Positioned(
-                      bottom: 8,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(
-                          media.length,
-                          (index) => Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 3.0),
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: _currentPage == index
-                                  ? Colors.white
-                                  : Colors.white54,
-                              shape: BoxShape.circle,
+                    /// Page indicators
+                    if (media.length > 1)
+                      Positioned(
+                        bottom: 8,
+                        child: Row(
+                          children: List.generate(
+                            media.length,
+                            (i) => Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 3),
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: _currentPage == i
+                                    ? Colors.white
+                                    : Colors.white54,
+                                shape: BoxShape.circle,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
 
-          // Action buttons
+          /// Actions
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
@@ -361,7 +338,8 @@ class _PostCardState extends State<PostCard>
                 ),
                 const SizedBox(width: 16),
                 GestureDetector(
-                  onTap: () => _sharePost(),
+                  onTap: () =>
+                      Share.share(widget.post['media'][0]['media_url']),
                   child: const Icon(
                     Icons.send_outlined,
                     color: Colors.black,
@@ -372,7 +350,7 @@ class _PostCardState extends State<PostCard>
             ),
           ),
 
-          // Likes and caption
+          /// Likes
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
@@ -383,17 +361,29 @@ class _PostCardState extends State<PostCard>
               ),
             ),
           ),
-          const SizedBox(height: 4),
+
+          /// Caption + comments
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: _PostCaptionSection(
-              username: widget.post['username'] ?? '',
-              caption: widget.post['caption'] ?? '',
-              commentsCount: widget.post['comments_count'] ?? 0,
-              onViewComments: () => _openComments(context),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Text(
+              widget.post['caption'] ?? '',
+              style: const TextStyle(fontSize: 14, color: Colors.black87),
             ),
           ),
-          const SizedBox(height: 8),
+
+          if ((widget.post['comments_count'] ?? 0) > 0)
+            GestureDetector(
+              onTap: () => _openComments(context),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'View ${widget.post['comments_count']} comments',
+                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+              ),
+            ),
+
+          const SizedBox(height: 10),
         ],
       ),
     );
@@ -429,11 +419,8 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Username (own line)
         GestureDetector(
-          onTap: () {
-            // TODO: Navigate to user profile (optional)
-          },
+          onTap: () {}, // TODO: navigate to profile
           child: Text(
             username,
             style: const TextStyle(
@@ -444,8 +431,6 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
           ),
         ),
         const SizedBox(height: 4),
-
-        // Caption (collapsible)
         if (caption.isNotEmpty)
           LayoutBuilder(
             builder: (context, constraints) {
@@ -490,10 +475,7 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
               );
             },
           ),
-
         const SizedBox(height: 6),
-
-        // View comments link
         if (widget.commentsCount > 0)
           GestureDetector(
             onTap: widget.onViewComments,

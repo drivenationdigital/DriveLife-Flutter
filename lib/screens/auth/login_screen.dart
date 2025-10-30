@@ -1,6 +1,8 @@
+import 'package:drivelife/providers/user_provider.dart';
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../routes.dart';
+import 'package:provider/provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -27,6 +29,10 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => isLoading = false);
 
     if (success && mounted) {
+      // ✅ Load user into provider immediately
+      await context.read<UserProvider>().loadUser();
+
+      // ✅ Then go to home
       Navigator.pushReplacementNamed(context, AppRoutes.home);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(

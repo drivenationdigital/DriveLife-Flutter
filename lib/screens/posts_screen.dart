@@ -89,19 +89,18 @@ class _PostsScreenState extends State<PostsScreen>
     );
 
     final sampleVideos = [
-      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
-      'https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4',
-      'https://media.w3.org/2010/05/sintel/trailer.mp4',
-      'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-      'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      'https://videodelivery.net/c2b98b8485461a046d6fc867d57b6782/manifest/video.m3u8',
+      'https://videodelivery.net/c2b98b8485461a046d6fc867d57b6782/manifest/video.m3u8',
+      'https://videodelivery.net/f2c5e16577b2dbfc2b629b9ebedba218/manifest/video.m3u8',
+      'https://videodelivery.net/7116846f5aeadfaba0968bd512268038/manifest/video.m3u8',
     ];
 
     for (var post in newPosts) {
       if (post['media'] is List && post['media'].isNotEmpty) {
-        // 30% chance to convert 1 media item into a "video"
-        if (post.hashCode % 3 == 0) {
+        // 60% chance to convert 1 media item into a "video"
+        if (post.hashCode % 6 == 0) {
           final randomVideo = sampleVideos[post.hashCode % sampleVideos.length];
-          post['media'][0] = {'media_url': randomVideo, 'type': 'video'};
+          post['media'][0] = {'media_url': randomVideo, 'media_type': 'video'};
         }
       }
     }
@@ -178,30 +177,25 @@ class _PostsScreenState extends State<PostsScreen>
                     );
                   }
 
-                  final post = posts[index];
                   return PostCard(
-                    post: post,
+                    key: ValueKey(posts[index]['id']), // helps element reuse
+                    post: posts[index],
                     onTapProfile: () {
-                      Navigator.push(
-                        context,
-                        PageRouteBuilder(
-                          transitionDuration: const Duration(milliseconds: 400),
-                          pageBuilder: (_, __, ___) => ViewProfileScreen(
-                            userId: post['user_id'],
-                            username: post['username'],
-                          ),
-                          transitionsBuilder: (_, animation, __, child) {
-                            final tween = Tween<Offset>(
-                              begin: const Offset(1.0, 0.0),
-                              end: Offset.zero,
-                            ).chain(CurveTween(curve: Curves.easeOut));
-                            return SlideTransition(
-                              position: animation.drive(tween),
-                              child: child,
-                            );
-                          },
-                        ),
-                      );
+                      /* open profile */
+                    },
+                    onLikeChanged: (isLiked) {
+                      setState(() {
+                        final p = posts[index];
+                        final current = p['likes_count'] ?? 0;
+
+                        if (isLiked) {
+                          p['is_liked'] = true;
+                          p['likes_count'] = current + 1;
+                        } else {
+                          p['is_liked'] = false;
+                          p['likes_count'] = (current - 1).clamp(0, 9999999);
+                        }
+                      });
                     },
                   );
                 },
