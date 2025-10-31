@@ -180,20 +180,25 @@ class _PostsScreenState extends State<PostsScreen>
                     key: ValueKey(posts[index]['id']), // helps element reuse
                     post: posts[index],
                     onTapProfile: () {
-                      /* open profile */
+                      // Navigate to profile screen
+                      // Navigator.pushNamed(
+                      //   context,
+                      //   '/view-profile',
+                      //   arguments: {
+                      //     'userId': posts[index]['user']['id'],
+                      //     'username': posts[index]['user']['username'],
+                      //   },
+                      // );
                     },
                     onLikeChanged: (isLiked) {
                       setState(() {
                         final p = posts[index];
                         final current = p['likes_count'] ?? 0;
 
-                        if (isLiked) {
-                          p['is_liked'] = true;
-                          p['likes_count'] = current + 1;
-                        } else {
-                          p['is_liked'] = false;
-                          p['likes_count'] = (current - 1).clamp(0, 9999999);
-                        }
+                        p['is_liked'] = isLiked;
+                        p['likes_count'] = isLiked
+                            ? current + 1
+                            : (current - 1).clamp(0, 9999999);
                       });
                     },
                   );

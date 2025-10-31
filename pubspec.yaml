@@ -35,6 +35,7 @@ dependencies:
   cached_network_image: ^3.3.1
   visibility_detector: ^0.4.0+2
   flutter_secure_storage: ^9.2.2
+  pinch_zoom_release_unzoom: ^1.0.1
   provider: ^6.1.5+1
 
   # The following adds the Cupertino Icons font to your application.

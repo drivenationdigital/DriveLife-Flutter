@@ -1,4 +1,8 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/widgets/zoomable_media.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:pinch_zoom_release_unzoom/pinch_zoom_release_unzoom.dart';
 import 'package:share_plus/share_plus.dart';
 import '../api/interactions_api.dart';
 import '../screens/comments_bottom_sheet.dart';
@@ -26,13 +30,14 @@ class _PostCardState extends State<PostCard>
     with SingleTickerProviderStateMixin {
   int _currentPage = 0;
   bool _liked = false;
+  bool _allowSwipe = true;
   bool _showHeart = false;
   late AnimationController _heartController;
 
   @override
   void initState() {
     super.initState();
-    _liked = (widget.post['is_liked'] ?? false) == true;
+    _liked = widget.post['is_liked'] ?? false;
     _heartController = AnimationController(
       duration: const Duration(milliseconds: 1200),
       vsync: this,
@@ -42,10 +47,9 @@ class _PostCardState extends State<PostCard>
   @override
   void didUpdateWidget(covariant PostCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Keep local state in sync with parent when list re-creates this widget
-    final incomingLiked = (widget.post['is_liked'] ?? false) == true;
-    if (incomingLiked != _liked) {
-      _liked = incomingLiked;
+    final updatedLiked = widget.post['is_liked'] ?? false;
+    if (updatedLiked != _liked) {
+      setState(() => _liked = updatedLiked);
     }
   }
 
@@ -61,6 +65,8 @@ class _PostCardState extends State<PostCard>
       _optimisticLike();
     }
 
+    HapticFeedback.mediumImpact();
+
     // Always show the animation
     setState(() {
       _showHeart = true;
@@ -72,47 +78,31 @@ class _PostCardState extends State<PostCard>
   }
 
   Future<void> _optimisticLike() async {
-    final previousLikes = widget.post['likes_count'] ?? 0;
-
-    setState(() {
-      _liked = true;
-      // widget.post['is_liked'] = true;
-      // widget.post['likes_count'] = previousLikes + 1;
-    });
+    // UI feedback immediately
+    setState(() => _liked = true);
     widget.onLikeChanged?.call(true);
 
     final res = await InteractionsAPI.maybeLikePost(widget.post['id']);
 
-    if (res == null || res['success'] != true) {
+    if (res == null) {
       if (!mounted) return;
-      setState(() {
-        _liked = false;
-        // widget.post['is_liked'] = false;
-        // widget.post['likes_count'] = previousLikes;
-      });
+      // revert
+      setState(() => _liked = false);
       widget.onLikeChanged?.call(false);
     }
   }
 
   Future<void> _toggleUnlike() async {
     if (!_liked) return;
-    final previousLikes = widget.post['likes_count'] ?? 0;
 
-    setState(() {
-      _liked = false;
-      // widget.post['is_liked'] = false;
-      // widget.post['likes_count'] = (previousLikes > 0) ? previousLikes - 1 : 0;
-    });
+    setState(() => _liked = false);
     widget.onLikeChanged?.call(false);
 
     final res = await InteractionsAPI.maybeLikePost(widget.post['id']);
-    if (res == null || res['success'] != true) {
+    if (res == null) {
       if (!mounted) return;
-      setState(() {
-        _liked = true;
-        // widget.post['is_liked'] = true;
-        // widget.post['likes_count'] = previousLikes;
-      });
+      // revert
+      setState(() => _liked = true);
       widget.onLikeChanged?.call(true);
     }
   }
@@ -208,7 +198,7 @@ class _PostCardState extends State<PostCard>
   @override
   Widget build(BuildContext context) {
     final media = (widget.post['media'] ?? []) as List<dynamic>;
-    final maxH = MediaQuery.of(context).size.height * 0.65;
+    final maxH = MediaQuery.of(context).size.height * 0.40;
 
     return Card(
       color: Colors.white,
@@ -235,7 +225,7 @@ class _PostCardState extends State<PostCard>
               ),
             ),
             subtitle: Text(
-              widget.post['post_date'] ?? '',
+              formatPostDate(widget.post['post_date']),
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ),
@@ -250,28 +240,50 @@ class _PostCardState extends State<PostCard>
                   alignment: Alignment.center,
                   children: [
                     PageView.builder(
+                      physics: _allowSwipe
+                          ? const PageScrollPhysics()
+                          : const NeverScrollableScrollPhysics(),
                       itemCount: media.length,
                       onPageChanged: (i) => setState(() => _currentPage = i),
                       itemBuilder: (context, i) {
                         final item = media[i];
                         final isVideo = item['media_type'] == 'video';
 
-                        if (isVideo) {
-                          return Center(
-                            child: FeedVideoPlayer(
-                              url: item['media_url'],
-                              isActive: _currentPage == i,
-                              fit: BoxFit.contain, // ✅ no crop
-                            ),
-                          );
-                        }
-
-                        return FadeInImage(
-                          placeholder: NetworkImage(
-                            item['blurred_url'] ?? item['media_url'],
+                        return PinchZoomReleaseUnzoomWidget(
+                          fingersRequiredToPinch: 2,
+                          twoFingersOn: () =>
+                              setState(() => _allowSwipe = false),
+                          twoFingersOff: () => Future.delayed(
+                            PinchZoomReleaseUnzoomWidget.defaultResetDuration,
+                            () => setState(() => _allowSwipe = true),
                           ),
-                          image: NetworkImage(item['media_url']),
-                          fit: BoxFit.cover,
+                          child: isVideo
+                              ? FeedVideoPlayer(
+                                  url: item['media_url'],
+                                  isActive: _currentPage == i,
+                                  fit: BoxFit.contain,
+                                )
+                              : Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    // ✅ Always-visible blurred background
+                                    Image.network(
+                                      item['blurred_url'],
+                                      fit: BoxFit.cover,
+                                    ),
+
+                                    // ✅ Full quality image fades in on top
+                                    CachedNetworkImage(
+                                      imageUrl: item['media_url'],
+                                      fit: BoxFit.contain, // or BoxFit.cover
+                                      placeholder: (_, __) =>
+                                          const SizedBox.shrink(), // don't show white flash
+                                      fadeInDuration: const Duration(
+                                        milliseconds: 300,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                         );
                       },
                     ),
@@ -320,7 +332,10 @@ class _PostCardState extends State<PostCard>
             child: Row(
               children: [
                 GestureDetector(
-                  onTap: _liked ? _toggleUnlike : _optimisticLike,
+                  onTap: () {
+                    HapticFeedback.selectionClick(); // subtle tap
+                    _liked ? _toggleUnlike() : _optimisticLike();
+                  },
                   child: Icon(
                     _liked ? Icons.favorite : Icons.favorite_border,
                     color: _liked ? Colors.red : Colors.black,
@@ -362,27 +377,16 @@ class _PostCardState extends State<PostCard>
             ),
           ),
 
-          /// Caption + comments
+          // Caption + comments
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Text(
-              widget.post['caption'] ?? '',
-              style: const TextStyle(fontSize: 14, color: Colors.black87),
+            child: _PostCaptionSection(
+              username: widget.post['username'] ?? '',
+              caption: widget.post['caption'] ?? '',
+              commentsCount: widget.post['comments_count'] ?? 0,
+              onViewComments: () => _openComments(context),
             ),
           ),
-
-          if ((widget.post['comments_count'] ?? 0) > 0)
-            GestureDetector(
-              onTap: () => _openComments(context),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'View ${widget.post['comments_count']} comments',
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-              ),
-            ),
-
           const SizedBox(height: 10),
         ],
       ),
@@ -419,63 +423,53 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: () {}, // TODO: navigate to profile
-          child: Text(
-            username,
-            style: const TextStyle(
-              color: Colors.black,
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
+        if (caption.isNotEmpty)
+          GestureDetector(
+            onTap: () {
+              // TODO: go to profile
+            },
+            child: RichText(
+              text: TextSpan(
+                children: [
+                  TextSpan(
+                    text: username,
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const TextSpan(text: "  "),
+                  TextSpan(
+                    text: caption,
+                    style: const TextStyle(color: Colors.black87, fontSize: 14),
+                  ),
+                ],
+              ),
+              maxLines: _expanded ? null : _maxLines,
+              overflow: _expanded
+                  ? TextOverflow.visible
+                  : TextOverflow.ellipsis,
             ),
           ),
-        ),
-        const SizedBox(height: 4),
         if (caption.isNotEmpty)
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final tp = TextPainter(
-                text: TextSpan(
-                  text: caption,
-                  style: const TextStyle(color: Colors.black87, fontSize: 14),
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                _expanded ? 'Show less' : 'Show more',
+                style: const TextStyle(
+                  color: Colors.grey,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
                 ),
-                textDirection: TextDirection.ltr,
-                maxLines: _maxLines,
-              )..layout(maxWidth: constraints.maxWidth);
-
-              final isOverflowing = tp.didExceedMaxLines;
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    caption,
-                    style: const TextStyle(color: Colors.black87, fontSize: 14),
-                    maxLines: _expanded ? null : _maxLines,
-                    overflow: _expanded
-                        ? TextOverflow.visible
-                        : TextOverflow.ellipsis,
-                  ),
-                  if (isOverflowing)
-                    GestureDetector(
-                      onTap: () => setState(() => _expanded = !_expanded),
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          _expanded ? 'Show less' : 'Show more',
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              );
-            },
+              ),
+            ),
           ),
+
         const SizedBox(height: 6),
+
         if (widget.commentsCount > 0)
           GestureDetector(
             onTap: widget.onViewComments,

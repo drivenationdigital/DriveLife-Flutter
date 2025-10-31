@@ -37,7 +37,8 @@ class InteractionsAPI {
       );
 
       final data = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(data['comments'] ?? []);
+      print(data);
+      return data;
     } catch (e) {
       print('Error fetching comments: $e');
       return [];
@@ -106,7 +107,7 @@ class InteractionsAPI {
 
   static Future<Map<String, dynamic>?> maybeLikeComment(
     String commentId,
-    int ownerId,
+    String ownerId,
   ) async {
     try {
       final user = await _auth.getUser();

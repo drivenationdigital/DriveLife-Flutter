@@ -1,3 +1,4 @@
+import 'package:drivelife/widgets/comment_item.dart';
 import 'package:flutter/material.dart';
 import '../api/interactions_api.dart';
 
@@ -43,81 +44,91 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      child: Column(
-        children: [
-          const SizedBox(height: 8),
-          Container(
-            width: 40,
-            height: 5,
-            decoration: BoxDecoration(
-              color: Colors.grey[400],
-              borderRadius: BorderRadius.circular(2.5),
+    return SafeArea(
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          // ✅ COLUMN is now the parent of Expanded
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 5,
+              decoration: BoxDecoration(
+                color: Colors.grey[400],
+                borderRadius: BorderRadius.circular(2.5),
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Comments',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const Divider(),
+            const SizedBox(height: 12),
+            const Text(
+              'Comments',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Colors.black,
+              ),
+            ),
+            const Divider(),
 
-          // Comment list
-          Expanded(
-            child: loading
-                ? const Center(child: CircularProgressIndicator())
-                : comments.isEmpty
-                ? const Center(child: Text('No comments yet'))
-                : ListView.builder(
-                    controller: widget.scrollController,
-                    itemCount: comments.length,
-                    itemBuilder: (context, index) {
-                      final c = comments[index];
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundImage: NetworkImage(
-                            c['user_profile_image'] ?? '',
-                          ),
+            // ✅ THIS Expanded is now valid
+            Expanded(
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : comments.isEmpty
+                  ? const Center(child: Text('No comments yet'))
+                  : ListView.builder(
+                      controller: widget.scrollController,
+                      itemCount: comments.length,
+                      itemBuilder: (context, index) {
+                        final c = comments[index];
+                        final replies = (c['replies'] ?? []) as List<dynamic>;
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CommentItem(comment: c),
+                            if (replies.isNotEmpty)
+                              ...replies.map(
+                                (r) => CommentItem(comment: r, isReply: true),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+            ),
+
+            // Input bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      decoration: const InputDecoration(
+                        hintText: 'Add a comment...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(12)),
                         ),
-                        title: Text(c['username'] ?? ''),
-                        subtitle: Text(c['comment'] ?? ''),
-                      );
-                    },
-                  ),
-          ),
-
-          // Comment input
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: const InputDecoration(
-                      hintText: 'Add a comment...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.send, color: Colors.black),
-                  onPressed: _addComment,
-                ),
-              ],
+                  IconButton(
+                    icon: const Icon(Icons.send, color: Colors.black),
+                    onPressed: _addComment,
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

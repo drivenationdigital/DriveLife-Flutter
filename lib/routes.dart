@@ -1,3 +1,4 @@
+import 'package:drivelife/screens/view_profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
@@ -37,6 +38,14 @@ class AppRoutes {
         return _slide(const NotificationsScreen());
       case profile:
         return _slide(const ProfileScreen());
+      case viewProfile:
+        final args = settings.arguments as Map<String, dynamic>?;
+        return _slide(
+          ViewProfileScreen(
+            userId: args?['userId'],
+            username: args?['username'] ?? '',
+          ),
+        );
       default:
         return _slide(
           Scaffold(
