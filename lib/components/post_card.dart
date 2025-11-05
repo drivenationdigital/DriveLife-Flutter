@@ -234,10 +234,10 @@ class _PostCardState extends State<PostCard>
           if (media.isNotEmpty)
             GestureDetector(
               onDoubleTap: _handleDoubleTap,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: maxH),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
                 child: Stack(
-                  alignment: Alignment.center,
+                  alignment: Alignment.topCenter,
                   children: [
                     PageView.builder(
                       physics: _allowSwipe

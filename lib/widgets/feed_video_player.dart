@@ -15,7 +15,7 @@ class FeedVideoPlayer extends StatefulWidget {
     required this.url,
     required this.isActive,
     this.fit = BoxFit.cover,
-    this.alignment = Alignment.center,
+    this.alignment = Alignment.topCenter,
   });
 
   @override
@@ -104,14 +104,12 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
         }
       },
       child: Stack(
-        alignment: Alignment.bottomRight,
+        alignment: Alignment.topCenter,
         children: [
           // ✅ Display video naturally, centered, no cropping
-          Center(
-            child: AspectRatio(
-              aspectRatio: _controller!.value.aspectRatio,
-              child: VideoPlayer(_controller!),
-            ),
+          AspectRatio(
+            aspectRatio: _controller!.value.aspectRatio,
+            child: VideoPlayer(_controller!),
           ),
 
           // 🔇 Global mute toggle
