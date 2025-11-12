@@ -32,6 +32,11 @@ class _PostCardState extends State<PostCard>
   bool _liked = false;
   bool _allowSwipe = true;
   bool _showHeart = false;
+  double _currentMediaHeight = 300; // default temporary height
+
+  double _currentScale = 1.0;
+  bool _disablePageScroll = false;
+
   late AnimationController _heartController;
 
   @override
@@ -198,7 +203,6 @@ class _PostCardState extends State<PostCard>
   @override
   Widget build(BuildContext context) {
     final media = (widget.post['media'] ?? []) as List<dynamic>;
-    final maxH = MediaQuery.of(context).size.height * 0.40;
 
     return Card(
       color: Colors.white,
@@ -234,94 +238,140 @@ class _PostCardState extends State<PostCard>
           if (media.isNotEmpty)
             GestureDetector(
               onDoubleTap: _handleDoubleTap,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: maxH),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    PageView.builder(
-                      physics: _allowSwipe
-                          ? const PageScrollPhysics()
-                          : const NeverScrollableScrollPhysics(),
-                      itemCount: media.length,
-                      onPageChanged: (i) => setState(() => _currentPage = i),
-                      itemBuilder: (context, i) {
-                        final item = media[i];
-                        final isVideo = item['media_type'] == 'video';
+              child: SizedBox(
+                width: double.infinity,
+                height: _currentMediaHeight, // <- fixed height for PageView
+                child: PageView.builder(
+                  physics: _allowSwipe
+                      ? const PageScrollPhysics()
+                      : const NeverScrollableScrollPhysics(),
+                  itemCount: media.length,
+                  onPageChanged: (i) => setState(() => _currentPage = i),
+                  itemBuilder: (context, i) {
+                    final item = media[i];
+                    final isVideo = item['media_type'] == 'video';
 
-                        return PinchZoomReleaseUnzoomWidget(
-                          fingersRequiredToPinch: 2,
-                          twoFingersOn: () =>
-                              setState(() => _allowSwipe = false),
-                          twoFingersOff: () => Future.delayed(
-                            PinchZoomReleaseUnzoomWidget.defaultResetDuration,
-                            () => setState(() => _allowSwipe = true),
-                          ),
-                          child: isVideo
-                              ? FeedVideoPlayer(
-                                  url: item['media_url'],
-                                  isActive: _currentPage == i,
-                                  fit: BoxFit.contain,
-                                )
-                              : Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    // ✅ Always-visible blurred background
-                                    Image.network(
-                                      item['blurred_url'],
-                                      fit: BoxFit.cover,
-                                    ),
+                    final screenW = MediaQuery.of(context).size.width;
+                    final screenH = MediaQuery.of(context).size.height;
 
-                                    // ✅ Full quality image fades in on top
-                                    CachedNetworkImage(
-                                      imageUrl: item['media_url'],
-                                      fit: BoxFit.contain, // or BoxFit.cover
-                                      placeholder: (_, __) =>
-                                          const SizedBox.shrink(), // don't show white flash
-                                      fadeInDuration: const Duration(
-                                        milliseconds: 300,
-                                      ),
-                                    ),
-                                  ],
+                    final imgW = _parseDouble(item['media_width']);
+                    final imgH = _parseDouble(item['media_height']);
+                    final aspect = (imgW > 0 && imgH > 0) ? imgW / imgH : 1.0;
+
+                    // Compute height dynamically
+                    double naturalHeight = screenW / aspect;
+                    double maxHeight = screenH * 0.65;
+                    double displayHeight = naturalHeight > maxHeight
+                        ? maxHeight
+                        : naturalHeight;
+
+                    // update state ONCE per item
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (_currentMediaHeight != displayHeight) {
+                        setState(() => _currentMediaHeight = displayHeight);
+                      }
+                    });
+
+                    return PinchZoomReleaseUnzoomWidget(
+                      fingersRequiredToPinch: 2,
+                      twoFingersOn: () => setState(() => _allowSwipe = false),
+                      twoFingersOff: () => Future.delayed(
+                        PinchZoomReleaseUnzoomWidget.defaultResetDuration,
+                        () => setState(() => _allowSwipe = true),
+                      ),
+                      child: isVideo
+                          ? FeedVideoPlayer(
+                              url: item['media_url'],
+                              isActive: _currentPage == i,
+                              fit: naturalHeight > maxHeight
+                                  ? BoxFit
+                                        .cover // tall video: crop vertical
+                                  : BoxFit.contain, // normal video
+                            )
+                          : Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Image.network(
+                                  item['blurred_url'],
+                                  fit: BoxFit.cover,
                                 ),
-                        );
-                      },
-                    ),
 
-                    /// Heart animation overlay
-                    if (_showHeart)
-                      AnimatedOpacity(
-                        opacity: 1,
-                        duration: const Duration(milliseconds: 800),
-                        child: Icon(
-                          Icons.favorite,
-                          color: Colors.white.withOpacity(0.9),
-                          size: 90,
-                        ),
-                      ),
-
-                    /// Page indicators
-                    if (media.length > 1)
-                      Positioned(
-                        bottom: 8,
-                        child: Row(
-                          children: List.generate(
-                            media.length,
-                            (i) => Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 3),
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: _currentPage == i
-                                    ? Colors.white
-                                    : Colors.white54,
-                                shape: BoxShape.circle,
-                              ),
+                                CachedNetworkImage(
+                                  imageUrl: item['media_url'],
+                                  fit: naturalHeight > maxHeight
+                                      ? BoxFit
+                                            .cover // crop vertical if tall
+                                      : BoxFit.fitWidth, // natural width
+                                  alignment: Alignment.center,
+                                  fadeInDuration: const Duration(
+                                    milliseconds: 250,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ),
-                      ),
-                  ],
+                    );
+
+                    // if (isVideo) {
+                    //   return FeedVideoPlayer(
+                    //     url: item['media_url'],
+                    //     isActive: _currentPage == i,
+                    //     fit: naturalHeight > maxHeight
+                    //         ? BoxFit
+                    //               .cover // tall video: crop vertical
+                    //         : BoxFit.contain, // normal video
+                    //   );
+                    // }
+
+                    // // ✅ IMAGE (full-width, auto-crop if tall)
+                    // return Stack(
+                    //   fit: StackFit.expand,
+                    //   children: [
+                    //     Image.network(item['blurred_url'], fit: BoxFit.cover),
+
+                    //     CachedNetworkImage(
+                    //       imageUrl: item['media_url'],
+                    //       fit: naturalHeight > maxHeight
+                    //           ? BoxFit
+                    //                 .cover // crop vertical if tall
+                    //           : BoxFit.fitWidth, // natural width
+                    //       alignment: Alignment.center,
+                    //       fadeInDuration: const Duration(milliseconds: 250),
+                    //     ),
+                    //   ],
+                    // );
+                  },
+                ),
+              ),
+            ),
+
+          /// Heart animation overlay
+          if (_showHeart)
+            AnimatedOpacity(
+              opacity: 1,
+              duration: const Duration(milliseconds: 800),
+              child: Icon(
+                Icons.favorite,
+                color: Colors.white.withOpacity(0.9),
+                size: 90,
+              ),
+            ),
+
+          /// Page indicators
+          if (media.length > 1)
+            Positioned(
+              bottom: 8,
+              child: Row(
+                children: List.generate(
+                  media.length,
+                  (i) => Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: _currentPage == i ? Colors.white : Colors.white54,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                 ),
               ),
             ),

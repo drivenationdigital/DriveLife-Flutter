@@ -1,3 +1,4 @@
+import 'package:drivelife/widgets/feed_video_player.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/posts_api.dart';
@@ -92,14 +93,20 @@ class _PostsScreenState extends State<PostsScreen>
       'https://videodelivery.net/c2b98b8485461a046d6fc867d57b6782/manifest/video.m3u8',
       'https://videodelivery.net/f2c5e16577b2dbfc2b629b9ebedba218/manifest/video.m3u8',
       'https://videodelivery.net/7116846f5aeadfaba0968bd512268038/manifest/video.m3u8',
+      'https://videodelivery.net/7116846f5aeadfaba0968bd512268038/manifest/video.m3u8',
+      'https://videodelivery.net/7116846f5aeadfaba0968bd512268038/manifest/video.m3u8',
+      'https://videodelivery.net/7116846f5aeadfaba0968bd512268038/manifest/video.m3u8',
     ];
 
     for (var post in newPosts) {
       if (post['media'] is List && post['media'].isNotEmpty) {
         // 60% chance to convert 1 media item into a "video"
-        if (post.hashCode % 6 == 0) {
+        if (post.hashCode % 2 == 0) {
           final randomVideo = sampleVideos[post.hashCode % sampleVideos.length];
           post['media'][0] = {'media_url': randomVideo, 'media_type': 'video'};
+
+          // remove other media items for simplicity
+          post['media'] = [post['media'][0]];
         }
       }
     }
@@ -135,6 +142,23 @@ class _PostsScreenState extends State<PostsScreen>
     super.dispose();
   }
 
+  List<Map<String, dynamic>> _flattenMedia(List<dynamic> posts) {
+    final List<Map<String, dynamic>> mediaList = [];
+
+    for (var post in posts) {
+      if (post['media'] is List) {
+        for (var m in post['media']) {
+          mediaList.add({
+            'media_url': m['media_url'],
+            'blurred_url': m['blurred_url'],
+            'media_type': m['media_type'], // image/video
+          });
+        }
+      }
+    }
+    return mediaList;
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -160,6 +184,33 @@ class _PostsScreenState extends State<PostsScreen>
             ),
           ),
 
+          // Expanded(
+          //   child: RefreshIndicator(
+          //     color: Colors.black,
+          //     onRefresh: () => fetchPosts(refresh: true),
+          //     child: ListView.builder(
+          //       itemCount: posts.length,
+          //       itemBuilder: (context, index) {
+          //         return PostCard(
+          //           key: ValueKey(posts[index]['id']),
+          //           post: posts[index],
+          //           onTapProfile: () {},
+          //           onLikeChanged: (isLiked) {
+          //             setState(() {
+          //               final p = posts[index];
+          //               final current = p['likes_count'] ?? 0;
+
+          //               p['is_liked'] = isLiked;
+          //               p['likes_count'] = isLiked
+          //                   ? current + 1
+          //                   : (current - 1).clamp(0, 9999999);
+          //             });
+          //           },
+          //         );
+          //       },
+          //     ),
+          //   ),
+          // ),
           // --- Feed ---
           Expanded(
             child: RefreshIndicator(
@@ -206,6 +257,7 @@ class _PostsScreenState extends State<PostsScreen>
               ),
             ),
           ),
+          // --- Feed ---
         ],
       ),
     );

@@ -86,17 +86,32 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
     final muted = context.watch<VideoMuteProvider>().muted;
     _controller?.setVolume(muted ? 0 : 1);
 
-    // If the controller isn't ready yet → show a smooth placeholder
     if (_controller == null || !_controller!.value.isInitialized) {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final videoWidth = _controller!.value.size.width;
+    final videoHeight = _controller!.value.size.height;
+    final aspect = videoWidth / videoHeight;
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    // Calculate natural render height at full width
+    final naturalHeight = screenWidth / aspect;
+
+    // Max height allowed (65% of screen)
+    final maxHeight = screenHeight * 0.65;
+
+    // Decide whether to crop or contain
+    final bool shouldCrop = naturalHeight > maxHeight;
+    final double renderHeight = shouldCrop ? maxHeight : naturalHeight;
+    final BoxFit fit = shouldCrop ? BoxFit.cover : BoxFit.contain;
+
     return VisibilityDetector(
       key: Key(widget.url),
       onVisibilityChanged: (info) {
-        if (_isDisposed || _controller == null) return;
-
-        // Pause when mostly off-screen
+        if (_isDisposed) return;
         if (info.visibleFraction < 0.1) {
           _controller?.pause();
         } else if (widget.isActive) {
@@ -106,15 +121,21 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
       child: Stack(
         alignment: Alignment.bottomRight,
         children: [
-          // ✅ Display video naturally, centered, no cropping
-          Center(
-            child: AspectRatio(
-              aspectRatio: _controller!.value.aspectRatio,
-              child: VideoPlayer(_controller!),
+          SizedBox(
+            width: screenWidth,
+            height: renderHeight,
+            child: FittedBox(
+              fit: fit,
+              alignment: Alignment.center,
+              child: SizedBox(
+                width: videoWidth,
+                height: videoHeight,
+                child: VideoPlayer(_controller!),
+              ),
             ),
           ),
 
-          // 🔇 Global mute toggle
+          // 🔇 Global sound toggle
           GestureDetector(
             onTap: () => context.read<VideoMuteProvider>().toggle(),
             child: Container(
