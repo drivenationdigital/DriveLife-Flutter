@@ -36,7 +36,11 @@ class _PostsScreenState extends State<PostsScreen>
   @override
   void initState() {
     super.initState();
-    fetchPosts(); // load Latest initially
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) fetchPosts(); // safe provider access
+    });
+
     _scrollController.addListener(_onScroll);
   }
 
@@ -136,23 +140,6 @@ class _PostsScreenState extends State<PostsScreen>
     super.dispose();
   }
 
-  List<Map<String, dynamic>> _flattenMedia(List<dynamic> posts) {
-    final List<Map<String, dynamic>> mediaList = [];
-
-    for (var post in posts) {
-      if (post['media'] is List) {
-        for (var m in post['media']) {
-          mediaList.add({
-            'media_url': m['media_url'],
-            'blurred_url': m['blurred_url'],
-            'media_type': m['media_type'], // image/video
-          });
-        }
-      }
-    }
-    return mediaList;
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -178,33 +165,6 @@ class _PostsScreenState extends State<PostsScreen>
             ),
           ),
 
-          // Expanded(
-          //   child: RefreshIndicator(
-          //     color: Colors.black,
-          //     onRefresh: () => fetchPosts(refresh: true),
-          //     child: ListView.builder(
-          //       itemCount: posts.length,
-          //       itemBuilder: (context, index) {
-          //         return PostCard(
-          //           key: ValueKey(posts[index]['id']),
-          //           post: posts[index],
-          //           onTapProfile: () {},
-          //           onLikeChanged: (isLiked) {
-          //             setState(() {
-          //               final p = posts[index];
-          //               final current = p['likes_count'] ?? 0;
-
-          //               p['is_liked'] = isLiked;
-          //               p['likes_count'] = isLiked
-          //                   ? current + 1
-          //                   : (current - 1).clamp(0, 9999999);
-          //             });
-          //           },
-          //         );
-          //       },
-          //     ),
-          //   ),
-          // ),
           // --- Feed ---
           Expanded(
             child: RefreshIndicator(
@@ -225,15 +185,14 @@ class _PostsScreenState extends State<PostsScreen>
                     key: ValueKey(posts[index]['id']), // helps element reuse
                     post: posts[index],
                     onTapProfile: () {
-                      // Navigate to profile screen
-                      // Navigator.pushNamed(
-                      //   context,
-                      //   '/view-profile',
-                      //   arguments: {
-                      //     'userId': posts[index]['user']['id'],
-                      //     'username': posts[index]['user']['username'],
-                      //   },
-                      // );
+                      final userId = posts[index]['user_id'];
+                      final username = posts[index]['username'];
+
+                      Navigator.pushNamed(
+                        context,
+                        '/view-profile',
+                        arguments: {'userId': userId, 'username': username},
+                      );
                     },
                     onLikeChanged: (isLiked) {
                       setState(() {

@@ -47,46 +47,60 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
                 style: TextStyle(color: Colors.white),
               ),
             )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundImage: NetworkImage(
-                      _user?['profile_image'] ?? '',
+          : RefreshIndicator(
+              color: Colors.white,
+              backgroundColor: Colors.black,
+              onRefresh: () async {
+                await _loadUser(); // reload profile
+              },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    CircleAvatar(
+                      radius: 50,
+                      backgroundImage: NetworkImage(
+                        _user?['profile_image'] ?? '',
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '${_user?['first_name'] ?? ''} ${_user?['last_name'] ?? ''}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
+                    const SizedBox(height: 16),
+                    Text(
+                      '${_user?['first_name'] ?? ''} ${_user?['last_name'] ?? ''}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '@${_user?['username'] ?? ''}',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _user?['email'] ?? '',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildStat('Posts', _user?['posts_count']),
-                      _buildStat('Followers', _user?['followers']?.length ?? 0),
-                      _buildStat('Following', _user?['following']?.length ?? 0),
-                    ],
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      '@${_user?['username'] ?? ''}',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _user?['email'] ?? '',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildStat('Posts', _user?['posts_count']),
+                        _buildStat(
+                          'Followers',
+                          _user?['followers']?.length ?? 0,
+                        ),
+                        _buildStat(
+                          'Following',
+                          _user?['following']?.length ?? 0,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
     );

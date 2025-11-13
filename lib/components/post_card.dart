@@ -1,5 +1,4 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:drivelife/widgets/zoomable_media.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pinch_zoom_release_unzoom/pinch_zoom_release_unzoom.dart';
@@ -28,25 +27,52 @@ class PostCard extends StatefulWidget {
 
 class _PostCardState extends State<PostCard>
     with SingleTickerProviderStateMixin {
+  late AnimationController _heartController;
+  late Animation<double> _heartScale;
+
   int _currentPage = 0;
   bool _liked = false;
   bool _allowSwipe = true;
   bool _showHeart = false;
   double _currentMediaHeight = 300; // default temporary height
 
-  double _currentScale = 1.0;
-  bool _disablePageScroll = false;
-
-  late AnimationController _heartController;
-
   @override
   void initState() {
     super.initState();
+
     _liked = widget.post['is_liked'] ?? false;
+
     _heartController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 900),
       vsync: this,
     );
+
+    _heartScale = TweenSequence([
+      // Pop out fast
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 0.2,
+          end: 1.4,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 40,
+      ),
+      // Squish down a bit
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 1.4,
+          end: 0.9,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 30,
+      ),
+      // Bounce to final size
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 0.9,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.elasticOut)),
+        weight: 30,
+      ),
+    ]).animate(_heartController);
   }
 
   @override
@@ -65,18 +91,11 @@ class _PostCardState extends State<PostCard>
   }
 
   void _handleDoubleTap() async {
-    // Only like if not already liked
-    if (!_liked) {
-      _optimisticLike();
-    }
+    if (!_liked) _optimisticLike();
 
-    HapticFeedback.mediumImpact();
+    setState(() => _showHeart = true);
 
-    // Always show the animation
-    setState(() {
-      _showHeart = true;
-      _heartController.forward(from: 0);
-    });
+    _heartController.forward(from: 0);
 
     await Future.delayed(const Duration(milliseconds: 900));
     if (mounted) setState(() => _showHeart = false);
@@ -214,18 +233,21 @@ class _PostCardState extends State<PostCard>
           /// Header
           ListTile(
             leading: GestureDetector(
-              onTap: widget.onTapProfile,
+              onTap: () => widget.onTapProfile?.call(),
               child: CircleAvatar(
                 backgroundImage: NetworkImage(
                   widget.post['user_profile_image'] ?? '',
                 ),
               ),
             ),
-            title: Text(
-              widget.post['username'] ?? '',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Colors.black,
+            title: GestureDetector(
+              onTap: () => widget.onTapProfile?.call(),
+              child: Text(
+                widget.post['username'] ?? '',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
               ),
             ),
             subtitle: Text(
@@ -238,141 +260,127 @@ class _PostCardState extends State<PostCard>
           if (media.isNotEmpty)
             GestureDetector(
               onDoubleTap: _handleDoubleTap,
-              child: SizedBox(
-                width: double.infinity,
-                height: _currentMediaHeight, // <- fixed height for PageView
-                child: PageView.builder(
-                  physics: _allowSwipe
-                      ? const PageScrollPhysics()
-                      : const NeverScrollableScrollPhysics(),
-                  itemCount: media.length,
-                  onPageChanged: (i) => setState(() => _currentPage = i),
-                  itemBuilder: (context, i) {
-                    final item = media[i];
-                    final isVideo = item['media_type'] == 'video';
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  /// MAIN MEDIA (the PageView)
+                  SizedBox(
+                    width: double.infinity,
+                    height: _currentMediaHeight,
+                    child: PageView.builder(
+                      physics: _allowSwipe
+                          ? const PageScrollPhysics()
+                          : const NeverScrollableScrollPhysics(),
+                      itemCount: media.length,
+                      onPageChanged: (i) => setState(() => _currentPage = i),
+                      itemBuilder: (context, i) {
+                        final item = media[i];
+                        final isVideo = item['media_type'] == 'video';
 
-                    final screenW = MediaQuery.of(context).size.width;
-                    final screenH = MediaQuery.of(context).size.height;
+                        final screenW = MediaQuery.of(context).size.width;
+                        final screenH = MediaQuery.of(context).size.height;
 
-                    final imgW = _parseDouble(item['media_width']);
-                    final imgH = _parseDouble(item['media_height']);
-                    final aspect = (imgW > 0 && imgH > 0) ? imgW / imgH : 1.0;
+                        final imgW = _parseDouble(item['media_width']);
+                        final imgH = _parseDouble(item['media_height']);
+                        final aspect = (imgW > 0 && imgH > 0)
+                            ? imgW / imgH
+                            : 1.0;
 
-                    // Compute height dynamically
-                    double naturalHeight = screenW / aspect;
-                    double maxHeight = screenH * 0.65;
-                    double displayHeight = naturalHeight > maxHeight
-                        ? maxHeight
-                        : naturalHeight;
+                        double naturalHeight = screenW / aspect;
+                        double maxHeight = screenH * 0.65;
+                        double displayHeight = naturalHeight > maxHeight
+                            ? maxHeight
+                            : naturalHeight;
 
-                    // update state ONCE per item
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (_currentMediaHeight != displayHeight) {
-                        setState(() => _currentMediaHeight = displayHeight);
-                      }
-                    });
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (_currentMediaHeight != displayHeight) {
+                            setState(() => _currentMediaHeight = displayHeight);
+                          }
+                        });
 
-                    return PinchZoomReleaseUnzoomWidget(
-                      fingersRequiredToPinch: 2,
-                      twoFingersOn: () => setState(() => _allowSwipe = false),
-                      twoFingersOff: () => Future.delayed(
-                        PinchZoomReleaseUnzoomWidget.defaultResetDuration,
-                        () => setState(() => _allowSwipe = true),
-                      ),
-                      child: isVideo
-                          ? FeedVideoPlayer(
-                              url: item['media_url'],
-                              isActive: _currentPage == i,
-                              fit: naturalHeight > maxHeight
-                                  ? BoxFit
-                                        .cover // tall video: crop vertical
-                                  : BoxFit.contain, // normal video
-                            )
-                          : Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                Image.network(
-                                  item['blurred_url'],
-                                  fit: BoxFit.cover,
-                                ),
-
-                                CachedNetworkImage(
-                                  imageUrl: item['media_url'],
+                        return PinchZoomReleaseUnzoomWidget(
+                          fingersRequiredToPinch: 2,
+                          twoFingersOn: () =>
+                              setState(() => _allowSwipe = false),
+                          twoFingersOff: () => Future.delayed(
+                            PinchZoomReleaseUnzoomWidget.defaultResetDuration,
+                            () => setState(() => _allowSwipe = true),
+                          ),
+                          child: isVideo
+                              ? FeedVideoPlayer(
+                                  url: item['media_url'],
+                                  isActive: _currentPage == i,
                                   fit: naturalHeight > maxHeight
-                                      ? BoxFit
-                                            .cover // crop vertical if tall
-                                      : BoxFit.fitWidth, // natural width
-                                  alignment: Alignment.center,
-                                  fadeInDuration: const Duration(
-                                    milliseconds: 250,
-                                  ),
+                                      ? BoxFit.cover
+                                      : BoxFit.contain,
+                                )
+                              : Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    Image.network(
+                                      item['blurred_url'],
+                                      fit: BoxFit.cover,
+                                    ),
+                                    CachedNetworkImage(
+                                      imageUrl: item['media_url'],
+                                      fit: naturalHeight > maxHeight
+                                          ? BoxFit.cover
+                                          : BoxFit.fitWidth,
+                                      alignment: Alignment.center,
+                                      fadeInDuration: const Duration(
+                                        milliseconds: 250,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                    );
-
-                    // if (isVideo) {
-                    //   return FeedVideoPlayer(
-                    //     url: item['media_url'],
-                    //     isActive: _currentPage == i,
-                    //     fit: naturalHeight > maxHeight
-                    //         ? BoxFit
-                    //               .cover // tall video: crop vertical
-                    //         : BoxFit.contain, // normal video
-                    //   );
-                    // }
-
-                    // // ✅ IMAGE (full-width, auto-crop if tall)
-                    // return Stack(
-                    //   fit: StackFit.expand,
-                    //   children: [
-                    //     Image.network(item['blurred_url'], fit: BoxFit.cover),
-
-                    //     CachedNetworkImage(
-                    //       imageUrl: item['media_url'],
-                    //       fit: naturalHeight > maxHeight
-                    //           ? BoxFit
-                    //                 .cover // crop vertical if tall
-                    //           : BoxFit.fitWidth, // natural width
-                    //       alignment: Alignment.center,
-                    //       fadeInDuration: const Duration(milliseconds: 250),
-                    //     ),
-                    //   ],
-                    // );
-                  },
-                ),
-              ),
-            ),
-
-          /// Heart animation overlay
-          if (_showHeart)
-            AnimatedOpacity(
-              opacity: 1,
-              duration: const Duration(milliseconds: 800),
-              child: Icon(
-                Icons.favorite,
-                color: Colors.white.withOpacity(0.9),
-                size: 90,
-              ),
-            ),
-
-          /// Page indicators
-          if (media.length > 1)
-            Positioned(
-              bottom: 8,
-              child: Row(
-                children: List.generate(
-                  media.length,
-                  (i) => Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: _currentPage == i ? Colors.white : Colors.white54,
-                      shape: BoxShape.circle,
+                        );
+                      },
                     ),
                   ),
-                ),
+
+                  /// HEART OVERLAY
+                  if (_showHeart)
+                    AnimatedBuilder(
+                      animation: _heartController,
+                      builder: (_, child) {
+                        return Opacity(
+                          opacity:
+                              (1 - (_heartController.value - 0.7).clamp(0, 1)),
+                          child: Transform.scale(
+                            scale: _heartScale.value,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: const Icon(
+                        Icons.favorite,
+                        color: Colors.white,
+                        size: 110,
+                      ),
+                    ),
+
+                  /// SWIPE DOTS
+                  if (media.length > 1)
+                    Positioned(
+                      bottom: 12,
+                      child: Row(
+                        children: List.generate(
+                          media.length,
+                          (i) => Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 3),
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: _currentPage == i
+                                  ? Colors.white
+                                  : Colors.white54,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
 
