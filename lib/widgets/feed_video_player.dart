@@ -95,18 +95,19 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
     final aspect = videoWidth / videoHeight;
 
     final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
+    final maxHeight = MediaQuery.of(context).size.height * 0.65;
 
-    // Calculate natural render height at full width
     final naturalHeight = screenWidth / aspect;
 
-    // Max height allowed (65% of screen)
-    final maxHeight = screenHeight * 0.65;
+    final bool isWide = aspect > 1.15; // horizontal video
+    final bool tooTall = naturalHeight > maxHeight;
 
-    // Decide whether to crop or contain
-    final bool shouldCrop = naturalHeight > maxHeight;
-    final double renderHeight = shouldCrop ? maxHeight : naturalHeight;
-    final BoxFit fit = shouldCrop ? BoxFit.cover : BoxFit.contain;
+    // Instagram logic:
+    final double renderHeight = maxHeight; // outer frame fixed
+
+    final BoxFit fit = isWide
+        ? BoxFit.contain
+        : (tooTall ? BoxFit.cover : BoxFit.contain);
 
     return VisibilityDetector(
       key: Key(widget.url),
@@ -123,10 +124,10 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
         children: [
           SizedBox(
             width: screenWidth,
-            height: renderHeight,
+            height: renderHeight, // <-- always fixed height
             child: FittedBox(
               fit: fit,
-              alignment: Alignment.center,
+              alignment: Alignment.center, // <-- CRUCIAL
               child: SizedBox(
                 width: videoWidth,
                 height: videoHeight,
@@ -135,7 +136,6 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
             ),
           ),
 
-          // 🔇 Global sound toggle
           GestureDetector(
             onTap: () => context.read<VideoMuteProvider>().toggle(),
             child: Container(

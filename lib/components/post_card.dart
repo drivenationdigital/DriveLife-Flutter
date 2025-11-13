@@ -286,6 +286,8 @@ class _PostCardState extends State<PostCard>
                             ? imgW / imgH
                             : 1.0;
 
+                        final isWide = aspect > 1.3; // horizontal video
+
                         double naturalHeight = screenW / aspect;
                         double maxHeight = screenH * 0.65;
                         double displayHeight = naturalHeight > maxHeight
@@ -310,9 +312,7 @@ class _PostCardState extends State<PostCard>
                               ? FeedVideoPlayer(
                                   url: item['media_url'],
                                   isActive: _currentPage == i,
-                                  fit: naturalHeight > maxHeight
-                                      ? BoxFit.cover
-                                      : BoxFit.contain,
+                                  fit: isWide ? BoxFit.contain : BoxFit.cover,
                                 )
                               : Stack(
                                   fit: StackFit.expand,

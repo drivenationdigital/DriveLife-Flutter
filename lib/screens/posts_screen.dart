@@ -91,23 +91,23 @@ class _PostsScreenState extends State<PostsScreen>
       followingOnly: followingOnly,
     );
 
-    // final sampleVideos = [
-    //   'https://videodelivery.net/c2b98b8485461a046d6fc867d57b6782/manifest/video.m3u8',
-    //   'https://videodelivery.net/f2c5e16577b2dbfc2b629b9ebedba218/manifest/video.m3u8',
-    // ];
+    final sampleVideos = [
+      'https://videodelivery.net/c2b98b8485461a046d6fc867d57b6782/manifest/video.m3u8',
+      'https://videodelivery.net/f2c5e16577b2dbfc2b629b9ebedba218/manifest/video.m3u8',
+    ];
 
-    // for (var post in newPosts) {
-    //   if (post['media'] is List && post['media'].isNotEmpty) {
-    //     // 60% chance to convert 1 media item into a "video"
-    //     if (post.hashCode % 5 == 0) {
-    //       final randomVideo = sampleVideos[post.hashCode % sampleVideos.length];
-    //       post['media'][0] = {'media_url': randomVideo, 'media_type': 'video'};
+    for (var post in newPosts) {
+      if (post['media'] is List && post['media'].isNotEmpty) {
+        // 60% chance to convert 1 media item into a "video"
+        if (post.hashCode % 5 == 0) {
+          final randomVideo = sampleVideos[post.hashCode % sampleVideos.length];
+          post['media'][0] = {'media_url': randomVideo, 'media_type': 'video'};
 
-    //       // remove other media items for simplicity
-    //       post['media'] = [post['media'][0]];
-    //     }
-    //   }
-    // }
+          // remove other media items for simplicity
+          post['media'] = [post['media'][0]];
+        }
+      }
+    }
 
     setState(() {
       if (showFollowing) {
