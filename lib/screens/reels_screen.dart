@@ -10,6 +10,7 @@ class ReelsScreen extends StatefulWidget {
 }
 
 class _ReelsScreenState extends State<ReelsScreen> {
+  final PageController _pageController = PageController();
   List<Map<String, dynamic>> reels = [];
   int page = 1;
   bool isLoading = true;
@@ -22,28 +23,23 @@ class _ReelsScreenState extends State<ReelsScreen> {
   }
 
   Future<void> _loadReels() async {
-    final data = await ReelsAPI.getReels(userId: 1, page: page);
-    final sampleVideos = [
-      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
-      'https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4',
-      'https://media.w3.org/2010/05/sintel/trailer.mp4',
-      'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-      'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    ];
+    if (!mounted) return;
 
-    print('Loaded ${data.length} reels');
-    print(data);
+    final data = await ReelsAPI.getReels(userId: 1, page: page);
+
+    final sampleVideos = [
+      // 'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+      'https://videodelivery.net/c2b98b8485461a046d6fc867d57b6782/manifest/video.m3u8',
+      'https://videodelivery.net/f2c5e16577b2dbfc2b629b9ebedba218/manifest/video.m3u8',
+    ];
 
     for (var post in data) {
       if (post['media'] is List && post['media'].isNotEmpty) {
-        // 30% chance to convert 1 media item into a "video"
         final randomVideo = sampleVideos[post.hashCode % sampleVideos.length];
-        post['media'][0] = {'media_url': randomVideo, 'type': 'video'};
+
+        post['media'][0] = {'media_url': randomVideo, 'media_type': 'video'};
       }
     }
-
-    print('Final reels data:');
-    print(data);
 
     setState(() {
       reels.addAll(data);
@@ -64,50 +60,128 @@ class _ReelsScreenState extends State<ReelsScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: PageView.builder(
+        controller: _pageController,
         scrollDirection: Axis.vertical,
+        itemCount: reels.length,
         onPageChanged: (i) {
           setState(() => currentIndex = i);
 
-          // Load more reels when scrolling near bottom
-          if (i > reels.length - 5) _loadReels();
+          if (i > reels.length - 3) {
+            _loadReels(); // ✅ Infinite scroll preload
+          }
         },
-        itemCount: reels.length,
         itemBuilder: (context, i) {
           final post = reels[i];
           final media = post['media'] as List<dynamic>? ?? [];
+
           final video = media.firstWhere(
             (m) => (m['media_type'] == 'video'),
             orElse: () => null,
           );
 
-          if (video == null) {
-            // Skip rendering invalid post
-            return const SizedBox.shrink();
-          }
+          if (video == null) return const SizedBox.shrink();
 
           return Stack(
-            alignment: Alignment.bottomLeft,
+            fit: StackFit.expand,
+            alignment: Alignment.center,
             children: [
+              // ✅ FULLSCREEN CROPPED VIDEO
               FeedVideoPlayer(
-                url: video['media_url'], // ✅ will replace with HLS soon
+                url: video['media_url'],
                 isActive: i == currentIndex,
-                fit: BoxFit.cover,
+                fit: BoxFit.fitWidth,
               ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  '@${post['username']}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+
+              // ✅ GRADIENT OVERLAY (BOTTOM)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 220,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [Colors.black87, Colors.transparent],
+                    ),
                   ),
+                ),
+              ),
+
+              // ✅ USERNAME + CAPTION
+              Positioned(
+                left: 16,
+                bottom: 24,
+                right: 80,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '@${post['username'] ?? 'user'}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      post['caption'] ?? 'Amazing video 🔥',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+
+              // ✅ RIGHT SIDE ACTIONS (UI ONLY)
+              Positioned(
+                right: 12,
+                bottom: 80,
+                child: Column(
+                  children: [
+                    _ActionButton(icon: Icons.favorite, label: '1.2K'),
+                    const SizedBox(height: 14),
+                    _ActionButton(icon: Icons.comment, label: '320'),
+                    const SizedBox(height: 14),
+                    _ActionButton(icon: Icons.share, label: 'Share'),
+                  ],
                 ),
               ),
             ],
           );
         },
       ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _ActionButton({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black54,
+          ),
+          child: Icon(icon, color: Colors.white, size: 26),
+        ),
+        const SizedBox(height: 6),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+      ],
     );
   }
 }

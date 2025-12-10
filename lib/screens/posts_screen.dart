@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/scheduler.dart';
+
 import '../api/posts_api.dart';
 import '../providers/user_provider.dart';
 import '../services/auth_service.dart';
@@ -52,7 +54,7 @@ class _PostsScreenState extends State<PostsScreen>
     }
   }
 
-  Future<void> fetchPosts({bool refresh = false}) async {
+  Future<void> fetchPostOLD({bool refresh = false}) async {
     if (isLoading) return;
 
     setState(() => isLoading = true);
@@ -91,23 +93,23 @@ class _PostsScreenState extends State<PostsScreen>
       followingOnly: followingOnly,
     );
 
-    final sampleVideos = [
-      'https://videodelivery.net/c2b98b8485461a046d6fc867d57b6782/manifest/video.m3u8',
-      'https://videodelivery.net/f2c5e16577b2dbfc2b629b9ebedba218/manifest/video.m3u8',
-    ];
+    // final sampleVideos = [
+    //   'https://videodelivery.net/c2b98b8485461a046d6fc867d57b6782/manifest/video.m3u8',
+    //   'https://videodelivery.net/f2c5e16577b2dbfc2b629b9ebedba218/manifest/video.m3u8',
+    // ];
 
-    for (var post in newPosts) {
-      if (post['media'] is List && post['media'].isNotEmpty) {
-        // 60% chance to convert 1 media item into a "video"
-        if (post.hashCode % 5 == 0) {
-          final randomVideo = sampleVideos[post.hashCode % sampleVideos.length];
-          post['media'][0] = {'media_url': randomVideo, 'media_type': 'video'};
+    // for (var post in newPosts) {
+    //   if (post['media'] is List && post['media'].isNotEmpty) {
+    //     // 60% chance to convert 1 media item into a "video"
+    //     if (post.hashCode % 3 == 0) {
+    //       final randomVideo = sampleVideos[post.hashCode % sampleVideos.length];
+    //       post['media'][0] = {'media_url': randomVideo, 'media_type': 'video'};
 
-          // remove other media items for simplicity
-          post['media'] = [post['media'][0]];
-        }
-      }
-    }
+    //       // remove other media items for simplicity
+    //       post['media'] = [post['media'][0]];
+    //     }
+    //   }
+    // }
 
     setState(() {
       if (showFollowing) {
@@ -120,6 +122,88 @@ class _PostsScreenState extends State<PostsScreen>
         hasMoreLatest = newPosts.isNotEmpty;
       }
       isLoading = false;
+    });
+  }
+
+  Future<void> fetchPosts({bool refresh = false}) async {
+    if (isLoading) return;
+
+    setState(() => isLoading = true);
+
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final user = userProvider.user;
+    final token = await _auth.getToken();
+
+    if (user == null || token == null) {
+      setState(() => isLoading = false);
+      return;
+    }
+
+    final followingOnly = showFollowing ? 1 : 0;
+
+    // Determine page
+    int currentPage = showFollowing ? followingPage : latestPage;
+
+    // Refresh logic
+    if (refresh) {
+      currentPage = 1;
+
+      if (showFollowing) {
+        followingPosts.clear();
+        hasMoreFollowing = true;
+      } else {
+        latestPosts.clear();
+        hasMoreLatest = true;
+      }
+    }
+
+    final newPosts = await PostsAPI.getPosts(
+      token: token,
+      userId: user['id'],
+      page: currentPage,
+      limit: 10,
+      followingOnly: followingOnly,
+    );
+
+    final sampleVideos = [
+      'https://videodelivery.net/c2b98b8485461a046d6fc867d57b6782/manifest/video.m3u8',
+      'https://videodelivery.net/f2c5e16577b2dbfc2b629b9ebedba218/manifest/video.m3u8',
+    ];
+
+    for (var post in newPosts) {
+      if (post['media'] is List && post['media'].isNotEmpty) {
+        // 60% chance to convert 1 media item into a "video"
+        if (post.hashCode % 3 == 0) {
+          final randomVideo = sampleVideos[post.hashCode % sampleVideos.length];
+          post['media'][0] = {
+            'media_url': randomVideo,
+            'media_type': 'video',
+            'blurred_url': null,
+          };
+
+          // remove other media items for simplicity
+          post['media'] = [post['media'][0]];
+        }
+      }
+    }
+
+    // DELAY the rebuilding so it doesn't happen during scrolling
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      setState(() {
+        if (showFollowing) {
+          followingPosts.addAll(newPosts);
+          followingPage++;
+          hasMoreFollowing = newPosts.isNotEmpty;
+        } else {
+          latestPosts.addAll(newPosts);
+          latestPage++;
+          hasMoreLatest = newPosts.isNotEmpty;
+        }
+
+        isLoading = false;
+      });
     });
   }
 
@@ -173,6 +257,10 @@ class _PostsScreenState extends State<PostsScreen>
               child: ListView.builder(
                 controller: _scrollController,
                 itemCount: posts.length + (hasMore ? 1 : 0),
+                addAutomaticKeepAlives: false,
+                addRepaintBoundaries: true,
+                addSemanticIndexes: false,
+                cacheExtent: 1200,
                 itemBuilder: (context, index) {
                   if (index == posts.length) {
                     return const Padding(
@@ -194,16 +282,20 @@ class _PostsScreenState extends State<PostsScreen>
                         arguments: {'userId': userId, 'username': username},
                       );
                     },
-                    onLikeChanged: (isLiked) {
-                      setState(() {
-                        final p = posts[index];
-                        final current = p['likes_count'] ?? 0;
+                    // onLikeChanged: (isLiked) {
+                    //   setState(() {
+                    //     final p = posts[index];
+                    //     final current = p['likes_count'] ?? 0;
 
-                        p['is_liked'] = isLiked;
-                        p['likes_count'] = isLiked
-                            ? current + 1
-                            : (current - 1).clamp(0, 9999999);
-                      });
+                    //     p['is_liked'] = isLiked;
+                    //     p['likes_count'] = isLiked
+                    //         ? current + 1
+                    //         : (current - 1).clamp(0, 9999999);
+                    //   });
+                    // },
+                    onLikeChanged: (isLiked) {
+                      posts[index]['is_liked'] = isLiked;
+                      posts[index]['likes_count'] += isLiked ? 1 : -1;
                     },
                   );
                 },
