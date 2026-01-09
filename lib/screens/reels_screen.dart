@@ -22,10 +22,19 @@ class _ReelsScreenState extends State<ReelsScreen> {
     _loadReels();
   }
 
+  @override
+  void dispose() {
+    _pageController.dispose(); // ✅ Dispose controller
+    super.dispose();
+  }
+
   Future<void> _loadReels() async {
-    if (!mounted) return;
+    if (!mounted) return; // ✅ Check before starting
 
     final data = await ReelsAPI.getReels(userId: 1, page: page);
+
+    // ✅ CRITICAL: Check mounted after async operation
+    if (!mounted) return;
 
     final sampleVideos = [
       // 'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
@@ -41,6 +50,7 @@ class _ReelsScreenState extends State<ReelsScreen> {
       }
     }
 
+    // ✅ Safe to call setState now
     setState(() {
       reels.addAll(data);
       isLoading = false;
@@ -64,10 +74,12 @@ class _ReelsScreenState extends State<ReelsScreen> {
         scrollDirection: Axis.vertical,
         itemCount: reels.length,
         onPageChanged: (i) {
+          if (!mounted) return; // ✅ Check mounted in callback
+
           setState(() => currentIndex = i);
 
           if (i > reels.length - 3) {
-            _loadReels(); // ✅ Infinite scroll preload
+            _loadReels(); // ✅ Infinite scroll preload (has its own mounted check)
           }
         },
         itemBuilder: (context, i) {

@@ -6,12 +6,11 @@ import 'package:share_plus/share_plus.dart';
 import '../api/interactions_api.dart';
 import '../screens/comments_bottom_sheet.dart';
 import '../widgets/feed_video_player.dart';
+import '../widgets/profile_avatar.dart';
 
 class PostCard extends StatefulWidget {
   final Map<String, dynamic> post;
   final VoidCallback? onTapProfile;
-
-  /// Notify parent so it can persist state if it wants
   final ValueChanged<bool>? onLikeChanged;
 
   const PostCard({
@@ -82,10 +81,12 @@ class _PostCardState extends State<PostCard>
         (widget.post['likes_count'] ?? _likesCount) as int;
 
     if (updatedLiked != _liked || updatedLikesCount != _likesCount) {
-      setState(() {
-        _liked = updatedLiked;
-        _likesCount = updatedLikesCount;
-      });
+      if (mounted) {
+        setState(() {
+          _liked = updatedLiked;
+          _likesCount = updatedLikesCount;
+        });
+      }
     }
   }
 
@@ -94,8 +95,6 @@ class _PostCardState extends State<PostCard>
     _heartController.dispose();
     super.dispose();
   }
-
-  // ----- Helpers -----
 
   String formatPostDate(String dateStr) {
     try {
@@ -130,8 +129,6 @@ class _PostCardState extends State<PostCard>
     return double.tryParse(v.toString()) ?? fallback;
   }
 
-  /// Compute a fixed max height for all media in this post.
-  /// This removes jump when swiping between items with different sizes.
   double _calculateMaxHeight(BuildContext context, List<dynamic> media) {
     if (media.isEmpty) return 0;
 
@@ -154,7 +151,6 @@ class _PostCardState extends State<PostCard>
       if (displayHeight > maxHeight) maxHeight = displayHeight;
     }
 
-    // sensible fallback
     if (maxHeight == 0) {
       maxHeight = screenW;
     }
@@ -163,7 +159,7 @@ class _PostCardState extends State<PostCard>
   }
 
   Future<void> _optimisticLike() async {
-    if (_liked) return;
+    if (_liked || !mounted) return;
 
     setState(() {
       _liked = true;
@@ -173,8 +169,9 @@ class _PostCardState extends State<PostCard>
 
     final res = await InteractionsAPI.maybeLikePost(widget.post['id']);
 
+    if (!mounted) return;
+
     if (res == null) {
-      if (!mounted) return;
       setState(() {
         _liked = false;
         _likesCount = (_likesCount - 1).clamp(0, 9999999);
@@ -184,7 +181,7 @@ class _PostCardState extends State<PostCard>
   }
 
   Future<void> _toggleUnlike() async {
-    if (!_liked) return;
+    if (!_liked || !mounted) return;
 
     setState(() {
       _liked = false;
@@ -194,8 +191,9 @@ class _PostCardState extends State<PostCard>
 
     final res = await InteractionsAPI.maybeLikePost(widget.post['id']);
 
+    if (!mounted) return;
+
     if (res == null) {
-      if (!mounted) return;
       setState(() {
         _liked = true;
         _likesCount += 1;
@@ -244,6 +242,8 @@ class _PostCardState extends State<PostCard>
       await _optimisticLike();
     }
 
+    if (!mounted) return;
+
     setState(() => _showHeart = true);
     _heartController.forward(from: 0);
 
@@ -254,21 +254,46 @@ class _PostCardState extends State<PostCard>
   }
 
   void _preloadMedia(List media, int index) {
+    // Preload next image
     if (index + 1 < media.length) {
       final next = media[index + 1];
       if (next['media_type'] == 'image') {
-        CachedNetworkImageProvider(
-          next['media_url'],
-        ).resolve(ImageConfiguration());
+        try {
+          // Preload both blurred and full resolution
+          if (next['blurred_url'] != null && next['blurred_url'].isNotEmpty) {
+            CachedNetworkImageProvider(
+              next['blurred_url'],
+            ).resolve(ImageConfiguration());
+          }
+          if (next['media_url'] != null && next['media_url'].isNotEmpty) {
+            CachedNetworkImageProvider(
+              next['media_url'],
+            ).resolve(ImageConfiguration());
+          }
+        } catch (e) {
+          print('⚠️ Preload error (next): $e');
+        }
       }
     }
 
+    // Preload previous image
     if (index - 1 >= 0) {
       final prev = media[index - 1];
       if (prev['media_type'] == 'image') {
-        CachedNetworkImageProvider(
-          prev['media_url'],
-        ).resolve(ImageConfiguration());
+        try {
+          if (prev['blurred_url'] != null && prev['blurred_url'].isNotEmpty) {
+            CachedNetworkImageProvider(
+              prev['blurred_url'],
+            ).resolve(ImageConfiguration());
+          }
+          if (prev['media_url'] != null && prev['media_url'].isNotEmpty) {
+            CachedNetworkImageProvider(
+              prev['media_url'],
+            ).resolve(ImageConfiguration());
+          }
+        } catch (e) {
+          print('⚠️ Preload error (prev): $e');
+        }
       }
     }
   }
@@ -289,30 +314,30 @@ class _PostCardState extends State<PostCard>
           children: [
             // ----- Header -----
             ListTile(
-              leading: GestureDetector(
+              leading: ProfileAvatar(
+                imageUrl: widget.post['user_profile_image'],
                 onTap: widget.onTapProfile,
-                child: CircleAvatar(
-                  backgroundImage:
-                      widget.post['user_profile_image'] != null &&
-                          (widget.post['user_profile_image'] as String)
-                              .isNotEmpty
-                      ? NetworkImage(widget.post['user_profile_image'])
-                      : null,
-                  child:
-                      (widget.post['user_profile_image'] == null ||
-                          (widget.post['user_profile_image'] as String).isEmpty)
-                      ? const Icon(Icons.person, color: Colors.white)
-                      : null,
-                ),
               ),
               title: GestureDetector(
                 onTap: widget.onTapProfile,
-                child: Text(
-                  widget.post['username'] ?? '',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black,
-                  ),
+                child: Row(
+                  children: [
+                    Text(
+                      widget.post['username'] ?? '',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black,
+                      ),
+                    ),
+                    if (widget.post['user_verified'] == true) ...[
+                      SizedBox(width: 4),
+                      Icon(
+                        Icons.verified,
+                        size: 16,
+                        color: Colors.blue,
+                      ), // ✅ After name
+                    ],
+                  ],
                 ),
               ),
               subtitle: Text(
@@ -337,6 +362,7 @@ class _PostCardState extends State<PostCard>
                             : const NeverScrollableScrollPhysics(),
                         itemCount: media.length,
                         onPageChanged: (i) {
+                          if (!mounted) return;
                           setState(() => _currentPage = i);
                           _preloadMedia(media, i);
                         },
@@ -356,33 +382,65 @@ class _PostCardState extends State<PostCard>
                               ? maxMediaHeight
                               : naturalH;
                           final blurredUrl = item['blurred_url'];
+                          final mediaUrl = item['media_url'];
+
+                          // ✅ Validate media URL to prevent crashes
+                          if (mediaUrl == null || mediaUrl.isEmpty) {
+                            return Container(
+                              color: Colors.grey.shade200,
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.broken_image_outlined,
+                                      size: 48,
+                                      color: Colors.grey.shade400,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Media unavailable',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
 
                           return Stack(
                             fit: StackFit.expand,
                             children: [
-                              if (item['media_type'] == 'image' &&
-                                  blurredUrl != null &&
-                                  blurredUrl.isNotEmpty)
-                                CachedNetworkImage(
-                                  imageUrl: blurredUrl,
-                                  fit: BoxFit.cover,
-                                  fadeInDuration: Duration.zero,
-                                  fadeOutDuration: Duration.zero,
+                              // ✅ Layer 1: Gray background (no more white flash)
+                              Container(color: Colors.grey.shade200),
+
+                              // ✅ Layer 2: Blurred background (loads instantly)
+                              if (blurredUrl != null && blurredUrl.isNotEmpty)
+                                Positioned.fill(
+                                  child: CachedNetworkImage(
+                                    imageUrl: blurredUrl,
+                                    fit: BoxFit.cover,
+                                    fadeInDuration: Duration.zero,
+                                    fadeOutDuration: Duration.zero,
+                                    errorWidget: (_, __, ___) =>
+                                        const SizedBox.shrink(),
+                                  ),
                                 ),
-                              // A light blur layer (OPTIONAL – looks nicer)
-                              // Positioned.fill(
-                              //   child: Container(
-                              //     color: Colors.black.withOpacity(0.15),
-                              //   ),
-                              // ),
+
+                              // ✅ Layer 3: Main content with download progress
                               Center(
                                 child: SizedBox(
                                   width: screenW,
                                   height: itemHeight,
                                   child: PinchZoomReleaseUnzoomWidget(
                                     fingersRequiredToPinch: 2,
-                                    twoFingersOn: () =>
-                                        setState(() => _allowSwipe = false),
+                                    twoFingersOn: () {
+                                      if (!mounted) return;
+                                      setState(() => _allowSwipe = false);
+                                    },
                                     twoFingersOff: () => Future.delayed(
                                       PinchZoomReleaseUnzoomWidget
                                           .defaultResetDuration,
@@ -394,24 +452,69 @@ class _PostCardState extends State<PostCard>
                                     ),
                                     child: isVideo
                                         ? FeedVideoPlayer(
-                                            url: item['media_url'],
+                                            url: mediaUrl,
                                             isActive: _currentPage == i,
                                             fit: BoxFit.cover,
                                           )
                                         : CachedNetworkImage(
-                                            imageUrl: item['media_url'],
+                                            imageUrl: mediaUrl,
                                             fit: BoxFit.contain,
-                                            placeholder: (context, url) =>
-                                                CachedNetworkImage(
-                                                  imageUrl:
-                                                      item['blurred_url'] ?? '',
-                                                  fit: BoxFit.cover,
+                                            fadeInDuration: const Duration(
+                                              milliseconds: 300,
+                                            ),
+                                            // ✅ Show download progress (Instagram-style)
+                                            progressIndicatorBuilder:
+                                                (context, url, progress) {
+                                                  return Center(
+                                                    child: CircularProgressIndicator(
+                                                      value: progress
+                                                          .progress, // Shows actual download %
+                                                      color: Colors.white
+                                                          .withOpacity(0.9),
+                                                      backgroundColor: Colors
+                                                          .white
+                                                          .withOpacity(0.2),
+                                                      strokeWidth: 3,
+                                                    ),
+                                                  );
+                                                },
+                                            // ✅ Show 0% progress if image fails to load (prevents crash)
+                                            errorWidget: (context, url, error) {
+                                              print(
+                                                '❌ Image load error: $error',
+                                              );
+                                              return Center(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    CircularProgressIndicator(
+                                                      value: 0, // 0% progress
+                                                      color: Colors.white
+                                                          .withOpacity(0.5),
+                                                      backgroundColor: Colors
+                                                          .white
+                                                          .withOpacity(0.1),
+                                                      strokeWidth: 3,
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    Text(
+                                                      'Failed to load',
+                                                      style: TextStyle(
+                                                        color: Colors.white
+                                                            .withOpacity(0.7),
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
-                                            errorWidget: (_, __, ___) =>
-                                                CachedNetworkImage(
-                                                  imageUrl: item['blurred_url'],
-                                                  fit: BoxFit.cover,
-                                                ),
+                                              );
+                                            },
+                                            // ✅ Add memory cache config to prevent crashes from large images
+                                            memCacheHeight: 1000,
+                                            memCacheWidth: 1000,
+                                            maxHeightDiskCache: 1000,
+                                            maxWidthDiskCache: 1000,
                                           ),
                                   ),
                                 ),
@@ -591,7 +694,10 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
           ),
         if (caption.isNotEmpty)
           GestureDetector(
-            onTap: () => setState(() => _expanded = !_expanded),
+            onTap: () {
+              if (!mounted) return;
+              setState(() => _expanded = !_expanded);
+            },
             child: Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(

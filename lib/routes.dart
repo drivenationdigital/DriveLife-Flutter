@@ -1,4 +1,5 @@
-import 'package:drivelife/screens/view_profile_screen.dart';
+import 'package:drivelife/screens/vehicle_detail_screen.dart';
+import 'package:drivelife/widgets/post_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
@@ -8,6 +9,7 @@ import 'screens/posts_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/view_profile_screen.dart';
 
 class AppRoutes {
   static const String splash = '/';
@@ -19,6 +21,8 @@ class AppRoutes {
   static const String notifications = '/notifications';
   static const String profile = '/profile';
   static const String viewProfile = '/view-profile';
+  static const String postDetail = '/post-detail';
+  static const String vehicleDetail = '/vehicle-detail';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -40,12 +44,31 @@ class AppRoutes {
         return _slide(const ProfileScreen());
       case viewProfile:
         final args = settings.arguments as Map<String, dynamic>?;
+
+        // ✅ FIXED: Handle userId as either String or int
+        final userIdArg = args?['userId'];
+        int? userId;
+
+        if (userIdArg != null) {
+          if (userIdArg is int) {
+            userId = userIdArg;
+          } else if (userIdArg is String) {
+            userId = int.tryParse(userIdArg);
+          }
+        }
+
         return _slide(
           ViewProfileScreen(
-            userId: args?['userId'],
-            username: args?['username'] ?? '',
+            userId: userId,
+            username: args?['username']?.toString() ?? '',
           ),
         );
+      case postDetail:
+        final args = settings.arguments as Map<String, dynamic>;
+        return _slide(PostDetailScreen(postId: args['postId']));
+      case vehicleDetail:
+        final args = settings.arguments as Map<String, dynamic>;
+        return _slide(VehicleDetailScreen(garageId: args['garageId']));
       default:
         return _slide(
           Scaffold(
