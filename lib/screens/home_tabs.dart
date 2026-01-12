@@ -1,4 +1,5 @@
 import 'package:drivelife/screens/reels_screen.dart';
+import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
 import 'posts_screen.dart';
 import 'search_screen.dart';
@@ -84,27 +85,31 @@ class _HomeTabsState extends State<HomeTabs> {
                 title: const Text('Notifications'),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.of(context).push(
-                    PageRouteBuilder(
-                      opaque: false,
-                      barrierColor: Colors.black54,
-                      pageBuilder: (_, __, ___) => const NotificationsScreen(),
-                      transitionsBuilder: (_, animation, __, child) =>
-                          SlideTransition(
-                            position:
-                                Tween<Offset>(
-                                  begin: const Offset(1, 0),
-                                  end: Offset.zero,
-                                ).animate(
-                                  CurvedAnimation(
-                                    parent: animation,
-                                    curve: Curves.easeOutCubic,
-                                  ),
-                                ),
-                            child: child,
-                          ),
-                    ),
+                  NavigationHelper.navigateModal(
+                    context,
+                    const NotificationsScreen(),
                   );
+                  // Navigator.of(context).push(
+                  //   PageRouteBuilder(
+                  //     opaque: false,
+                  //     barrierColor: Colors.black54,
+                  //     pageBuilder: (_, __, ___) => const NotificationsScreen(),
+                  //     transitionsBuilder: (_, animation, __, child) =>
+                  //         SlideTransition(
+                  //           position:
+                  //               Tween<Offset>(
+                  //                 begin: const Offset(1, 0),
+                  //                 end: Offset.zero,
+                  //               ).animate(
+                  //                 CurvedAnimation(
+                  //                   parent: animation,
+                  //                   curve: Curves.easeOutCubic,
+                  //                 ),
+                  //               ),
+                  //           child: child,
+                  //         ),
+                  //   ),
+                  // );
                 },
               ),
               ListTile(
@@ -137,27 +142,31 @@ class _HomeTabsState extends State<HomeTabs> {
               actions: [
                 IconButton(
                   onPressed: () {
-                    Navigator.of(context).push(
-                      PageRouteBuilder(
-                        opaque: false,
-                        barrierColor: Colors.black54,
-                        pageBuilder: (_, __, ___) =>
-                            const NotificationsScreen(),
-                        transitionsBuilder: (_, animation, __, child) =>
-                            SlideTransition(
-                              position:
-                                  Tween<Offset>(
-                                    begin: const Offset(1, 0),
-                                    end: Offset.zero,
-                                  ).animate(
-                                    CurvedAnimation(
-                                      parent: animation,
-                                      curve: Curves.easeOutCubic,
-                                    ),
-                                  ),
-                              child: child,
-                            ),
-                      ),
+                    // Navigator.of(context).push(
+                    //   PageRouteBuilder(
+                    //     opaque: false,
+                    //     barrierColor: Colors.black54,
+                    //     pageBuilder: (_, __, ___) =>
+                    //         const NotificationsScreen(),
+                    //     transitionsBuilder: (_, animation, __, child) =>
+                    //         SlideTransition(
+                    //           position:
+                    //               Tween<Offset>(
+                    //                 begin: const Offset(1, 0),
+                    //                 end: Offset.zero,
+                    //               ).animate(
+                    //                 CurvedAnimation(
+                    //                   parent: animation,
+                    //                   curve: Curves.easeOutCubic,
+                    //                 ),
+                    //               ),
+                    //           child: child,
+                    //         ),
+                    //   ),
+                    // );
+                    NavigationHelper.navigateModal(
+                      context,
+                      const NotificationsScreen(),
                     );
                   },
                   icon: const Icon(

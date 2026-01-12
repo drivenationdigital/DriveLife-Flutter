@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/post_model.dart';
 import '../services/posts_service.dart';
 import 'post_detail_screen.dart';
+import '../utils/navigation_helper.dart';
 
 class ProfilePostGrid extends StatefulWidget {
   final int userId;
@@ -224,29 +225,30 @@ class _ProfilePostGridState extends State<ProfilePostGrid>
         if (!mounted) return;
 
         // Navigate to post detail with slide animation
-        Navigator.push(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) =>
-                PostDetailScreen(postId: post.id),
-            transitionsBuilder:
-                (context, animation, secondaryAnimation, child) {
-                  const begin = Offset(1.0, 0.0); // Slide from right
-                  const end = Offset.zero;
-                  const curve = Curves.easeInOut;
+        // Navigator.push(
+        //   context,
+        //   PageRouteBuilder(
+        //     pageBuilder: (context, animation, secondaryAnimation) =>
+        //         PostDetailScreen(postId: post.id),
+        //     transitionsBuilder:
+        //         (context, animation, secondaryAnimation, child) {
+        //           const begin = Offset(1.0, 0.0); // Slide from right
+        //           const end = Offset.zero;
+        //           const curve = Curves.easeInOut;
 
-                  var tween = Tween(
-                    begin: begin,
-                    end: end,
-                  ).chain(CurveTween(curve: curve));
+        //           var tween = Tween(
+        //             begin: begin,
+        //             end: end,
+        //           ).chain(CurveTween(curve: curve));
 
-                  return SlideTransition(
-                    position: animation.drive(tween),
-                    child: child,
-                  );
-                },
-          ),
-        );
+        //           return SlideTransition(
+        //             position: animation.drive(tween),
+        //             child: child,
+        //           );
+        //         },
+        //   ),
+        // );
+        NavigationHelper.navigateTo(context, PostDetailScreen(postId: post.id));
       },
       child: Stack(
         fit: StackFit.expand,
