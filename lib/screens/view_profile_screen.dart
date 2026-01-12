@@ -1,3 +1,4 @@
+import 'package:drivelife/screens/edit_profile_settings_screen.dart';
 import 'package:drivelife/widgets/garage_tab.dart';
 import 'package:drivelife/widgets/profile_avatar.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import '../services/user_service.dart';
 import '../providers/user_provider.dart';
 import '../widgets/profile_post_grid.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../utils/navigation_helper.dart';
 
 class ViewProfileScreen extends StatefulWidget {
   final int? userId;
@@ -695,10 +697,13 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
         Expanded(
           child: ElevatedButton(
             onPressed: () {
-              // TODO: Navigate to edit profile
+              NavigationHelper.navigateTo(
+                context,
+                const EditProfileSettingsScreen(),
+              );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
+              backgroundColor: const Color(0xFFAE9159),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(
@@ -718,7 +723,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
               // TODO: Navigate to edit garage
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFAE9159),
+              backgroundColor: const Color(0xFF1A1A1A),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(

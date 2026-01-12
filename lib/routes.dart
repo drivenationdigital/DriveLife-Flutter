@@ -11,6 +11,8 @@ import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/view_profile_screen.dart';
 import 'package:flutter/cupertino.dart';
+import 'screens/edit_profile_settings_screen.dart';
+import 'screens/manage_social_links_screen.dart';
 
 class AppRoutes {
   static const String splash = '/';
@@ -24,6 +26,9 @@ class AppRoutes {
   static const String viewProfile = '/view-profile';
   static const String postDetail = '/post-detail';
   static const String vehicleDetail = '/vehicle-detail';
+
+  static const String editProfile = '/edit-profile';
+  static const String manageSocialLinks = '/manage-social-links';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -43,6 +48,10 @@ class AppRoutes {
         return _slide(const NotificationsScreen());
       case profile:
         return _slide(const ProfileScreen());
+      case editProfile:
+        return _slide(const EditProfileSettingsScreen());
+      case manageSocialLinks:
+        return _slide(const ManageSocialLinksScreen());
       case viewProfile:
         final args = settings.arguments as Map<String, dynamic>?;
 

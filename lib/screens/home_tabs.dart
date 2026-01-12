@@ -30,6 +30,65 @@ class _HomeTabsState extends State<HomeTabs> {
     Navigator.pop(context); // close drawer after tap
   }
 
+  AppBar? _buildAppBar() {
+    if (_currentIndex == 0) {
+      // Home app bar
+      return AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        // Use a Builder so Scaffold.of(context).openDrawer() has the right context
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.black),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+          ),
+        ),
+        centerTitle: true, // 👈 ensures the title is centered
+        title: Image.asset(
+          'assets/logo-dark.png',
+          height: 18,
+          alignment: Alignment.center,
+        ),
+        actions: [
+          IconButton(
+            onPressed: () {
+              NavigationHelper.navigateTo(context, const NotificationsScreen());
+            },
+            icon: const Icon(Icons.notifications_none, color: Colors.black),
+          ),
+        ],
+      );
+    } else if (_currentIndex == 5) {
+      // Profile app bar (no hamburger, add QR icon)
+      return AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.black),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+          ),
+        ),
+        title: Image.asset('assets/logo-dark.png', height: 18),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code, color: Colors.black),
+            onPressed: () {},
+          ),
+          IconButton(
+            icon: const Icon(Icons.notifications_none, color: Colors.black),
+            onPressed: () => NavigationHelper.navigateTo(
+              context,
+              const NotificationsScreen(),
+            ),
+          ),
+        ],
+      );
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -85,31 +144,10 @@ class _HomeTabsState extends State<HomeTabs> {
                 title: const Text('Notifications'),
                 onTap: () {
                   Navigator.pop(context);
-                  NavigationHelper.navigateModal(
+                  NavigationHelper.navigateTo(
                     context,
                     const NotificationsScreen(),
                   );
-                  // Navigator.of(context).push(
-                  //   PageRouteBuilder(
-                  //     opaque: false,
-                  //     barrierColor: Colors.black54,
-                  //     pageBuilder: (_, __, ___) => const NotificationsScreen(),
-                  //     transitionsBuilder: (_, animation, __, child) =>
-                  //         SlideTransition(
-                  //           position:
-                  //               Tween<Offset>(
-                  //                 begin: const Offset(1, 0),
-                  //                 end: Offset.zero,
-                  //               ).animate(
-                  //                 CurvedAnimation(
-                  //                   parent: animation,
-                  //                   curve: Curves.easeOutCubic,
-                  //                 ),
-                  //               ),
-                  //           child: child,
-                  //         ),
-                  //   ),
-                  // );
                 },
               ),
               ListTile(
@@ -122,61 +160,7 @@ class _HomeTabsState extends State<HomeTabs> {
         ),
       ),
 
-      appBar: _currentIndex == 0
-          ? AppBar(
-              backgroundColor: Colors.white,
-              elevation: 0,
-              // Use a Builder so Scaffold.of(context).openDrawer() has the right context
-              leading: Builder(
-                builder: (ctx) => IconButton(
-                  icon: const Icon(Icons.menu, color: Colors.black),
-                  onPressed: () => Scaffold.of(ctx).openDrawer(),
-                ),
-              ),
-              centerTitle: true, // 👈 ensures the title is centered
-              title: Image.asset(
-                'assets/logo-dark.png',
-                height: 18,
-                alignment: Alignment.center,
-              ),
-              actions: [
-                IconButton(
-                  onPressed: () {
-                    // Navigator.of(context).push(
-                    //   PageRouteBuilder(
-                    //     opaque: false,
-                    //     barrierColor: Colors.black54,
-                    //     pageBuilder: (_, __, ___) =>
-                    //         const NotificationsScreen(),
-                    //     transitionsBuilder: (_, animation, __, child) =>
-                    //         SlideTransition(
-                    //           position:
-                    //               Tween<Offset>(
-                    //                 begin: const Offset(1, 0),
-                    //                 end: Offset.zero,
-                    //               ).animate(
-                    //                 CurvedAnimation(
-                    //                   parent: animation,
-                    //                   curve: Curves.easeOutCubic,
-                    //                 ),
-                    //               ),
-                    //           child: child,
-                    //         ),
-                    //   ),
-                    // );
-                    NavigationHelper.navigateModal(
-                      context,
-                      const NotificationsScreen(),
-                    );
-                  },
-                  icon: const Icon(
-                    Icons.notifications_none,
-                    color: Colors.black,
-                  ),
-                ),
-              ],
-            )
-          : null,
+      appBar: _buildAppBar(),
 
       body: IndexedStack(index: _currentIndex, children: _screens),
 
