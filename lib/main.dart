@@ -24,6 +24,13 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
+        pageTransitionsTheme: PageTransitionsTheme(
+          builders: {
+            TargetPlatform.iOS:
+                CupertinoPageTransitionsBuilder(), // ✅ Enables iOS swipe
+            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+          },
+        ),
         scaffoldBackgroundColor: Colors.black,
         appBarTheme: const AppBarTheme(backgroundColor: Colors.black),
       ),

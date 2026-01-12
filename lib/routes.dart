@@ -10,6 +10,7 @@ import 'screens/search_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/view_profile_screen.dart';
+import 'package:flutter/cupertino.dart';
 
 class AppRoutes {
   static const String splash = '/';
@@ -78,7 +79,7 @@ class AppRoutes {
     }
   }
 
-  static PageRouteBuilder _slide(Widget page) {
+  static PageRouteBuilder _slideInAndroid(Widget page) {
     return PageRouteBuilder(
       transitionDuration: const Duration(milliseconds: 300),
       pageBuilder: (_, __, ___) => page,
@@ -90,5 +91,13 @@ class AppRoutes {
         return SlideTransition(position: animation.drive(tween), child: child);
       },
     );
+  }
+
+  static Route<dynamic> _slideDefault(Widget page) {
+    return MaterialPageRoute(builder: (context) => page);
+  }
+
+  static Route<dynamic> _slide(Widget page) {
+    return CupertinoPageRoute(builder: (context) => page);
   }
 }
