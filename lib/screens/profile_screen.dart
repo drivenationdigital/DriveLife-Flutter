@@ -1,3 +1,4 @@
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
@@ -8,13 +9,16 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
     final userProvider = Provider.of<UserProvider>(context);
     final user = userProvider.user;
 
     if (userProvider.isLoading) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: Color(0xFF121212),
-        body: Center(child: CircularProgressIndicator(color: Colors.orange)),
+        body: Center(
+          child: CircularProgressIndicator(color: theme.primaryColor),
+        ),
       );
     }
 

@@ -1,6 +1,9 @@
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/reels_screen.dart';
+import 'package:drivelife/services/qr_scanner.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'posts_screen.dart';
 import 'search_screen.dart';
 import 'profile_screen.dart';
@@ -19,7 +22,7 @@ class _HomeTabsState extends State<HomeTabs> {
   final List<Widget> _screens = const [
     PostsScreen(),
     SearchScreen(),
-    ReelsScreen(),
+    // ReelsScreen(),
     Scaffold(body: Center(child: Text('Add Post'))),
     Scaffold(body: Center(child: Text('Store'))),
     ProfileScreen(),
@@ -51,6 +54,34 @@ class _HomeTabsState extends State<HomeTabs> {
         ),
         actions: [
           IconButton(
+            onPressed: () async {
+              final result = await QrScannerService.showScanner(context);
+              if (result != null && mounted) {
+                QrScannerService.handleScanResult(
+                  context,
+                  result,
+                  onSuccess: (data) {
+                    // Navigate based on entity type
+                    if (data['entity_type'] == 'profile') {
+                      Navigator.pushNamed(
+                        context,
+                        '/view-profile',
+                        arguments: {'userId': data['entity_id']},
+                      );
+                    } else if (data['entity_type'] == 'vehicle') {
+                      Navigator.pushNamed(
+                        context,
+                        '/vehicle-detail',
+                        arguments: {'garageId': data['entity_id'].toString()},
+                      );
+                    }
+                  },
+                );
+              }
+            },
+            icon: Icon(Icons.qr_code),
+          ),
+          IconButton(
             onPressed: () {
               NavigationHelper.navigateTo(context, const NotificationsScreen());
             },
@@ -58,7 +89,7 @@ class _HomeTabsState extends State<HomeTabs> {
           ),
         ],
       );
-    } else if (_currentIndex == 5) {
+    } else if (_currentIndex == 4) {
       // Profile app bar (no hamburger, add QR icon)
       return AppBar(
         backgroundColor: Colors.white,
@@ -73,8 +104,32 @@ class _HomeTabsState extends State<HomeTabs> {
         title: Image.asset('assets/logo-dark.png', height: 18),
         actions: [
           IconButton(
-            icon: const Icon(Icons.qr_code, color: Colors.black),
-            onPressed: () {},
+            onPressed: () async {
+              final result = await QrScannerService.showScanner(context);
+              if (result != null && mounted) {
+                QrScannerService.handleScanResult(
+                  context,
+                  result,
+                  onSuccess: (data) {
+                    // Navigate based on entity type
+                    if (data['entity_type'] == 'profile') {
+                      Navigator.pushNamed(
+                        context,
+                        '/view-profile',
+                        arguments: {'userId': data['entity_id']},
+                      );
+                    } else if (data['entity_type'] == 'vehicle') {
+                      Navigator.pushNamed(
+                        context,
+                        '/vehicle-detail',
+                        arguments: {'garageId': data['entity_id'].toString()},
+                      );
+                    }
+                  },
+                );
+              }
+            },
+            icon: Icon(Icons.qr_code),
           ),
           IconButton(
             icon: const Icon(Icons.notifications_none, color: Colors.black),
@@ -91,6 +146,8 @@ class _HomeTabsState extends State<HomeTabs> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
       // 👇 The Drawer (left sidebar)
       drawer: Drawer(
@@ -139,6 +196,25 @@ class _HomeTabsState extends State<HomeTabs> {
                 onTap: () => _goToTab(4),
               ),
               const Divider(),
+              Consumer<ThemeProvider>(
+                builder: (context, themeProvider, child) {
+                  return ListTile(
+                    leading: Icon(
+                      themeProvider.isDarkMode
+                          ? Icons.dark_mode
+                          : Icons.light_mode,
+                    ),
+                    title: const Text('Dark Mode'),
+                    trailing: Switch(
+                      value: themeProvider.isDarkMode,
+                      onChanged: (value) {
+                        themeProvider.toggleTheme();
+                      },
+                      activeColor: theme.primaryColor,
+                    ),
+                  );
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.notifications_none),
                 title: const Text('Notifications'),
@@ -180,10 +256,10 @@ class _HomeTabsState extends State<HomeTabs> {
             icon: Icon(Icons.explore_outlined),
             label: 'Discover',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.play_circle_outline),
-            label: 'Reels',
-          ),
+          // BottomNavigationBarItem(
+          //   icon: Icon(Icons.play_circle_outline),
+          //   label: 'Reels',
+          // ),
           BottomNavigationBarItem(
             icon: Icon(Icons.add_box_outlined),
             label: 'Add',

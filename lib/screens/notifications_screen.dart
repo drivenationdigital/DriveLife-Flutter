@@ -1,4 +1,6 @@
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../api/notifications_api.dart';
 import '../widgets/profile_avatar.dart';
 import '../services/auth_service.dart';
@@ -197,6 +199,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -210,9 +214,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         title: Image.asset('assets/logo-dark.png', height: 18),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Colors.orange))
+          ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
           : _allNotifications.isEmpty
-          ? const Center(
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -227,7 +231,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             )
           : RefreshIndicator(
               onRefresh: _refreshNotifications,
-              color: Colors.orange,
+              color: theme.primaryColor,
               child: ListView.builder(
                 padding: const EdgeInsets.only(top: 8),
                 itemCount: _groupedNotifications.length,
@@ -251,7 +255,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
                         return Column(
                           children: [
-                            _buildNotificationTile(notification),
+                            _buildNotificationTile(notification, theme),
                             if (!isLast)
                               const Divider(
                                 height: 1,
@@ -290,7 +294,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Widget _buildNotificationTile(Map<String, dynamic> notification) {
+  Widget _buildNotificationTile(
+    Map<String, dynamic> notification,
+    ThemeProvider theme,
+  ) {
     final entity = notification['entity'] ?? {};
     final initiatorData = entity['initiator_data'] ?? {};
 
@@ -355,11 +362,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               ),
                               if (isVerified) ...[
                                 const WidgetSpan(child: SizedBox(width: 4)),
-                                const WidgetSpan(
+                                WidgetSpan(
                                   child: Icon(
                                     Icons.verified,
                                     size: 14,
-                                    color: Colors.blue,
+                                    color: theme.primaryColor,
                                   ),
                                 ),
                               ],
@@ -393,12 +400,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ElevatedButton(
                 onPressed: () => _handleFollowBack(initiatorData['id']),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD5B56B),
+                  backgroundColor: theme.primaryColor,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
-                    vertical: 6,
+                    vertical: 3,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(6),
@@ -406,7 +413,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
                 child: const Text(
                   'Follow',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
               )
             else if (postMedia != null && postMedia.isNotEmpty)

@@ -1,4 +1,6 @@
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../api/garage_api.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/profile_post_grid.dart';
@@ -47,6 +49,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     if (_loading) {
       return Scaffold(
         backgroundColor: Colors.white,
@@ -58,8 +62,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
             onPressed: () => Navigator.pop(context),
           ),
         ),
-        body: const Center(
-          child: CircularProgressIndicator(color: Colors.orange),
+        body: Center(
+          child: CircularProgressIndicator(color: theme.primaryColor),
         ),
       );
     }
@@ -359,12 +363,14 @@ class _GaragePostsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return FutureBuilder<Map<String, dynamic>?>(
       future: GarageAPI.getPostsForGarage(garageId, tagged: tagged),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(color: Colors.orange),
+          return Center(
+            child: CircularProgressIndicator(color: theme.primaryColor),
           );
         }
 

@@ -1,7 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pinch_zoom_release_unzoom/pinch_zoom_release_unzoom.dart';
+import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../api/interactions_api.dart';
 import '../screens/comments_bottom_sheet.dart';
@@ -300,6 +302,8 @@ class _PostCardState extends State<PostCard>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     final media = (widget.post['media'] ?? []) as List<dynamic>;
     final hasMedia = media.isNotEmpty;
     final maxMediaHeight = hasMedia ? _calculateMaxHeight(context, media) : 0.0;
@@ -334,7 +338,7 @@ class _PostCardState extends State<PostCard>
                       Icon(
                         Icons.verified,
                         size: 16,
-                        color: Colors.blue,
+                        color: theme.primaryColor,
                       ), // ✅ After name
                     ],
                   ],

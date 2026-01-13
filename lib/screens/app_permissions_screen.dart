@@ -1,6 +1,8 @@
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:app_settings/app_settings.dart';
+import 'package:provider/provider.dart';
 
 class AppPermissionsScreen extends StatefulWidget {
   const AppPermissionsScreen({super.key});
@@ -61,9 +63,9 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
     }
   }
 
-  Color _getStatusColor(PermissionStatus? status) {
+  Color _getStatusColor(PermissionStatus? status, ThemeProvider theme) {
     if (status == PermissionStatus.granted) return Colors.green;
-    if (status == PermissionStatus.denied) return Colors.orange;
+    if (status == PermissionStatus.denied) return theme.primaryColor;
     return Colors.red;
   }
 
@@ -73,6 +75,8 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -107,6 +111,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
                   description:
                       'This app uses the camera to allow you to take photos to create posts, and scan QR codes.',
                   key: 'camera',
+                  theme: theme,
                 ),
                 const SizedBox(height: 12),
                 _buildPermissionTile(
@@ -115,6 +120,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
                   description:
                       'This app uses your location to show nearby events and tag posts.',
                   key: 'location',
+                  theme: theme,
                 ),
                 const SizedBox(height: 12),
                 _buildPermissionTile(
@@ -123,6 +129,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
                   description:
                       'This app needs access to your photos to upload media to posts.',
                   key: 'photos',
+                  theme: theme,
                 ),
                 const SizedBox(height: 12),
                 _buildPermissionTile(
@@ -131,6 +138,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
                   description:
                       'This app sends notifications for likes, comments, and follows.',
                   key: 'notifications',
+                  theme: theme,
                 ),
               ],
             ),
@@ -166,6 +174,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
     required String title,
     required String description,
     required String key,
+    required ThemeProvider theme,
   }) {
     final isExpanded = _expandedStates[key] ?? false;
     final status = _permissionStatus[key];
@@ -206,7 +215,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: _getStatusColor(status).withOpacity(0.1),
+                        color: _getStatusColor(status, theme).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -214,7 +223,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: _getStatusColor(status),
+                          color: _getStatusColor(status, theme),
                         ),
                       ),
                     ),

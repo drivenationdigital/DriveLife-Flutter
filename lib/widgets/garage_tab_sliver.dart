@@ -1,18 +1,18 @@
-import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/garage_api.dart';
+import '../providers/theme_provider.dart';
 
-class GarageTab extends StatefulWidget {
+class GarageTabSliver extends StatefulWidget {
   final int userId;
 
-  const GarageTab({super.key, required this.userId});
+  const GarageTabSliver({super.key, required this.userId});
 
   @override
-  State<GarageTab> createState() => _GarageTabState();
+  State<GarageTabSliver> createState() => _GarageTabSliverState();
 }
 
-class _GarageTabState extends State<GarageTab>
+class _GarageTabSliverState extends State<GarageTabSliver>
     with AutomaticKeepAliveClientMixin {
   List<dynamic> _currentVehicles = [];
   List<dynamic> _pastVehicles = [];
@@ -59,28 +59,27 @@ class _GarageTabState extends State<GarageTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-
     final theme = Provider.of<ThemeProvider>(context);
 
     if (_loading) {
-      return Center(
-        child: CircularProgressIndicator(color: theme.primaryColor),
+      return SliverFillRemaining(
+        child: Center(
+          child: CircularProgressIndicator(color: theme.primaryColor),
+        ),
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadGarage,
-      color: theme.primaryColor,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildSection('Current Vehicles', _currentVehicles, theme),
-          const SizedBox(height: 24),
-          _buildSection('Past Vehicles', _pastVehicles, theme),
-          const SizedBox(height: 24),
-          _buildSection('Dream Vehicles', _dreamVehicles, theme),
-        ],
-      ),
+    // Return list of slivers
+    return SliverList(
+      delegate: SliverChildListDelegate([
+        const SizedBox(height: 16),
+        _buildSection('Current Vehicles', _currentVehicles, theme),
+        const SizedBox(height: 24),
+        _buildSection('Past Vehicles', _pastVehicles, theme),
+        const SizedBox(height: 24),
+        _buildSection('Dream Vehicles', _dreamVehicles, theme),
+        const SizedBox(height: 16),
+      ]),
     );
   }
 
@@ -89,44 +88,49 @@ class _GarageTabState extends State<GarageTab>
     List<dynamic> vehicles,
     ThemeProvider theme,
   ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 16),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: theme.textColor,
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (vehicles.isEmpty)
-          Container(
-            width: double.infinity, // Full width
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Text(
-              'No ${title.toLowerCase()}',
-              style: TextStyle(color: Colors.grey.shade600),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: theme.textColor,
             ),
-          )
-        else
-          ...vehicles.map((vehicle) => _buildVehicleCard(vehicle)),
-      ],
+          ),
+          const SizedBox(height: 12),
+          if (vehicles.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'No ${title.toLowerCase()}',
+                style: TextStyle(color: theme.subtextColor),
+              ),
+            )
+          else
+            ...vehicles.map((vehicle) => _buildVehicleCard(vehicle, theme)),
+        ],
+      ),
     );
   }
 
-  Widget _buildVehicleCard(Map<String, dynamic> vehicle) {
+  Widget _buildVehicleCard(Map<String, dynamic> vehicle, ThemeProvider theme) {
     final coverPhoto = vehicle['cover_photo'];
     final hasImage = coverPhoto != null && coverPhoto.isNotEmpty;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white10,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.white10),
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.dividerColor),
       ),
       child: InkWell(
         onTap: () {
@@ -141,44 +145,41 @@ class _GarageTabState extends State<GarageTab>
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // Vehicle image
               ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: Container(
                   width: 60,
                   height: 60,
-                  color: Colors.grey.shade300,
+                  color: theme.dividerColor,
                   child: hasImage
                       ? Image.network(
                           coverPhoto,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Icon(
                             Icons.directions_car,
-                            color: Colors.grey.shade600,
+                            color: theme.subtextColor,
                             size: 30,
                           ),
                         )
                       : Icon(
                           Icons.directions_car,
-                          color: Colors.grey.shade600,
+                          color: theme.subtextColor,
                           size: 30,
                         ),
                 ),
               ),
               const SizedBox(width: 12),
-              // Vehicle name
               Expanded(
                 child: Text(
                   '${vehicle['make']} ${vehicle['model']}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
-                    color: Colors.white,
+                    color: theme.textColor,
                   ),
                 ),
               ),
-              // Arrow
-              Icon(Icons.chevron_right, color: Colors.grey.shade400),
+              Icon(Icons.chevron_right, color: theme.subtextColor),
             ],
           ),
         ),

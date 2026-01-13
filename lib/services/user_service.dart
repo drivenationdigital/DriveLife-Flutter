@@ -29,10 +29,6 @@ class UserService {
         '$_apiUrl/wp-json/app/v2/get-user-profile-next',
       ).replace(queryParameters: queryParams);
 
-      print('🔍 [UserService] Fetching profile:');
-      print('   URL: $uri');
-      print('   Requested user_id: $userId');
-
       final response = await http.get(
         uri,
         headers: {
@@ -83,16 +79,6 @@ class UserService {
             'billing_info': user['billing_info'],
           };
 
-          print('   ✅ Got user:');
-          print('      ID: ${formattedUser['id']}');
-          print('      Username: ${formattedUser['username']}');
-          print(
-            '      Name: ${formattedUser['first_name']} ${formattedUser['last_name']}',
-          );
-          print(
-            '      Followers: ${(formattedUser['followers'] as List).length}',
-          );
-
           return formattedUser;
         } else {
           print('   ❌ Invalid response structure');
@@ -135,21 +121,24 @@ class UserService {
   }
 
   /// Follow a user
-  Future<bool> followUser(int userId) async {
+  Future<bool> followUser(int userId, int sessionUserId) async {
     try {
       final token = await _storage.read(key: 'token');
       if (token == null) return false;
 
       print('🔍 [UserService] Following user $userId');
 
-      final uri = Uri.parse('$_apiUrl/wp-json/app/v2/follow-user/');
+      final uri = Uri.parse('$_apiUrl/wp-json/app/v1/follow-user/');
       final response = await http.post(
         uri,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'user_id': userId}),
+        body: jsonEncode({
+          'following_id': userId,
+          'follower_id': sessionUserId,
+        }),
       );
 
       print('📥 [UserService] Follow response: ${response.statusCode}');
@@ -218,12 +207,12 @@ class UserService {
   }
 
   /// Get user's followers list
-  Future<List<Map<String, dynamic>>> getFollowers(int userId) async {
+  Future<List<Map<String, dynamic>>> getFollowers(int userId, int page) async {
     try {
       final token = await _storage.read(key: 'token');
 
       final uri = Uri.parse(
-        '$_apiUrl/wp-json/app/v2/get-followers/?user_id=$userId',
+        '$_apiUrl/wp-json/app/v2/get-followers/?user_id=$userId&page=$page',
       );
 
       final response = await http.get(
@@ -270,6 +259,32 @@ class UserService {
     } catch (e) {
       print('❌ [UserService] Error fetching following: $e');
       return [];
+    }
+  }
+
+  // Remove follower
+  Future<bool> removeFollower(int userId) async {
+    try {
+      final token = await _storage.read(key: 'token');
+      if (token == null) return false;
+
+      final uri = Uri.parse('$_apiUrl/wp-json/app/v2/remove-follower/');
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'follower_id': userId}),
+      );
+
+      print(
+        '📥 [UserService] Remove follower response: ${response.statusCode}',
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('❌ [UserService] Error removing follower: $e');
+      return false;
     }
   }
 

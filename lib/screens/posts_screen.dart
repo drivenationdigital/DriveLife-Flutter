@@ -1,3 +1,4 @@
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/scheduler.dart';
@@ -227,6 +228,7 @@ class _PostsScreenState extends State<PostsScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final theme = Provider.of<ThemeProvider>(context);
 
     // Pick which feed to show
     final posts = showFollowing ? followingPosts : latestPosts;
@@ -238,13 +240,23 @@ class _PostsScreenState extends State<PostsScreen>
         children: [
           // --- Tabs ---
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _tabButton('Latest', !showFollowing, () => _switchTab(false)),
+                _tabButton(
+                  'Latest',
+                  !showFollowing,
+                  () => _switchTab(false),
+                  theme,
+                ),
                 const SizedBox(width: 12),
-                _tabButton('Following', showFollowing, () => _switchTab(true)),
+                _tabButton(
+                  'Following',
+                  showFollowing,
+                  () => _switchTab(true),
+                  theme,
+                ),
               ],
             ),
           ),
@@ -282,17 +294,7 @@ class _PostsScreenState extends State<PostsScreen>
                         arguments: {'userId': userId, 'username': username},
                       );
                     },
-                    // onLikeChanged: (isLiked) {
-                    //   setState(() {
-                    //     final p = posts[index];
-                    //     final current = p['likes_count'] ?? 0;
 
-                    //     p['is_liked'] = isLiked;
-                    //     p['likes_count'] = isLiked
-                    //         ? current + 1
-                    //         : (current - 1).clamp(0, 9999999);
-                    //   });
-                    // },
                     onLikeChanged: (isLiked) {
                       posts[index]['is_liked'] = isLiked;
                       posts[index]['likes_count'] += isLiked ? 1 : -1;
@@ -308,14 +310,19 @@ class _PostsScreenState extends State<PostsScreen>
     );
   }
 
-  Widget _tabButton(String label, bool active, VoidCallback onTap) {
+  Widget _tabButton(
+    String label,
+    bool active,
+    VoidCallback onTap,
+    ThemeProvider theme,
+  ) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
         child: Container(
           height: 34,
           decoration: BoxDecoration(
-            color: active ? const Color(0xFFD5B56B) : Colors.grey[200],
+            color: active ? theme.primaryColor : Colors.grey[200],
             borderRadius: BorderRadius.circular(8),
           ),
           child: Center(

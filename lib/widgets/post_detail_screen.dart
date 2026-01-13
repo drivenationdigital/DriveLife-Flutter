@@ -1,4 +1,6 @@
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/posts_service.dart';
 import '../components/post_card.dart';
 
@@ -56,6 +58,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     // Show skeleton with app bar while loading
     if (_isLoading) {
       return Scaffold(
@@ -131,7 +135,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _refreshPost,
-        color: Colors.orange,
+        color: theme.primaryColor,
         child: SingleChildScrollView(
           physics:
               const AlwaysScrollableScrollPhysics(), // ✅ Allows pull-to-refresh even if content fits
