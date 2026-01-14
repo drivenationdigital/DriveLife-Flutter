@@ -14,6 +14,7 @@ import '../services/posts_service.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../utils/navigation_helper.dart';
 import '../api/garage_api.dart';
+import 'package:drivelife/utils/profile_cache.dart';
 
 class ViewProfileScreen extends StatefulWidget {
   final int? userId;
@@ -61,8 +62,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   bool _loadingGarage = false;
   bool _garageLoaded = false; // ✅ Track if garage has been loaded
 
-  static final Map<int, Map<String, dynamic>> _profileCache = {};
-
   @override
   void initState() {
     super.initState();
@@ -78,6 +77,14 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   void dispose() {
     _tabController.dispose();
     _scrollController.dispose();
+
+    // ✅ Free memory
+    _posts.clear();
+    _taggedPosts.clear();
+    _currentVehicles.clear();
+    _pastVehicles.clear();
+    _dreamVehicles.clear();
+
     super.dispose();
   }
 
@@ -255,25 +262,40 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   Future<void> _loadUserProfileOptimized() async {
     if (!mounted) return;
 
-    if (widget.userId != null && _profileCache.containsKey(widget.userId)) {
-      final cached = _profileCache[widget.userId!];
+    // ✅ Own profile → Use UserProvider (no cache)
+    if (_isOwnProfile) {
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final user = userProvider.user;
 
-      setState(() {
-        _userProfile = _profileCache[widget.userId!];
-        _isLoading = false;
-      });
-
-      await _preloadCoverImage(cached?['cover_image']?.toString());
-
-      if (!_isOwnProfile && _userProfile!['id'] != null) {
-        _checkFollowStatus(_userProfile!['id']);
+      if (user != null) {
+        setState(() {
+          _userProfile = Map<String, dynamic>.from(user);
+          _isLoading = false;
+        });
+        _loadTabContent();
+        return;
       }
-
-      // ✅ Load tab content even when using cached profile
-      _loadTabContent();
-      return;
     }
 
+    // ✅ Other profiles → Check smart cache
+    if (widget.userId != null) {
+      final cached = ProfileCache.get(widget.userId!);
+      if (cached != null) {
+        setState(() {
+          _userProfile = cached;
+          _isLoading = false;
+        });
+
+        if (_userProfile!['id'] != null) {
+          _checkFollowStatus(_userProfile!['id']);
+        }
+
+        _loadTabContent();
+        return;
+      }
+    }
+
+    // ✅ No cache → Fetch from API
     setState(() => _isLoading = true);
 
     try {
@@ -290,33 +312,28 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           _isLoading = false;
         });
 
-        if (widget.userId != null) {
-          _profileCache[widget.userId!] = profile;
+        // Cache other users' profiles only
+        if (!_isOwnProfile && widget.userId != null) {
+          ProfileCache.put(widget.userId!, profile);
         }
-
-        await _preloadCoverImage(profile['cover_image']?.toString());
 
         if (!_isOwnProfile && profile['id'] != null) {
           _checkFollowStatus(profile['id']);
         }
 
-        // ✅ Load initial tab content after profile is loaded
         _loadTabContent();
-      } else {
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _refreshProfile() async {
+    print('🔄 Refreshing profile...');
+
+    // Clear cache
     if (widget.userId != null) {
-      _profileCache.remove(widget.userId!);
+      ProfileCache.remove(widget.userId!);
     }
 
     setState(() {
@@ -329,11 +346,11 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
       _taggedPage = 1;
       _hasMorePosts = true;
       _hasMoreTagged = true;
-      _garageLoaded = false; // ✅ Reset garage loaded flag
+      _garageLoaded = false;
     });
 
     await _loadUserProfileOptimized();
-    _loadTabContent();
+    print('✅ Profile refreshed');
   }
 
   Future<void> _checkFollowStatus(int userId) async {
@@ -388,7 +405,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
 
         // Update cache
         if (widget.userId != null) {
-          _profileCache[widget.userId!] = _userProfile!;
+          ProfileCache.put(widget.userId!, _userProfile!);
         }
       });
 
@@ -1161,10 +1178,17 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
       children: [
         Expanded(
           child: ElevatedButton(
-            onPressed: () => NavigationHelper.navigateTo(
-              context,
-              const EditProfileSettingsScreen(),
-            ),
+            onPressed: () async {
+              final result = await NavigationHelper.navigateTo(
+                context,
+                const EditProfileSettingsScreen(),
+              );
+
+              // Refresh profile if details were updated
+              if (result == true && mounted) {
+                _refreshProfile();
+              }
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFAE9159),
               foregroundColor: Colors.white,
@@ -1280,14 +1304,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
         ),
       ),
     );
-  }
-
-  static void clearCache() {
-    _profileCache.clear();
-  }
-
-  static void clearUserCache(int userId) {
-    _profileCache.remove(userId);
   }
 
   Widget _buildProfileSkeleton(ThemeProvider theme) {

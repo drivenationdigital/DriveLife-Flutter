@@ -12,7 +12,7 @@ import 'screens/profile_screen.dart';
 import 'screens/view_profile_screen.dart';
 import 'package:flutter/cupertino.dart';
 import 'screens/edit_profile_settings_screen.dart';
-import 'screens/manage_social_links_screen.dart';
+import 'screens/account-settings/manage_social_links_screen.dart';
 
 class AppRoutes {
   static const String splash = '/';

@@ -111,29 +111,6 @@ class _FollowersScreenState extends State<FollowersScreen> {
     });
   }
 
-  Future<void> _handleUnfollow(
-    Map<String, dynamic> follower,
-    ThemeProvider theme,
-  ) async {
-    final success = await _userService.unfollowUser(follower['id']);
-    if (success && mounted) {
-      setState(() {
-        _allFollowers.remove(follower);
-        _filteredFollowers.remove(follower);
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Unfollowed @${follower['username']}'),
-            backgroundColor: theme.primaryColor,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    }
-  }
-
   void _checkIfOwnProfile() {
     final currentUser = Provider.of<UserProvider>(context, listen: false).user;
     if (currentUser != null) {

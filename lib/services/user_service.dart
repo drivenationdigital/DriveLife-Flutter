@@ -149,32 +149,6 @@ class UserService {
     }
   }
 
-  /// Unfollow a user
-  Future<bool> unfollowUser(int userId) async {
-    try {
-      final token = await _storage.read(key: 'token');
-      if (token == null) return false;
-
-      print('🔍 [UserService] Unfollowing user $userId');
-
-      final uri = Uri.parse('$_apiUrl/wp-json/app/v2/unfollow-user/');
-      final response = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'user_id': userId}),
-      );
-
-      print('📥 [UserService] Unfollow response: ${response.statusCode}');
-      return response.statusCode == 200;
-    } catch (e) {
-      print('❌ [UserService] Error unfollowing user: $e');
-      return false;
-    }
-  }
-
   /// Check if current user is following another user
   Future<bool> isFollowing(int userId) async {
     try {

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import '../utils/navigation_helper.dart';
-import 'manage_social_links_screen.dart';
-import 'my_details_screen.dart';
-import 'username_screen.dart';
-import 'app_permissions_screen.dart';
-import 'account_settings_screen.dart';
-import 'edit_profile_images_screen.dart';
+import 'account-settings/manage_social_links_screen.dart';
+import 'account-settings/my_details_screen.dart';
+import 'account-settings/username_screen.dart';
+import 'account-settings/app_permissions_screen.dart';
+import 'account-settings/account_settings_screen.dart';
+import 'account-settings/edit_profile_images_screen.dart';
 
 class EditProfileSettingsScreen extends StatelessWidget {
   const EditProfileSettingsScreen({super.key});
@@ -53,11 +53,30 @@ class EditProfileSettingsScreen extends StatelessWidget {
               const ManageSocialLinksScreen(),
             ),
           ),
-          _buildMenuItem(
-            context,
-            'My Details',
-            () => NavigationHelper.navigateTo(context, const MyDetailsScreen()),
-          ),
+          _buildMenuItem(context, 'My Details', () async {
+            print('🔘 [EditProfileSettings] My Details tapped');
+
+            final result = await NavigationHelper.navigateTo(
+              context,
+              const MyDetailsScreen(),
+            );
+
+            print(
+              '📥 [EditProfileSettings] Received result from MyDetails: $result',
+            );
+
+            // If details were updated, pop this screen too and pass result up
+            if (result == true && context.mounted) {
+              print(
+                '✅ [EditProfileSettings] Result is true, popping with true',
+              );
+              Navigator.pop(context, true);
+            } else {
+              print(
+                '❌ [EditProfileSettings] Result is not true or not mounted',
+              );
+            }
+          }),
           _buildMenuItem(
             context,
             'Username',

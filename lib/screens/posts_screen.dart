@@ -171,22 +171,22 @@ class _PostsScreenState extends State<PostsScreen>
       'https://videodelivery.net/f2c5e16577b2dbfc2b629b9ebedba218/manifest/video.m3u8',
     ];
 
-    for (var post in newPosts) {
-      if (post['media'] is List && post['media'].isNotEmpty) {
-        // 60% chance to convert 1 media item into a "video"
-        if (post.hashCode % 3 == 0) {
-          final randomVideo = sampleVideos[post.hashCode % sampleVideos.length];
-          post['media'][0] = {
-            'media_url': randomVideo,
-            'media_type': 'video',
-            'blurred_url': null,
-          };
+    // for (var post in newPosts) {
+    //   if (post['media'] is List && post['media'].isNotEmpty) {
+    //     // 60% chance to convert 1 media item into a "video"
+    //     if (post.hashCode % 3 == 0) {
+    //       final randomVideo = sampleVideos[post.hashCode % sampleVideos.length];
+    //       post['media'][0] = {
+    //         'media_url': randomVideo,
+    //         'media_type': 'video',
+    //         'blurred_url': null,
+    //       };
 
-          // remove other media items for simplicity
-          post['media'] = [post['media'][0]];
-        }
-      }
-    }
+    //       // remove other media items for simplicity
+    //       post['media'] = [post['media'][0]];
+    //     }
+    //   }
+    // }
 
     // DELAY the rebuilding so it doesn't happen during scrolling
     SchedulerBinding.instance.addPostFrameCallback((_) {

@@ -1,6 +1,9 @@
+import 'package:drivelife/utils/profile_cache.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/user_provider.dart';
+import '../../providers/user_provider.dart';
+import '../../api/profile_api.dart';
+import '../view_profile_screen.dart';
 
 class MyDetailsScreen extends StatefulWidget {
   const MyDetailsScreen({super.key});
@@ -15,7 +18,6 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _telController = TextEditingController();
-  final _countryController = TextEditingController();
 
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
@@ -24,6 +26,15 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
   bool _isPasswordExpanded = false;
   bool _isSaving = false;
   bool _isUpdatingPassword = false;
+  String? _originalEmail;
+  String _selectedCountry = 'United Kingdom';
+
+  final List<String> _countries = [
+    'United Kingdom',
+    'United States',
+    'Canada',
+    'Other',
+  ];
 
   @override
   void initState() {
@@ -37,7 +48,6 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
     _lastNameController.dispose();
     _emailController.dispose();
     _telController.dispose();
-    _countryController.dispose();
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
@@ -53,7 +63,15 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
       _lastNameController.text = user['last_name'] ?? '';
       _emailController.text = user['email'] ?? '';
       _telController.text = user['phone'] ?? '';
-      _countryController.text = user['country'] ?? '';
+      _originalEmail = user['email'];
+
+      // Set country dropdown value
+      final userCountry = user['country'] as String?;
+      if (userCountry != null && _countries.contains(userCountry)) {
+        _selectedCountry = userCountry;
+      } else {
+        _selectedCountry = 'United Kingdom'; // Default to UK
+      }
     }
   }
 
@@ -63,25 +81,81 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
     setState(() => _isSaving = true);
 
     try {
-      // TODO: Call API to update user details
-      await Future.delayed(const Duration(seconds: 1)); // Simulate API call
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final userId = userProvider.user?['id'];
 
-      if (!mounted) return;
+      if (userId == null) {
+        throw Exception('User not found');
+      }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Details updated successfully'),
-          backgroundColor: Colors.green,
-        ),
+      // Check if email changed
+      final emailChanged = _emailController.text != _originalEmail;
+
+      // Prepare details
+      final details = {
+        'user_id': userId,
+        'first_name': _firstNameController.text.trim(),
+        'last_name': _lastNameController.text.trim(),
+        'email': _emailController.text.trim(),
+        'phone': _telController.text.trim(),
+        'country': _selectedCountry,
+      };
+
+      print('🔄 [MyDetailsScreen] Updating user details...');
+      print('   User ID: $userId');
+      print('   Email changed: $emailChanged');
+
+      final response = await ProfileAPI.updateUserDetails(
+        details: details,
+        emailChanged: emailChanged,
       );
 
-      Navigator.pop(context);
-    } catch (e) {
       if (!mounted) return;
+
+      print('📥 [MyDetailsScreen] Response: $response');
+
+      if (response != null && response['success'] == true) {
+        // Update UserProvider with new data
+        final currentUser = Map<String, dynamic>.from(userProvider.user ?? {});
+        currentUser['first_name'] = _firstNameController.text.trim();
+        currentUser['last_name'] = _lastNameController.text.trim();
+        currentUser['email'] = _emailController.text.trim();
+        currentUser['phone'] = _telController.text.trim();
+        currentUser['country'] = _selectedCountry;
+        userProvider.setUser(currentUser);
+
+        print('✅ [MyDetailsScreen] Details updated successfully');
+        print('   UserProvider updated');
+        print('   Profile cache cleared');
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              response['message'] ?? 'Details updated successfully',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        Navigator.pop(context, true); // Return true to indicate success
+      } else {
+        throw Exception(response?['message'] ?? 'Failed to update details');
+      }
+    } catch (e) {
+      print('❌ [MyDetailsScreen] Error: $e');
+
+      if (!mounted) return;
+
+      String errorMessage = e.toString();
+      if (errorMessage.contains('Connection timed out')) {
+        errorMessage = 'Connection timed out. Please try again.';
+      } else if (errorMessage.contains('Exception:')) {
+        errorMessage = errorMessage.replaceFirst('Exception: ', '');
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to update details: $e'),
+          content: Text('Failed to update details: $errorMessage'),
           backgroundColor: Colors.red,
         ),
       );
@@ -116,31 +190,51 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
     setState(() => _isUpdatingPassword = true);
 
     try {
-      // TODO: Call API to update password
-      await Future.delayed(const Duration(seconds: 1)); // Simulate API call
+      print('🔄 [MyDetailsScreen] Updating password...');
 
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Password updated successfully'),
-          backgroundColor: Colors.green,
-        ),
+      final response = await ProfileAPI.updatePassword(
+        oldPassword: _currentPasswordController.text,
+        newPassword: _newPasswordController.text,
       );
 
-      // Clear password fields
-      _currentPasswordController.clear();
-      _newPasswordController.clear();
-      _confirmPasswordController.clear();
-      setState(() => _isPasswordExpanded = false);
-    } catch (e) {
       if (!mounted) return;
 
+      print('📥 [MyDetailsScreen] Password response: $response');
+
+      if (response != null && response['success'] == true) {
+        print('✅ [MyDetailsScreen] Password updated successfully');
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              response['message'] ?? 'Password updated successfully',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Clear password fields
+        _currentPasswordController.clear();
+        _newPasswordController.clear();
+        _confirmPasswordController.clear();
+        setState(() => _isPasswordExpanded = false);
+      } else {
+        throw Exception(response?['message'] ?? 'Failed to update password');
+      }
+    } catch (e) {
+      print('❌ [MyDetailsScreen] Password error: $e');
+
+      if (!mounted) return;
+
+      String errorMessage = e.toString();
+      if (errorMessage.contains('Connection timed out')) {
+        errorMessage = 'Connection timed out. Please try again.';
+      } else if (errorMessage.contains('Exception:')) {
+        errorMessage = errorMessage.replaceFirst('Exception: ', '');
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to update password: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
       );
     } finally {
       if (mounted) {
@@ -235,7 +329,55 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
               keyboardType: TextInputType.phone,
             ),
             const SizedBox(height: 16),
-            _buildTextField('Country', _countryController),
+            // Country dropdown
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Country',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: _selectedCountry,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFAE9159)),
+                    ),
+                  ),
+                  items: _countries.map((String country) {
+                    return DropdownMenuItem<String>(
+                      value: country,
+                      child: Text(country),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    if (newValue != null) {
+                      setState(() {
+                        _selectedCountry = newValue;
+                      });
+                    }
+                  },
+                ),
+              ],
+            ),
             const SizedBox(height: 32),
             const Text(
               'Password',
