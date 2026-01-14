@@ -231,6 +231,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
 
   void _checkIfOwnProfile() {
     final currentUser = Provider.of<UserProvider>(context, listen: false).user;
+
     if (currentUser != null) {
       _isOwnProfile =
           currentUser['id'] == widget.userId ||
@@ -266,6 +267,12 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     if (_isOwnProfile) {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final user = userProvider.user;
+
+      // print all user data for debugging
+      // loop through user map and print key-value pairs
+      user!.forEach((key, value) {
+        print('UserProvider data: $key => $value');
+      });
 
       if (user != null) {
         setState(() {
@@ -1132,36 +1139,51 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                   label: 'Instagram',
                   onTap: () => _launchSocialMedia(
                     'instagram',
-                    _userProfile!['instagram'],
+                    _userProfile!['profile_links']?['instagram'],
                   ),
-                  isEnabled: _userProfile!['instagram']?.isNotEmpty ?? false,
+                  isEnabled:
+                      _userProfile!['profile_links']?['instagram']
+                          ?.isNotEmpty ??
+                      false,
                   theme: theme,
                 ),
                 const SizedBox(width: 8),
                 _buildSocialButton(
                   icon: FontAwesomeIcons.facebook,
                   label: 'Facebook',
-                  onTap: () =>
-                      _launchSocialMedia('facebook', _userProfile!['facebook']),
-                  isEnabled: _userProfile!['facebook']?.isNotEmpty ?? false,
+                  onTap: () => _launchSocialMedia(
+                    'facebook',
+                    _userProfile!['profile_links']?['facebook'],
+                  ),
+                  isEnabled:
+                      _userProfile!['profile_links']?['facebook']?.isNotEmpty ??
+                      false,
                   theme: theme,
                 ),
                 const SizedBox(width: 8),
                 _buildSocialButton(
                   icon: FontAwesomeIcons.tiktok,
                   label: 'TikTok',
-                  onTap: () =>
-                      _launchSocialMedia('tiktok', _userProfile!['tiktok']),
-                  isEnabled: _userProfile!['tiktok']?.isNotEmpty ?? false,
+                  onTap: () => _launchSocialMedia(
+                    'tiktok',
+                    _userProfile!['profile_links']?['tiktok'],
+                  ),
+                  isEnabled:
+                      _userProfile!['profile_links']?['tiktok']?.isNotEmpty ??
+                      false,
                   theme: theme,
                 ),
                 const SizedBox(width: 8),
                 _buildSocialButton(
                   icon: FontAwesomeIcons.youtube,
                   label: 'YouTube',
-                  onTap: () =>
-                      _launchSocialMedia('youtube', _userProfile!['youtube']),
-                  isEnabled: _userProfile!['youtube']?.isNotEmpty ?? false,
+                  onTap: () => _launchSocialMedia(
+                    'youtube',
+                    _userProfile!['profile_links']?['youtube'],
+                  ),
+                  isEnabled:
+                      _userProfile!['profile_links']?['youtube']?.isNotEmpty ??
+                      false,
                   theme: theme,
                 ),
               ],

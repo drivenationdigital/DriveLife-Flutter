@@ -8,7 +8,7 @@ class ProfileAPI {
 
   /// Add user profile links
   static Future<Map<String, dynamic>?> addUserProfileLinks({
-    required String link,
+    required Map<String, String> link,
     required String type,
   }) async {
     try {
@@ -63,8 +63,9 @@ class ProfileAPI {
         body: jsonEncode({'links': links}),
       );
 
+      final data = jsonDecode(response.body);
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        return data;
       } else {
         print('Failed to update social links: ${response.statusCode}');
         return null;
@@ -76,7 +77,7 @@ class ProfileAPI {
   }
 
   /// Remove profile link
-  static Future<bool> removeProfileLink(int linkId) async {
+  static Future<bool> removeProfileLink(String linkId) async {
     try {
       final token = await _storage.read(key: 'token');
       if (token == null) {

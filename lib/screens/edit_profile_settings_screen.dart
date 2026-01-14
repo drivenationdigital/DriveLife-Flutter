@@ -37,51 +37,50 @@ class EditProfileSettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
         children: [
-          _buildMenuItem(
-            context,
-            'Edit Profile Images',
-            () => NavigationHelper.navigateTo(
+          _buildMenuItem(context, 'Edit Profile Images', () async {
+            final result = await NavigationHelper.navigateTo(
               context,
               const EditProfileImagesScreen(),
-            ),
-          ),
-          _buildMenuItem(
-            context,
-            'Manage Social Links',
-            () => NavigationHelper.navigateTo(
+            );
+
+            // If images were updated, pop this screen too and pass result up
+            if (result == true && context.mounted) {
+              Navigator.pop(context, true);
+            }
+          }),
+          _buildMenuItem(context, 'Manage Social Links', () async {
+            final result = await NavigationHelper.navigateTo(
               context,
               const ManageSocialLinksScreen(),
-            ),
-          ),
-          _buildMenuItem(context, 'My Details', () async {
-            print('🔘 [EditProfileSettings] My Details tapped');
+            );
 
+            // If links were updated, pop this screen too and pass result up
+            if (result == true && context.mounted) {
+              Navigator.pop(context, true);
+            }
+          }),
+          _buildMenuItem(context, 'My Details', () async {
             final result = await NavigationHelper.navigateTo(
               context,
               const MyDetailsScreen(),
             );
 
-            print(
-              '📥 [EditProfileSettings] Received result from MyDetails: $result',
-            );
-
             // If details were updated, pop this screen too and pass result up
             if (result == true && context.mounted) {
-              print(
-                '✅ [EditProfileSettings] Result is true, popping with true',
-              );
               Navigator.pop(context, true);
-            } else {
-              print(
-                '❌ [EditProfileSettings] Result is not true or not mounted',
-              );
             }
           }),
-          _buildMenuItem(
-            context,
-            'Username',
-            () => NavigationHelper.navigateTo(context, const UsernameScreen()),
-          ),
+          _buildMenuItem(context, 'Username', () async {
+            final result = await NavigationHelper.navigateTo(
+              context,
+              const UsernameScreen(),
+            );
+
+            // If username was updated, pop this screen too and pass result up
+            if (result == true && context.mounted) {
+              Navigator.pop(context, true);
+            }
+          }),
           _buildMenuItem(
             context,
             'Account Settings',

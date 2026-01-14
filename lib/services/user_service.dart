@@ -66,11 +66,15 @@ class UserService {
             'following': user['following'] ?? [],
             'posts_count': _parseCount(user['posts_count']),
 
-            // ✅ Flatten social media links
-            'instagram': profileLinks['instagram'] ?? '',
-            'facebook': profileLinks['facebook'] ?? '',
-            'tiktok': profileLinks['tiktok'] ?? '',
-            'youtube': profileLinks['youtube'] ?? '',
+            'profile_links': {
+              'instagram': profileLinks['instagram'] ?? '',
+              'facebook': profileLinks['facebook'] ?? '',
+              'tiktok': profileLinks['tiktok'] ?? '',
+              'youtube': profileLinks['youtube'] ?? '',
+              'mivia': profileLinks['mivia'] ?? '',
+              'custodian': profileLinks['custodian'] ?? '',
+              'external_links': profileLinks['external_links'] ?? [],
+            },
 
             // Additional fields
             'email_verified': user['email_verified'] ?? false,
