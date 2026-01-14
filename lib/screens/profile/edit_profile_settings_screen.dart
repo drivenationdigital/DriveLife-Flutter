@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import '../utils/navigation_helper.dart';
-import 'account-settings/manage_social_links_screen.dart';
-import 'account-settings/my_details_screen.dart';
-import 'account-settings/username_screen.dart';
-import 'account-settings/app_permissions_screen.dart';
-import 'account-settings/account_settings_screen.dart';
-import 'account-settings/edit_profile_images_screen.dart';
+import '../../utils/navigation_helper.dart';
+import '../account-settings/manage_social_links_screen.dart';
+import '../account-settings/my_details_screen.dart';
+import '../account-settings/username_screen.dart';
+import '../account-settings/app_permissions_screen.dart';
+import '../account-settings/account_settings_screen.dart';
+import '../account-settings/edit_profile_images_screen.dart';
 
 class EditProfileSettingsScreen extends StatelessWidget {
   const EditProfileSettingsScreen({super.key});
@@ -129,35 +129,6 @@ class EditProfileSettingsScreen extends StatelessWidget {
             ),
             Icon(Icons.chevron_right, color: Colors.grey.shade400),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DummyScreen extends StatelessWidget {
-  final String title;
-
-  const _DummyScreen({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        centerTitle: true,
-        title: Image.asset('assets/logo-dark.png', height: 18),
-      ),
-      body: Center(
-        child: Text(
-          title,
-          style: const TextStyle(fontSize: 18, color: Colors.black),
         ),
       ),
     );

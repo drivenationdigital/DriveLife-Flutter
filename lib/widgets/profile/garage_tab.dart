@@ -1,7 +1,7 @@
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../api/garage_api.dart';
+import '../../api/garage_api.dart';
 
 class GarageTab extends StatefulWidget {
   final int userId;

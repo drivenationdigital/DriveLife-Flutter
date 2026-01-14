@@ -1,9 +1,7 @@
-import 'package:drivelife/utils/profile_cache.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 import '../../api/profile_api.dart';
-import '../view_profile_screen.dart';
 
 class MyDetailsScreen extends StatefulWidget {
   const MyDetailsScreen({super.key});

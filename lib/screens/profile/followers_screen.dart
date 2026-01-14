@@ -1,9 +1,9 @@
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
-import 'package:drivelife/widgets/profile_avatar.dart';
+import 'package:drivelife/widgets/profile/profile_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/user_service.dart';
+import '../../services/user_service.dart';
 
 class FollowersScreen extends StatefulWidget {
   final int userId;
@@ -104,7 +104,7 @@ class _FollowersScreenState extends State<FollowersScreen> {
         _filteredFollowers = List.from(_allFollowers);
       } else {
         _filteredFollowers = _allFollowers.where((follower) {
-          final username = follower['username'].toString().toLowerCase();
+          final username = follower['user_login'].toString().toLowerCase();
           return username.contains(query);
         }).toList();
       }
@@ -122,8 +122,7 @@ class _FollowersScreenState extends State<FollowersScreen> {
     Map<String, dynamic> follower,
     ThemeProvider theme,
   ) async {
-    // final success = await _userService.removeFollower(follower['ID']);
-    final success = false;
+    final success = await _userService.removeFollower(follower['ID']);
 
     if (success && mounted) {
       setState(() {

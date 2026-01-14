@@ -347,38 +347,6 @@ class ProfileAPI {
     }
   }
 
-  /// Remove follower
-  static Future<Map<String, dynamic>?> removeFollower(int followerId) async {
-    try {
-      final token = await _storage.read(key: 'token');
-      if (token == null) {
-        print('No auth token found');
-        return null;
-      }
-
-      final uri = Uri.parse('$_baseUrl/wp-json/app/v1/remove-follower');
-
-      final response = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'follower_id': followerId}),
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        print('Failed to remove follower: ${response.statusCode}');
-        return null;
-      }
-    } catch (e) {
-      print('Error removing follower: $e');
-      return null;
-    }
-  }
-
   /// Update username
   static Future<Map<String, dynamic>?> updateUsername({
     required String username,

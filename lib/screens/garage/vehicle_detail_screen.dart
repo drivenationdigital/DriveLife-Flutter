@@ -1,9 +1,8 @@
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../api/garage_api.dart';
-import '../widgets/profile_avatar.dart';
-import '../widgets/profile_post_grid.dart';
+import '../../api/garage_api.dart';
+import '../../widgets/profile/profile_avatar.dart';
 
 class VehicleDetailScreen extends StatefulWidget {
   final String garageId;

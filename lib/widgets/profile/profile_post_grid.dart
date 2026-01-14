@@ -1,28 +1,29 @@
 import 'package:drivelife/providers/theme_provider.dart';
-import 'package:drivelife/widgets/post_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/post_model.dart';
-import '../services/posts_service.dart';
-import '../utils/navigation_helper.dart';
+import '../../models/post_model.dart';
+import '../../services/posts_service.dart';
+import 'post_detail_screen.dart';
+import '../../utils/navigation_helper.dart';
 
-class ProfilePostGridSliver extends StatefulWidget {
+class ProfilePostGrid extends StatefulWidget {
   final int userId;
   final bool isTagged;
 
-  const ProfilePostGridSliver({
+  const ProfilePostGrid({
     super.key,
     required this.userId,
     this.isTagged = false,
   });
 
   @override
-  State<ProfilePostGridSliver> createState() => _ProfilePostGridSliverState();
+  State<ProfilePostGrid> createState() => _ProfilePostGridState();
 }
 
-class _ProfilePostGridSliverState extends State<ProfilePostGridSliver>
+class _ProfilePostGridState extends State<ProfilePostGrid>
     with AutomaticKeepAliveClientMixin {
   final PostsService _postsService = PostsService();
+  final ScrollController _scrollController = ScrollController();
 
   List<Post> _posts = [];
   int _currentPage = 1;
@@ -38,12 +39,33 @@ class _ProfilePostGridSliverState extends State<ProfilePostGridSliver>
   void initState() {
     super.initState();
     _loadPosts();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!mounted) return;
+
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      if (!_isLoading && _hasMore) {
+        _loadPosts();
+      }
+    }
   }
 
   Future<void> _loadPosts({bool forceRefresh = false}) async {
     if (_isLoading || !mounted) return;
 
-    setState(() => _isLoading = true);
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
 
     try {
       final response = await _postsService.getUserPosts(
@@ -60,6 +82,7 @@ class _ProfilePostGridSliverState extends State<ProfilePostGridSliver>
           _totalPages = response.totalPages;
           _posts.addAll(response.data);
 
+          // ✅ Preload post details in background (with cache or force refresh)
           _preloadPostDetails(response.data, forceRefresh: forceRefresh);
 
           if (response.data.isEmpty) {
@@ -89,15 +112,35 @@ class _ProfilePostGridSliverState extends State<ProfilePostGridSliver>
           _isInitialLoad = false;
         });
       }
+      print('Error loading posts: $e');
     }
   }
 
+  // ✅ Preload post details in background for instant loading
+  // Uses cache if available (10 min), fetches if not
   void _preloadPostDetails(List<Post> posts, {bool forceRefresh = false}) {
     for (final post in posts) {
       _postsService
           .getPostById(postId: post.id, forceRefresh: forceRefresh)
-          .catchError((e) {});
+          .catchError((e) {
+            print('Background preload failed for post ${post.id}: $e');
+          });
     }
+  }
+
+  Future<void> _refreshPosts() async {
+    if (!mounted) return;
+
+    setState(() {
+      _posts.clear();
+      _currentPage = 1;
+      _totalPages = 0;
+      _hasMore = true;
+      _isInitialLoad = true;
+    });
+
+    // Force refresh on pull-to-refresh
+    await _loadPosts(forceRefresh: true);
   }
 
   @override
@@ -106,63 +149,70 @@ class _ProfilePostGridSliverState extends State<ProfilePostGridSliver>
     final theme = Provider.of<ThemeProvider>(context);
 
     if (_isInitialLoad) {
-      return SliverFillRemaining(
-        child: Center(
-          child: CircularProgressIndicator(color: theme.primaryColor),
-        ),
-      );
-    }
-
-    if (_posts.isEmpty) {
-      return SliverFillRemaining(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                widget.isTagged
-                    ? Icons.label_outline
-                    : Icons.photo_library_outlined,
-                size: 64,
-                color: theme.subtextColor,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                widget.isTagged ? 'No tagged posts yet' : 'No posts yet',
-                style: TextStyle(color: theme.subtextColor, fontSize: 16),
-              ),
-            ],
+      return Center(
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.5,
+          child: Center(
+            child: CircularProgressIndicator(color: theme.primaryColor),
           ),
         ),
       );
     }
 
-    return SliverPadding(
-      padding: const EdgeInsets.all(2),
-      sliver: SliverGrid(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 2,
-          mainAxisSpacing: 2,
-          childAspectRatio: 1,
+    if (_posts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              widget.isTagged
+                  ? Icons.label_outline
+                  : Icons.photo_library_outlined,
+              size: 64,
+              color: theme.subtextColor,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              widget.isTagged ? 'No tagged posts yet' : 'No posts yet',
+              style: TextStyle(color: theme.subtextColor, fontSize: 16),
+            ),
+          ],
         ),
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            // Load more when reaching end
-            if (index == _posts.length - 3 && !_isLoading && _hasMore) {
-              Future.microtask(() => _loadPosts());
-            }
+      );
+    }
 
-            if (index < _posts.length) {
-              final post = _posts[index];
-              return _buildPostTile(post, theme);
-            } else {
-              return const SizedBox.shrink();
-            }
-          },
-          childCount:
-              _posts.length + (_isLoading ? 3 : 0), // Add loading placeholders
-        ),
+    return RefreshIndicator(
+      onRefresh: _refreshPosts,
+      color: theme.primaryColor,
+      backgroundColor: theme.cardColor,
+      child: Column(
+        children: [
+          Expanded(
+            child: GridView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(2),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 2,
+                mainAxisSpacing: 2,
+                childAspectRatio: 1,
+              ),
+              itemCount: _posts.length,
+              itemBuilder: (context, index) {
+                final post = _posts[index];
+                return _buildPostTile(post, theme);
+              },
+            ),
+          ),
+          if (_isLoading && !_isInitialLoad)
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: CircularProgressIndicator(
+                color: theme.primaryColor,
+                strokeWidth: 2,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -199,6 +249,8 @@ class _ProfilePostGridSliverState extends State<ProfilePostGridSliver>
                   )
                 : null,
           ),
+
+          // Keep existing overlay icons...
           Positioned(
             top: 4,
             right: 4,

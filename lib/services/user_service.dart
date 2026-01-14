@@ -240,58 +240,16 @@ class UserService {
     }
   }
 
-  // Remove follower
-  Future<bool> removeFollower(int userId) async {
+  /// Remove follower
+  Future<bool> removeFollower(String followerId) async {
     try {
       final token = await _storage.read(key: 'token');
-      if (token == null) return false;
+      if (token == null) {
+        print('No auth token found');
+        return false;
+      }
 
-      final uri = Uri.parse('$_apiUrl/wp-json/app/v2/remove-follower/');
-      final response = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'follower_id': userId}),
-      );
-
-      print(
-        '📥 [UserService] Remove follower response: ${response.statusCode}',
-      );
-      return response.statusCode == 200;
-    } catch (e) {
-      print('❌ [UserService] Error removing follower: $e');
-      return false;
-    }
-  }
-
-  /// Update user profile
-  Future<bool> updateProfile({
-    String? firstName,
-    String? lastName,
-    String? bio,
-    String? instagram,
-    String? facebook,
-    String? tiktok,
-    String? youtube,
-  }) async {
-    try {
-      final token = await _storage.read(key: 'token');
-      if (token == null) return false;
-
-      final uri = Uri.parse('$_apiUrl/wp-json/app/v2/update-profile/');
-
-      final body = <String, dynamic>{};
-      if (firstName != null) body['first_name'] = firstName;
-      if (lastName != null) body['last_name'] = lastName;
-      if (bio != null) body['bio'] = bio;
-      if (instagram != null) body['instagram'] = instagram;
-      if (facebook != null) body['facebook'] = facebook;
-      if (tiktok != null) body['tiktok'] = tiktok;
-      if (youtube != null) body['youtube'] = youtube;
-
-      print('🔍 [UserService] Updating profile: $body');
+      final uri = Uri.parse('$_apiUrl/wp-json/app/v1/remove-follower');
 
       final response = await http.post(
         uri,
@@ -299,13 +257,17 @@ class UserService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode(body),
+        body: jsonEncode({'follower_id': followerId}),
       );
 
-      print('📥 [UserService] Update response: ${response.statusCode}');
-      return response.statusCode == 200;
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print('Failed to remove follower: ${response.statusCode}');
+        return false;
+      }
     } catch (e) {
-      print('❌ [UserService] Error updating profile: $e');
+      print('Error removing follower: $e');
       return false;
     }
   }

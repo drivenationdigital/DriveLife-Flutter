@@ -166,10 +166,10 @@ class _PostsScreenState extends State<PostsScreen>
       followingOnly: followingOnly,
     );
 
-    final sampleVideos = [
-      'https://videodelivery.net/c2b98b8485461a046d6fc867d57b6782/manifest/video.m3u8',
-      'https://videodelivery.net/f2c5e16577b2dbfc2b629b9ebedba218/manifest/video.m3u8',
-    ];
+    // final sampleVideos = [
+    //   'https://videodelivery.net/c2b98b8485461a046d6fc867d57b6782/manifest/video.m3u8',
+    //   'https://videodelivery.net/f2c5e16577b2dbfc2b629b9ebedba218/manifest/video.m3u8',
+    // ];
 
     // for (var post in newPosts) {
     //   if (post['media'] is List && post['media'].isNotEmpty) {
@@ -264,7 +264,8 @@ class _PostsScreenState extends State<PostsScreen>
           // --- Feed ---
           Expanded(
             child: RefreshIndicator(
-              color: Colors.black,
+              color: theme.primaryColor,
+              backgroundColor: theme.backgroundColor,
               onRefresh: () => fetchPosts(refresh: true),
               child: ListView.builder(
                 controller: _scrollController,
@@ -275,9 +276,13 @@ class _PostsScreenState extends State<PostsScreen>
                 cacheExtent: 1200,
                 itemBuilder: (context, index) {
                   if (index == posts.length) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(child: CircularProgressIndicator()),
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: theme.primaryColor,
+                        ),
+                      ),
                     );
                   }
 

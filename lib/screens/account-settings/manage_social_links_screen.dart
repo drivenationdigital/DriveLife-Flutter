@@ -430,7 +430,7 @@ class _ManageSocialLinksScreenState extends State<ManageSocialLinksScreen> {
 
       if (!mounted) return;
 
-      if (response != null && response == true) {
+      if (response == true) {
         setState(() {
           _otherLinks.removeAt(index);
         });

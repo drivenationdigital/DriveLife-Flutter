@@ -1,12 +1,13 @@
 import 'package:drivelife/providers/theme_provider.dart';
-import 'package:drivelife/screens/reels_screen.dart';
+import 'package:drivelife/screens/profile/edit_profile_settings_screen.dart';
+// import 'package:drivelife/screens/reels_screen.dart';
 import 'package:drivelife/services/qr_scanner.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'posts_screen.dart';
 import 'search_screen.dart';
-import 'profile_screen.dart';
+import 'profile/profile_screen.dart';
 import 'notifications_screen.dart';
 
 class HomeTabs extends StatefulWidget {
@@ -151,23 +152,17 @@ class _HomeTabsState extends State<HomeTabs> {
     return Scaffold(
       // 👇 The Drawer (left sidebar)
       drawer: Drawer(
+        backgroundColor: theme.cardColor,
         child: SafeArea(
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              const DrawerHeader(
-                margin: EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(color: Colors.black87),
+              DrawerHeader(
+                // margin: EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(color: theme.cardColor),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
-                    'DriveLife',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  child: Image.asset('assets/logo-dark.png', height: 24),
                 ),
               ),
               ListTile(
@@ -229,7 +224,13 @@ class _HomeTabsState extends State<HomeTabs> {
               ListTile(
                 leading: const Icon(Icons.settings_outlined),
                 title: const Text('Settings'),
-                onTap: () => Navigator.pop(context),
+                onTap: () {
+                  Navigator.pop(context);
+                  NavigationHelper.navigateTo(
+                    context,
+                    const EditProfileSettingsScreen(),
+                  );
+                },
               ),
             ],
           ),
@@ -243,7 +244,7 @@ class _HomeTabsState extends State<HomeTabs> {
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.white,
-        selectedItemColor: Colors.black,
+        selectedItemColor: theme.primaryColor,
         unselectedItemColor: Colors.grey,
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),

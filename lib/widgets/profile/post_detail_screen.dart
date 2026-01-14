@@ -1,8 +1,8 @@
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/posts_service.dart';
-import '../components/post_card.dart';
+import '../../services/posts_service.dart';
+import '../../components/post_card.dart';
 
 class PostDetailScreen extends StatefulWidget {
   final String postId;

@@ -1,5 +1,5 @@
-import 'package:drivelife/screens/vehicle_detail_screen.dart';
-import 'package:drivelife/widgets/post_detail_screen.dart';
+import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
+import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
@@ -8,10 +8,10 @@ import 'screens/home_tabs.dart';
 import 'screens/posts_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/notifications_screen.dart';
-import 'screens/profile_screen.dart';
-import 'screens/view_profile_screen.dart';
+import 'screens/profile/profile_screen.dart';
+import 'screens/profile/view_profile_screen.dart';
 import 'package:flutter/cupertino.dart';
-import 'screens/edit_profile_settings_screen.dart';
+import 'screens/profile/edit_profile_settings_screen.dart';
 import 'screens/account-settings/manage_social_links_screen.dart';
 
 class AppRoutes {
@@ -86,24 +86,6 @@ class AppRoutes {
           ),
         );
     }
-  }
-
-  static PageRouteBuilder _slideInAndroid(Widget page) {
-    return PageRouteBuilder(
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (_, __, ___) => page,
-      transitionsBuilder: (_, animation, __, child) {
-        final tween = Tween<Offset>(
-          begin: const Offset(1.0, 0.0),
-          end: Offset.zero,
-        ).chain(CurveTween(curve: Curves.easeOut));
-        return SlideTransition(position: animation.drive(tween), child: child);
-      },
-    );
-  }
-
-  static Route<dynamic> _slideDefault(Widget page) {
-    return MaterialPageRoute(builder: (context) => page);
   }
 
   static Route<dynamic> _slide(Widget page) {

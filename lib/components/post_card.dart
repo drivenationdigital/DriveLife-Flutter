@@ -8,7 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../api/interactions_api.dart';
 import '../screens/comments_bottom_sheet.dart';
 import '../widgets/feed_video_player.dart';
-import '../widgets/profile_avatar.dart';
+import '../widgets/profile/profile_avatar.dart';
 
 class PostCard extends StatefulWidget {
   final Map<String, dynamic> post;

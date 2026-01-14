@@ -1,19 +1,19 @@
 import 'package:drivelife/providers/theme_provider.dart';
-import 'package:drivelife/screens/edit_profile_settings_screen.dart';
-import 'package:drivelife/screens/followers_screen.dart';
+import 'package:drivelife/screens/profile/edit_profile_settings_screen.dart';
+import 'package:drivelife/screens/profile/followers_screen.dart';
 import 'package:drivelife/services/qr_scanner.dart';
-import 'package:drivelife/widgets/post_detail_screen.dart';
-import 'package:drivelife/widgets/profile_avatar.dart';
+import 'package:drivelife/widgets/profile/post_detail_screen.dart';
+import 'package:drivelife/widgets/profile/profile_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../services/user_service.dart';
-import '../providers/user_provider.dart';
-import '../models/post_model.dart';
-import '../services/posts_service.dart';
+import '../../services/user_service.dart';
+import '../../providers/user_provider.dart';
+import '../../models/post_model.dart';
+import '../../services/posts_service.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import '../utils/navigation_helper.dart';
-import '../api/garage_api.dart';
+import '../../utils/navigation_helper.dart';
+import '../../api/garage_api.dart';
 import 'package:drivelife/utils/profile_cache.dart';
 
 class ViewProfileScreen extends StatefulWidget {
@@ -918,8 +918,11 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           ...vehicles.map(
             (vehicle) => Container(
               margin: const EdgeInsets.only(bottom: 12),
+              height: 80,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: theme.cardColor,
+
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: theme.dividerColor),
               ),
@@ -929,6 +932,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                   child: Container(
                     width: 60,
                     height: 60,
+                    alignment: Alignment.center,
                     color: theme.dividerColor,
                     child: vehicle['cover_photo'] != null
                         ? Image.network(
