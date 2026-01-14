@@ -175,6 +175,8 @@ class QrCodeAPI {
       final uri = Uri.parse(url);
       final allowedHosts = ['mydrivelife.com', 'qr.mydrivelife.com'];
 
+      print('Parsing URL: $url');
+
       if (allowedHosts.contains(uri.host)) {
         final pathSegments = uri.pathSegments;
         if (pathSegments.isNotEmpty) {

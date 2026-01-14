@@ -43,6 +43,8 @@ class _QrScannerModalState extends State<QrScannerModal> {
       // Extract QR code from URL
       final qrCode = QrCodeAPI.extractQrCodeFromUrl(code);
 
+      print('Extracted QR Code: $qrCode');
+
       if (qrCode == null) {
         setState(() {
           _errorMessage =
@@ -103,7 +105,7 @@ class _QrScannerModalState extends State<QrScannerModal> {
         children: [
           // Header
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: theme.cardColor,
               borderRadius: const BorderRadius.vertical(
@@ -116,7 +118,7 @@ class _QrScannerModalState extends State<QrScannerModal> {
                   icon: Icon(Icons.close, color: theme.textColor),
                   onPressed: () => Navigator.pop(context),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Text(
                   'Scan QR Code',
                   style: TextStyle(
@@ -155,9 +157,11 @@ class _QrScannerModalState extends State<QrScannerModal> {
                     child: Column(
                       children: [
                         if (_isProcessing)
-                          const Column(
+                          Column(
                             children: [
-                              CircularProgressIndicator(color: Colors.orange),
+                              CircularProgressIndicator(
+                                color: theme.primaryColor,
+                              ),
                               SizedBox(height: 12),
                               Text(
                                 'Processing...',
@@ -193,9 +197,15 @@ class _QrScannerModalState extends State<QrScannerModal> {
                                   });
                                 },
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.orange,
+                                  backgroundColor: theme.primaryColor,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
                                 ),
-                                child: const Text('Try Again'),
+                                child: const Text(
+                                  'Try Again',
+                                  style: TextStyle(color: Colors.white),
+                                ),
                               ),
                             ],
                           )

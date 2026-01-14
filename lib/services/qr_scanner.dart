@@ -1,3 +1,4 @@
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../widgets/qr_scanner_modal.dart';
@@ -24,6 +25,8 @@ class QrScannerService {
   }) {
     if (result == null) return;
 
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+
     final status = result['status'];
     final available = result['available'] ?? false;
     final data = result['data'] as Map<String, dynamic>?;
@@ -39,7 +42,7 @@ class QrScannerService {
       if (available) {
         // QR code is available - show acquire dialog
         print('   ✅ QR code available - showing acquire dialog');
-        _showAcquireDialog(context, qrCode, result);
+        _showAcquireDialog(context, qrCode, result, theme);
       } else {
         // QR code is linked - navigate to profile/entity
         if (data != null && data['linked_to'] != null) {
@@ -78,7 +81,7 @@ class QrScannerService {
       if (onError != null) {
         onError(message);
       } else {
-        _showErrorDialog(context, message);
+        _showErrorDialog(context, message, theme);
       }
     }
   }
@@ -88,13 +91,18 @@ class QrScannerService {
     BuildContext context,
     String qrCode,
     Map<String, dynamic> result,
+    ThemeProvider theme,
   ) {
+    final parentContext = context; // capture the page/bottomsheet context
+
     showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
+      context: parentContext,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: theme.cardColor,
         title: Row(
           children: [
-            const Icon(Icons.qr_code, color: Colors.orange, size: 28),
+            Icon(Icons.qr_code, color: theme.primaryColor, size: 28),
             const SizedBox(width: 12),
             const Text('QR Code Available!'),
           ],
@@ -116,12 +124,12 @@ class QrScannerService {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.grey.shade100,
+                color: theme.cardColor.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.tag, color: Colors.orange, size: 20),
+                  Icon(Icons.tag, color: theme.primaryColor, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     qrCode,
@@ -146,12 +154,15 @@ class QrScannerService {
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context);
-              await _linkQrCodeToProfile(context, qrCode);
+              Navigator.of(dialogCtx).pop(); // close acquire dialog
+              await _linkQrCodeToProfile(parentContext, qrCode, theme);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
+              backgroundColor: theme.primaryColor,
               foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
             child: const Text(
@@ -168,6 +179,7 @@ class QrScannerService {
   static Future<void> _linkQrCodeToProfile(
     BuildContext context,
     String qrCode,
+    ThemeProvider theme,
   ) async {
     // Get current user ID from UserProvider
     final userProvider = Provider.of<UserProvider>(context, listen: false);
@@ -179,7 +191,7 @@ class QrScannerService {
 
     if (userId == null) {
       print('   ❌ User not logged in');
-      _showErrorDialog(context, 'User not logged in');
+      _showErrorDialog(context, 'User not logged in', theme);
       return;
     }
 
@@ -187,8 +199,9 @@ class QrScannerService {
     showDialog(
       context: context,
       barrierDismissible: false,
+      useRootNavigator: true,
       builder: (context) =>
-          const Center(child: CircularProgressIndicator(color: Colors.orange)),
+          Center(child: CircularProgressIndicator(color: theme.primaryColor)),
     );
 
     try {
@@ -203,7 +216,7 @@ class QrScannerService {
       if (!context.mounted) return;
 
       // Close loading dialog
-      Navigator.pop(context);
+      Navigator.of(context, rootNavigator: true).pop();
 
       if (response != null && response['status'] == 'success') {
         print('   ✅ QR code linked successfully');
@@ -211,19 +224,25 @@ class QrScannerService {
           context,
           'QR Code Linked!',
           'The QR code has been successfully linked to your profile.',
+          theme,
         );
       } else {
         print('   ❌ Failed to link QR code');
         _showErrorDialog(
           context,
           response?['message'] ?? 'Failed to link QR code. Please try again.',
+          theme,
         );
       }
     } catch (e) {
       print('   ❌ Error: $e');
       if (context.mounted) {
         Navigator.pop(context); // Close loading
-        _showErrorDialog(context, 'Error linking QR code: ${e.toString()}');
+        _showErrorDialog(
+          context,
+          'Error linking QR code: ${e.toString()}',
+          theme,
+        );
       }
     }
   }
@@ -232,15 +251,21 @@ class QrScannerService {
     BuildContext context,
     String title,
     String message,
+    ThemeProvider theme,
   ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: Provider.of<ThemeProvider>(
+          context,
+          listen: false,
+        ).cardColor,
         title: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.check_circle_outline,
-              color: Colors.green,
+              color: theme.primaryColor,
               size: 28,
             ),
             const SizedBox(width: 12),
@@ -252,7 +277,10 @@ class QrScannerService {
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              backgroundColor: theme.primaryColor,
               foregroundColor: Colors.white,
             ),
             child: const Text('OK'),
@@ -262,10 +290,16 @@ class QrScannerService {
     );
   }
 
-  static void _showErrorDialog(BuildContext context, String message) {
+  static void _showErrorDialog(
+    BuildContext context,
+    String message,
+    ThemeProvider theme,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: theme.cardColor,
         title: const Row(
           children: [
             Icon(Icons.error_outline, color: Colors.red, size: 28),
@@ -276,6 +310,10 @@ class QrScannerService {
         content: Text(message),
         actions: [
           TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.grey.shade600,
+              backgroundColor: theme.cardColor,
+            ),
             onPressed: () => Navigator.pop(context),
             child: const Text('OK'),
           ),

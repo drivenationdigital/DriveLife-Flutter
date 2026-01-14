@@ -79,7 +79,7 @@ class _HomeTabsState extends State<HomeTabs> {
                 );
               }
             },
-            icon: Icon(Icons.qr_code),
+            icon: Icon(Icons.qr_code, color: Colors.black),
           ),
           IconButton(
             onPressed: () {
@@ -129,7 +129,7 @@ class _HomeTabsState extends State<HomeTabs> {
                 );
               }
             },
-            icon: Icon(Icons.qr_code),
+            icon: Icon(Icons.qr_code, color: Colors.black),
           ),
           IconButton(
             icon: const Icon(Icons.notifications_none, color: Colors.black),
