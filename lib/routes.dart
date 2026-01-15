@@ -1,3 +1,4 @@
+import 'package:drivelife/screens/auth/onboarding_screen.dart';
 import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +17,8 @@ import 'screens/account-settings/manage_social_links_screen.dart';
 
 class AppRoutes {
   static const String splash = '/';
+  static const String welcome = '/welcome';
+  static const String auth = '/auth';
   static const String login = '/login';
   static const String register = '/register';
   static const String home = '/home';
@@ -34,6 +37,8 @@ class AppRoutes {
     switch (settings.name) {
       case splash:
         return _slide(const SplashScreen());
+      case welcome:
+        return _slide(const WelcomeScreen());
       case login:
         return _slide(const LoginScreen());
       case register:

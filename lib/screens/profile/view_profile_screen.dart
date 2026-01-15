@@ -270,9 +270,9 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
 
       // print all user data for debugging
       // loop through user map and print key-value pairs
-      user!.forEach((key, value) {
-        print('UserProvider data: $key => $value');
-      });
+      // user!.forEach((key, value) {
+      //   print('UserProvider data: $key => $value');
+      // });
 
       if (user != null) {
         setState(() {
@@ -1190,12 +1190,108 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                       false,
                   theme: theme,
                 ),
+                const SizedBox(width: 8),
+                // ✅ More button for external links
+                _buildSocialButton(
+                  icon: Icons.link,
+                  label: 'More',
+                  onTap: _showExternalLinks,
+                  isEnabled: true,
+                  theme: theme,
+                ),
               ],
             ),
           ),
           const SizedBox(height: 16),
         ],
       ),
+    );
+  }
+
+  void _showExternalLinks() {
+    if (!mounted) return;
+
+    final profileLinks =
+        _userProfile!['profile_links'] as Map<String, dynamic>?;
+    final externalLinks =
+        profileLinks?['external_links'] as List<dynamic>? ?? [];
+
+    if (externalLinks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No additional links'),
+          backgroundColor: Colors.grey,
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'More Links',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.black),
+                      onPressed: () => Navigator.pop(context),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Links list
+              ...externalLinks.map((link) {
+                final label = link['link']['label'] as String?;
+                final url = link['link']['url'] as String?;
+
+                return ListTile(
+                  title: Text(
+                    label ?? 'Link',
+                    style: const TextStyle(fontSize: 16, color: Colors.black),
+                  ),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: () async {
+                    if (url != null && url.isNotEmpty) {
+                      try {
+                        final uri = Uri.parse(url);
+                        await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                        );
+                      } catch (e) {
+                        print('Error launching URL: $e');
+                      }
+                    }
+                  },
+                );
+              }),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
     );
   }
 

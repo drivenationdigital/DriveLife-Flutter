@@ -91,6 +91,8 @@ flutter:
     - assets/logo-dark.png
     - assets/splash-dark.png
     - assets/profile-placeholder.jpg
+    - assets/logo-large.png
+    - assets/video01.mp4
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

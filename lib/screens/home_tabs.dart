@@ -1,8 +1,10 @@
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/profile/edit_profile_settings_screen.dart';
-// import 'package:drivelife/screens/reels_screen.dart';
+import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/qr_scanner.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
+import 'package:drivelife/routes.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'posts_screen.dart';
@@ -19,11 +21,11 @@ class HomeTabs extends StatefulWidget {
 
 class _HomeTabsState extends State<HomeTabs> {
   int _currentIndex = 0;
+  final _authService = AuthService();
 
   final List<Widget> _screens = const [
     PostsScreen(),
     SearchScreen(),
-    // ReelsScreen(),
     Scaffold(body: Center(child: Text('Add Post'))),
     Scaffold(body: Center(child: Text('Store'))),
     ProfileScreen(),
@@ -32,6 +34,65 @@ class _HomeTabsState extends State<HomeTabs> {
   void _goToTab(int idx) {
     setState(() => _currentIndex = idx);
     Navigator.pop(context); // close drawer after tap
+  }
+
+  Future<void> _handleLogout() async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      print('🚪 [HomeTabs] Logging out...');
+
+      // Clear auth token
+      await _authService.logout();
+
+      // Clear user from provider
+      if (mounted) {
+        final userProvider = Provider.of<UserProvider>(context, listen: false);
+        userProvider.clearUser();
+      }
+
+      print('✅ [HomeTabs] Logout successful');
+
+      // Navigate to login and clear navigation stack
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          AppRoutes.login,
+          (route) => false, // Remove all routes
+        );
+      }
+    } catch (e) {
+      print('❌ [HomeTabs] Logout error: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Logout failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   AppBar? _buildAppBar() {
@@ -80,7 +141,7 @@ class _HomeTabsState extends State<HomeTabs> {
                 );
               }
             },
-            icon: Icon(Icons.qr_code, color: Colors.black),
+            icon: const Icon(Icons.qr_code, color: Colors.black),
           ),
           IconButton(
             onPressed: () {
@@ -130,7 +191,7 @@ class _HomeTabsState extends State<HomeTabs> {
                 );
               }
             },
-            icon: Icon(Icons.qr_code, color: Colors.black),
+            icon: const Icon(Icons.qr_code, color: Colors.black),
           ),
           IconButton(
             icon: const Icon(Icons.notifications_none, color: Colors.black),
@@ -158,7 +219,6 @@ class _HomeTabsState extends State<HomeTabs> {
             padding: EdgeInsets.zero,
             children: [
               DrawerHeader(
-                // margin: EdgeInsets.only(bottom: 8),
                 decoration: BoxDecoration(color: theme.cardColor),
                 child: Align(
                   alignment: Alignment.centerLeft,
@@ -232,6 +292,15 @@ class _HomeTabsState extends State<HomeTabs> {
                   );
                 },
               ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text(
+                  'Logout',
+                  style: TextStyle(color: Colors.red),
+                ),
+                onTap: () => _handleLogout(),
+              ),
             ],
           ),
         ),
@@ -257,10 +326,6 @@ class _HomeTabsState extends State<HomeTabs> {
             icon: Icon(Icons.explore_outlined),
             label: 'Discover',
           ),
-          // BottomNavigationBarItem(
-          //   icon: Icon(Icons.play_circle_outline),
-          //   label: 'Reels',
-          // ),
           BottomNavigationBarItem(
             icon: Icon(Icons.add_box_outlined),
             label: 'Add',

@@ -16,6 +16,7 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
 
     final profile = await _auth.getUserProfile();
+    print('🚀 [UserProvider] Fetched user profile: $profile');
     _user = profile;
     _loading = false;
     notifyListeners();
@@ -31,6 +32,12 @@ class UserProvider extends ChangeNotifier {
   Future<void> logout() async {
     await _auth.logout();
     _user = null;
+    notifyListeners();
+  }
+
+  void clearUser() {
+    _user = null;
+    print('🗑️ [UserProvider] User data cleared');
     notifyListeners();
   }
 }
