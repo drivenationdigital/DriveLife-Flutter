@@ -255,7 +255,7 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.chevron_left, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
         centerTitle: true,
@@ -487,6 +487,7 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
                                     ),
                             ),
                           ),
+                          const SizedBox(height: 20),
                         ],
                       ),
                     ),
