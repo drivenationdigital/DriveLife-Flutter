@@ -479,7 +479,7 @@ class _ManageSocialLinksScreenState extends State<ManageSocialLinksScreen> {
           backgroundColor: Colors.white,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.black),
+            icon: const Icon(Icons.chevron_left, color: Colors.black),
             onPressed: () => Navigator.pop(context),
           ),
           centerTitle: true,
@@ -495,7 +495,7 @@ class _ManageSocialLinksScreenState extends State<ManageSocialLinksScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.chevron_left, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
         centerTitle: true,
@@ -523,86 +523,92 @@ class _ManageSocialLinksScreenState extends State<ManageSocialLinksScreen> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text(
-            'Social Links',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildTextField('Instagram', _instagramController),
-          const SizedBox(height: 16),
-          _buildTextField('Facebook', _facebookController),
-          const SizedBox(height: 16),
-          _buildTextField(
-            'TikTok',
-            _tiktokController,
-            hint: 'Enter Tiktok Username',
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            'YouTube',
-            _youtubeController,
-            hint: 'Enter YouTube Username',
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            'Mivia',
-            _miviaController,
-            hint: 'Enter Mivia Username',
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            'Custodian Garage / Car link',
-            _custodianController,
-            hint: 'Enter Custodian URL (https://...)',
-          ),
-          const SizedBox(height: 32),
-          const Text(
-            'Other Links',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 16),
-          ..._otherLinks.asMap().entries.map((entry) {
-            final index = entry.key;
-            final link = entry.value;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: _buildOtherLinkField(
-                link['label'] as String,
-                link['url'] as String,
-                () => _deleteExternalLink(index),
+      body: Container(
+        padding: const EdgeInsets.only(bottom: 16),
+        // add more space in the bottom for the button
+        height: double.infinity,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            const Text(
+              'Social Links',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
               ),
-            );
-          }),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isSaving ? null : _showAddLinkModal,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFAE9159),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+            ),
+            const SizedBox(height: 16),
+            _buildTextField('Instagram', _instagramController),
+            const SizedBox(height: 16),
+            _buildTextField('Facebook', _facebookController),
+            const SizedBox(height: 16),
+            _buildTextField(
+              'TikTok',
+              _tiktokController,
+              hint: 'Enter Tiktok Username',
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              'YouTube',
+              _youtubeController,
+              hint: 'Enter YouTube Username',
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              'Mivia',
+              _miviaController,
+              hint: 'Enter Mivia Username',
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              'Custodian Garage / Car link',
+              _custodianController,
+              hint: 'Enter Custodian URL (https://...)',
+            ),
+            const SizedBox(height: 32),
+            const Text(
+              'Other Links',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ..._otherLinks.asMap().entries.map((entry) {
+              final index = entry.key;
+              final link = entry.value;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: _buildOtherLinkField(
+                  link['label'] as String,
+                  link['url'] as String,
+                  () => _deleteExternalLink(index),
+                ),
+              );
+            }),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isSaving ? null : _showAddLinkModal,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFAE9159),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'ADD LINK',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
               ),
-              child: const Text(
-                'ADD LINK',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 46),
+          ],
+        ),
       ),
     );
   }

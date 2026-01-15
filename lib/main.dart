@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'routes.dart';
 import 'providers/user_provider.dart';
 import 'providers/video_mute_provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 void main() {
   runApp(
@@ -28,6 +29,9 @@ class MyApp extends StatelessWidget {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: themeProvider.themeData.copyWith(
+            // textTheme: GoogleFonts.poppinsTextTheme(
+            //   Theme.of(context).textTheme,
+            // ),
             // ✅ Add Cupertino transitions to theme
             pageTransitionsTheme: const PageTransitionsTheme(
               builders: {

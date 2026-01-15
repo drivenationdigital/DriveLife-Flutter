@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:drivelife/api/profile_api.dart';
+import 'package:drivelife/screens/custom_image_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 
@@ -13,7 +15,6 @@ class EditProfileImagesScreen extends StatefulWidget {
 }
 
 class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
-  final ImagePicker _picker = ImagePicker();
   File? _profileImage;
   File? _coverImage;
   String? _currentProfileImageUrl;
@@ -38,57 +39,61 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
   }
 
   Future<void> _pickImage(bool isProfile) async {
-    try {
-      final source = await _showImageSourceDialog();
-      if (source == null) return;
+    final mode = isProfile ? ImagePickerMode.profile : ImagePickerMode.cover;
 
-      final XFile? image = await _picker.pickImage(
-        source: source,
-        maxWidth: 1080,
-        maxHeight: 1080,
-        imageQuality: 85,
-      );
-
-      if (image != null) {
-        setState(() {
-          if (isProfile) {
-            _profileImage = File(image.path);
-          } else {
-            _coverImage = File(image.path);
-          }
-        });
-      }
-    } catch (e) {
-      _showError('Failed to pick image: $e');
-    }
-  }
-
-  Future<ImageSource?> _showImageSourceDialog() async {
-    return showDialog<ImageSource>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: const Text(
-          'Select Image Source',
-          style: TextStyle(color: Colors.black),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Gallery'),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Camera'),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
-            ),
-          ],
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CustomImagePicker(
+          mode: mode,
+          onImagesSelected: (files) {
+            if (files.isNotEmpty) {
+              setState(() {
+                if (isProfile) {
+                  _profileImage = files[0];
+                } else {
+                  _coverImage = files[0];
+                }
+              });
+            }
+          },
         ),
       ),
     );
+  }
+
+  /// Convert image file to base64 string
+  Future<String> _fileToBase64(File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      final base64String = base64Encode(bytes);
+
+      // Get file extension
+      final extension = file.path.split('.').last.toLowerCase();
+
+      // Create data URL with proper MIME type
+      final mimeType = _getMimeType(extension);
+      return 'data:$mimeType;base64,$base64String';
+    } catch (e) {
+      print('Error converting file to base64: $e');
+      rethrow;
+    }
+  }
+
+  String _getMimeType(String extension) {
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return 'image/jpeg';
+    }
   }
 
   Future<void> _saveImages() async {
@@ -100,16 +105,58 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
     setState(() => _isSaving = true);
 
     try {
-      // TODO: Upload images to server and update user profile
-      // Example:
-      // if (_profileImage != null) {
-      //   await uploadProfileImage(_profileImage!);
-      // }
-      // if (_coverImage != null) {
-      //   await uploadCoverImage(_coverImage!);
-      // }
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final user = userProvider.user;
 
-      await Future.delayed(const Duration(seconds: 2)); // Simulate upload
+      if (user == null) {
+        throw Exception('User not found');
+      }
+
+      final userId = user['id'];
+      if (userId == null) {
+        throw Exception('User ID not found');
+      }
+
+      // Upload profile image
+      if (_profileImage != null) {
+        print('🖼️ Uploading profile image...');
+
+        final base64Image = await _fileToBase64(_profileImage!);
+
+        final result = await ProfileAPI.updateProfileImage(
+          base64Image: base64Image,
+          userId: userId,
+        );
+
+        if (result == null || result['success'] != true) {
+          throw Exception(
+            result?['message'] ?? 'Failed to upload profile image',
+          );
+        }
+
+        print('✅ Profile image uploaded successfully');
+      }
+
+      // Upload cover image
+      if (_coverImage != null) {
+        print('🖼️ Uploading cover image...');
+
+        final base64Image = await _fileToBase64(_coverImage!);
+
+        final result = await ProfileAPI.updateCoverImage(
+          base64Image: base64Image,
+          userId: userId,
+        );
+
+        if (result == null || result['success'] != true) {
+          throw Exception(result?['message'] ?? 'Failed to upload cover image');
+        }
+
+        print('✅ Cover image uploaded successfully');
+      }
+
+      // Reload user data to get updated image URLs
+      await userProvider.loadUser();
 
       if (!mounted) return;
 
@@ -120,14 +167,28 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
         ),
       );
 
+      // Wait a bit to show the success message
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {
+      print('❌ Error saving images: $e');
+
       if (!mounted) return;
+
+      String errorMessage = 'Failed to update images';
+      if (e.toString().contains('timed out')) {
+        errorMessage = 'Upload timed out. Please try again.';
+      } else if (e is Exception) {
+        errorMessage = e.toString().replaceFirst('Exception: ', '');
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to update images: $e'),
+          content: Text(errorMessage),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     } finally {
@@ -182,6 +243,29 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Info text
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Tap on an image to change it. Images will be uploaded when you press Save.',
+                    style: TextStyle(fontSize: 13, color: Colors.blue.shade700),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
           // Profile Image
           const Text(
             'Profile Image',
@@ -214,6 +298,28 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
             currentImage: _coverImage,
             currentUrl: _currentCoverImageUrl,
           ),
+
+          const SizedBox(height: 24),
+
+          // Upload progress indicator
+          if (_isSaving)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Uploading images...',
+                    style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -225,7 +331,7 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
     required String? currentUrl,
   }) {
     return GestureDetector(
-      onTap: () => _pickImage(isProfile),
+      onTap: _isSaving ? null : () => _pickImage(isProfile),
       child: Container(
         height: isProfile ? 200 : 200,
         decoration: BoxDecoration(
@@ -248,6 +354,17 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
                 child: Image.network(
                   currentUrl,
                   fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Center(
+                      child: CircularProgressIndicator(
+                        value: loadingProgress.expectedTotalBytes != null
+                            ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                            : null,
+                      ),
+                    );
+                  },
                   errorBuilder: (_, __, ___) => _buildPlaceholder(isProfile),
                 ),
               )
@@ -261,13 +378,50 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
                   borderRadius: BorderRadius.circular(8),
                   color: Colors.black.withOpacity(0.3),
                 ),
-                child: const Icon(
-                  Icons.camera_alt,
-                  color: Colors.white,
-                  size: 40,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.camera_alt, color: Colors.white, size: 40),
+                    const SizedBox(height: 8),
+                    Text(
+                      currentImage != null || (currentUrl?.isNotEmpty ?? false)
+                          ? 'Tap to change'
+                          : 'Tap to add',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
+
+            // "Changed" indicator
+            if (currentImage != null)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'Changed',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

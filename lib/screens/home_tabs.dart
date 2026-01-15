@@ -21,6 +21,8 @@ class HomeTabs extends StatefulWidget {
 
 class _HomeTabsState extends State<HomeTabs> {
   int _currentIndex = 0;
+  String? _currentProfileImageUrl;
+
   final _authService = AuthService();
 
   final List<Widget> _screens = const [
@@ -34,6 +36,22 @@ class _HomeTabsState extends State<HomeTabs> {
   void _goToTab(int idx) {
     setState(() => _currentIndex = idx);
     Navigator.pop(context); // close drawer after tap
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileImage();
+  }
+
+  void _loadProfileImage() {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final user = userProvider.user;
+    if (mounted && user != null && user['profile_image'] != null) {
+      setState(() {
+        _currentProfileImageUrl = user['profile_image'];
+      });
+    }
   }
 
   Future<void> _handleLogout() async {
@@ -206,6 +224,23 @@ class _HomeTabsState extends State<HomeTabs> {
     return null;
   }
 
+  Widget _buildProfileIcon(String? url) {
+    final hasUrl = (url != null && url.trim().isNotEmpty);
+
+    if (!hasUrl) {
+      return const Icon(Icons.person_outline);
+    }
+
+    return CircleAvatar(
+      radius: 16,
+      backgroundColor: Colors.transparent,
+      backgroundImage: NetworkImage(url!),
+      onBackgroundImageError: (_, __) {
+        // Optional: fallback if URL fails
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
@@ -312,31 +347,29 @@ class _HomeTabsState extends State<HomeTabs> {
 
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
+        showSelectedLabels: false,
+        showUnselectedLabels: false,
         backgroundColor: Colors.white,
         selectedItemColor: theme.primaryColor,
         unselectedItemColor: Colors.grey,
+        iconSize: 28,
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            label: 'Home',
-          ),
+        items: [
+          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: ''),
           BottomNavigationBarItem(
             icon: Icon(Icons.explore_outlined),
-            label: 'Discover',
+            label: '',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.add_box_outlined),
-            label: 'Add',
+            label: '',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.store_outlined), label: ''),
           BottomNavigationBarItem(
-            icon: Icon(Icons.store_outlined),
-            label: 'Store',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            label: 'Profile',
+            icon: _buildProfileIcon(_currentProfileImageUrl),
+            // activeIcon: _buildProfileIcon(_currentProfileImageUrl),
+            label: '',
           ),
         ],
       ),
