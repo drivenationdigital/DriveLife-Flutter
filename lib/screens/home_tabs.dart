@@ -1,5 +1,6 @@
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/screens/create_post_screen.dart';
 import 'package:drivelife/screens/profile/edit_profile_settings_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/qr_scanner.dart';
@@ -28,7 +29,7 @@ class _HomeTabsState extends State<HomeTabs> {
   final List<Widget> _screens = const [
     PostsScreen(),
     SearchScreen(),
-    Scaffold(body: Center(child: Text('Add Post'))),
+    CreatePostScreen(),
     Scaffold(body: Center(child: Text('Store'))),
     ProfileScreen(),
   ];

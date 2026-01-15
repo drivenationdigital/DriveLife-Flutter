@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -587,10 +588,20 @@ class _PostCardState extends State<PostCard>
                       HapticFeedback.selectionClick();
                       _liked ? _toggleUnlike() : _optimisticLike();
                     },
-                    child: Icon(
-                      _liked ? Icons.favorite : Icons.favorite_border,
-                      color: _liked ? Colors.red : Colors.black,
-                      size: 24,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: SvgPicture.asset(
+                        _liked
+                            ? 'assets/svgs/heart_full.svg'
+                            : 'assets/svgs/heart.svg',
+                        width: 24,
+                        height: 24,
+                        // If your SVGs are single-color and should be tinted:
+                        colorFilter: ColorFilter.mode(
+                          _liked ? Colors.red : Colors.black,
+                          BlendMode.srcIn,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 16),
