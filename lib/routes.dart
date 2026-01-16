@@ -1,5 +1,6 @@
 import 'package:drivelife/screens/auth/onboarding_screen.dart';
 import 'package:drivelife/screens/create_post_screen.dart';
+import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,7 @@ class AppRoutes {
   static const String editProfile = '/edit-profile';
   static const String manageSocialLinks = '/manage-social-links';
   static const String createPost = '/create-post';
+  static const String garageList = '/garage-list';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -55,6 +57,8 @@ class AppRoutes {
         return _slide(const SearchScreen());
       case notifications:
         return _slide(const NotificationsScreen());
+      case garageList:
+        return _slide(const GarageListScreen());
       case profile:
         return _slide(const ProfileScreen());
       case editProfile:

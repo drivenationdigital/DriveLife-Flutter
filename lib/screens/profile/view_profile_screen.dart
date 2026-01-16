@@ -1,4 +1,5 @@
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/profile/edit_profile_settings_screen.dart';
 import 'package:drivelife/screens/profile/followers_screen.dart';
 import 'package:drivelife/services/qr_scanner.dart';
@@ -1328,7 +1329,17 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
         const SizedBox(width: 12),
         Expanded(
           child: ElevatedButton(
-            onPressed: () {},
+            onPressed: () async {
+              final result = await NavigationHelper.navigateTo(
+                context,
+                const GarageListScreen(),
+              );
+
+              // Refresh garage if details were updated
+              if (result == true && mounted) {
+                // _refreshGarage(); // TODO: Implement garage refresh if needed
+              }
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.secondaryColor,
               foregroundColor: Colors.white,

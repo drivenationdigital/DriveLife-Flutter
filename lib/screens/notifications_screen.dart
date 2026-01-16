@@ -1,9 +1,10 @@
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/services/user_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/notifications_api.dart';
 import '../widgets/profile/profile_avatar.dart';
-import '../services/auth_service.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -18,16 +19,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _loading = true;
   bool _hasMore = true;
 
+  final UserService _userService = UserService();
+
   @override
   void initState() {
     super.initState();
     _loadNotifications();
   }
 
-  Future<void> _loadNotifications({bool loadOld = false}) async {
+  Future<void> _loadNotifications({
+    bool loadOld = false,
+    bool isRefresh = false,
+  }) async {
     if (!mounted) return;
 
-    setState(() => _loading = true);
+    if (!isRefresh) {
+      setState(() => _loading = true);
+    }
 
     final response = await NotificationsAPI.getUserNotifications(
       loadOldNotifications: loadOld,
@@ -43,10 +51,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ...(data['last_week'] ?? []),
         ...(data['last_30_days'] ?? []),
       ];
-
+      print(data['has_more_notifications']);
       setState(() {
         _allNotifications = notifications;
-        _groupedNotifications = _groupNotificationsByTime(notifications);
+        _groupedNotifications = groupNotificationsFromBuckets(data);
         _hasMore = data['has_more_notifications'] ?? false;
         _loading = false;
       });
@@ -112,26 +120,106 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return grouped;
   }
 
+  Map<String, List<dynamic>> groupNotificationsFromBuckets(
+    Map<String, dynamic> notifications,
+  ) {
+    List<dynamic> safeList(dynamic v) => v is List ? v : <dynamic>[];
+
+    final recent = safeList(notifications['recent']);
+    final lastWeek = safeList(notifications['last_week']);
+    final last30 = safeList(notifications['last_30_days']);
+
+    final grouped = <String, List<dynamic>>{
+      if (recent.isNotEmpty) 'Recent': recent,
+      if (lastWeek.isNotEmpty) 'This Week': lastWeek,
+      if (last30.isNotEmpty) 'Last 30 Days': last30,
+    };
+
+    return grouped;
+  }
+
   Future<void> _refreshNotifications() async {
-    await _loadNotifications();
+    await _loadNotifications(isRefresh: true);
   }
 
   String _buildNotificationMessage(Map<String, dynamic> notification) {
-    final type = notification['type'];
-    final initiatorData = notification['entity']?['initiator_data'] ?? {};
-    final name = initiatorData['display_name'] ?? 'Someone';
+    final type = notification['type']?.toString() ?? '';
+
+    final entity = (notification['entity'] is Map)
+        ? Map<String, dynamic>.from(notification['entity'])
+        : <String, dynamic>{};
+
+    final initiator = (entity['initiator_data'] is Map)
+        ? Map<String, dynamic>.from(entity['initiator_data'])
+        : <String, dynamic>{};
+
+    final name =
+        (initiator['display_name']?.toString().trim().isNotEmpty ?? false)
+        ? initiator['display_name'].toString()
+        : ' User';
+
+    final entityType = entity['entity_type']?.toString();
+
+    // FIX: entity_data can be Map OR List
+    final rawEntityData = entity['entity_data'];
+    final Map<String, dynamic> entityData = rawEntityData is Map
+        ? Map<String, dynamic>.from(rawEntityData)
+        : <String, dynamic>{};
+
+    String _ellipsis(String s, int max) {
+      if (s.length <= max) return s;
+      return '${s.substring(0, max)}...';
+    }
+
+    String _typeLabel(String? t) {
+      switch (t) {
+        case 'comment':
+          return 'comment';
+        case 'car':
+          return 'car';
+        case 'post':
+        case 'tag':
+          return 'post';
+        default:
+          return 'post';
+      }
+    }
 
     switch (type) {
+      case 'like':
+        final comment = entityData['comment']?.toString();
+        final base = '$name liked your ${_typeLabel(entityType)}';
+        if (comment != null && comment.trim().isNotEmpty) {
+          return '$base: "$comment"';
+        }
+        return base;
+
+      case 'comment':
+        final comment = entityData['comment']?.toString() ?? '';
+        final snippet = _ellipsis(comment, 50);
+        if (snippet.isEmpty) return '$name commented on your post';
+        return '$name commented on your post: "$snippet"';
+
       case 'follow':
         return '$name followed you';
-      case 'like':
-        return '$name liked your post';
-      case 'comment':
-        return '$name commented on your post';
+
       case 'mention':
-        return '$name mentioned you';
+        final comment = entityData['comment']?.toString();
+        final base = '$name mentioned you in a ${_typeLabel(entityType)}';
+        if (comment != null && comment.trim().isNotEmpty) {
+          return '$base: "$comment"';
+        }
+        return base;
+
+      case 'post':
+        final taggedTarget = entityType == 'car' ? 'your car' : 'you';
+        return '$name has tagged $taggedTarget in a post';
+
       case 'tag':
-        return '$name tagged you in a post';
+        return entityType == 'car'
+            ? '$name tagged your car in a post'
+            : '$name tagged you in a post';
+
       default:
         return '$name interacted with your content';
     }
@@ -190,14 +278,78 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  Future<void> _handleFollowBack(int userId) async {
-    // TODO: Implement follow user API
-    print('Follow back user: $userId');
+  Future<void> _handleFollowBack(int userId, bool wasFollowing) async {
+    if (!mounted) return;
+
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final currentUserId = userProvider.user?['id'];
+
+    if (currentUserId == null) return;
+
+    bool success;
+    try {
+      success = await _userService.followUser(userId, currentUserId);
+    } catch (e) {
+      success = false;
+    }
+
+    if (!mounted) return;
+
+    if (success) {
+      // Update UserProvider's following list
+      final currentUser = Map<String, dynamic>.from(userProvider.user ?? {});
+      final following = List<dynamic>.from(currentUser['following'] ?? []);
+
+      if (!wasFollowing) {
+        if (!following.any((id) {
+          if (id is int) return id == userId;
+          if (id is String) return int.tryParse(id) == userId;
+          return false;
+        })) {
+          following.add(userId);
+        }
+      } else {
+        following.removeWhere((id) {
+          if (id is int) return id == userId;
+          if (id is String) return int.tryParse(id) == userId;
+          return false;
+        });
+      }
+
+      currentUser['following'] = following;
+      userProvider.setUser(currentUser);
+
+      _refreshNotifications();
+
+      // SUCCESS TOAST
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            wasFollowing ? 'Unfollowed successfully' : 'Followed successfully',
+          ),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } else {
+      // ERROR TOAST
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Something went wrong. Please try again.'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
+
+    final sessionUserFollowing =
+        Provider.of<UserProvider>(context, listen: false).user?['following']
+            as List<dynamic>?;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -253,7 +405,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
                         return Column(
                           children: [
-                            _buildNotificationTile(notification, theme),
+                            _buildNotificationTile(
+                              notification,
+                              theme,
+                              sessionUserFollowing,
+                            ),
                             if (!isLast)
                               const Divider(
                                 height: 1,
@@ -295,6 +451,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget _buildNotificationTile(
     Map<String, dynamic> notification,
     ThemeProvider theme,
+    List<dynamic>? sessionUserFollowing,
   ) {
     final entity = notification['entity'] ?? {};
     final initiatorData = entity['initiator_data'] ?? {};
@@ -313,6 +470,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     final isFollow = notification['type'] == 'follow';
     final postMedia = entityData['media']; // Now safe to access
+
+    final userId = initiatorData['id'] is int
+        ? initiatorData['id'] as int
+        : int.tryParse(initiatorData['id']?.toString() ?? '') ?? 0;
+
+    bool following = false;
+
+    if (sessionUserFollowing != null) {
+      following = sessionUserFollowing.any((id) {
+        if (id is int) return id == userId;
+        if (id is String) return int.tryParse(id) == userId;
+        return false;
+      });
+    }
 
     return InkWell(
       onTap: () => _handleNotificationTap(notification),
@@ -396,7 +567,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             // Right side: Follow button OR post thumbnail
             if (isFollow)
               ElevatedButton(
-                onPressed: () => _handleFollowBack(initiatorData['id']),
+                onPressed: () =>
+                    _handleFollowBack(initiatorData['id'], following),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: theme.primaryColor,
                   foregroundColor: Colors.white,
@@ -409,9 +581,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                 ),
-                child: const Text(
-                  'Follow',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                child: Text(
+                  following ? 'Following' : 'Follow',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               )
             else if (postMedia != null && postMedia.isNotEmpty)

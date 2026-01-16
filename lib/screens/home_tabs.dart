@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:drivelife/api/notifications_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/create_post_screen.dart';
@@ -23,6 +26,9 @@ class HomeTabs extends StatefulWidget {
 class _HomeTabsState extends State<HomeTabs> {
   int _currentIndex = 0;
   String? _currentProfileImageUrl;
+  int _notifCount = 0;
+  bool _notifLoading = false;
+  // Timer? _notifTimer;
 
   final _authService = AuthService();
 
@@ -43,6 +49,13 @@ class _HomeTabsState extends State<HomeTabs> {
   void initState() {
     super.initState();
     _loadProfileImage();
+    _refreshNotificationCount();
+
+    // _notifTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+    //   if (mounted) {
+    //     _refreshNotificationCount();
+    //   }
+    // });
   }
 
   void _loadProfileImage() {
@@ -53,6 +66,62 @@ class _HomeTabsState extends State<HomeTabs> {
         _currentProfileImageUrl = user['profile_image'];
       });
     }
+  }
+
+  Future<void> _refreshNotificationCount() async {
+    if (_notifLoading) return;
+    _notifLoading = true;
+
+    try {
+      final res = await NotificationsAPI.getNotificationCount();
+      if (!mounted) return;
+      setState(() => _notifCount = res);
+    } catch (_) {
+      // ignore
+    } finally {
+      _notifLoading = false;
+    }
+  }
+
+  Widget _notificationIconButton() {
+    return IconButton(
+      padding: const EdgeInsets.only(right: 12),
+      iconSize: 24,
+      onPressed: () async {
+        await NavigationHelper.navigateTo(context, const NotificationsScreen());
+        // refresh after coming back (so count updates after reading)
+        if (mounted) _refreshNotificationCount();
+      },
+      icon: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Icon(Icons.notifications_none, color: Colors.black),
+          if (_notifCount > 0)
+            Positioned(
+              right: -5,
+              top: -6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                child: Text(
+                  _notifCount > 99 ? '99+' : '$_notifCount',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _handleLogout() async {
@@ -128,11 +197,7 @@ class _HomeTabsState extends State<HomeTabs> {
           ),
         ),
         centerTitle: true, // 👈 ensures the title is centered
-        title: Image.asset(
-          'assets/logo-dark.png',
-          height: 18,
-          alignment: Alignment.center,
-        ),
+        title: Image.asset('assets/logo-dark.png', height: 18),
         actions: [
           IconButton(
             onPressed: () async {
@@ -162,12 +227,7 @@ class _HomeTabsState extends State<HomeTabs> {
             },
             icon: const Icon(Icons.qr_code, color: Colors.black),
           ),
-          IconButton(
-            onPressed: () {
-              NavigationHelper.navigateTo(context, const NotificationsScreen());
-            },
-            icon: const Icon(Icons.notifications_none, color: Colors.black),
-          ),
+          _notificationIconButton(),
         ],
       );
     } else if (_currentIndex == 4) {
@@ -212,13 +272,7 @@ class _HomeTabsState extends State<HomeTabs> {
             },
             icon: const Icon(Icons.qr_code, color: Colors.black),
           ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.black),
-            onPressed: () => NavigationHelper.navigateTo(
-              context,
-              const NotificationsScreen(),
-            ),
-          ),
+          _notificationIconButton(),
         ],
       );
     }

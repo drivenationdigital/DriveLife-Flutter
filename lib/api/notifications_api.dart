@@ -50,7 +50,8 @@ class NotificationsAPI {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['count'] ?? 0;
+        final count = data['count'];
+        return count is int ? count : int.tryParse(count.toString()) ?? 0;
       }
     } catch (e) {
       print('Error fetching notification count: $e');
