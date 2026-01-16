@@ -182,13 +182,23 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     );
   }
 
-  Widget _buildOwnerActions(ThemeProvider theme) {
+  bool isVehiclePublisher() {
     final ownerId = _vehicle?['owner_id']?.toString();
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final currentUserId = userProvider.user?['id']?.toString();
 
-    if (currentUserId == null) return const SizedBox.shrink();
+    if (currentUserId == null) return false;
     if (ownerId == null || ownerId != currentUserId) {
+      return false;
+    }
+
+    return true;
+  }
+
+  Widget _buildOwnerActions(ThemeProvider theme) {
+    final isOwner = isVehiclePublisher();
+
+    if (!isOwner) {
       return const SizedBox.shrink();
     }
 
@@ -617,6 +627,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
               garageId: widget.garageId,
               mods: _mods,
               onModsChanged: _loadVehicle,
+              isOwner: isVehiclePublisher(),
+
             ),
             _GaragePostsGrid(garageId: widget.garageId, tagged: true),
           ],
@@ -752,12 +764,14 @@ class GarageModsList extends StatefulWidget {
   final String garageId;
   final List<dynamic> mods;
   final VoidCallback onModsChanged;
+  final bool isOwner;
 
   const GarageModsList({
     super.key,
     required this.garageId,
     required this.mods,
     required this.onModsChanged,
+    required this.isOwner,
   });
 
   @override
@@ -813,7 +827,7 @@ class _GarageModsListState extends State<GarageModsList> {
                 ],
               ),
             ),
-            ...typeMods.map((mod) => _buildModCard(mod)),
+            ...typeMods.map((mod) => _buildModCard(mod, widget.isOwner)),
             const SizedBox(height: 16),
           ],
         );
@@ -821,11 +835,14 @@ class _GarageModsListState extends State<GarageModsList> {
     );
   }
 
-  Widget _buildModCard(Map<String, dynamic> mod) {
+  Widget _buildModCard(Map<String, dynamic> mod, bool isOwner) {
     final hasImage = mod['image'] != null && mod['image'].isNotEmpty;
 
     return GestureDetector(
       onTap: () async {
+        // IF GARAGE OWNER, ALLOW EDITING
+        if (!isOwner) return;
+
         final result = await NavigationHelper.navigateTo(
           context,
           AddModificationScreen(garageId: widget.garageId, mod: mod),
