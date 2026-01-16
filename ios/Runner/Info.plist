@@ -26,6 +26,20 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>This app requires access to Apple Music to access your library for posts.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app uses the camera to allow you to take photos to create posts.</string>
+	<key>NSFileProviderUsageDescription</key>
+	<string>This app uses file provider permissions to access files for posts.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app uses accurate location data to allow users to browse and search for events/venues by proximity.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app uses the microphone to allow you to record audio to create posts.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Allow $(PRODUCT_NAME) to save photos to your library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>$(PRODUCT_NAME) needs access to your photo library to allow you to select photos to create posts.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
