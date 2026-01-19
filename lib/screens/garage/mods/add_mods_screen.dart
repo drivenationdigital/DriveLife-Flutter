@@ -1,5 +1,3 @@
-// CREATE: lib/screens/garage/add_modification_screen.dart
-
 import 'dart:convert';
 import 'dart:io';
 import 'package:drivelife/api/garage_api.dart';
@@ -33,6 +31,11 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
   final _linkCtrl = TextEditingController();
 
   bool _saving = false;
+
+  // ADD: Upload progress tracking
+  bool _isUploading = false;
+  double _uploadProgress = 0.0;
+  String _uploadStatus = '';
 
   static const List<String> _modTypes = [
     'Engine',
@@ -153,6 +156,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
     );
   }
 
+  // UPDATE: _onSave with upload progress tracking
   Future<void> _onSave() async {
     if (!_formKey.currentState!.validate()) return;
     if (_saving) return;
@@ -181,22 +185,26 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
       'product_link': _linkCtrl.text.trim(),
     };
 
-    // Add image if changed
-    if (_base64Image != null && _base64Image!.isNotEmpty) {
+    // Check if we're uploading a new image (base64) or using existing URL
+    final willUploadNewImage = _base64Image != null && _base64Image!.isNotEmpty;
+
+    if (willUploadNewImage) {
       payload['mod_image'] = _base64Image;
+    } else if (_existingImageUrl != null && _existingImageUrl!.isNotEmpty) {
+      payload['mod_image'] = _existingImageUrl;
     }
 
     print('Payload: $payload');
 
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      // Only show upload progress if we're actually uploading a new image
+      _isUploading = willUploadNewImage;
+      _uploadProgress = 0.0;
+      _uploadStatus = willUploadNewImage ? 'Preparing upload...' : '';
+    });
 
     try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      );
-
       final dynamic res;
 
       if (_isEditMode) {
@@ -204,16 +212,31 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
           payload,
           widget.mod!['id'].toString(),
           currentUser['id'].toString(),
+          onUploadProgress: (current, total, percentage) {
+            if (mounted && willUploadNewImage) {
+              setState(() {
+                _uploadProgress = percentage;
+                _uploadStatus = 'Uploading ${current + 1}/$total chunks';
+              });
+            }
+          },
         );
       } else {
         res = await GarageAPI.addVehicleMod(
           payload,
           currentUser['id'].toString(),
+          onUploadProgress: (current, total, percentage) {
+            if (mounted && willUploadNewImage) {
+              setState(() {
+                _uploadProgress = percentage;
+                _uploadStatus = 'Uploading ${current + 1}/$total chunks';
+              });
+            }
+          },
         );
       }
 
       if (!mounted) return;
-      Navigator.of(context).pop(); // hide loader
 
       final success = (res is Map) ? (res['success'] == true) : false;
       if (!success) {
@@ -233,7 +256,6 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
       Navigator.pop(context, _isEditMode ? 'updated' : 'added');
     } catch (e) {
       if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
 
       final msg = (e is Map && e['message'] != null)
           ? e['message'].toString()
@@ -246,7 +268,12 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
       _toast(msg);
     } finally {
       if (mounted) {
-        setState(() => _saving = false);
+        setState(() {
+          _saving = false;
+          _isUploading = false;
+          _uploadProgress = 0.0;
+          _uploadStatus = '';
+        });
       }
     }
   }
@@ -496,118 +523,173 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.only(bottom: 24),
-            children: [
-              _sectionTitle('Modification Image'),
-              _buildImageSection(),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 24),
+                children: [
+                  _sectionTitle('Modification Image'),
+                  _buildImageSection(),
 
-              _sectionTitle('Modification Details'),
-              _card(
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                      child: DropdownButtonFormField<String>(
-                        value: _modType,
-                        decoration: _dec(
-                          'Modification Type *',
-                          hint: 'Please Select',
+                  _sectionTitle('Modification Details'),
+                  _card(
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
+                          child: DropdownButtonFormField<String>(
+                            value: _modType,
+                            decoration: _dec(
+                              'Modification Type *',
+                              hint: 'Please Select',
+                            ),
+                            items: _modTypes
+                                .map(
+                                  (t) => DropdownMenuItem(
+                                    value: t,
+                                    child: Text(t),
+                                  ),
+                                )
+                                .toList(),
+                            validator: (v) {
+                              if (v == null || v.isEmpty) {
+                                return 'Please select a type';
+                              }
+                              return null;
+                            },
+                            onChanged: (v) => setState(() => _modType = v),
+                          ),
                         ),
-                        items: _modTypes
-                            .map(
-                              (t) => DropdownMenuItem(value: t, child: Text(t)),
-                            )
-                            .toList(),
-                        validator: (v) {
-                          if (v == null || v.isEmpty) {
-                            return 'Please select a type';
-                          }
-                          return null;
-                        },
-                        onChanged: (v) => setState(() => _modType = v),
-                      ),
+                        _divider(),
+                        TextFormField(
+                          controller: _titleCtrl,
+                          decoration: _dec(
+                            'Modification Title *',
+                            hint: 'e.g. K&N Air Filter',
+                          ),
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Title is required'
+                              : null,
+                        ),
+                        _divider(),
+                        TextFormField(
+                          controller: _descCtrl,
+                          decoration: _dec(
+                            'Description',
+                            hint: 'Add details about this modification',
+                          ),
+                          maxLines: 3,
+                          maxLength: 500,
+                        ),
+                        _divider(),
+                        TextFormField(
+                          controller: _linkCtrl,
+                          decoration: _dec(
+                            'Link to buy product',
+                            hint: 'https://example.com/product',
+                          ),
+                          keyboardType: TextInputType.url,
+                        ),
+                      ],
                     ),
-                    _divider(),
-                    TextFormField(
-                      controller: _titleCtrl,
-                      decoration: _dec(
-                        'Modification Title *',
-                        hint: 'e.g. K&N Air Filter',
+                  ),
+
+                  // Delete button for edit mode
+                  if (_isEditMode) ...[
+                    const SizedBox(height: 32),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: _saving ? null : _deleteMod,
+                          style: OutlinedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            side: const BorderSide(color: Colors.red),
+                            foregroundColor: Colors.red,
+                          ),
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.red,
+                                  ),
+                                )
+                              : const Text(
+                                  'Delete Modification',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                        ),
                       ),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Title is required'
-                          : null,
-                    ),
-                    _divider(),
-                    TextFormField(
-                      controller: _descCtrl,
-                      decoration: _dec(
-                        'Description',
-                        hint: 'Add details about this modification',
-                      ),
-                      maxLines: 3,
-                      maxLength: 500,
-                    ),
-                    _divider(),
-                    TextFormField(
-                      controller: _linkCtrl,
-                      decoration: _dec(
-                        'Link to buy product',
-                        hint: 'https://example.com/product',
-                      ),
-                      keyboardType: TextInputType.url,
                     ),
                   ],
-                ),
+                ],
               ),
+            ),
+          ),
 
-              // Delete button for edit mode
-              if (_isEditMode) ...[
-                const SizedBox(height: 32),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: OutlinedButton(
-                      onPressed: _saving ? null : _deleteMod,
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+          // ADD: Upload progress overlay
+          if (_isUploading)
+            Container(
+              color: Colors.black54,
+              child: Center(
+                child: Card(
+                  margin: const EdgeInsets.all(32),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(
+                          value: _uploadProgress,
+                          strokeWidth: 6,
+                          color: theme.primaryColor,
+                          backgroundColor: Colors.grey[300],
                         ),
-                        side: const BorderSide(color: Colors.red),
-                        foregroundColor: Colors.red,
-                      ),
-                      child: _saving
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.red,
-                              ),
-                            )
-                          : const Text(
-                              'Delete Modification',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                        const SizedBox(height: 16),
+                        Text(
+                          '${(_uploadProgress * 100).toInt()}%',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _uploadStatus,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        LinearProgressIndicator(
+                          value: _uploadProgress,
+                          backgroundColor: Colors.grey[300],
+                          color: theme.primaryColor,
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ],
-            ],
-          ),
-        ),
+              ),
+            ),
+        ],
       ),
     );
   }

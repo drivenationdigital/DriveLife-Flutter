@@ -9,12 +9,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 class AddVehicleScreen extends StatefulWidget {
-  final Map<String, dynamic>? vehicle; // ADD THIS
+  final Map<String, dynamic>? vehicle;
 
-  const AddVehicleScreen({
-    Key? key,
-    this.vehicle, // ADD THIS
-  }) : super(key: key);
+  const AddVehicleScreen({Key? key, this.vehicle}) : super(key: key);
 
   @override
   State<AddVehicleScreen> createState() => _AddVehicleScreenState();
@@ -26,7 +23,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   File? _imageFile;
   String? _base64Image;
 
-  String _ownership = 'current'; // current | past | dream_car
+  String _ownership = 'current';
   DateTime? _ownedFrom;
   DateTime? _ownedTo;
 
@@ -45,8 +42,13 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
   bool _saving = false;
 
-  bool get _isEditMode => widget.vehicle != null; // ADD THIS
-  String? _existingImageUrl; // ADD THIS for keeping track of original image
+  // ADD: Upload progress tracking
+  bool _isUploading = false;
+  double _uploadProgress = 0.0;
+  String _uploadStatus = '';
+
+  bool get _isEditMode => widget.vehicle != null;
+  String? _existingImageUrl;
 
   static const List<String> _makes = [
     'Abarth',
@@ -194,7 +196,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   @override
   void initState() {
     super.initState();
-    _loadVehicleData(); // ADD THIS
+    _loadVehicleData();
   }
 
   @override
@@ -214,7 +216,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     final bytes = await file.readAsBytes();
     final b64 = base64Encode(bytes);
 
-    // Detect mime from extension (good enough for jpg/png)
     final lower = file.path.toLowerCase();
     final mime = lower.endsWith('.png')
         ? 'image/png'
@@ -225,7 +226,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     if (!mounted) return;
     setState(() {
       _imageFile = file;
-      _base64Image = 'data:$mime;base64,$b64'; // ✅ matches JS
+      _base64Image = 'data:$mime;base64,$b64';
     });
   }
 
@@ -267,9 +268,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       lastDate: DateTime.now().add(const Duration(days: 365 * 20)),
       helpText: isFrom ? 'Select Owned From Date' : 'Select Owned To Date',
       confirmText: 'Select Date',
-      // optional: restrict "Owned To" to be after "Owned From"
       selectableDayPredicate: (d) {
-        // if picking owned from, then restrict dates after today
         if (!isFrom && _ownedFrom != null) {
           return d.isAfter(_ownedFrom!) || d.isAtSameMomentAs(_ownedFrom!);
         }
@@ -282,7 +281,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     setState(() {
       if (isFrom) {
         _ownedFrom = picked;
-        // If "Owned To" exists and is now before "Owned From", clear it
         if (_ownedTo != null && _ownedTo!.isBefore(picked)) _ownedTo = null;
       } else {
         _ownedTo = picked;
@@ -313,13 +311,10 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
-  // UPDATE: _loadVehicleData method
   void _loadVehicleData() {
     if (!_isEditMode) return;
 
     final v = widget.vehicle!;
-
-    print(v);
 
     setState(() {
       _make = v['make']?.toString();
@@ -327,14 +322,12 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       _variantCtrl.text = v['variant']?.toString() ?? '';
       _regCtrl.text = v['registration']?.toString() ?? '';
       _colourCtrl.text = v['colour']?.toString() ?? '';
-      _descCtrl.text =
-          v['short_description']?.toString() ?? ''; // FIX: short_description
+      _descCtrl.text = v['short_description']?.toString() ?? '';
 
       _bhpCtrl.text = v['vehicle_bhp']?.toString() ?? '';
       _zero62Ctrl.text = v['vehicle_062']?.toString() ?? '';
       _topSpeedCtrl.text = v['vehicle_top_speed']?.toString() ?? '';
 
-      // FIX: Map primary_car to ownership
       final primaryCar = v['primary_car']?.toString();
       if (primaryCar == '1') {
         _ownership = 'current';
@@ -344,18 +337,15 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         _ownership = 'past';
       }
 
-      // FIX: allow_tagging is string "0" or "1"
       _taggingEnabled = (v['allow_tagging']?.toString() == '1');
 
       _ownedFrom = _parseDate(v['owned_since']);
       _ownedTo = _parseDate(v['owned_until']);
 
-      // FIX: Store existing image URL
       _existingImageUrl = v['cover_photo']?.toString();
     });
   }
 
-  // ADD THIS METHOD - remove image
   void _removeImage() {
     setState(() {
       _imageFile = null;
@@ -364,7 +354,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     });
   }
 
-  // ADD THIS HELPER METHOD
   DateTime? _parseDate(dynamic dateValue) {
     if (dateValue == null) return null;
 
@@ -372,19 +361,17 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     if (dateStr.isEmpty) return null;
 
     try {
-      // Try ISO format first (2026-01-14T00:00:00.000)
       if (dateStr.contains('T') || dateStr.contains('-')) {
         return DateTime.parse(dateStr);
       }
 
-      // Try dd/mm/yyyy format (16/01/2026)
       if (dateStr.contains('/')) {
         final parts = dateStr.split('/');
         if (parts.length == 3) {
           return DateTime(
-            int.parse(parts[2]), // year
-            int.parse(parts[1]), // month
-            int.parse(parts[0]), // day
+            int.parse(parts[2]),
+            int.parse(parts[1]),
+            int.parse(parts[0]),
           );
         }
       }
@@ -395,12 +382,11 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     return null;
   }
 
-  // UPDATE: validation for images
+  // UPDATE: _onSave with upload progress tracking
   void _onSave() async {
     if (!_formKey.currentState!.validate()) return;
     if (_saving) return;
 
-    // Basic validations
     if (_make == null || _make!.isEmpty) {
       _toast('Please select a vehicle make');
       return;
@@ -429,7 +415,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       }
     }
 
-    // UPDATE: Check for image - allow existing image in edit mode
     if (!_isEditMode &&
         (_imageFile == null || _base64Image == null || _base64Image!.isEmpty)) {
       _toast('Please upload a cover image');
@@ -443,7 +428,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       return;
     }
 
-    // Build payload
     final payload = <String, dynamic>{
       'make': _make,
       'model': _modelCtrl.text.trim(),
@@ -461,40 +445,52 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       'vehicle_top_speed': double.tryParse(_topSpeedCtrl.text.trim()) ?? 0,
     };
 
-    // UPDATE: Only include cover_photo if changed
     if (_base64Image != null && _base64Image!.isNotEmpty) {
       payload['cover_photo'] = _base64Image;
     } else if (_existingImageUrl != null && _existingImageUrl!.isNotEmpty) {
-      payload['cover_photo'] = _existingImageUrl; // Keep existing
+      payload['cover_photo'] = _existingImageUrl;
     }
 
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _isUploading = true;
+      _uploadProgress = 0.0;
+      _uploadStatus = 'Preparing upload...';
+    });
 
     try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      );
-
       final dynamic res;
 
-      // UPDATE: Call different API based on mode
       if (_isEditMode) {
-        res = await GarageAPI.addVehicleToGarage(
-          // widget.vehicle!['id'].toString(),
+        res = await GarageAPI.updateVehicle(
+          widget.vehicle!['id'].toString(),
           payload,
           currentUser['id'].toString(),
+          onUploadProgress: (current, total, percentage) {
+            if (mounted) {
+              setState(() {
+                _uploadProgress = percentage;
+                _uploadStatus = 'Uploading ${current + 1}/$total chunks';
+              });
+            }
+          },
         );
       } else {
         res = await GarageAPI.addVehicleToGarage(
           payload,
           currentUser['id'].toString(),
+          onUploadProgress: (current, total, percentage) {
+            if (mounted) {
+              setState(() {
+                _uploadProgress = percentage;
+                _uploadStatus = 'Uploading ${current + 1}/$total chunks';
+              });
+            }
+          },
         );
       }
 
       if (!mounted) return;
-      Navigator.of(context).pop(); // hide loader
 
       final success = (res is Map) ? (res['success'] == true) : false;
       if (!success) {
@@ -503,7 +499,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         );
       }
 
-      // After successful save/update
       _toast(
         _isEditMode
             ? 'Vehicle updated successfully'
@@ -512,11 +507,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
       final vehicleId = (res is Map) ? res['id'] : widget.vehicle?['id'];
 
-      // Return 'updated' for edit, vehicleId for add
       Navigator.pop(context, _isEditMode ? 'updated' : vehicleId);
     } catch (e) {
       if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
 
       final msg = (e is Map && e['message'] != null)
           ? e['message'].toString()
@@ -528,7 +521,14 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
       _toast(msg);
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _isUploading = false;
+          _uploadProgress = 0.0;
+          _uploadStatus = '';
+        });
+      }
     }
   }
 
@@ -569,7 +569,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   Widget _divider() =>
       const Divider(height: 1, thickness: 1, color: Color(0xFFEFEFEF));
 
-  // UPDATE: Image section with remove button
   Widget _buildImageSection() {
     final hasImage =
         _imageFile != null ||
@@ -617,14 +616,11 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                               ),
                             ),
                     ),
-                    // Remove button
                     Positioned(
                       top: 8,
                       right: 8,
                       child: GestureDetector(
-                        onTap: () {
-                          _removeImage();
-                        },
+                        onTap: _removeImage,
                         child: Container(
                           padding: const EdgeInsets.all(6),
                           decoration: const BoxDecoration(
@@ -639,7 +635,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                         ),
                       ),
                     ),
-                    // Change indicator
                     if (_imageFile != null)
                       Positioned(
                         top: 8,
@@ -670,7 +665,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     );
   }
 
-  // ADD TO _AddVehicleScreenState
   Future<void> _deleteVehicle(ThemeProvider theme) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -721,7 +715,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       );
 
       if (!mounted) return;
-      Navigator.of(context).pop(); // hide loader
+      Navigator.of(context).pop();
 
       final success = (res is Map) ? (res?['success'] == true) : false;
       if (!success) {
@@ -763,7 +757,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         ),
         centerTitle: true,
         title: Text(
-          _isEditMode ? 'Edit Vehicle' : 'Add Vehicle', // UPDATE THIS
+          _isEditMode ? 'Edit Vehicle' : 'Add Vehicle',
           style: const TextStyle(
             color: Colors.black,
             fontSize: 18,
@@ -780,7 +774,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : Text(
-                    _isEditMode ? 'Update' : 'Save', // UPDATE THIS
+                    _isEditMode ? 'Update' : 'Save',
                     style: const TextStyle(
                       color: Colors.black,
                       fontWeight: FontWeight.w600,
@@ -789,229 +783,292 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.only(bottom: 24),
-            children: [
-              _sectionTitle('Vehicle Image'),
-              _buildImageSection(),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 24),
+                children: [
+                  _sectionTitle('Vehicle Image'),
+                  _buildImageSection(),
 
-              _sectionTitle('Ownership Type'),
-              _card(
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: DropdownButtonFormField<String>(
-                        value: _ownership,
-                        padding: const EdgeInsets.symmetric(horizontal: 0),
-                        decoration: _dec('Ownership *'),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'current',
-                            child: Text('Current Vehicle'),
+                  _sectionTitle('Ownership Type'),
+                  _card(
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: DropdownButtonFormField<String>(
+                            value: _ownership,
+                            padding: const EdgeInsets.symmetric(horizontal: 0),
+                            decoration: _dec('Ownership *'),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'current',
+                                child: Text('Current Vehicle'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'past',
+                                child: Text('Past Vehicle'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'dream_car',
+                                child: Text('Dream Vehicle'),
+                              ),
+                            ],
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(() {
+                                _ownership = v;
+                                if (_ownership != 'past') _ownedTo = null;
+                              });
+                            },
                           ),
-                          DropdownMenuItem(
-                            value: 'past',
-                            child: Text('Past Vehicle'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'dream_car',
-                            child: Text('Dream Vehicle'),
+                        ),
+                        _divider(),
+                        if (_ownership != 'dream_car') ...[
+                          ListTile(
+                            title: const Text('Owned From'),
+                            subtitle: Text(_fmtDate(_ownedFrom)),
+                            trailing: const Icon(Icons.arrow_drop_down),
+                            onTap: () => _pickDate(isFrom: true, theme: theme),
                           ),
                         ],
-                        onChanged: (v) {
-                          if (v == null) return;
-                          setState(() {
-                            _ownership = v;
-                            if (_ownership != 'past') _ownedTo = null;
-                          });
-                        },
-                      ),
+                        if (_showOwnedTo) ...[
+                          _divider(),
+                          ListTile(
+                            title: const Text('Owned To'),
+                            subtitle: Text(_fmtDate(_ownedTo)),
+                            trailing: const Icon(Icons.arrow_drop_down),
+                            onTap: () => _pickDate(isFrom: false, theme: theme),
+                          ),
+                        ],
+                      ],
                     ),
-                    _divider(),
-                    if (_ownership != 'dream_car') ...[
-                      ListTile(
-                        title: const Text('Owned From'),
-                        subtitle: Text(_fmtDate(_ownedFrom)),
-                        trailing: const Icon(Icons.arrow_drop_down),
-                        onTap: () => _pickDate(isFrom: true, theme: theme),
-                      ),
-                    ],
-                    if (_showOwnedTo) ...[
-                      _divider(),
-                      ListTile(
-                        title: const Text('Owned To'),
-                        subtitle: Text(_fmtDate(_ownedTo)),
-                        trailing: const Icon(Icons.arrow_drop_down),
-                        onTap: () => _pickDate(isFrom: false, theme: theme),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              _sectionTitle('Vehicle Details'),
-              _card(
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                      child: DropdownButtonFormField<String>(
-                        dropdownColor: theme.cardColor,
-                        focusColor: theme.primaryColor,
-                        value: _make,
-                        decoration: _dec(
-                          'Vehicle Make *',
-                          hint: 'Please Select',
-                        ),
-                        items: _makes
-                            .map(
-                              (m) => DropdownMenuItem(value: m, child: Text(m)),
-                            )
-                            .toList(),
-                        validator: (v) {
-                          if (v == null || v.isEmpty)
-                            return 'Please select a make';
-                          return null;
-                        },
-                        onChanged: (v) => setState(() => _make = v),
-                      ),
-                    ),
-                    _divider(),
-                    TextFormField(
-                      controller: _modelCtrl,
-                      decoration: _dec('Model *', hint: 'Your vehicle model'),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Model is required'
-                          : null,
-                    ),
-                    _divider(),
-                    TextFormField(
-                      controller: _variantCtrl,
-                      decoration: _dec(
-                        'Variant',
-                        hint: 'Add any vehicle variant info',
-                      ),
-                    ),
-                    _divider(),
-                    TextFormField(
-                      controller: _regCtrl,
-                      decoration: _dec(
-                        'Registration',
-                        hint: 'Your vehicle reg',
-                      ),
-                    ),
-                    _divider(),
-                    TextFormField(
-                      controller: _colourCtrl,
-                      decoration: _dec('Colour', hint: 'Your vehicle colour'),
-                    ),
-                    _divider(),
-                    TextFormField(
-                      controller: _descCtrl,
-                      decoration: _dec(
-                        'Short Description',
-                        hint: 'Add a short description of your vehicle',
-                      ),
-                      maxLength: 200,
-                      maxLines: 3,
-                    ),
-                  ],
-                ),
-              ),
-
-              _sectionTitle('Vehicle Stats'),
-              _card(
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: _bhpCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: _dec('Power (BHP)', hint: 'Enter BHP'),
-                    ),
-                    _divider(),
-                    TextFormField(
-                      controller: _zero62Ctrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: _dec(
-                        '0 - 62mph time',
-                        hint: 'Enter 0-62 time',
-                      ),
-                    ),
-                    _divider(),
-                    TextFormField(
-                      controller: _topSpeedCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: _dec(
-                        'Top Speed (MPH)',
-                        hint: 'Enter top speed',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              _sectionTitle('Vehicle Tagging'),
-              _card(
-                child: SwitchListTile(
-                  title: const Text(
-                    "Allow this vehicle to be discovered & tagged via it's registration",
                   ),
-                  value: _taggingEnabled,
-                  onChanged: (v) => setState(() => _taggingEnabled = v),
-                ),
-              ),
 
-              // DELETE BUTTON - only in edit mode
-              if (_isEditMode) ...[
-                const SizedBox(height: 32),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: OutlinedButton(
-                      onPressed: _saving ? null : () => _deleteVehicle(theme),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        side: const BorderSide(color: Colors.red),
-                        foregroundColor: Colors.red,
-                      ),
-                      child: _saving
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.red,
-                              ),
-                            )
-                          : const Text(
-                              'Delete Vehicle',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                  _sectionTitle('Vehicle Details'),
+                  _card(
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
+                          child: DropdownButtonFormField<String>(
+                            dropdownColor: theme.cardColor,
+                            focusColor: theme.primaryColor,
+                            value: _make,
+                            decoration: _dec(
+                              'Vehicle Make *',
+                              hint: 'Please Select',
                             ),
+                            items: _makes
+                                .map(
+                                  (m) => DropdownMenuItem(
+                                    value: m,
+                                    child: Text(m),
+                                  ),
+                                )
+                                .toList(),
+                            validator: (v) {
+                              if (v == null || v.isEmpty) {
+                                return 'Please select a make';
+                              }
+                              return null;
+                            },
+                            onChanged: (v) => setState(() => _make = v),
+                          ),
+                        ),
+                        _divider(),
+                        TextFormField(
+                          controller: _modelCtrl,
+                          decoration: _dec(
+                            'Model *',
+                            hint: 'Your vehicle model',
+                          ),
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Model is required'
+                              : null,
+                        ),
+                        _divider(),
+                        TextFormField(
+                          controller: _variantCtrl,
+                          decoration: _dec(
+                            'Variant',
+                            hint: 'Add any vehicle variant info',
+                          ),
+                        ),
+                        _divider(),
+                        TextFormField(
+                          controller: _regCtrl,
+                          decoration: _dec(
+                            'Registration',
+                            hint: 'Your vehicle reg',
+                          ),
+                        ),
+                        _divider(),
+                        TextFormField(
+                          controller: _colourCtrl,
+                          decoration: _dec(
+                            'Colour',
+                            hint: 'Your vehicle colour',
+                          ),
+                        ),
+                        _divider(),
+                        TextFormField(
+                          controller: _descCtrl,
+                          decoration: _dec(
+                            'Short Description',
+                            hint: 'Add a short description of your vehicle',
+                          ),
+                          maxLength: 200,
+                          maxLines: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  _sectionTitle('Vehicle Stats'),
+                  _card(
+                    child: Column(
+                      children: [
+                        TextFormField(
+                          controller: _bhpCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: _dec('Power (BHP)', hint: 'Enter BHP'),
+                        ),
+                        _divider(),
+                        TextFormField(
+                          controller: _zero62Ctrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: _dec(
+                            '0 - 62mph time',
+                            hint: 'Enter 0-62 time',
+                          ),
+                        ),
+                        _divider(),
+                        TextFormField(
+                          controller: _topSpeedCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: _dec(
+                            'Top Speed (MPH)',
+                            hint: 'Enter top speed',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  _sectionTitle('Vehicle Tagging'),
+                  _card(
+                    child: SwitchListTile(
+                      title: const Text(
+                        "Allow this vehicle to be discovered & tagged via it's registration",
+                      ),
+                      value: _taggingEnabled,
+                      onChanged: (v) => setState(() => _taggingEnabled = v),
+                    ),
+                  ),
+
+                  if (_isEditMode) ...[
+                    const SizedBox(height: 32),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: _saving
+                              ? null
+                              : () => _deleteVehicle(theme),
+                          style: OutlinedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            side: const BorderSide(color: Colors.red),
+                            foregroundColor: Colors.red,
+                          ),
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.red,
+                                  ),
+                                )
+                              : const Text(
+                                  'Delete Vehicle',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          // ADD: Upload progress overlay
+          if (_isUploading)
+            Container(
+              color: Colors.black54,
+              child: Center(
+                child: Card(
+                  margin: const EdgeInsets.all(32),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(
+                          value: _uploadProgress,
+                          strokeWidth: 6,
+                          color: theme.primaryColor,
+                          backgroundColor: Colors.grey[300],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          '${(_uploadProgress * 100).toInt()}%',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _uploadStatus,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        LinearProgressIndicator(
+                          value: _uploadProgress,
+                          backgroundColor: Colors.grey[300],
+                          color: theme.primaryColor,
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ],
-            ],
-          ),
-        ),
+              ),
+            ),
+        ],
       ),
     );
   }
