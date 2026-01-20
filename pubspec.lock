@@ -320,6 +320,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  fluttertagger:
+    dependency: "direct main"
+    description:
+      name: fluttertagger
+      sha256: "3df0132bdd431a7279da78ea70500ea1e767fa093f43f32785b757c10c6a0fcc"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.3.1"
   font_awesome_flutter:
     dependency: "direct main"
     description:
@@ -472,6 +480,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.2"
+  linkify:
+    dependency: "direct main"
+    description:
+      name: linkify
+      sha256: "4139ea77f4651ab9c315b577da2dd108d9aa0bd84b5d03d33323f1970c645832"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.0.0"
   lints:
     dependency: transitive
     description:

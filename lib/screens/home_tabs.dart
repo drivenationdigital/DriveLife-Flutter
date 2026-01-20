@@ -35,7 +35,7 @@ class _HomeTabsState extends State<HomeTabs> {
   final List<Widget> _screens = const [
     PostsScreen(),
     SearchScreen(),
-    CreatePostScreen(),
+    SizedBox.shrink(), // Placeholder for add button (won't be shown)
     Scaffold(body: Center(child: Text('Store'))),
     ProfileScreen(),
   ];
@@ -121,6 +121,68 @@ class _HomeTabsState extends State<HomeTabs> {
             ),
         ],
       ),
+    );
+  }
+
+  // Show add menu popup
+  void _showAddMenu() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.post_add, color: Colors.blue),
+                  title: const Text('Add Post'),
+                  onTap: () {
+                    Navigator.pop(context); // Close bottom sheet
+                    NavigationHelper.navigateTo(
+                      context,
+                      const CreatePostScreen(),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.directions_car,
+                    color: Colors.green,
+                  ),
+                  title: const Text('Add Vehicle'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    // TODO: Navigate to add vehicle screen
+                    // NavigationHelper.navigateTo(context, const AddVehicleScreen());
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Add Vehicle - Coming soon!'),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.event, color: Colors.orange),
+                  title: const Text('Add Event'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    // TODO: Navigate to add event screen
+                    // NavigationHelper.navigateTo(context, const AddEventScreen());
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Add Event - Coming soon!')),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -326,11 +388,6 @@ class _HomeTabsState extends State<HomeTabs> {
                 onTap: () => _goToTab(1),
               ),
               ListTile(
-                leading: const Icon(Icons.add_box_outlined),
-                title: const Text('Add Post'),
-                onTap: () => _goToTab(2),
-              ),
-              ListTile(
                 leading: const Icon(Icons.store_outlined),
                 title: const Text('Store'),
                 onTap: () => _goToTab(3),
@@ -409,7 +466,14 @@ class _HomeTabsState extends State<HomeTabs> {
         unselectedItemColor: Colors.grey,
         iconSize: 28,
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: (index) {
+          // If add button (index 2) is tapped, show menu instead of navigating
+          if (index == 2) {
+            _showAddMenu();
+          } else {
+            setState(() => _currentIndex = index);
+          }
+        },
         items: [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: ''),
           BottomNavigationBarItem(
@@ -423,7 +487,6 @@ class _HomeTabsState extends State<HomeTabs> {
           BottomNavigationBarItem(icon: Icon(Icons.store_outlined), label: ''),
           BottomNavigationBarItem(
             icon: _buildProfileIcon(_currentProfileImageUrl),
-            // activeIcon: _buildProfileIcon(_currentProfileImageUrl),
             label: '',
           ),
         ],

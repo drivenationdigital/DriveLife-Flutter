@@ -107,7 +107,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       );
     }
 
-    // ✅ Reuse PostCard component
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -140,6 +139,19 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           physics:
               const AlwaysScrollableScrollPhysics(), // ✅ Allows pull-to-refresh even if content fits
           child: PostCard(
+            onEdit: () {
+              // After editing
+              // Navigate back to this screen to refresh
+              // Navigator.pushReplacementNamed(
+              //   context,
+              //   '/edit-post',
+              //   arguments: {'postId': _post!['id']},
+              // );
+
+              // Refresh post
+              _refreshPost();
+            },
+            onDelete: () => Navigator.pop(context, true),
             post: _post!,
             onTapProfile: () {
               Navigator.pushNamed(

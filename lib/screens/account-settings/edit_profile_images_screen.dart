@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:drivelife/api/profile_api.dart';
-import 'package:drivelife/screens/custom_image_picker.dart';
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 
@@ -38,25 +39,54 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
     }
   }
 
-  Future<void> _pickImage(bool isProfile) async {
-    final mode = isProfile ? ImagePickerMode.profile : ImagePickerMode.cover;
+  Future<void> _pickImage(bool isProfile, ThemeProvider theme) async {
+    final source = await _showImageSourceDialog(theme);
+    if (source == null) return;
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => CustomImagePicker(
-          mode: mode,
-          onImagesSelected: (files) {
-            if (files.isNotEmpty) {
-              setState(() {
-                if (isProfile) {
-                  _profileImage = files[0];
-                } else {
-                  _coverImage = files[0];
-                }
-              });
-            }
-          },
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: source,
+      imageQuality: 85,
+      maxWidth: 1920,
+      maxHeight: 1920,
+    );
+
+    if (pickedFile != null) {
+      setState(() {
+        if (isProfile) {
+          _profileImage = File(pickedFile.path);
+        } else {
+          _coverImage = File(pickedFile.path);
+        }
+      });
+    }
+  }
+
+  Future<ImageSource?> _showImageSourceDialog(ThemeProvider theme) async {
+    return showDialog<ImageSource>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+        title: const Text(
+          'Upload Image',
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.photo_library, color: theme.primaryColor),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: Icon(Icons.camera_alt, color: theme.primaryColor),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+          ],
         ),
       ),
     );
@@ -206,6 +236,8 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -280,6 +312,7 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
             isProfile: true,
             currentImage: _profileImage,
             currentUrl: _currentProfileImageUrl,
+            theme: theme,
           ),
           const SizedBox(height: 32),
 
@@ -297,6 +330,7 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
             isProfile: false,
             currentImage: _coverImage,
             currentUrl: _currentCoverImageUrl,
+            theme: theme,
           ),
 
           const SizedBox(height: 24),
@@ -329,9 +363,10 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
     required bool isProfile,
     required File? currentImage,
     required String? currentUrl,
+    required ThemeProvider theme,
   }) {
     return GestureDetector(
-      onTap: _isSaving ? null : () => _pickImage(isProfile),
+      onTap: _isSaving ? null : () => _pickImage(isProfile, theme),
       child: Container(
         height: isProfile ? 200 : 200,
         decoration: BoxDecoration(
