@@ -1,4 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/api/posts_api.dart';
+import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/widgets/formatted_text.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
@@ -16,11 +19,19 @@ class PostCard extends StatefulWidget {
   final VoidCallback? onTapProfile;
   final ValueChanged<bool>? onLikeChanged;
 
+  // On delete callback
+  final VoidCallback? onDelete;
+
+  // on edit callback
+  final VoidCallback? onEdit;
+
   const PostCard({
     super.key,
     required this.post,
     this.onTapProfile,
     this.onLikeChanged,
+    this.onDelete,
+    this.onEdit,
   });
 
   @override
@@ -301,9 +312,172 @@ class _PostCardState extends State<PostCard>
     }
   }
 
+  Widget _buildSettingsButton(int? currentUserId) {
+    if (widget.post['user_id'].toString() != currentUserId.toString()) {
+      return const SizedBox.shrink();
+    }
+
+    return GestureDetector(
+      onTap: () => _showPostOptions(),
+      child: const Icon(Icons.more_vert, color: Colors.black, size: 24),
+    );
+  }
+
+  void _showPostOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle bar
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+
+            // Edit Post
+            ListTile(
+              leading: const Icon(Icons.edit, color: Colors.black),
+              title: const Text('Edit Post'),
+              onTap: () {
+                Navigator.pop(context);
+                _editPost();
+              },
+            ),
+
+            const Divider(height: 1),
+
+            // Delete Post
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text(
+                'Delete Post',
+                style: TextStyle(color: Colors.red),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _confirmDeletePost();
+              },
+            ),
+
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _editPost() {
+    // TODO: Navigate to edit post screen
+    print('Edit post: ${widget.post['id']}');
+    if (widget.onEdit != null) {
+      widget.onEdit!();
+    }
+  }
+
+  void _confirmDeletePost() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Post'),
+        content: const Text('Are you sure you want to delete this post?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deletePost();
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deletePost() async {
+    try {
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final user = userProvider.user;
+
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('User not found'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final success = await PostsAPI.deletePost(
+        postId: widget.post['id'].toString(),
+        userId: user['id'].toString(),
+      );
+
+      if (!mounted) return;
+
+      // Hide loading
+      Navigator.pop(context);
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Post deleted successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        if (widget.onDelete != null) {
+          widget.onDelete!();
+        }
+
+        // Optionally: Refresh the feed or remove the post from UI
+        // You might want to call a callback here to refresh the posts list
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to delete post'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final user = userProvider.user;
 
     final media = (widget.post['media'] ?? []) as List<dynamic>;
     final hasMedia = media.isNotEmpty;
@@ -622,6 +796,7 @@ class _PostCardState extends State<PostCard>
                       size: 22,
                     ),
                   ),
+                  _buildSettingsButton(user != null ? user['id'] : null),
                 ],
               ),
             ),
@@ -674,8 +849,7 @@ class _PostCaptionSection extends StatefulWidget {
 }
 
 class _PostCaptionSectionState extends State<_PostCaptionSection> {
-  bool _expanded = false;
-  static const int _maxLines = 2;
+  bool _showFullCaption = false;
 
   @override
   Widget build(BuildContext context) {
@@ -685,47 +859,41 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (caption.isNotEmpty)
-          RichText(
-            text: TextSpan(
-              children: [
-                TextSpan(
-                  text: username,
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-                const TextSpan(text: "  "),
-                TextSpan(
-                  text: caption,
-                  style: const TextStyle(color: Colors.black87, fontSize: 14),
-                ),
-              ],
-            ),
-            maxLines: _expanded ? null : _maxLines,
-            overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+        // Username on its own line
+        Text(
+          username,
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
           ),
-        if (caption.isNotEmpty)
-          GestureDetector(
-            onTap: () {
-              if (!mounted) return;
-              setState(() => _expanded = !_expanded);
+        ),
+
+        // Caption below username
+        if (caption.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          FormattedText(
+            text: caption,
+            showAllText: _showFullCaption,
+            maxTextLength: 100,
+            onSuffixPressed: () {
+              setState(() {
+                _showFullCaption = !_showFullCaption;
+              });
             },
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                _expanded ? 'Show less' : 'Show more',
-                style: const TextStyle(
-                  color: Colors.grey,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
+            suffix: _showFullCaption ? 'Show less' : 'Show more',
+            onUserTagPressed: (userId) {
+              Navigator.pushNamed(
+                context,
+                '/view-profile',
+                arguments: {'userId': userId},
+              );
+            },
           ),
+        ],
+
         const SizedBox(height: 6),
+
         if (widget.commentsCount > 0)
           GestureDetector(
             onTap: widget.onViewComments,
