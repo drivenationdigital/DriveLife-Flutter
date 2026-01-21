@@ -1,3 +1,5 @@
+import 'package:drivelife/api/profile_api.dart';
+import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 
@@ -20,6 +22,15 @@ class UserProvider extends ChangeNotifier {
     _user = profile;
     _loading = false;
     notifyListeners();
+
+    // In your login screen or user provider
+    final token = await FirebaseMessagingService.getToken();
+    if (token != null && user != null) {
+      await ProfileAPI.associateDeviceWithUser(
+        deviceToken: token,
+        userId: user!['id'],
+      );
+    }
   }
 
   /// 🔹 Set user manually (e.g. after login)

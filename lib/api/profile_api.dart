@@ -6,6 +6,35 @@ class ProfileAPI {
   static const String _baseUrl = 'https://www.carevents.com/uk';
   static const _storage = FlutterSecureStorage();
 
+  static Future<Map<String, dynamic>?> associateDeviceWithUser({
+    required int userId,
+    required String deviceToken,
+  }) async {
+    try {
+      final uri = Uri.parse(
+        '$_baseUrl/wp-json/expoapi/v1/associate-user-with-device',
+      );
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'user_id': userId, 'device_id': deviceToken}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('✅ Device associated with user: $data');
+        return data;
+      } else {
+        print('❌ Failed to associate device: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ Error associating device with user: $e');
+      return null;
+    }
+  }
+
   /// Add user profile links
   static Future<Map<String, dynamic>?> addUserProfileLinks({
     required Map<String, String> link,

@@ -1,4 +1,4 @@
-package com.example.drivelife
+package com.app.carcalendar
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "602725811426",
+    "project_id": "drivelife-messaging",
+    "storage_bucket": "drivelife-messaging.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:602725811426:android:4d9d31c77e096357014abb",
+        "android_client_info": {
+          "package_name": "com.app.carcalendar"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB6HnKuLi1S8nEm2syx6-qKTpsM1jsfm30"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

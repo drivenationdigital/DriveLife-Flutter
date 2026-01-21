@@ -8,7 +8,7 @@
 PRODUCT_NAME = drivelife
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.drivelife
+PRODUCT_BUNDLE_IDENTIFIER = com.app.carcalendar
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2025 com.example. All rights reserved.
