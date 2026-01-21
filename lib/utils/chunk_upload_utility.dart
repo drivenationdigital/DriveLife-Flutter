@@ -20,22 +20,40 @@ class ChunkUploadUtility {
   /// - [userId]: The user ID uploading the image
   /// - [type]: The type of image ('profile', 'cover', 'garage', etc.)
   /// - [onProgress]: Optional callback for upload progress updates
-  static Future<Map<String, dynamic>?> uploadImageInChunks({
-    required String base64Image,
+  static Future<Map<String, dynamic>?> uploadMediaInChunks({
+    required String base64Media,
     required int userId,
     required String type,
     ProgressCallback? onProgress,
   }) async {
     try {
       // Remove data URL prefix to get pure base64
-      final parts = base64Image.split(',');
-      final base64Data = parts.length > 1 ? parts[1] : base64Image;
+      final parts = base64Media.split(',');
+      final base64Data = parts.length > 1 ? parts[1] : base64Media;
 
-      // Extract extension from data URL
-      final extensionMatch = RegExp(
-        r'data:image/(\w+);',
-      ).firstMatch(base64Image);
-      final extension = extensionMatch?.group(1) ?? 'jpg';
+      // Extract extension from data URL (handles both image and video)
+      String extension = 'jpg'; // default
+
+      // Check for image
+      final imageMatch = RegExp(r'data:image/(\w+);').firstMatch(base64Media);
+      if (imageMatch != null) {
+        extension = imageMatch.group(1) ?? 'jpg';
+      } else {
+        // Check for video
+        final videoMatch = RegExp(r'data:video/(\w+);').firstMatch(base64Media);
+        if (videoMatch != null) {
+          extension = videoMatch.group(1) ?? 'mp4';
+
+          // Handle special cases for video extensions
+          if (extension == 'quicktime') {
+            extension = 'mov';
+          } else if (extension == 'x-msvideo') {
+            extension = 'avi';
+          } else if (extension == 'x-matroska') {
+            extension = 'mkv';
+          }
+        }
+      }
 
       // Generate unique filename
       final fileName =
@@ -57,7 +75,7 @@ class ChunkUploadUtility {
         final chunk = base64Data.substring(start, end);
 
         final uri = Uri.parse(
-          '$_baseUrl/wp-json/app/v1/upload-media-cloudflare-chunks',
+          '$_baseUrl/wp-json/app/v2/upload-media-cloudflare-chunks',
         );
 
         // Calculate and report progress
@@ -101,7 +119,7 @@ class ChunkUploadUtility {
       print('Chunk upload completed successfully');
       return lastResponse;
     } catch (e) {
-      print('Error uploading image in chunks: $e');
+      print('Error uploading media in chunks: $e');
       rethrow;
     }
   }
@@ -154,8 +172,8 @@ class ChunkUploadUtility {
     ProgressCallback? onProgress,
   }) async {
     try {
-      final uploadResult = await uploadImageInChunks(
-        base64Image: base64Image,
+      final uploadResult = await uploadMediaInChunks(
+        base64Media: base64Image,
         userId: userId,
         type: type,
         onProgress: onProgress,

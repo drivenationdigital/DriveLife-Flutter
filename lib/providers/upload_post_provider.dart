@@ -3,11 +3,13 @@ import 'package:drivelife/screens/create_post_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/tagged_entity.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:video_player/video_player.dart';
 
 enum UploadStatus { idle, uploading, processing, completed, failed }
 
 class UploadPostData {
-  final String id; // unique ID for this upload
+  final String id;
   final List<File> mediaFiles;
   final List<bool> isVideoList;
   final String caption;
@@ -77,6 +79,8 @@ class UploadPostProgress {
 
 class UploadPostProvider with ChangeNotifier {
   final Map<String, UploadPostProgress> _uploads = {};
+  final FlutterLocalNotificationsPlugin _notificationsPlugin =
+      FlutterLocalNotificationsPlugin();
 
   Map<String, UploadPostProgress> get uploads => Map.unmodifiable(_uploads);
 
@@ -88,7 +92,134 @@ class UploadPostProvider with ChangeNotifier {
 
   UploadPostProgress? getUpload(String uploadId) => _uploads[uploadId];
 
+  // Initialize notifications
+  Future<void> initializeNotifications() async {
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+
+    await _notificationsPlugin.initialize(initSettings);
+  }
+
+  // Show progress notification
+  Future<void> _showProgressNotification(
+    String uploadId,
+    int progress,
+    String message,
+  ) async {
+    final androidDetails = AndroidNotificationDetails(
+      'upload_channel',
+      'Upload Progress',
+      channelDescription: 'Shows upload progress for posts',
+      importance: Importance.low,
+      priority: Priority.low,
+      showProgress: true,
+      maxProgress: 100,
+      progress: progress,
+      ongoing: true,
+      autoCancel: false,
+    );
+
+    final iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: false,
+    );
+
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _notificationsPlugin.show(
+      uploadId.hashCode,
+      'Uploading Post',
+      message,
+      details,
+    );
+  }
+
+  // Show completion notification
+  Future<void> _showCompletionNotification(
+    String uploadId,
+    bool success,
+    String message,
+  ) async {
+    final androidDetails = AndroidNotificationDetails(
+      'upload_complete_channel',
+      'Upload Complete',
+      channelDescription: 'Notifies when upload is complete',
+      importance: Importance.high,
+      priority: Priority.high,
+      showProgress: false,
+      ongoing: false,
+      autoCancel: true,
+    );
+
+    final iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _notificationsPlugin.show(
+      uploadId.hashCode,
+      success ? '✅ Upload Complete' : '❌ Upload Failed',
+      message,
+      details,
+    );
+  }
+
+  // Cancel notification
+  Future<void> _cancelNotification(String uploadId) async {
+    await _notificationsPlugin.cancel(uploadId.hashCode);
+  }
+
+  // Get dimensions for media
+  Future<Map<String, int>> _getMediaDimensions(File file, bool isVideo) async {
+    if (isVideo) {
+      try {
+        final controller = VideoPlayerController.file(file);
+        await controller.initialize();
+        final width = controller.value.size.width.toInt();
+        final height = controller.value.size.height.toInt();
+        controller.dispose();
+        return {'width': width, 'height': height};
+      } catch (e) {
+        print('Error getting video dimensions: $e');
+        return {'width': 1920, 'height': 1080}; // Default
+      }
+    } else {
+      try {
+        final bytes = await file.readAsBytes();
+        final image = await decodeImageFromList(bytes);
+        return {'width': image.width, 'height': image.height};
+      } catch (e) {
+        print('Error getting image dimensions: $e');
+        return {'width': 1080, 'height': 1080}; // Default
+      }
+    }
+  }
+
   Future<void> startUpload(UploadPostData data) async {
+    // Initialize notifications
+    await initializeNotifications();
+
     // Create initial progress
     _uploads[data.id] = UploadPostProgress(
       uploadId: data.id,
@@ -98,19 +229,25 @@ class UploadPostProvider with ChangeNotifier {
     );
     notifyListeners();
 
+    // Show initial notification
+    await _showProgressNotification(data.id, 0, 'Preparing upload...');
+
     try {
-      // Convert files to MediaItem format
+      // Convert files to MediaItem format with dimensions
       final mediaList = <MediaItem>[];
       for (int i = 0; i < data.mediaFiles.length; i++) {
         final file = data.mediaFiles[i];
         final isVideo = data.isVideoList[i];
 
+        // Get actual dimensions
+        final dimensions = await _getMediaDimensions(file, isVideo);
+
         mediaList.add(
           MediaItem(
             file: file,
             isVideo: isVideo,
-            height: 0, // You can get actual dimensions if needed
-            width: 0,
+            height: dimensions['height'] ?? 0,
+            width: dimensions['width'] ?? 0,
           ),
         );
       }
@@ -120,13 +257,19 @@ class UploadPostProvider with ChangeNotifier {
         mediaList: mediaList,
         userId: data.userId,
         onProgress: (current, total, percentage) {
+          final progress = (percentage * 100).toInt();
+          final message = 'Uploading ${current + 1}/$total items';
+
           _uploads[data.id] = _uploads[data.id]!.copyWith(
             progress: percentage,
             currentItem: current + 1,
             totalItems: total,
-            statusMessage: 'Uploading ${current + 1}/$total items',
+            statusMessage: message,
           );
           notifyListeners();
+
+          // Update notification
+          _showProgressNotification(data.id, progress, message);
         },
       );
 
@@ -137,6 +280,8 @@ class UploadPostProvider with ChangeNotifier {
         statusMessage: 'Creating post...',
       );
       notifyListeners();
+
+      await _showProgressNotification(data.id, 95, 'Creating post...');
 
       // Create post
       final postResult = await PostsAPI.createPost(
@@ -179,6 +324,14 @@ class UploadPostProvider with ChangeNotifier {
       );
       notifyListeners();
 
+      // Show completion notification
+      await _cancelNotification(data.id);
+      await _showCompletionNotification(
+        data.id,
+        true,
+        'Your post has been published successfully!',
+      );
+
       // Auto-remove after 3 seconds
       Future.delayed(const Duration(seconds: 3), () {
         _uploads.remove(data.id);
@@ -192,6 +345,14 @@ class UploadPostProvider with ChangeNotifier {
       );
       notifyListeners();
 
+      // Show error notification
+      await _cancelNotification(data.id);
+      await _showCompletionNotification(
+        data.id,
+        false,
+        'Failed to upload post: ${e.toString()}',
+      );
+
       // Auto-remove failed uploads after 5 seconds
       Future.delayed(const Duration(seconds: 5), () {
         _uploads.remove(data.id);
@@ -201,12 +362,13 @@ class UploadPostProvider with ChangeNotifier {
   }
 
   void cancelUpload(String uploadId) {
+    _cancelNotification(uploadId);
     _uploads.remove(uploadId);
     notifyListeners();
   }
 
   void retryUpload(String uploadId) {
-    // You can implement retry logic here
+    _cancelNotification(uploadId);
     _uploads.remove(uploadId);
     notifyListeners();
   }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/search_view_model.dart';
@@ -13,6 +14,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:fluttertagger/fluttertagger.dart';
 import 'package:video_compress/video_compress.dart';
+import 'package:rxdart/rxdart.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -46,6 +48,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final FlutterTaggerController _captionController = FlutterTaggerController();
   final ImagePicker _picker = ImagePicker();
   final PageController _pageController = PageController();
+  Subscription? _compressSubscription;
 
   List<TaggedEntity> _taggedUsers = [];
   List<TaggedEntity> _taggedVehicles = [];
@@ -63,11 +66,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   @override
   void initState() {
     super.initState();
-    VideoCompress.compressProgress$.subscribe((progress) {
-      setState(() {
-        _uploadProgress = progress / 100;
-        _uploadStatus = 'Compressing video: ${progress.toInt()}%';
-      });
+
+    // Update this section 👇
+    _compressSubscription = VideoCompress.compressProgress$.subscribe((
+      progress,
+    ) {
+      if (mounted) {
+        setState(() {
+          _uploadProgress = progress / 100;
+          _uploadStatus = 'Compressing video: ${progress.toInt()}%';
+        });
+      }
     });
   }
 
@@ -76,6 +85,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     _captionController.dispose();
     _linkUrlController.dispose();
     _pageController.dispose();
+
+    // Add these lines 👇
+    _compressSubscription?.unsubscribe();
+    _compressSubscription = null;
+
     VideoCompress.cancelCompression();
     for (var media in _selectedMedia) {
       media.dispose();
@@ -93,9 +107,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       final info = await VideoCompress.compressVideo(
         videoFile.path,
-        quality: VideoQuality.HighestQuality,
+        quality: VideoQuality
+            .Res1280x720Quality, // Change to Medium for better audio
         deleteOrigin: false,
         includeAudio: true,
+        // Add these parameters 👇
+        frameRate: 60,
+        // videoBitrate: 2500000, // 2.5 Mbps
+        // audioBitrate: 128000, // 128 kbps - ensures audio quality
       );
 
       if (info != null && info.file != null) {
