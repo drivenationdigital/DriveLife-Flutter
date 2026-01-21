@@ -1,4 +1,5 @@
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'routes.dart';
@@ -13,6 +14,7 @@ void main() {
         ChangeNotifierProvider(create: (_) => UserProvider()),
         ChangeNotifierProvider(create: (_) => VideoMuteProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => UploadPostProvider()),
       ],
       child: const MyApp(),
     ),
