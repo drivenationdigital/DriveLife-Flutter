@@ -1,7 +1,10 @@
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/providers/upload_post_provider.dart';
+import 'package:drivelife/widgets/upload_progress_card.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/scheduler.dart';
+import 'dart:async';
 
 import '../api/posts_api.dart';
 import '../providers/user_provider.dart';
@@ -34,29 +37,44 @@ class _PostsScreenState extends State<PostsScreen>
   bool hasMoreLatest = true;
   bool hasMoreFollowing = true;
 
-  bool showFollowing = false; // current tab state
+  bool showFollowing = false;
+
+  // Track completed uploads to trigger refresh
+  Set<String> _completedUploads = {};
+
+  // Debounce timer for scroll events
+  Timer? _scrollDebounce;
 
   @override
   void initState() {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) fetchPosts(); // safe provider access
+      if (mounted) fetchPosts();
     });
 
     _scrollController.addListener(_onScroll);
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >=
-            _scrollController.position.maxScrollExtent - 300 &&
-        !isLoading) {
-      fetchPosts(); // fetch more based on active tab
-    }
+    // Debounce scroll events to prevent excessive calls
+    if (_scrollDebounce?.isActive ?? false) _scrollDebounce!.cancel();
+
+    _scrollDebounce = Timer(const Duration(milliseconds: 200), () {
+      if (_scrollController.hasClients &&
+          _scrollController.position.pixels >=
+              _scrollController.position.maxScrollExtent - 500 &&
+          !isLoading) {
+        fetchPosts();
+      }
+    });
   }
 
   Future<void> fetchPosts({bool refresh = false}) async {
     if (isLoading) return;
+
+    // Don't trigger setState if already loading
+    if (!mounted) return;
 
     setState(() => isLoading = true);
 
@@ -65,82 +83,78 @@ class _PostsScreenState extends State<PostsScreen>
     final token = await _auth.getToken();
 
     if (user == null || token == null) {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
       return;
     }
 
     final followingOnly = showFollowing ? 1 : 0;
-
-    // Determine page
     int currentPage = showFollowing ? followingPage : latestPage;
 
-    // Refresh logic
     if (refresh) {
       currentPage = 1;
 
       if (showFollowing) {
         followingPosts.clear();
         hasMoreFollowing = true;
+        followingPage = 1;
       } else {
         latestPosts.clear();
         hasMoreLatest = true;
+        latestPage = 1;
       }
     }
 
-    final newPosts = await PostsAPI.getPosts(
-      token: token,
-      userId: user['id'],
-      page: currentPage,
-      limit: 10,
-      followingOnly: followingOnly,
-    );
+    try {
+      final newPosts = await PostsAPI.getPosts(
+        token: token,
+        userId: user['id'],
+        page: currentPage,
+        limit: 10,
+        followingOnly: followingOnly,
+      );
 
-    // final sampleVideos = [
-    //   'https://videodelivery.net/c2b98b8485461a046d6fc867d57b6782/manifest/video.m3u8',
-    //   'https://videodelivery.net/f2c5e16577b2dbfc2b629b9ebedba218/manifest/video.m3u8',
-    // ];
-
-    // for (var post in newPosts) {
-    //   if (post['media'] is List && post['media'].isNotEmpty) {
-    //     // 60% chance to convert 1 media item into a "video"
-    //     if (post.hashCode % 3 == 0) {
-    //       final randomVideo = sampleVideos[post.hashCode % sampleVideos.length];
-    //       post['media'][0] = {
-    //         'media_url': randomVideo,
-    //         'media_type': 'video',
-    //         'blurred_url': null,
-    //       };
-
-    //       // remove other media items for simplicity
-    //       post['media'] = [post['media'][0]];
-    //     }
-    //   }
-    // }
-
-    // DELAY the rebuilding so it doesn't happen during scrolling
-    SchedulerBinding.instance.addPostFrameCallback((_) {
+      // Use addPostFrameCallback to avoid setState during build
       if (!mounted) return;
 
-      setState(() {
-        if (showFollowing) {
-          followingPosts.addAll(newPosts);
-          followingPage++;
-          hasMoreFollowing = newPosts.isNotEmpty;
-        } else {
-          latestPosts.addAll(newPosts);
-          latestPage++;
-          hasMoreLatest = newPosts.isNotEmpty;
-        }
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
 
-        isLoading = false;
+        setState(() {
+          if (showFollowing) {
+            if (refresh) {
+              followingPosts = newPosts;
+            } else {
+              followingPosts.addAll(newPosts);
+            }
+            followingPage++;
+            hasMoreFollowing =
+                newPosts.length >= 10; // If less than limit, no more
+          } else {
+            if (refresh) {
+              latestPosts = newPosts;
+            } else {
+              latestPosts.addAll(newPosts);
+            }
+            latestPage++;
+            hasMoreLatest = newPosts.length >= 10;
+          }
+
+          isLoading = false;
+        });
       });
-    });
+    } catch (e) {
+      print('Error fetching posts: $e');
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+    }
   }
 
   void _switchTab(bool following) {
+    if (showFollowing == following) return; // Avoid unnecessary rebuilds
+
     setState(() => showFollowing = following);
 
-    // Only fetch once per tab, unless it’s empty
     if (following && followingPosts.isEmpty) {
       fetchPosts();
     } else if (!following && latestPosts.isEmpty) {
@@ -148,8 +162,27 @@ class _PostsScreenState extends State<PostsScreen>
     }
   }
 
+  void _checkUploadCompletions(Map<String, UploadPostProgress> uploads) {
+    for (final entry in uploads.entries) {
+      if (entry.value.status == UploadStatus.completed &&
+          !_completedUploads.contains(entry.key)) {
+        _completedUploads.add(entry.key);
+
+        // Debounce refresh to avoid multiple rapid refreshes
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            fetchPosts(refresh: true);
+          }
+        });
+      }
+    }
+
+    _completedUploads.removeWhere((id) => !uploads.containsKey(id));
+  }
+
   @override
   void dispose() {
+    _scrollDebounce?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -159,7 +192,6 @@ class _PostsScreenState extends State<PostsScreen>
     super.build(context);
     final theme = Provider.of<ThemeProvider>(context);
 
-    // Pick which feed to show
     final posts = showFollowing ? followingPosts : latestPosts;
     final hasMore = showFollowing ? hasMoreFollowing : hasMoreLatest;
 
@@ -167,93 +199,178 @@ class _PostsScreenState extends State<PostsScreen>
       backgroundColor: Colors.white,
       body: Column(
         children: [
-          // --- Tabs ---
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _tabButton(
-                  'Latest',
-                  !showFollowing,
-                  () => _switchTab(false),
-                  theme,
-                ),
-                const SizedBox(width: 12),
-                _tabButton(
-                  'Following',
-                  showFollowing,
-                  () => _switchTab(true),
-                  theme,
-                ),
-              ],
-            ),
-          ),
+          // Tabs - Make const where possible
+          _TabBar(showFollowing: showFollowing, onTabChanged: _switchTab),
 
-          // --- Feed ---
+          // Feed
           Expanded(
             child: RefreshIndicator(
               color: theme.primaryColor,
               backgroundColor: theme.backgroundColor,
               onRefresh: () => fetchPosts(refresh: true),
-              child: ListView.builder(
+              // Separate Consumer to only rebuild upload section
+              child: CustomScrollView(
                 controller: _scrollController,
-                itemCount: posts.length + (hasMore ? 1 : 0),
-                addAutomaticKeepAlives: false,
-                addRepaintBoundaries: true,
-                addSemanticIndexes: false,
-                cacheExtent: 1200,
-                itemBuilder: (context, index) {
-                  if (index == posts.length) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: theme.primaryColor,
+                physics:
+                    const AlwaysScrollableScrollPhysics(), // For RefreshIndicator
+                cacheExtent: 2000, // Increased cache for smoother scrolling
+                slivers: [
+                  // Upload progress cards - isolated in Consumer
+                  Consumer<UploadPostProvider>(
+                    builder: (context, uploadProvider, _) {
+                      final uploads = uploadProvider.uploads;
+                      _checkUploadCompletions(uploads);
+
+                      if (uploads.isEmpty) {
+                        return const SliverToBoxAdapter(
+                          child: SizedBox.shrink(),
+                        );
+                      }
+
+                      return SliverToBoxAdapter(
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 8),
+                            ...uploads.entries.map((entry) {
+                              return UploadProgressCard(
+                                key: ValueKey(entry.key),
+                                uploadId: entry.key,
+                                progress: entry.value,
+                              );
+                            }),
+                          ],
                         ),
-                      ),
-                    );
-                  }
-
-                  return PostCard(
-                    key: ValueKey(posts[index]['id']), // helps element reuse
-                    post: posts[index],
-                    onTapProfile: () {
-                      final userId = posts[index]['user_id'];
-                      final username = posts[index]['username'];
-
-                      Navigator.pushNamed(
-                        context,
-                        '/view-profile',
-                        arguments: {'userId': userId, 'username': username},
                       );
                     },
+                  ),
 
-                    onLikeChanged: (isLiked) {
-                      posts[index]['is_liked'] = isLiked;
-                      posts[index]['likes_count'] += isLiked ? 1 : -1;
-                    },
-                  );
-                },
+                  // Posts list - optimized with SliverList
+                  if (posts.isEmpty && !isLoading)
+                    const SliverFillRemaining(
+                      child: Center(
+                        child: Text(
+                          'No posts yet',
+                          style: TextStyle(fontSize: 16, color: Colors.grey),
+                        ),
+                      ),
+                    )
+                  else
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          // Loading indicator at the end
+                          if (index == posts.length) {
+                            if (!hasMore) return const SizedBox.shrink();
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 24),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: theme.primaryColor,
+                                  strokeWidth: 2.5,
+                                ),
+                              ),
+                            );
+                          }
+
+                          final post = posts[index];
+
+                          // Wrap each post in RepaintBoundary for better performance
+                          return RepaintBoundary(
+                            child: PostCard(
+                              key: ValueKey(post['id']),
+                              post: post,
+                              onTapProfile: () {
+                                Navigator.pushNamed(
+                                  context,
+                                  '/view-profile',
+                                  arguments: {
+                                    'userId': post['user_id'],
+                                    'username': post['username'],
+                                  },
+                                );
+                              },
+                              onLikeChanged: (isLiked) {
+                                // Update without setState for better performance
+                                post['is_liked'] = isLiked;
+                                post['likes_count'] += isLiked ? 1 : -1;
+                              },
+                            ),
+                          );
+                        },
+                        childCount: posts.length + (hasMore ? 1 : 0),
+                        addAutomaticKeepAlives: true, // Keep post state
+                        addRepaintBoundaries:
+                            false, // We're adding them manually
+                        addSemanticIndexes: false,
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
-          // --- Feed ---
         ],
       ),
     );
   }
+}
 
-  Widget _tabButton(
-    String label,
-    bool active,
-    VoidCallback onTap,
-    ThemeProvider theme,
-  ) {
+// Extracted tab bar as separate widget for better performance
+class _TabBar extends StatelessWidget {
+  final bool showFollowing;
+  final Function(bool) onTabChanged;
+
+  const _TabBar({required this.showFollowing, required this.onTabChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _TabButton(
+            label: 'Latest',
+            active: !showFollowing,
+            onTap: () => onTabChanged(false),
+            theme: theme,
+          ),
+          const SizedBox(width: 12),
+          _TabButton(
+            label: 'Following',
+            active: showFollowing,
+            onTap: () => onTabChanged(true),
+            theme: theme,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TabButton extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  final ThemeProvider theme;
+
+  const _TabButton({
+    required this.label,
+    required this.active,
+    required this.onTap,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
           height: 34,
           decoration: BoxDecoration(
             color: active ? theme.primaryColor : Colors.grey[200],

@@ -18,11 +18,7 @@ class PostCard extends StatefulWidget {
   final Map<String, dynamic> post;
   final VoidCallback? onTapProfile;
   final ValueChanged<bool>? onLikeChanged;
-
-  // On delete callback
   final VoidCallback? onDelete;
-
-  // on edit callback
   final VoidCallback? onEdit;
 
   const PostCard({
@@ -39,9 +35,18 @@ class PostCard extends StatefulWidget {
 }
 
 class _PostCardState extends State<PostCard>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true; // ✅ Keep state alive during scrolling
+
   late AnimationController _heartController;
   late Animation<double> _heartScale;
+
+  // Cache computed values
+  late final String _formattedDate;
+  late final List<dynamic> _media;
+  late final double _maxMediaHeight;
+  late final bool _hasMedia;
 
   int _currentPage = 0;
   bool _liked = false;
@@ -55,6 +60,11 @@ class _PostCardState extends State<PostCard>
 
     _liked = widget.post['is_liked'] ?? false;
     _likesCount = (widget.post['likes_count'] ?? 0) as int;
+
+    // ✅ Cache values that don't change
+    _formattedDate = _formatPostDate(widget.post['post_date']);
+    _media = (widget.post['media'] ?? []) as List<dynamic>;
+    _hasMedia = _media.isNotEmpty;
 
     _heartController = AnimationController(
       duration: const Duration(milliseconds: 900),
@@ -84,7 +94,28 @@ class _PostCardState extends State<PostCard>
         weight: 30,
       ),
     ]).animate(_heartController);
+
+    // ✅ Preload first media item
+    if (_hasMedia) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _preloadMedia(_media, 0);
+      });
+    }
   }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // ✅ Calculate height only once when dependencies are available
+    if (_hasMedia && !_heightCalculated) {
+      _maxMediaHeight = _calculateMaxHeight(context, _media);
+      _heightCalculated = true;
+    }
+  }
+
+  bool _heightCalculated = false;
+  // double _maxMediaHeight = 0.0;
 
   @override
   void didUpdateWidget(covariant PostCard oldWidget) {
@@ -110,7 +141,10 @@ class _PostCardState extends State<PostCard>
     super.dispose();
   }
 
-  String formatPostDate(String dateStr) {
+  // ✅ Static method - no need to rebuild
+  static String _formatPostDate(String? dateStr) {
+    if (dateStr == null) return '';
+
     try {
       final DateTime postDate = DateTime.parse(dateStr);
       final Duration diff = DateTime.now().difference(postDate);
@@ -165,9 +199,7 @@ class _PostCardState extends State<PostCard>
       if (displayHeight > maxHeight) maxHeight = displayHeight;
     }
 
-    if (maxHeight == 0) {
-      maxHeight = screenW;
-    }
+    if (maxHeight == 0) maxHeight = screenW;
 
     return maxHeight;
   }
@@ -268,59 +300,16 @@ class _PostCardState extends State<PostCard>
   }
 
   void _preloadMedia(List media, int index) {
-    // Preload next image
+    // ✅ Only preload next image (not previous to reduce memory)
     if (index + 1 < media.length) {
       final next = media[index + 1];
       if (next['media_type'] == 'image') {
-        try {
-          // Preload both blurred and full resolution
-          if (next['blurred_url'] != null && next['blurred_url'].isNotEmpty) {
-            CachedNetworkImageProvider(
-              next['blurred_url'],
-            ).resolve(ImageConfiguration());
-          }
-          if (next['media_url'] != null && next['media_url'].isNotEmpty) {
-            CachedNetworkImageProvider(
-              next['media_url'],
-            ).resolve(ImageConfiguration());
-          }
-        } catch (e) {
-          print('⚠️ Preload error (next): $e');
+        final nextUrl = next['media_url'];
+        if (nextUrl != null && nextUrl.isNotEmpty) {
+          precacheImage(CachedNetworkImageProvider(nextUrl), context);
         }
       }
     }
-
-    // Preload previous image
-    if (index - 1 >= 0) {
-      final prev = media[index - 1];
-      if (prev['media_type'] == 'image') {
-        try {
-          if (prev['blurred_url'] != null && prev['blurred_url'].isNotEmpty) {
-            CachedNetworkImageProvider(
-              prev['blurred_url'],
-            ).resolve(ImageConfiguration());
-          }
-          if (prev['media_url'] != null && prev['media_url'].isNotEmpty) {
-            CachedNetworkImageProvider(
-              prev['media_url'],
-            ).resolve(ImageConfiguration());
-          }
-        } catch (e) {
-          print('⚠️ Preload error (prev): $e');
-        }
-      }
-    }
-  }
-
-  Widget _buildSettingsButton(int? currentUserId) {
-    if (widget.post['user_id'].toString() != currentUserId.toString()) {
-      return const SizedBox.shrink();
-    }
-
-    return GestureDetector(
-      onTap: () => _showPostOptions(),
-      child: const Icon(Icons.more_vert, color: Colors.black, size: 24),
-    );
   }
 
   void _showPostOptions() {
@@ -333,7 +322,6 @@ class _PostCardState extends State<PostCard>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle bar
             Container(
               width: 40,
               height: 4,
@@ -343,20 +331,15 @@ class _PostCardState extends State<PostCard>
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-
-            // Edit Post
             ListTile(
               leading: const Icon(Icons.edit, color: Colors.black),
               title: const Text('Edit Post'),
               onTap: () {
                 Navigator.pop(context);
-                _editPost();
+                widget.onEdit?.call();
               },
             ),
-
             const Divider(height: 1),
-
-            // Delete Post
             ListTile(
               leading: const Icon(Icons.delete, color: Colors.red),
               title: const Text(
@@ -368,20 +351,11 @@ class _PostCardState extends State<PostCard>
                 _confirmDeletePost();
               },
             ),
-
             const SizedBox(height: 8),
           ],
         ),
       ),
     );
-  }
-
-  void _editPost() {
-    // TODO: Navigate to edit post screen
-    print('Edit post: ${widget.post['id']}');
-    if (widget.onEdit != null) {
-      widget.onEdit!();
-    }
   }
 
   void _confirmDeletePost() {
@@ -407,27 +381,30 @@ class _PostCardState extends State<PostCard>
     );
   }
 
-  void _deletePost() async {
+  Future<void> _deletePost() async {
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final user = userProvider.user;
 
       if (user == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('User not found'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('User not found'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
         return;
       }
 
-      // Show loading
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      );
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const Center(child: CircularProgressIndicator()),
+        );
+      }
 
       final success = await PostsAPI.deletePost(
         postId: widget.post['id'].toString(),
@@ -436,7 +413,6 @@ class _PostCardState extends State<PostCard>
 
       if (!mounted) return;
 
-      // Hide loading
       Navigator.pop(context);
 
       if (success) {
@@ -446,13 +422,7 @@ class _PostCardState extends State<PostCard>
             backgroundColor: Colors.green,
           ),
         );
-
-        if (widget.onDelete != null) {
-          widget.onDelete!();
-        }
-
-        // Optionally: Refresh the feed or remove the post from UI
-        // You might want to call a callback here to refresh the posts list
+        widget.onDelete?.call();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -464,6 +434,7 @@ class _PostCardState extends State<PostCard>
     } catch (e) {
       if (!mounted) return;
 
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error: ${e.toString()}'),
@@ -475,346 +446,86 @@ class _PostCardState extends State<PostCard>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Provider.of<ThemeProvider>(context);
+    super.build(context); // ✅ Required for AutomaticKeepAliveClientMixin
+
+    // ✅ Get providers once, use listen: false
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final user = userProvider.user;
 
-    final media = (widget.post['media'] ?? []) as List<dynamic>;
-    final hasMedia = media.isNotEmpty;
-    final maxMediaHeight = hasMedia ? _calculateMaxHeight(context, media) : 0.0;
-
-    return RepaintBoundary(
-      child: Card(
-        color: Colors.white,
-        margin: EdgeInsets.zero,
-        elevation: 0,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ----- Header -----
-            ListTile(
-              leading: ProfileAvatar(
-                imageUrl: widget.post['user_profile_image'],
-                onTap: widget.onTapProfile,
-              ),
-              title: GestureDetector(
-                onTap: widget.onTapProfile,
-                child: Row(
-                  children: [
-                    Text(
-                      widget.post['username'] ?? '',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                      ),
-                    ),
-                    if (widget.post['user_verified'] == true) ...[
-                      SizedBox(width: 4),
-                      Icon(
-                        Icons.verified,
-                        size: 16,
-                        color: theme.primaryColor,
-                      ), // ✅ After name
-                    ],
-                  ],
-                ),
-              ),
-              subtitle: Text(
-                formatPostDate(widget.post['post_date']),
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
+    return Card(
+      color: Colors.white,
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ✅ Header - Wrapped in RepaintBoundary
+          RepaintBoundary(
+            child: _PostHeader(
+              profileImage: widget.post['user_profile_image'],
+              username: widget.post['username'] ?? '',
+              isVerified: widget.post['user_verified'] == true,
+              date: _formattedDate,
+              currentUserId: user?['id'],
+              postUserId: widget.post['user_id'],
+              onTapProfile: widget.onTapProfile,
+              onSettings: _showPostOptions,
+              primaryColor: theme.primaryColor,
             ),
+          ),
 
-            // ----- Media -----
-            if (hasMedia)
-              GestureDetector(
+          // ✅ Media - Wrapped in RepaintBoundary
+          if (_hasMedia)
+            RepaintBoundary(
+              child: _MediaCarousel(
+                media: _media,
+                maxHeight: _maxMediaHeight,
+                currentPage: _currentPage,
+                allowSwipe: _allowSwipe,
+                showHeart: _showHeart,
+                heartAnimation: _heartScale,
+                heartController: _heartController,
+                onPageChanged: (i) {
+                  if (!mounted) return;
+                  setState(() => _currentPage = i);
+                  _preloadMedia(_media, i);
+                },
                 onDoubleTap: _handleDoubleTap,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      height: maxMediaHeight,
-                      child: PageView.builder(
-                        physics: _allowSwipe
-                            ? const PageScrollPhysics()
-                            : const NeverScrollableScrollPhysics(),
-                        itemCount: media.length,
-                        onPageChanged: (i) {
-                          if (!mounted) return;
-                          setState(() => _currentPage = i);
-                          _preloadMedia(media, i);
-                        },
-                        itemBuilder: (context, i) {
-                          final item = media[i];
-                          final isVideo = item['media_type'] == 'video';
-
-                          final screenW = MediaQuery.of(context).size.width;
-                          final imgW = _parseDouble(item['media_width']);
-                          final imgH = _parseDouble(item['media_height']);
-                          final aspect = (imgW > 0 && imgH > 0)
-                              ? imgW / imgH
-                              : 1.0;
-
-                          final naturalH = screenW / aspect;
-                          final itemHeight = naturalH > maxMediaHeight
-                              ? maxMediaHeight
-                              : naturalH;
-                          final blurredUrl = item['blurred_url'];
-                          final mediaUrl = item['media_url'];
-
-                          // ✅ Validate media URL to prevent crashes
-                          if (mediaUrl == null || mediaUrl.isEmpty) {
-                            return Container(
-                              color: Colors.grey.shade200,
-                              child: Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.broken_image_outlined,
-                                      size: 48,
-                                      color: Colors.grey.shade400,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Media unavailable',
-                                      style: TextStyle(
-                                        color: Colors.grey.shade600,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }
-
-                          return Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              // ✅ Layer 1: Gray background (no more white flash)
-                              Container(color: Colors.grey.shade200),
-
-                              // ✅ Layer 2: Blurred background (loads instantly)
-                              if (blurredUrl != null && blurredUrl.isNotEmpty)
-                                Positioned.fill(
-                                  child: CachedNetworkImage(
-                                    imageUrl: blurredUrl,
-                                    fit: BoxFit.cover,
-                                    fadeInDuration: Duration.zero,
-                                    fadeOutDuration: Duration.zero,
-                                    errorWidget: (_, __, ___) =>
-                                        const SizedBox.shrink(),
-                                  ),
-                                ),
-
-                              // ✅ Layer 3: Main content with download progress
-                              Center(
-                                child: SizedBox(
-                                  width: screenW,
-                                  height: itemHeight,
-                                  child: PinchZoomReleaseUnzoomWidget(
-                                    fingersRequiredToPinch: 2,
-                                    twoFingersOn: () {
-                                      if (!mounted) return;
-                                      setState(() => _allowSwipe = false);
-                                    },
-                                    twoFingersOff: () => Future.delayed(
-                                      PinchZoomReleaseUnzoomWidget
-                                          .defaultResetDuration,
-                                      () {
-                                        if (mounted) {
-                                          setState(() => _allowSwipe = true);
-                                        }
-                                      },
-                                    ),
-                                    child: isVideo
-                                        ? FeedVideoPlayer(
-                                            url: mediaUrl,
-                                            isActive: _currentPage == i,
-                                            fit: BoxFit.cover,
-                                          )
-                                        : CachedNetworkImage(
-                                            imageUrl: mediaUrl,
-                                            fit: BoxFit.contain,
-                                            fadeInDuration: const Duration(
-                                              milliseconds: 300,
-                                            ),
-                                            // ✅ Show download progress (Instagram-style)
-                                            progressIndicatorBuilder:
-                                                (context, url, progress) {
-                                                  return Center(
-                                                    child: CircularProgressIndicator(
-                                                      value: progress
-                                                          .progress, // Shows actual download %
-                                                      color: Colors.white
-                                                          .withOpacity(0.9),
-                                                      backgroundColor: Colors
-                                                          .white
-                                                          .withOpacity(0.2),
-                                                      strokeWidth: 3,
-                                                    ),
-                                                  );
-                                                },
-                                            // ✅ Show 0% progress if image fails to load (prevents crash)
-                                            errorWidget: (context, url, error) {
-                                              print(
-                                                '❌ Image load error: $error',
-                                              );
-                                              return Center(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    CircularProgressIndicator(
-                                                      value: 0, // 0% progress
-                                                      color: Colors.white
-                                                          .withOpacity(0.5),
-                                                      backgroundColor: Colors
-                                                          .white
-                                                          .withOpacity(0.1),
-                                                      strokeWidth: 3,
-                                                    ),
-                                                    const SizedBox(height: 8),
-                                                    Text(
-                                                      'Failed to load',
-                                                      style: TextStyle(
-                                                        color: Colors.white
-                                                            .withOpacity(0.7),
-                                                        fontSize: 12,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              );
-                                            },
-                                            // ✅ Add memory cache config to prevent crashes from large images
-                                            memCacheHeight: 1000,
-                                            memCacheWidth: 1000,
-                                            maxHeightDiskCache: 1000,
-                                            maxWidthDiskCache: 1000,
-                                          ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-
-                    // Heart overlay
-                    if (_showHeart)
-                      AnimatedBuilder(
-                        animation: _heartController,
-                        builder: (_, child) {
-                          final opacity =
-                              (1 - (_heartController.value - 0.7).clamp(0, 1))
-                                  .toDouble();
-                          return Opacity(
-                            opacity: opacity,
-                            child: Transform.scale(
-                              scale: _heartScale.value,
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: const Icon(
-                          Icons.favorite,
-                          color: Colors.white,
-                          size: 110,
-                        ),
-                      ),
-
-                    // Page indicators
-                    if (media.length > 1)
-                      Positioned(
-                        bottom: 12,
-                        child: Row(
-                          children: List.generate(
-                            media.length,
-                            (i) => Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 3),
-                              width: 7,
-                              height: 7,
-                              decoration: BoxDecoration(
-                                color: _currentPage == i
-                                    ? Colors.white
-                                    : Colors.white54,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-
-            // ----- Actions -----
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      _liked ? _toggleUnlike() : _optimisticLike();
-                    },
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: SvgPicture.asset(
-                        _liked
-                            ? 'assets/svgs/heart_full.svg'
-                            : 'assets/svgs/heart.svg',
-                        width: 24,
-                        height: 24,
-                        // If your SVGs are single-color and should be tinted:
-                        colorFilter: ColorFilter.mode(
-                          _liked ? Colors.red : Colors.black,
-                          BlendMode.srcIn,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  GestureDetector(
-                    onTap: () => _openComments(context),
-                    child: const Icon(
-                      Icons.mode_comment_outlined,
-                      color: Colors.black,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  GestureDetector(
-                    onTap: _sharePost,
-                    child: const Icon(
-                      Icons.send_outlined,
-                      color: Colors.black,
-                      size: 22,
-                    ),
-                  ),
-                  _buildSettingsButton(user != null ? user['id'] : null),
-                ],
+                onSwipeChanged: (allow) {
+                  if (mounted) setState(() => _allowSwipe = allow);
+                },
               ),
             ),
 
-            // ----- Likes -----
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '$_likesCount likes',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black,
-                ),
+          // ✅ Actions - Wrapped in RepaintBoundary
+          RepaintBoundary(
+            child: _PostActions(
+              liked: _liked,
+              onLikeTap: () {
+                HapticFeedback.selectionClick();
+                _liked ? _toggleUnlike() : _optimisticLike();
+              },
+              onCommentTap: () => _openComments(context),
+              onShareTap: _sharePost,
+            ),
+          ),
+
+          // ✅ Likes count
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              '$_likesCount likes',
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
               ),
             ),
+          ),
 
-            // ----- Caption + comments -----
-            Padding(
+          // ✅ Caption - Wrapped in RepaintBoundary
+          RepaintBoundary(
+            child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: _PostCaptionSection(
                 username: widget.post['username'] ?? '',
@@ -823,7 +534,268 @@ class _PostCardState extends State<PostCard>
                 onViewComments: () => _openComments(context),
               ),
             ),
-            const SizedBox(height: 10),
+          ),
+
+          const SizedBox(height: 10),
+        ],
+      ),
+    );
+  }
+}
+
+// ✅ Extracted header as stateless widget
+class _PostHeader extends StatelessWidget {
+  final String? profileImage;
+  final String username;
+  final bool isVerified;
+  final String date;
+  final dynamic currentUserId;
+  final dynamic postUserId;
+  final VoidCallback? onTapProfile;
+  final VoidCallback onSettings;
+  final Color primaryColor;
+
+  const _PostHeader({
+    required this.profileImage,
+    required this.username,
+    required this.isVerified,
+    required this.date,
+    required this.currentUserId,
+    required this.postUserId,
+    required this.onTapProfile,
+    required this.onSettings,
+    required this.primaryColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isOwnPost = postUserId.toString() == currentUserId.toString();
+
+    return ListTile(
+      leading: ProfileAvatar(imageUrl: profileImage, onTap: onTapProfile),
+      title: GestureDetector(
+        onTap: onTapProfile,
+        child: Row(
+          children: [
+            Text(
+              username,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
+            ),
+            if (isVerified) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.verified, size: 16, color: primaryColor),
+            ],
+          ],
+        ),
+      ),
+      subtitle: Text(
+        date,
+        style: const TextStyle(fontSize: 12, color: Colors.grey),
+      ),
+      trailing: isOwnPost
+          ? GestureDetector(
+              onTap: onSettings,
+              child: const Icon(Icons.more_vert, color: Colors.black, size: 24),
+            )
+          : null,
+    );
+  }
+}
+
+// ✅ Extracted media carousel as stateless widget
+class _MediaCarousel extends StatelessWidget {
+  final List<dynamic> media;
+  final double maxHeight;
+  final int currentPage;
+  final bool allowSwipe;
+  final bool showHeart;
+  final Animation<double> heartAnimation;
+  final AnimationController heartController;
+  final Function(int) onPageChanged;
+  final VoidCallback onDoubleTap;
+  final Function(bool) onSwipeChanged;
+
+  const _MediaCarousel({
+    required this.media,
+    required this.maxHeight,
+    required this.currentPage,
+    required this.allowSwipe,
+    required this.showHeart,
+    required this.heartAnimation,
+    required this.heartController,
+    required this.onPageChanged,
+    required this.onDoubleTap,
+    required this.onSwipeChanged,
+  });
+
+  double _parseDouble(dynamic v, {double fallback = 1}) {
+    if (v == null) return fallback;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? fallback;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onDoubleTap: onDoubleTap,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: maxHeight,
+            child: PageView.builder(
+              physics: allowSwipe
+                  ? const PageScrollPhysics()
+                  : const NeverScrollableScrollPhysics(),
+              itemCount: media.length,
+              onPageChanged: onPageChanged,
+              itemBuilder: (context, i) {
+                final item = media[i];
+                final isVideo = item['media_type'] == 'video';
+                final mediaUrl = item['media_url'];
+                final blurredUrl = item['blurred_url'];
+
+                if (mediaUrl == null || mediaUrl.isEmpty) {
+                  return _buildErrorPlaceholder();
+                }
+
+                final screenW = MediaQuery.of(context).size.width;
+                final imgW = _parseDouble(item['media_width']);
+                final imgH = _parseDouble(item['media_height']);
+                final aspect = (imgW > 0 && imgH > 0) ? imgW / imgH : 1.0;
+                final naturalH = screenW / aspect;
+                final itemHeight = naturalH > maxHeight ? maxHeight : naturalH;
+
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(color: Colors.grey.shade200),
+
+                    if (blurredUrl != null && blurredUrl.isNotEmpty)
+                      Positioned.fill(
+                        child: CachedNetworkImage(
+                          imageUrl: blurredUrl,
+                          fit: BoxFit.cover,
+                          fadeInDuration: Duration.zero,
+                          fadeOutDuration: Duration.zero,
+                          errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                        ),
+                      ),
+
+                    Center(
+                      child: SizedBox(
+                        width: screenW,
+                        height: itemHeight,
+                        child: PinchZoomReleaseUnzoomWidget(
+                          fingersRequiredToPinch: 2,
+                          twoFingersOn: () => onSwipeChanged(false),
+                          twoFingersOff: () => Future.delayed(
+                            PinchZoomReleaseUnzoomWidget.defaultResetDuration,
+                            () => onSwipeChanged(true),
+                          ),
+                          child: isVideo
+                              ? FeedVideoPlayer(
+                                  url: mediaUrl,
+                                  isActive: currentPage == i,
+                                  fit: BoxFit.cover,
+                                )
+                              : CachedNetworkImage(
+                                  imageUrl: mediaUrl,
+                                  fit: BoxFit.contain,
+                                  fadeInDuration: const Duration(
+                                    milliseconds: 300,
+                                  ),
+                                  progressIndicatorBuilder:
+                                      (context, url, progress) {
+                                        return Center(
+                                          child: CircularProgressIndicator(
+                                            value: progress.progress,
+                                            color: Colors.white.withOpacity(
+                                              0.9,
+                                            ),
+                                            backgroundColor: Colors.white
+                                                .withOpacity(0.2),
+                                            strokeWidth: 3,
+                                          ),
+                                        );
+                                      },
+                                  errorWidget: (context, url, error) =>
+                                      _buildErrorPlaceholder(),
+                                  memCacheHeight: 1000,
+                                  memCacheWidth: 1000,
+                                  maxHeightDiskCache: 1000,
+                                  maxWidthDiskCache: 1000,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+
+          if (showHeart)
+            AnimatedBuilder(
+              animation: heartController,
+              builder: (_, child) {
+                final opacity = (1 - (heartController.value - 0.7).clamp(0, 1))
+                    .toDouble();
+                return Opacity(
+                  opacity: opacity,
+                  child: Transform.scale(
+                    scale: heartAnimation.value,
+                    child: child,
+                  ),
+                );
+              },
+              child: const Icon(Icons.favorite, color: Colors.white, size: 110),
+            ),
+
+          if (media.length > 1)
+            Positioned(
+              bottom: 12,
+              child: Row(
+                children: List.generate(
+                  media.length,
+                  (i) => Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: currentPage == i ? Colors.white : Colors.white54,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorPlaceholder() {
+    return Container(
+      color: Colors.grey.shade200,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.broken_image_outlined,
+              size: 48,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Media unavailable',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+            ),
           ],
         ),
       ),
@@ -831,6 +803,63 @@ class _PostCardState extends State<PostCard>
   }
 }
 
+// ✅ Extracted actions as stateless widget
+class _PostActions extends StatelessWidget {
+  final bool liked;
+  final VoidCallback onLikeTap;
+  final VoidCallback onCommentTap;
+  final VoidCallback onShareTap;
+
+  const _PostActions({
+    required this.liked,
+    required this.onLikeTap,
+    required this.onCommentTap,
+    required this.onShareTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: onLikeTap,
+            child: SvgPicture.asset(
+              liked ? 'assets/svgs/heart_full.svg' : 'assets/svgs/heart.svg',
+              width: 24,
+              height: 24,
+              colorFilter: ColorFilter.mode(
+                liked ? Colors.red : Colors.black,
+                BlendMode.srcIn,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          GestureDetector(
+            onTap: onCommentTap,
+            child: const Icon(
+              Icons.mode_comment_outlined,
+              color: Colors.black,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 16),
+          GestureDetector(
+            onTap: onShareTap,
+            child: const Icon(
+              Icons.send_outlined,
+              color: Colors.black,
+              size: 22,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Caption section remains the same
 class _PostCaptionSection extends StatefulWidget {
   final String username;
   final String caption;
@@ -859,7 +888,6 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Username on its own line
         Text(
           username,
           style: const TextStyle(
@@ -868,8 +896,6 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
             fontSize: 14,
           ),
         ),
-
-        // Caption below username
         if (caption.isNotEmpty) ...[
           const SizedBox(height: 4),
           FormattedText(
@@ -877,9 +903,7 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
             showAllText: _showFullCaption,
             maxTextLength: 100,
             onSuffixPressed: () {
-              setState(() {
-                _showFullCaption = !_showFullCaption;
-              });
+              setState(() => _showFullCaption = !_showFullCaption);
             },
             suffix: _showFullCaption ? 'Show less' : 'Show more',
             onUserTagPressed: (userId) {
@@ -891,9 +915,7 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
             },
           ),
         ],
-
         const SizedBox(height: 6),
-
         if (widget.commentsCount > 0)
           GestureDetector(
             onTap: widget.onViewComments,
