@@ -12,6 +12,9 @@ class FirebaseMessagingService {
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
+  // Add this callback reference
+  static Function(String?)? onNotificationTapped;
+
   static Future<void> initialize() async {
     // Request permission (iOS)
     NotificationSettings settings = await _messaging.requestPermission(
@@ -31,20 +34,31 @@ class FirebaseMessagingService {
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
     );
-    const iosSettings = DarwinInitializationSettings(
+
+    // Update iOS settings to include action categories
+    final iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
+      notificationCategories: [
+        DarwinNotificationCategory(
+          'post_complete',
+          actions: [
+            DarwinNotificationAction.plain('view_post', 'View Post'),
+            DarwinNotificationAction.plain('view_profile', 'View Profile'),
+          ],
+        ),
+      ],
     );
 
-    const initSettings = InitializationSettings(
+    final initSettings = InitializationSettings(
       android: androidSettings,
       iOS: iosSettings,
     );
 
     await _localNotifications.initialize(
       initSettings,
-      onDidReceiveNotificationResponse: _onNotificationTapped,
+      onDidReceiveNotificationResponse: _onNotificationResponse,
     );
 
     // Create notification channel (Android)
@@ -74,6 +88,23 @@ class FirebaseMessagingService {
     RemoteMessage? initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
       _handleNotificationTap(initialMessage);
+    }
+  }
+
+  // Handle notification tap (both tap and action buttons)
+  static void _onNotificationResponse(NotificationResponse response) {
+    print('Notification tapped: ${response.payload}');
+
+    // Check if it's an action button or just a tap
+    if (response.actionId == 'view_post' || response.actionId == null) {
+      // Parse payload
+      if (response.payload != null && response.payload!.startsWith('post:')) {
+        final postId = response.payload!.replaceFirst('post:', '');
+        print('Navigate to post: $postId');
+
+        // Call the callback if set
+        onNotificationTapped?.call(postId);
+      }
     }
   }
 
@@ -128,9 +159,10 @@ class FirebaseMessagingService {
     }
   }
 
-  // Handle notification tap
+  // Handle notification tap (Firebase messages)
   static void _handleNotificationTap(RemoteMessage message) {
     print('Notification tapped: ${message.messageId}');
+    print(message.data);
 
     // Navigate based on notification data
     if (message.data.containsKey('type')) {
@@ -142,26 +174,24 @@ class FirebaseMessagingService {
           // Navigate to post detail
           String? postId = message.data['post_id'];
           print('Navigate to post: $postId');
+          onNotificationTapped?.call(postId); // Add this line
           break;
         case 'profile':
           // Navigate to profile
           String? userId = message.data['user_id'];
           print('Navigate to profile: $userId');
+          onNotificationTapped?.call(userId); // Add this line
           break;
         case 'comment':
           // Navigate to post with comments
           String? postId = message.data['post_id'];
           print('Navigate to post comments: $postId');
+          onNotificationTapped?.call(postId); // Add this line
           break;
         default:
           print('Unknown notification type: $type');
       }
     }
-  }
-
-  // Handle local notification tap
-  static void _onNotificationTapped(NotificationResponse response) {
-    print('Local notification tapped: ${response.payload}');
   }
 
   // Subscribe to topic

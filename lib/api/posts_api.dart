@@ -199,6 +199,8 @@ class PostsAPI {
     String? linkUrl,
     int? associationId,
     String? associationType,
+    List<Map<String, dynamic>>? mentionedUsers,
+    List<Map<String, dynamic>>? mentionedHashtags,
   }) async {
     try {
       final body = {
@@ -218,6 +220,14 @@ class PostsAPI {
           body['association_id'] = associationId.toString();
           body['association_type'] = associationType;
         }
+      }
+
+      if (mentionedUsers != null && mentionedUsers.isNotEmpty) {
+        body['mentioned_users'] = json.encode(mentionedUsers);
+      }
+
+      if (mentionedHashtags != null && mentionedHashtags.isNotEmpty) {
+        body['mentioned_hashtags'] = json.encode(mentionedHashtags);
       }
 
       print(body);

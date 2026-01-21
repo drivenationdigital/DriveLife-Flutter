@@ -456,6 +456,27 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     // Generate unique upload ID
     final uploadId = 'upload_${DateTime.now().millisecondsSinceEpoch}';
 
+    final allTags = _captionController.tags;
+
+    final mentionedUsers = <Map<String, dynamic>>[];
+    final mentionedHashtags = <Map<String, dynamic>>[];
+
+    for (final tag in allTags) {
+      if (tag.triggerCharacter == '@') {
+        mentionedUsers.add({
+          'entity_id': tag.id,
+          'entity_type': 'user',
+          'text': tag.text,
+        });
+      } else if (tag.triggerCharacter == '#') {
+        mentionedHashtags.add({
+          'entity_id': tag.id,
+          'entity_type': 'hashtag',
+          'text': tag.text,
+        });
+      }
+    }
+
     // Prepare upload data
     final uploadData = UploadPostData(
       id: uploadId,
@@ -470,6 +491,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       taggedVehicles: _taggedVehicles,
       taggedEvents: _taggedEvents,
       userId: userId,
+      mentionedHashtags: mentionedHashtags,
+      mentionedUsers: mentionedUsers,
     );
 
     // Start background upload

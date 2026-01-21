@@ -1,3 +1,4 @@
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/video_playback_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -228,10 +229,13 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
     final muted = context.watch<VideoMuteProvider>().muted;
 
     if (_controller == null || !_controller!.value.isInitialized) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
+      );
     }
 
     // Video’s natural size

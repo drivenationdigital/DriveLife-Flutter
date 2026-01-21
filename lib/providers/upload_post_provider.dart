@@ -19,6 +19,8 @@ class UploadPostData {
   final List<TaggedEntity> taggedVehicles;
   final List<TaggedEntity> taggedEvents;
   final int userId;
+  final List<Map<String, dynamic>> mentionedUsers;
+  final List<Map<String, dynamic>> mentionedHashtags;
 
   UploadPostData({
     required this.id,
@@ -31,6 +33,8 @@ class UploadPostData {
     required this.taggedVehicles,
     required this.taggedEvents,
     required this.userId,
+    this.mentionedUsers = const [],
+    this.mentionedHashtags = const [],
   });
 }
 
@@ -154,6 +158,7 @@ class UploadPostProvider with ChangeNotifier {
     String uploadId,
     bool success,
     String message,
+    String? postId,
   ) async {
     final androidDetails = AndroidNotificationDetails(
       'upload_complete_channel',
@@ -164,12 +169,22 @@ class UploadPostProvider with ChangeNotifier {
       showProgress: false,
       ongoing: false,
       autoCancel: true,
+      actions: postId != null
+          ? [
+              AndroidNotificationAction(
+                'view_post',
+                'View Post',
+                showsUserInterface: true,
+              ),
+            ]
+          : [],
     );
 
     final iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
+      categoryIdentifier: 'post_complete', // Add this for iOS actions
     );
 
     final details = NotificationDetails(
@@ -177,11 +192,13 @@ class UploadPostProvider with ChangeNotifier {
       iOS: iosDetails,
     );
 
+    // Pass postId in payload so we can navigate to it 👇
     await _notificationsPlugin.show(
       uploadId.hashCode,
       success ? '✅ Upload Complete' : '❌ Upload Failed',
       message,
       details,
+      payload: postId != null ? 'post:$postId' : null,
     );
   }
 
@@ -293,6 +310,8 @@ class UploadPostProvider with ChangeNotifier {
         linkUrl: data.linkUrl,
         associationId: null,
         associationType: null,
+        mentionedUsers: data.mentionedUsers,
+        mentionedHashtags: data.mentionedHashtags,
       );
 
       // Add tags if any
@@ -330,6 +349,7 @@ class UploadPostProvider with ChangeNotifier {
         data.id,
         true,
         'Your post has been published successfully!',
+        postResult['post_id']?.toString(),
       );
 
       // Auto-remove after 3 seconds
@@ -351,6 +371,7 @@ class UploadPostProvider with ChangeNotifier {
         data.id,
         false,
         'Failed to upload post: ${e.toString()}',
+        null,
       );
 
       // Auto-remove failed uploads after 5 seconds
