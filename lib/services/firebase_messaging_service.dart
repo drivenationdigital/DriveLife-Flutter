@@ -111,6 +111,7 @@ class FirebaseMessagingService {
   // Get FCM token
   static Future<String?> getToken() async {
     try {
+      await _messaging.setAutoInitEnabled(true);
       String? token = await _messaging.getToken();
       print('FCM Token: $token');
       return token;

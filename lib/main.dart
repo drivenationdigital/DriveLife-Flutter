@@ -12,11 +12,15 @@ void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
 
+  try{
   // Initialize Firebase
   await Firebase.initializeApp();
 
   // Initialize Firebase Messaging
   await FirebaseMessagingService.initialize();
+  } catch(e){
+    print('Error initializing Firebase: $e');
+  }
 
   runApp(
     MultiProvider(

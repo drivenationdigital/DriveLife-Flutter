@@ -28,20 +28,50 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
   }
 
   Future<void> _checkPermissions() async {
-    final statuses = await [
-      Permission.camera,
-      Permission.location,
-      Permission.photos,
-      Permission.notification,
-    ].request();
+    // final statuses = await [
+    //   Permission.camera,
+    //   Permission.location,
+    //   Permission.photos,
+    //   Permission.notification,
+    // ].request();
+    final cameraStatus = await Permission.camera.status;
+    final locationStatus = await Permission.location.status;
+    final photosStatus = await Permission.photos.status;
+    final notificationsStatus = await Permission.notification.status;
 
     if (!mounted) return;
 
     setState(() {
-      _permissionStatus['camera'] = statuses[Permission.camera]!;
-      _permissionStatus['location'] = statuses[Permission.location]!;
-      _permissionStatus['photos'] = statuses[Permission.photos]!;
-      _permissionStatus['notifications'] = statuses[Permission.notification]!;
+      _permissionStatus['camera'] = cameraStatus;
+      _permissionStatus['location'] = locationStatus;
+      _permissionStatus['photos'] = photosStatus;
+      _permissionStatus['notifications'] = notificationsStatus;
+    });
+  }
+
+  // Add individual request methods
+  Future<void> _requestPermission(String key) async {
+    PermissionStatus? status;
+
+    switch (key) {
+      case 'camera':
+        status = await Permission.camera.request();
+        break;
+      case 'location':
+        status = await Permission.location.request();
+        break;
+      case 'photos':
+        status = await Permission.photos.request();
+        break;
+      case 'notifications':
+        status = await Permission.notification.request();
+        break;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _permissionStatus[key] = status!;
     });
   }
 
@@ -71,6 +101,131 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
 
   void _openAppSettings() {
     AppSettings.openAppSettings(type: AppSettingsType.settings);
+  }
+
+  Widget _buildPermissionTile({
+    required IconData icon,
+    required String title,
+    required String description,
+    required String key,
+    required ThemeProvider theme,
+  }) {
+    final isExpanded = _expandedStates[key] ?? false;
+    final status = _permissionStatus[key];
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() {
+                _expandedStates[key] = !isExpanded;
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(icon, color: Colors.grey.shade700, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
+                  if (status != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _getStatusColor(status, theme).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        _getStatusText(status),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: _getStatusColor(status, theme),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: Colors.grey.shade600,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isExpanded) ...[
+            Divider(height: 1, color: Colors.grey.shade300),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    description,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade700,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Add request button if not granted
+                  if (status != PermissionStatus.granted)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          if (status == PermissionStatus.permanentlyDenied) {
+                            _openAppSettings();
+                          } else {
+                            await _requestPermission(key);
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        child: Text(
+                          status == PermissionStatus.permanentlyDenied
+                              ? 'Open Settings'
+                              : 'Request Permission',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -170,7 +325,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
     );
   }
 
-  Widget _buildPermissionTile({
+  Widget _buildPermissionTileOld({
     required IconData icon,
     required String title,
     required String description,
