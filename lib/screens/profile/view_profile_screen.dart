@@ -66,7 +66,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(_onTabChanged);
     _scrollController.addListener(_onScroll);
     _checkIfOwnProfile();
@@ -119,7 +119,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     final index = _tabController.index;
     if (index == 0) {
       _loadPosts();
-    } else if (index == 3) {
+    } else if (index == 2) {
       _loadTaggedPosts();
     }
   }
@@ -691,7 +691,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                     tabs: const [
                       Tab(text: 'Posts'),
                       Tab(text: 'Garage'),
-                      Tab(text: 'Events'),
                       Tab(text: 'Tags'),
                     ],
                   ),
@@ -716,8 +715,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
       case 1:
         return _buildGarageContent(theme);
       case 2:
-        return _buildPlaceholder(Icons.event, 'Events coming soon', theme);
-      case 3:
         return _buildPostsGrid(_taggedPosts, theme);
       default:
         return _buildPostsGrid(_posts, theme);
