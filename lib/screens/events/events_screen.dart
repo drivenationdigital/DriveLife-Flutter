@@ -1,6 +1,12 @@
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/add_event_screen.dart';
+import 'package:drivelife/screens/order_ticket_view.dart';
+import 'package:drivelife/utils/date.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
+import 'package:drivelife/widgets/events/event_search_results.dart';
+import 'package:drivelife/widgets/events/featured_events.dart';
+import 'package:drivelife/widgets/events/my_events.dart';
+import 'package:drivelife/widgets/events/my_tickets.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -50,9 +56,15 @@ class _EventsScreenState extends State<EventsScreen>
 
   // Events data
   List<Map<String, dynamic>> _upcomingEvents = [];
+  List<Map<String, dynamic>> _featuredEvents = [];
   List<Map<String, dynamic>> _likedEvents = [];
   List<Map<String, dynamic>> _myCreatedEvents = [];
   List<Map<String, dynamic>> _categories = [];
+
+  List<Map<String, dynamic>> _activeTickets = [];
+  List<Map<String, dynamic>> _pastTickets = [];
+  bool _isLoadingTickets = false;
+  String? _ticketsError;
 
   // Pagination
   int _currentPage = 1;
@@ -71,15 +83,11 @@ class _EventsScreenState extends State<EventsScreen>
 
     // Fetch initial data
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchFeaturedEvents();
       _fetchCategories();
       _fetchEvents(refresh: true);
-    });
-
-    _tabController.addListener(() {
-      if (_tabController.index == 1) {
-        // My Events tab
-        _fetchProfileEvents();
-      }
+      _fetchProfileEvents();
+      _fetchUserTickets();
     });
   }
 
@@ -135,6 +143,18 @@ class _EventsScreenState extends State<EventsScreen>
     });
   }
 
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() {
+      _isSearching = false;
+      _searchResults.clear();
+    });
+  }
+
+  void _onFilterChanged() {
+    _fetchEvents(refresh: true);
+  }
+
   Future<void> _performSearch(String query) async {
     if (query.trim().isEmpty) return;
 
@@ -181,14 +201,6 @@ class _EventsScreenState extends State<EventsScreen>
         });
       }
     }
-  }
-
-  void _clearSearch() {
-    _searchController.clear();
-    setState(() {
-      _isSearching = false;
-      _searchResults.clear();
-    });
   }
 
   Future<void> _fetchCategories() async {
@@ -264,6 +276,22 @@ class _EventsScreenState extends State<EventsScreen>
     }
   }
 
+  Future<void> _fetchFeaturedEvents() async {
+    try {
+      final response = await EventsAPI.getFeaturedEvents();
+
+      if (response != null && response['success'] == true && mounted) {
+        final events = response['data'];
+        setState(() {
+          _featuredEvents =
+              (events as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+        });
+      }
+    } catch (e) {
+      print('Error fetching featured events: $e');
+    }
+  }
+
   Future<void> _fetchProfileEvents() async {
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
@@ -290,6 +318,49 @@ class _EventsScreenState extends State<EventsScreen>
       }
     } catch (e) {
       print('Error fetching profile events: $e');
+    }
+  }
+
+  Future<void> _fetchUserTickets() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingTickets = true;
+      _ticketsError = null;
+    });
+
+    try {
+      final response = await EventsAPI.getMyEventTickets();
+      if (!mounted) return;
+
+      if (response != null && response['success'] == true) {
+        final data = response['data'] as Map<String, dynamic>?;
+
+        final active = (data?['active'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>();
+        final past = (data?['past'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>();
+
+        setState(() {
+          _activeTickets = active;
+          _pastTickets = past;
+          _isLoadingTickets = false;
+        });
+      } else {
+        setState(() {
+          _ticketsError = 'Failed to load tickets';
+          _isLoadingTickets = false;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _ticketsError = e.toString();
+        _isLoadingTickets = false;
+      });
+
+      print('❌ Error fetching user tickets: $e');
     }
   }
 
@@ -323,10 +394,6 @@ class _EventsScreenState extends State<EventsScreen>
     }
   }
 
-  void _onFilterChanged() {
-    _fetchEvents(refresh: true);
-  }
-
   Future<void> _selectCustomDate(
     BuildContext context,
     bool isFromDate,
@@ -357,65 +424,6 @@ class _EventsScreenState extends State<EventsScreen>
       // Update the modal immediately
       setModalState(() {});
     }
-  }
-
-  Widget _buildGooglePlacesInput() {
-    return GooglePlaceAutoCompleteTextField(
-      textEditingController: _customLocationController,
-      googleAPIKey: "AIzaSyDqDMSFVfl-tOgqaj4ZqA5I3HnobrIK6jg",
-      inputDecoration: InputDecoration(
-        hintText: 'Enter Location',
-        prefixIcon: const Icon(Icons.location_on),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 12,
-        ),
-      ),
-      debounceTime: 400,
-      countries: const [
-        "gb",
-        "us",
-      ], // Restrict to specific countries if needed, or remove for worldwide
-      isLatLngRequired: true,
-      getPlaceDetailWithLatLng: (prediction) {
-        // This is called when user selects a place
-        print('📍 Place selected: ${prediction.description}');
-        print('📍 Lat: ${prediction.lat}, Lng: ${prediction.lng}');
-
-        setState(() {
-          _customLocationName = prediction.description ?? '';
-          _customLat = double.tryParse(prediction.lat ?? '');
-          _customLng = double.tryParse(prediction.lng ?? '');
-        });
-      },
-      itemClick: (prediction) {
-        _customLocationController.text = prediction.description ?? '';
-        _customLocationController.selection = TextSelection.fromPosition(
-          TextPosition(offset: prediction.description?.length ?? 0),
-        );
-      },
-      seperatedBuilder: const Divider(),
-      containerHorizontalPadding: 0,
-      itemBuilder: (context, index, prediction) {
-        return Container(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              const Icon(Icons.location_on, color: Colors.grey, size: 20),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  prediction.description ?? '',
-                  style: const TextStyle(fontSize: 14),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-      isCrossBtnShown: true,
-    );
   }
 
   void _showDateFilter(ThemeProvider theme) {
@@ -544,7 +552,6 @@ class _EventsScreenState extends State<EventsScreen>
   }
 
   void _showCategoryFilter(ThemeProvider theme) {
-    print('Showing category filter with categories: $_categories');
     final options = _categories.map((cat) {
       return FilterOption(label: cat['name'], value: cat['id'].toString());
     }).toList();
@@ -646,223 +653,6 @@ class _EventsScreenState extends State<EventsScreen>
           },
         ),
       ),
-    );
-  }
-
-  String _formatEventDate(String dateStr) {
-    try {
-      // Parse "01/26/2026 18:00" format
-      final parts = dateStr.split(' ');
-      if (parts.isEmpty) return dateStr;
-
-      final datePart = parts[0].split('/');
-      if (datePart.length != 3) return dateStr;
-
-      final month = int.parse(datePart[0]);
-      final day = int.parse(datePart[1]);
-      final year = int.parse(datePart[2]);
-
-      final date = DateTime(year, month, day);
-      final formatter = DateFormat('EEE, d MMM yy');
-
-      return formatter.format(date);
-    } catch (e) {
-      return dateStr;
-    }
-  }
-
-  String _formatEventTime(String startDate, String endDate) {
-    try {
-      final startParts = startDate.split(' ');
-      final endParts = endDate.split(' ');
-
-      if (startParts.length < 2 || endParts.length < 2) return '';
-
-      final startTime = startParts[1];
-      final endTime = endParts[1];
-
-      // Convert 24h to 12h format
-      final startHour = int.parse(startTime.split(':')[0]);
-      final endHour = int.parse(endTime.split(':')[0]);
-
-      final startPeriod = startHour >= 12 ? 'PM' : 'AM';
-      final endPeriod = endHour >= 12 ? 'PM' : 'AM';
-
-      final start12h = startHour > 12
-          ? startHour - 12
-          : (startHour == 0 ? 12 : startHour);
-      final end12h = endHour > 12
-          ? endHour - 12
-          : (endHour == 0 ? 12 : endHour);
-
-      return '$start12h$startPeriod - $end12h$endPeriod';
-    } catch (e) {
-      return '';
-    }
-  }
-
-  Widget _buildSearchResults(ThemeProvider theme) {
-    if (_isSearching) {
-      return Center(
-        child: CircularProgressIndicator(
-          color: theme.primaryColor,
-          strokeWidth: 2.5,
-        ),
-      );
-    }
-
-    if (_searchResults.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
-            const SizedBox(height: 16),
-            Text(
-              'No events found',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Try a different search term',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      itemCount: _searchResults.length,
-      itemBuilder: (context, index) {
-        final event = _searchResults[index];
-        return Container(
-          margin: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          child: InkWell(
-            onTap: () {
-              Navigator.pushNamed(
-                context,
-                '/event-detail',
-                arguments: {'event': event},
-              );
-            },
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Event Image
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      width: 90,
-                      height: 90,
-                      color: Colors.grey.shade200,
-                      child: event['thumbnail'] != null
-                          ? Image.network(
-                              event['thumbnail'],
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
-                                color: Colors.grey.shade300,
-                                child: Icon(
-                                  Icons.event,
-                                  color: Colors.grey.shade500,
-                                  size: 40,
-                                ),
-                              ),
-                            )
-                          : Icon(
-                              Icons.event,
-                              color: Colors.grey.shade500,
-                              size: 40,
-                            ),
-                    ),
-                  ),
-
-                  const SizedBox(width: 12),
-
-                  // Event Details
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          event['name'] ?? 'Untitled Event',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black,
-                            height: 1.3,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _formatEventDate(event['start_date'] ?? ''),
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: theme.primaryColor,
-                          ),
-                        ),
-                        if (event['start_date'] != null &&
-                            event['end_date'] != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            _formatEventTime(
-                              event['start_date'],
-                              event['end_date'],
-                            ),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.location_on,
-                              size: 14,
-                              color: Colors.grey.shade600,
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                event['location'] ?? 'Location TBA',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey.shade600,
-                                  height: 1.3,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -979,6 +769,86 @@ class _EventsScreenState extends State<EventsScreen>
     );
   }
 
+  // Google Places Autocomplete Input
+  Widget _buildGooglePlacesInput() {
+    return GooglePlaceAutoCompleteTextField(
+      textEditingController: _customLocationController,
+      googleAPIKey: "AIzaSyDqDMSFVfl-tOgqaj4ZqA5I3HnobrIK6jg",
+      inputDecoration: InputDecoration(
+        hintText: 'Enter Location',
+        prefixIcon: const Icon(Icons.location_on),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
+      ),
+      debounceTime: 400,
+      countries: const [
+        "gb",
+        "us",
+      ], // Restrict to specific countries if needed, or remove for worldwide
+      isLatLngRequired: true,
+      getPlaceDetailWithLatLng: (prediction) {
+        setState(() {
+          _customLocationName = prediction.description ?? '';
+          _customLat = double.tryParse(prediction.lat ?? '');
+          _customLng = double.tryParse(prediction.lng ?? '');
+        });
+      },
+      itemClick: (prediction) {
+        _customLocationController.text = prediction.description ?? '';
+        _customLocationController.selection = TextSelection.fromPosition(
+          TextPosition(offset: prediction.description?.length ?? 0),
+        );
+      },
+      seperatedBuilder: const Divider(),
+      containerHorizontalPadding: 0,
+      itemBuilder: (context, index, prediction) {
+        return Container(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              const Icon(Icons.location_on, color: Colors.grey, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  prediction.description ?? '',
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      isCrossBtnShown: true,
+    );
+  }
+
+  // Widget for rendering search results
+  Widget _buildSearchResults(ThemeProvider theme) {
+    return SearchResultsContent(
+      isSearching: _isSearching,
+      searchResults: _searchResults,
+      primaryColor: theme.primaryColor,
+      onEventTap: (event) {
+        Navigator.pushNamed(
+          context,
+          '/event-detail',
+          arguments: {'event': event},
+        );
+      },
+      formatEventDate: (date) {
+        return DateHelpers.formatEventDate(date);
+      },
+      formatEventTime: (startDate, endDate) {
+        if (startDate == null || endDate == null) return null;
+        return DateHelpers.formatEventTime(startDate, endDate);
+      },
+    );
+  }
+
+  // Upcoming Events Tab
   Widget _buildUpcomingEventsTab(ThemeProvider theme) {
     return RefreshIndicator(
       color: theme.primaryColor,
@@ -989,65 +859,27 @@ class _EventsScreenState extends State<EventsScreen>
         children: [
           // Featured Banner Carousel
           const SizedBox(height: 16),
-          SizedBox(
-            height: 220,
-            child: Stack(
-              children: [
-                PageView(
-                  controller: _bannerController,
-                  onPageChanged: (index) {
-                    setState(() => _currentBannerIndex = index);
-                  },
-                  children: [
-                    _buildBannerCard(
-                      'JAPFEST',
-                      '19TH APRIL 2026',
-                      'SILVERSTONE',
-                      'https://via.placeholder.com/800x400/dc143c/ffffff?text=JAPFEST',
-                    ),
-                    _buildBannerCard(
-                      'EURO FEST',
-                      '25TH MAY 2026',
-                      'BRANDS HATCH',
-                      'https://via.placeholder.com/800x400/1e90ff/ffffff?text=EUROFEST',
-                    ),
-                    _buildBannerCard(
-                      'CLASSICS',
-                      '12TH JUNE 2026',
-                      'GOODWOOD',
-                      'https://via.placeholder.com/800x400/228b22/ffffff?text=CLASSICS',
-                    ),
-                  ],
-                ),
-                Positioned(
-                  bottom: 12,
-                  left: 0,
-                  right: 0,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(
-                      3,
-                      (index) => Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _currentBannerIndex == index
-                              ? theme.primaryColor
-                              : Colors.white.withOpacity(0.5),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+
+          FeaturedEventsCarousel(
+            featuredEvents: _featuredEvents,
+            pageController: _bannerController,
+            currentPage: _currentBannerIndex,
+            onPageChanged: (index) {
+              setState(() => _currentBannerIndex = index);
+            },
+            onEventTap: (event) {
+              Navigator.pushNamed(
+                context,
+                '/event-detail',
+                arguments: {'event': event},
+              );
+            },
+            primaryColor: theme.primaryColor,
+            formatEventDate: (date) => DateHelpers.formatEventDate(date),
           ),
 
           const SizedBox(height: 16),
 
-          // Filter Row
           // Filter Row
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1136,6 +968,7 @@ class _EventsScreenState extends State<EventsScreen>
     );
   }
 
+  // Filter Button Widget
   Widget _buildFilterButton(String label, String value, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
@@ -1184,97 +1017,7 @@ class _EventsScreenState extends State<EventsScreen>
     );
   }
 
-  Widget _buildBannerCard(
-    String title,
-    String date,
-    String location,
-    String imageUrl,
-  ) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.15),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.network(
-              imageUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) =>
-                  Container(color: Colors.grey.shade800),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.3),
-                    Colors.black.withOpacity(0.7),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 42,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 2,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black,
-                          blurRadius: 8,
-                          offset: Offset(2, 2),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    date,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    location,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
+  // Event Card Widget
   Widget _buildEventCard(
     Map<String, dynamic> event,
     int index,
@@ -1352,7 +1095,7 @@ class _EventsScreenState extends State<EventsScreen>
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      _formatEventDate(event['start_date'] ?? ''),
+                      DateHelpers.formatEventDate(event['start_date'] ?? ''),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -1363,7 +1106,7 @@ class _EventsScreenState extends State<EventsScreen>
                         event['end_date'] != null) ...[
                       const SizedBox(height: 4),
                       Text(
-                        _formatEventTime(
+                        DateHelpers.formatEventTime(
                           event['start_date'],
                           event['end_date'],
                         ),
@@ -1415,395 +1158,67 @@ class _EventsScreenState extends State<EventsScreen>
     );
   }
 
+  // My Events Tab
   Widget _buildMyEventsTab() {
-    return RefreshIndicator(
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+
+    return MyEventsTabContent(
+      myCreatedEvents: _myCreatedEvents,
+      likedEvents: _likedEvents,
+      primaryColor: theme.primaryColor,
       onRefresh: _fetchProfileEvents,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Add Event Banner
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFFB8935E), width: 2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Hosting your own event?',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black,
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    NavigationHelper.navigateTo(context, AddEventScreen());
-                  },
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add Event'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFB8935E),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+      onAddEvent: () {
+        NavigationHelper.navigateTo(context, AddEventScreen());
+      },
+      onEventTap: (event) {
+        Navigator.pushNamed(
+          context,
+          '/event-detail',
+          arguments: {'event': event},
+        );
+      },
+      formatEventDate: (date, index) => DateHelpers.formatEventDate(date),
+      onUnlikeEvent: (eventId, site, eventIndex) async {
+        final event = _likedEvents[eventIndex];
 
-          const SizedBox(height: 24),
+        // Optimistically remove
+        setState(() {
+          _likedEvents.removeAt(eventIndex);
+        });
 
-          // My Events Section
-          if (_myCreatedEvents.isNotEmpty) ...[
-            const Text(
-              'My Events',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Colors.black,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ..._myCreatedEvents.map((event) => _buildMyEventCard(event)),
-            const SizedBox(height: 24),
-          ],
+        // Make API call
+        final success = await EventsAPI.toggleEventLike(
+          eventId: eventId,
+          site: site,
+        );
 
-          // Saved Events Section
-          const Text(
-            'Saved Events',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          if (_likedEvents.isEmpty)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.favorite_border,
-                      size: 80,
-                      color: Colors.grey.shade300,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No saved events yet',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Events you save will appear here',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            ..._likedEvents.map((event) => _buildSavedEventCard(event)),
-        ],
-      ),
+        // Revert on failure
+        if (!success && mounted) {
+          setState(() {
+            _likedEvents.insert(eventIndex, event);
+          });
+        }
+      },
     );
   }
 
-  Widget _buildMyEventCard(Map<String, dynamic> event) {
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: InkWell(
-        onTap: () {
-          Navigator.pushNamed(
-            context,
-            '/event-detail',
-            arguments: {'event': event},
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Event Image
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  color: Colors.grey.shade200,
-                  child: event['thumbnail'] != null
-                      ? Image.network(
-                          event['thumbnail'],
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: Colors.grey.shade300,
-                            child: Icon(
-                              Icons.event,
-                              color: Colors.grey.shade500,
-                              size: 40,
-                            ),
-                          ),
-                        )
-                      : Icon(
-                          Icons.event,
-                          color: Colors.grey.shade500,
-                          size: 40,
-                        ),
-                ),
-              ),
-
-              const SizedBox(width: 12),
-
-              // Event Details
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      event['title'] ?? 'Untitled Event',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _formatEventDate(event['start_date'] ?? ''),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: theme.primaryColor,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.location_on,
-                          size: 14,
-                          color: Colors.grey.shade600,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            event['location'] ?? 'Location TBA',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                              height: 1.3,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSavedEventCard(Map<String, dynamic> event) {
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
-    final eventId = event['id'].toString();
-    final eventIndex = _likedEvents.indexOf(event);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: InkWell(
-        onTap: () {
-          Navigator.pushNamed(
-            context,
-            '/event-detail',
-            arguments: {'event': event},
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Event Image
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  color: Colors.grey.shade200,
-                  child: event['thumbnail'] != null
-                      ? Image.network(
-                          event['thumbnail'],
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: Colors.grey.shade300,
-                            child: Icon(
-                              Icons.event,
-                              color: Colors.grey.shade500,
-                              size: 40,
-                            ),
-                          ),
-                        )
-                      : Icon(
-                          Icons.event,
-                          color: Colors.grey.shade500,
-                          size: 40,
-                        ),
-                ),
-              ),
-
-              const SizedBox(width: 12),
-
-              // Event Details
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      event['title'] ?? 'Untitled Event',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _formatEventDate(event['start_date'] ?? ''),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: theme.primaryColor,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.location_on,
-                          size: 14,
-                          color: Colors.grey.shade600,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            event['location'] ?? 'Location TBA',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                              height: 1.3,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              // Like button
-              IconButton(
-                icon: const Icon(Icons.favorite, color: Color(0xFFB8935E)),
-                onPressed: () async {
-                  // Unlike the event
-                  final site = event['country'] ?? 'gb';
-                  setState(() {
-                    _likedEvents.removeAt(eventIndex);
-                  });
-
-                  final success = await EventsAPI.toggleEventLike(
-                    eventId: eventId,
-                    site: site,
-                  );
-
-                  if (!success && mounted) {
-                    // Revert on failure
-                    setState(() {
-                      _likedEvents.insert(eventIndex, event);
-                    });
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
+  // My Tickets Tab
   Widget _buildMyTicketsTab() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.confirmation_number_outlined,
-            size: 80,
-            color: Colors.grey.shade300,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No tickets yet',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Your purchased tickets will appear here',
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-          ),
-        ],
-      ),
+    return MyTicketsTabContent(
+      isLoading: _isLoadingTickets,
+      errorMessage: _ticketsError,
+      tickets: _activeTickets,
+      onRefresh: () => _fetchUserTickets(),
+      onViewTicket: (orderId) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => OrderTicketsPage(orderId: orderId)),
+        );
+      },
+      onAddToWallet: (ticket) {
+        print('Add to wallet tapped for: ${ticket['event']['title']}');
+        // Add your wallet logic here
+      },
     );
   }
 }

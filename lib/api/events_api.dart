@@ -237,6 +237,150 @@ class EventsAPI {
     }
   }
 
+  /// Endpoint example: /wp-json/app/v2/my-event-tickets
+  static Future<Map<String, dynamic>?> getMyEventTickets({
+    String? site, // optional override, e.g. "GB"
+  }) async {
+    try {
+      final token = await _authService.getToken();
+      final user = await _authService.getUser();
+
+      if (token == null || user == null) {
+        print('❌ [TicketsAPI] No token or user found');
+        return null;
+      }
+
+      final userCountry = user['last_location']?['country'] ?? 'GB';
+
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v1/get-my-event-tickets',
+      ).replace(queryParameters: {'site': (site ?? userCountry)});
+
+      print('🌐 [TicketsAPI] Fetching my tickets: $uri');
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+
+        return data;
+      } else {
+        print('❌ [TicketsAPI] Error ${response.statusCode}: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ [TicketsAPI] Exception: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getOrderTickets({
+    required String order, // encrypted order id OR plain numeric id
+    bool admin = false,
+    String? site, // optional, if your backend supports site switching via param
+  }) async {
+    try {
+      final token = await _authService.getToken();
+      final user = await _authService.getUser();
+
+      if (token == null || user == null) {
+        print('❌ [TicketsAPI] No token or user found');
+        return null;
+      }
+
+      final userCountry = user['last_location']?['country'] ?? 'GB';
+
+      final queryParams = <String, String>{
+        'order': order,
+        'admin': admin ? '1' : '0',
+        // include only if your route accepts it
+        if (site != null) 'site': site,
+        if (site == null) 'site': userCountry,
+      };
+
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v1/view-order-tickets',
+      ).replace(queryParameters: queryParams);
+
+      print('🌐 [TicketsAPI] Fetching order tickets: $uri');
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final ok = data['success'] == true;
+
+        if (ok) {
+          final header = data['data']?['header'];
+          print(
+            '✅ [TicketsAPI] Tickets fetched for order: ${header?['order_id']}',
+          );
+        } else {
+          print('❌ [TicketsAPI] API success=false: ${data['message']}');
+        }
+
+        return data;
+      } else {
+        print('❌ [TicketsAPI] Error ${response.statusCode}: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ [TicketsAPI] Exception: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getFeaturedEvents({
+    String? country,
+    int limit = 5,
+  }) async {
+    try {
+      final user = await _authService.getUser();
+
+      if (user == null) {
+        print('❌ [EventsAPI] No user found');
+        return null;
+      }
+
+      final userCountry = user['last_location']?['country'] ?? 'GB';
+      final site = country ?? userCountry;
+
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v1/get-featured-events',
+      ).replace(queryParameters: {'site': site, 'limit': limit.toString()});
+
+      print('🌐 [EventsAPI] Fetching featured events: $uri');
+
+      final response = await http.get(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data;
+      } else {
+        print('❌ [EventsAPI] Error ${response.statusCode}: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ [EventsAPI] Exception: $e');
+      return null;
+    }
+  }
+
   /// Fetch event categories
   static Future<List<Map<String, dynamic>>?> getEventCategories({
     String? country,
