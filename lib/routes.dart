@@ -1,5 +1,6 @@
 import 'package:drivelife/screens/auth/onboarding_screen.dart';
 import 'package:drivelife/screens/create_post_screen.dart';
+import 'package:drivelife/screens/events/event_detail_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
@@ -9,7 +10,7 @@ import 'screens/auth/register_screen.dart';
 import 'screens/auth/splash_screen.dart';
 import 'screens/home_tabs.dart';
 import 'screens/posts_screen.dart';
-import 'screens/search_screen.dart';
+import 'screens/events/events_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/profile/view_profile_screen.dart';
@@ -25,7 +26,7 @@ class AppRoutes {
   static const String register = '/register';
   static const String home = '/home';
   static const String posts = '/posts';
-  static const String search = '/search';
+  static const String events = '/events';
   static const String notifications = '/notifications';
   static const String profile = '/profile';
   static const String viewProfile = '/view-profile';
@@ -53,8 +54,8 @@ class AppRoutes {
         return _slide(const PostsScreen());
       case createPost:
         return _slide(const CreatePostScreen());
-      case search:
-        return _slide(const SearchScreen());
+      case events:
+        return _slide(const EventsScreen());
       case notifications:
         return _slide(const NotificationsScreen());
       case garageList:
@@ -62,9 +63,14 @@ class AppRoutes {
       case profile:
         return _slide(const ProfileScreen());
       case editProfile:
-        return _slide(const EditProfileSettingsScreen());
+        return _slide(EditProfileSettingsScreen());
       case manageSocialLinks:
         return _slide(const ManageSocialLinksScreen());
+      // In routes.dart or wherever you handle navigation
+      case '/event-detail':
+        final args = settings.arguments as Map<String, dynamic>;
+        print(args);
+        return _slide(EventDetailScreen(event: args['event']));
       case viewProfile:
         final args = settings.arguments as Map<String, dynamic>?;
 

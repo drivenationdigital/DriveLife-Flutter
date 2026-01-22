@@ -1,4 +1,8 @@
+import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/routes.dart';
+import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../utils/navigation_helper.dart';
 import '../account-settings/manage_social_links_screen.dart';
 import '../account-settings/my_details_screen.dart';
@@ -8,7 +12,67 @@ import '../account-settings/account_settings_screen.dart';
 import '../account-settings/edit_profile_images_screen.dart';
 
 class EditProfileSettingsScreen extends StatelessWidget {
-  const EditProfileSettingsScreen({super.key});
+  final _authService = AuthService();
+  EditProfileSettingsScreen({super.key});
+
+  Future<void> _handleLogout(BuildContext context) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      print('🚪 [HomeTabs] Logging out...');
+
+      // Clear auth token
+      await _authService.logout();
+
+      // Clear user from provider
+      if (context.mounted) {
+        final userProvider = Provider.of<UserProvider>(context, listen: false);
+        userProvider.clearUser();
+      }
+
+      print('✅ [HomeTabs] Logout successful');
+
+      // Navigate to login and clear navigation stack
+      if (context.mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          AppRoutes.login,
+          (route) => false, // Remove all routes
+        );
+      }
+    } catch (e) {
+      print('❌ [HomeTabs] Logout error: $e');
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Logout failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +112,7 @@ class EditProfileSettingsScreen extends StatelessWidget {
               Navigator.pop(context, true);
             }
           }),
+          const SizedBox(height: 8),
           _buildMenuItem(context, 'Manage Social Links', () async {
             final result = await NavigationHelper.navigateTo(
               context,
@@ -59,6 +124,7 @@ class EditProfileSettingsScreen extends StatelessWidget {
               Navigator.pop(context, true);
             }
           }),
+          const SizedBox(height: 8),
           _buildMenuItem(context, 'My Details', () async {
             final result = await NavigationHelper.navigateTo(
               context,
@@ -70,6 +136,7 @@ class EditProfileSettingsScreen extends StatelessWidget {
               Navigator.pop(context, true);
             }
           }),
+          const SizedBox(height: 8),
           _buildMenuItem(context, 'Username', () async {
             final result = await NavigationHelper.navigateTo(
               context,
@@ -81,6 +148,7 @@ class EditProfileSettingsScreen extends StatelessWidget {
               Navigator.pop(context, true);
             }
           }),
+          const SizedBox(height: 8),
           _buildMenuItem(
             context,
             'Account Settings',
@@ -89,6 +157,7 @@ class EditProfileSettingsScreen extends StatelessWidget {
               const AccountSettingsScreen(),
             ),
           ),
+          const SizedBox(height: 8),
           _buildMenuItem(
             context,
             'App Permissions',
@@ -96,6 +165,14 @@ class EditProfileSettingsScreen extends StatelessWidget {
               context,
               const AppPermissionsScreen(),
             ),
+          ),
+          const SizedBox(height: 8),
+          // ✅ Logout button - properly placed as separate menu item
+          _buildMenuItem(
+            context,
+            'Logout',
+            () => _handleLogout(context),
+            isDestructive: true, // Optional: makes it red
           ),
         ],
       ),
@@ -105,19 +182,15 @@ class EditProfileSettingsScreen extends StatelessWidget {
   Widget _buildMenuItem(
     BuildContext context,
     String title,
-    VoidCallback onTap,
-  ) {
+    VoidCallback onTap, {
+    bool isDestructive = false, // Optional parameter for styling logout button
+  }) {
     return InkWell(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: Colors.grey.shade300, width: 1),
-            top: BorderSide(color: Colors.grey.shade300, width: 1),
-            left: BorderSide(color: Colors.grey.shade300, width: 1),
-            right: BorderSide(color: Colors.grey.shade300, width: 1),
-          ),
+          border: Border.all(color: Colors.grey.shade300, width: 1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -125,9 +198,16 @@ class EditProfileSettingsScreen extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(fontSize: 16, color: Colors.black),
+              style: TextStyle(
+                fontSize: 16,
+                color: isDestructive ? Colors.red : Colors.black,
+                fontWeight: isDestructive ? FontWeight.w600 : FontWeight.normal,
+              ),
             ),
-            Icon(Icons.chevron_right, color: Colors.grey.shade400),
+            Icon(
+              Icons.chevron_right,
+              color: isDestructive ? Colors.red : Colors.grey.shade400,
+            ),
           ],
         ),
       ),

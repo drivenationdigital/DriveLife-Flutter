@@ -1304,7 +1304,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
             onPressed: () async {
               final result = await NavigationHelper.navigateTo(
                 context,
-                const EditProfileSettingsScreen(),
+                EditProfileSettingsScreen(),
               );
 
               // Refresh profile if details were updated
