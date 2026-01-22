@@ -1,4 +1,6 @@
 import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/screens/add_event_screen.dart';
+import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -28,7 +30,13 @@ class _EventsScreenState extends State<EventsScreen>
       TextEditingController();
   double? _customLat;
   double? _customLng;
-  String? _customLocationName; // NEW
+  String? _customLocationName;
+
+  // Search
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
+  bool _isSearching = false;
+  List<Map<String, dynamic>> _searchResults = [];
 
   int _currentBannerIndex = 0;
 
@@ -82,6 +90,8 @@ class _EventsScreenState extends State<EventsScreen>
     _scrollController.dispose();
     _scrollDebounce?.cancel();
     _customLocationController.dispose();
+    _searchController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 
@@ -106,6 +116,78 @@ class _EventsScreenState extends State<EventsScreen>
       _customLocationName = null;
       _customLat = null;
       _customLng = null;
+    });
+  }
+
+  void _onSearchChanged(String query) {
+    if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
+
+    if (query.trim().isEmpty) {
+      setState(() {
+        _isSearching = false;
+        _searchResults.clear();
+      });
+      return;
+    }
+
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+      _performSearch(query);
+    });
+  }
+
+  Future<void> _performSearch(String query) async {
+    if (query.trim().isEmpty) return;
+
+    setState(() => _isSearching = true);
+
+    try {
+      final results = await EventsAPI.discoverSearch(
+        search: query,
+        type: 'events',
+        page: 1,
+        perPage: 20,
+      );
+
+      if (results != null && mounted) {
+        if (results['success'] != true) {
+          setState(() {
+            _searchResults = [];
+            _isSearching = false;
+          });
+          return;
+        }
+
+        setState(() {
+          _searchResults =
+              (results['events']?['data'] as List<dynamic>?)
+                  ?.cast<Map<String, dynamic>>() ??
+              [];
+          _isSearching = false;
+        });
+      } else {
+        if (mounted) {
+          setState(() {
+            _searchResults = [];
+            _isSearching = false;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error searching: $e');
+      if (mounted) {
+        setState(() {
+          _searchResults = [];
+          _isSearching = false;
+        });
+      }
+    }
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() {
+      _isSearching = false;
+      _searchResults.clear();
     });
   }
 
@@ -619,6 +701,171 @@ class _EventsScreenState extends State<EventsScreen>
     }
   }
 
+  Widget _buildSearchResults(ThemeProvider theme) {
+    if (_isSearching) {
+      return Center(
+        child: CircularProgressIndicator(
+          color: theme.primaryColor,
+          strokeWidth: 2.5,
+        ),
+      );
+    }
+
+    if (_searchResults.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            Text(
+              'No events found',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Try a different search term',
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      itemCount: _searchResults.length,
+      itemBuilder: (context, index) {
+        final event = _searchResults[index];
+        return Container(
+          margin: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: InkWell(
+            onTap: () {
+              Navigator.pushNamed(
+                context,
+                '/event-detail',
+                arguments: {'event': event},
+              );
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Event Image
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      width: 90,
+                      height: 90,
+                      color: Colors.grey.shade200,
+                      child: event['thumbnail'] != null
+                          ? Image.network(
+                              event['thumbnail'],
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: Colors.grey.shade300,
+                                child: Icon(
+                                  Icons.event,
+                                  color: Colors.grey.shade500,
+                                  size: 40,
+                                ),
+                              ),
+                            )
+                          : Icon(
+                              Icons.event,
+                              color: Colors.grey.shade500,
+                              size: 40,
+                            ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  // Event Details
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          event['name'] ?? 'Untitled Event',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black,
+                            height: 1.3,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _formatEventDate(event['start_date'] ?? ''),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: theme.primaryColor,
+                          ),
+                        ),
+                        if (event['start_date'] != null &&
+                            event['end_date'] != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatEventTime(
+                              event['start_date'],
+                              event['end_date'],
+                            ),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.location_on,
+                              size: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                event['location'] ?? 'Location TBA',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade600,
+                                  height: 1.3,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -632,10 +879,18 @@ class _EventsScreenState extends State<EventsScreen>
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
+              controller: _searchController,
+              onChanged: _onSearchChanged,
               decoration: InputDecoration(
                 hintText: 'Search events...',
                 hintStyle: TextStyle(color: Colors.grey.shade400),
                 prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear, color: Colors.grey.shade400),
+                        onPressed: _clearSearch,
+                      )
+                    : null,
                 filled: true,
                 fillColor: Colors.grey.shade100,
                 border: OutlineInputBorder(
@@ -650,69 +905,74 @@ class _EventsScreenState extends State<EventsScreen>
             ),
           ),
 
-          // Tab Bar
-          Container(
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+          if (_searchController.text.isEmpty)
+            // Tab Bar
+            Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+                ),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                indicatorColor: theme.primaryColor,
+                indicatorWeight: 3,
+                labelColor: theme.primaryColor,
+                unselectedLabelColor: Colors.grey.shade600,
+                labelStyle: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+                isScrollable: false,
+                tabs: const [
+                  Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.event, size: 16),
+                        SizedBox(width: 4),
+                        Text('Upcoming'),
+                      ],
+                    ),
+                  ),
+                  Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.favorite_border, size: 16),
+                        SizedBox(width: 4),
+                        Text('My Events'),
+                      ],
+                    ),
+                  ),
+                  Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.confirmation_number_outlined, size: 16),
+                        SizedBox(width: 4),
+                        Text('Tickets'),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            child: TabBar(
-              controller: _tabController,
-              indicatorColor: theme.primaryColor,
-              indicatorWeight: 3,
-              labelColor: theme.primaryColor,
-              unselectedLabelColor: Colors.grey.shade600,
-              labelStyle: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-              isScrollable: false,
-              tabs: const [
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.event, size: 16),
-                      SizedBox(width: 4),
-                      Text('Upcoming'),
-                    ],
-                  ),
-                ),
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.favorite_border, size: 16),
-                      SizedBox(width: 4),
-                      Text('My Events'),
-                    ],
-                  ),
-                ),
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.confirmation_number_outlined, size: 16),
-                      SizedBox(width: 4),
-                      Text('Tickets'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
 
           // Content
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildUpcomingEventsTab(theme),
-                _buildMyEventsTab(),
-                _buildMyTicketsTab(),
-              ],
-            ),
+            child: _searchController.text.isNotEmpty
+                ? _buildSearchResults(
+                    theme,
+                  ) // NEW: Show search results when searching
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildUpcomingEventsTab(theme),
+                      _buildMyEventsTab(),
+                      _buildMyTicketsTab(),
+                    ],
+                  ),
           ),
         ],
       ),
@@ -1181,8 +1441,7 @@ class _EventsScreenState extends State<EventsScreen>
                 ),
                 ElevatedButton.icon(
                   onPressed: () {
-                    // TODO: Navigate to add event screen
-                    Navigator.pushNamed(context, '/add-event');
+                    NavigationHelper.navigateTo(context, AddEventScreen());
                   },
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('Add Event'),

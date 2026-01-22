@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import '../config/api_config.dart';
@@ -425,6 +426,175 @@ class EventsAPI {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         print('✅ [EventsAPI] Profile events fetched');
+        return data;
+      } else {
+        print('❌ [EventsAPI] Error ${response.statusCode}: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ [EventsAPI] Exception: $e');
+      return null;
+    }
+  }
+
+  /// Save/Create event
+  static Future<Map<String, dynamic>?> saveEvent({
+    String? eventId,
+    required String title,
+    required String country,
+    required Map<String, dynamic> location,
+    required List<String> categories,
+    required String visibility,
+    required String status,
+    required List<Map<String, dynamic>> dates,
+    required String description,
+    String? externalTicketsUrl,
+    String? ticketType,
+    String? entryDetailsFree,
+    String? entryDetails,
+  }) async {
+    try {
+      final user = await _authService.getUser();
+
+      if (user == null) {
+        print('❌ [EventsAPI] No user found');
+        return null;
+      }
+
+      final uri = Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/save-event');
+
+      print('🌐 [EventsAPI] Saving event: $title');
+
+      final body = {
+        if (eventId != null) 'event_id': eventId,
+        'user_id': user['id'],
+        'title': title,
+        'country': country,
+        'location': location,
+        'categories': categories,
+        'visibility': visibility,
+        'status': status,
+        'dates': dates,
+        'description': description,
+        if (externalTicketsUrl != null)
+          'external_tickets_url': externalTicketsUrl,
+        if (ticketType != null) 'ticket_type': ticketType,
+        if (entryDetailsFree != null) 'entry_details_free': entryDetailsFree,
+        if (entryDetails != null) 'entry_details': entryDetails,
+      };
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('✅ [EventsAPI] Event saved: ${data['event_id']}');
+        return data;
+      } else {
+        print('❌ [EventsAPI] Error ${response.statusCode}: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ [EventsAPI] Exception: $e');
+      return null;
+    }
+  }
+
+  /// Upload event images
+  static Future<Map<String, dynamic>?> uploadEventImages({
+    required String eventId,
+    required List<File> images,
+    required String type, // 'cover' or 'gallery'
+  }) async {
+    try {
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v1/upload-event-images',
+      );
+
+      var request = http.MultipartRequest('POST', uri);
+      request.fields['event_id'] = eventId;
+      request.fields['type'] = type;
+
+      for (var i = 0; i < images.length; i++) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            type == 'cover' ? 'cover_image' : 'gallery_images[$i]',
+            images[i].path,
+          ),
+        );
+      }
+
+      print('🌐 [EventsAPI] Uploading $type images for event $eventId');
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('✅ [EventsAPI] Images uploaded successfully');
+        return data;
+      } else {
+        print('❌ [EventsAPI] Error ${response.statusCode}: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ [EventsAPI] Exception: $e');
+      return null;
+    }
+  }
+
+  /// Search for events, users, venues
+  static Future<Map<String, dynamic>?> discoverSearch({
+    required String search,
+    required String type, // 'users', 'events', 'venues', 'all'
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    try {
+      final user = await _authService.getUser();
+
+      if (user == null) {
+        print('❌ [EventsAPI] No user found');
+        return null;
+      }
+
+      final userId = user['id'];
+      final site = user['last_location']?['country'] ?? 'GB';
+
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v1/discover-search',
+      );
+
+      print('🔍 [EventsAPI] Searching: $search (type: $type)');
+      print(
+        jsonEncode({
+          'search': search,
+          'user_id': userId,
+          'page': page,
+          'type': type,
+          'per_page': perPage,
+          'site': site,
+        }),
+      );
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'search': search,
+          'user_id': userId,
+          'page': page,
+          'type': type,
+          'per_page': perPage,
+          'site': site,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
         return data;
       } else {
         print('❌ [EventsAPI] Error ${response.statusCode}: ${response.body}');
