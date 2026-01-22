@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import '../config/api_config.dart';
 
 class EventsAPI {
   static final AuthService _authService = AuthService();
+  static const FlutterSecureStorage _storage = FlutterSecureStorage();
 
   /// Fetch paginated events with optional filters
   static Future<Map<String, dynamic>?> getEvents({
@@ -598,6 +600,12 @@ class EventsAPI {
     String? entryDetails,
   }) async {
     try {
+      final token = await _storage.read(key: 'token');
+      if (token == null) {
+        print('No auth token found');
+        return null;
+      }
+
       final user = await _authService.getUser();
 
       if (user == null) {
@@ -605,7 +613,9 @@ class EventsAPI {
         return null;
       }
 
-      final uri = Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/save-event');
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/save-event-data',
+      );
 
       print('🌐 [EventsAPI] Saving event: $title');
 
@@ -627,9 +637,15 @@ class EventsAPI {
         if (entryDetails != null) 'entry_details': entryDetails,
       };
 
+      print('📦 [EventsAPI] Event data: ${jsonEncode(body)}');
+      // return null; // Remove this line to enable actual API call
+
       final response = await http.post(
         uri,
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
         body: jsonEncode(body),
       );
 

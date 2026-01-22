@@ -1,13 +1,13 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/api/events_api.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:google_places_flutter/google_places_flutter.dart';
+import 'package:drivelife/providers/theme_provider.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:google_places_flutter/model/prediction.dart';
-import 'package:html_editor_enhanced/html_editor.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:google_places_flutter/google_places_flutter.dart';
 
 class AddEventScreen extends StatefulWidget {
   const AddEventScreen({super.key});
@@ -25,9 +25,11 @@ class _AddEventScreenState extends State<AddEventScreen>
   final _titleController = TextEditingController();
   final _locationController = TextEditingController();
   final _externalUrlController = TextEditingController();
-  final _descriptionController = HtmlEditorController();
-  final _entryDetailsController = HtmlEditorController();
-  final _entryDetailsFreeController = HtmlEditorController();
+
+  // Also update your controller declarations at the top:
+  late QuillController _descriptionController;
+  late QuillController _entryDetailsController;
+  late QuillController _entryDetailsFreeController;
 
   // Location
   final FocusNode _locationFocusNode = FocusNode();
@@ -54,10 +56,28 @@ class _AddEventScreenState extends State<AddEventScreen>
 
   bool _isLoading = false;
 
+  // Track which tabs have been visited for lazy loading
+  final Set<int> _visitedTabs = {0};
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 6, vsync: this);
+
+    // Initialize Quill controllers
+    _descriptionController = QuillController.basic();
+    _entryDetailsController = QuillController.basic();
+    _entryDetailsFreeController = QuillController.basic();
+
+    // Track tab changes for lazy loading
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {
+          _visitedTabs.add(_tabController.index);
+        });
+      }
+    });
+
     _fetchCategories();
   }
 
@@ -68,6 +88,9 @@ class _AddEventScreenState extends State<AddEventScreen>
     _locationController.dispose();
     _externalUrlController.dispose();
     _locationFocusNode.dispose();
+    _descriptionController.dispose();
+    _entryDetailsController.dispose();
+    _entryDetailsFreeController.dispose();
     super.dispose();
   }
 
@@ -83,7 +106,12 @@ class _AddEventScreenState extends State<AddEventScreen>
   }
 
   Future<void> _pickCoverImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1920,
+      maxHeight: 1080,
+      imageQuality: 85,
+    );
     if (image != null) {
       setState(() {
         _coverImage = File(image.path);
@@ -92,7 +120,11 @@ class _AddEventScreenState extends State<AddEventScreen>
   }
 
   Future<void> _pickGalleryImages() async {
-    final List<XFile> images = await _picker.pickMultiImage();
+    final List<XFile> images = await _picker.pickMultiImage(
+      maxWidth: 1920,
+      maxHeight: 1080,
+      imageQuality: 85,
+    );
     if (images.isNotEmpty) {
       setState(() {
         _galleryImages.addAll(images.map((e) => File(e.path)));
@@ -147,6 +179,31 @@ class _AddEventScreenState extends State<AddEventScreen>
     }
   }
 
+  String _getQuillContentAsHtml(QuillController controller) {
+    // Convert Quill delta to HTML
+    final delta = controller.document.toDelta();
+    final plainText = controller.document.toPlainText();
+
+    // Simple conversion - you may want to use a proper delta to HTML converter
+    // For now, return plain text wrapped in <p> tags
+    if (plainText.trim().isEmpty) return '';
+
+    return plainText
+        .split('\n')
+        .where((line) => line.trim().isNotEmpty)
+        .map((line) => '<p>${_escapeHtml(line)}</p>')
+        .join('');
+  }
+
+  String _escapeHtml(String text) {
+    return text
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#x27;');
+  }
+
   Future<void> _saveEvent() async {
     if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -179,9 +236,11 @@ class _AddEventScreenState extends State<AddEventScreen>
     setState(() => _isLoading = true);
 
     try {
-      final description = await _descriptionController.getText();
-      final entryDetails = await _entryDetailsController.getText();
-      final entryDetailsFree = await _entryDetailsFreeController.getText();
+      final description = _getQuillContentAsHtml(_descriptionController);
+      final entryDetails = _getQuillContentAsHtml(_entryDetailsController);
+      final entryDetailsFree = _getQuillContentAsHtml(
+        _entryDetailsFreeController,
+      );
 
       final response = await EventsAPI.saveEvent(
         title: _titleController.text.trim(),
@@ -216,23 +275,24 @@ class _AddEventScreenState extends State<AddEventScreen>
 
       if (response != null && response['success'] == true) {
         final eventId = response['event_id'].toString();
+        print('🎉 Event created with ID: $eventId');
 
         // Upload images
-        if (_coverImage != null) {
-          await EventsAPI.uploadEventImages(
-            eventId: eventId,
-            images: [_coverImage!],
-            type: 'cover',
-          );
-        }
+        // if (_coverImage != null) {
+        //   await EventsAPI.uploadEventImages(
+        //     eventId: eventId,
+        //     images: [_coverImage!],
+        //     type: 'cover',
+        //   );
+        // }
 
-        if (_galleryImages.isNotEmpty) {
-          await EventsAPI.uploadEventImages(
-            eventId: eventId,
-            images: _galleryImages,
-            type: 'gallery',
-          );
-        }
+        // if (_galleryImages.isNotEmpty) {
+        //   await EventsAPI.uploadEventImages(
+        //     eventId: eventId,
+        //     images: _galleryImages,
+        //     type: 'gallery',
+        //   );
+        // }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -292,7 +352,6 @@ class _AddEventScreenState extends State<AddEventScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
-          // isScrollable: true,
           indicatorColor: theme.primaryColor,
           labelColor: theme.primaryColor,
           unselectedLabelColor: Colors.grey,
@@ -313,15 +372,23 @@ class _AddEventScreenState extends State<AddEventScreen>
           controller: _tabController,
           children: [
             _buildTitleTab(theme),
-            _buildDatesTab(theme),
-            _buildDetailsTab(theme),
-            _buildGalleryTab(theme),
-            _buildTicketsTab(theme),
-            _buildVisibilityTab(theme),
+            _buildLazyTab(1, () => _buildDatesTab(theme)),
+            _buildLazyTab(2, () => _buildDetailsTab(theme)),
+            _buildLazyTab(3, () => _buildGalleryTab(theme)),
+            _buildLazyTab(4, () => _buildTicketsTab(theme)),
+            _buildLazyTab(5, () => _buildVisibilityTab(theme)),
           ],
         ),
       ),
     );
+  }
+
+  // Lazy loading wrapper for tabs
+  Widget _buildLazyTab(int index, Widget Function() builder) {
+    if (_visitedTabs.contains(index)) {
+      return builder();
+    }
+    return const Center(child: CircularProgressIndicator());
   }
 
   Widget _buildTitleTab(ThemeProvider theme) {
@@ -617,34 +684,61 @@ class _AddEventScreenState extends State<AddEventScreen>
         ),
         const SizedBox(height: 12),
         Container(
-          height: 400,
           decoration: BoxDecoration(
             border: Border.all(color: Colors.grey.shade300),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: HtmlEditor(
-            controller: _descriptionController,
-            htmlEditorOptions: const HtmlEditorOptions(
-              hint: "Enter event description...",
-              shouldEnsureVisible: true,
-            ),
-            htmlToolbarOptions: const HtmlToolbarOptions(
-              toolbarPosition: ToolbarPosition.aboveEditor,
-              toolbarType: ToolbarType.nativeScrollable,
-              defaultToolbarButtons: [
-                StyleButtons(),
-                FontButtons(),
-                ListButtons(listStyles: false),
-                // ParagraphButtons(),
-                // InsertButtons(
-                //   video: false,
-                //   audio: false,
-                //   table: false,
-                //   hr: false,
-                //   otherFile: false,
-                // ),
-              ],
-            ),
+          child: Column(
+            children: [
+              // Toolbar
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  border: Border(
+                    bottom: BorderSide(color: Colors.grey.shade300),
+                  ),
+                ),
+                child: QuillSimpleToolbar(
+                  controller: _descriptionController,
+                  config: const QuillSimpleToolbarConfig(
+                    showAlignmentButtons: false,
+                    showBackgroundColorButton: false,
+                    showCenterAlignment: false,
+                    showCodeBlock: false,
+                    showColorButton: false,
+                    showDirection: false,
+                    showDividers: false,
+                    showFontFamily: false,
+                    showFontSize: false,
+                    showHeaderStyle: false,
+                    showIndent: false,
+                    showInlineCode: false,
+                    showJustifyAlignment: false,
+                    showLeftAlignment: false,
+                    showLink: false,
+                    showListCheck: false,
+                    showQuote: false,
+                    showRightAlignment: false,
+                    showSearchButton: false,
+                    showSmallButton: false,
+                    showStrikeThrough: false,
+                    showSubscript: false,
+                    showSuperscript: false,
+                  ),
+                ),
+              ),
+              // Editor
+              Container(
+                height: 300,
+                padding: const EdgeInsets.all(12),
+                child: QuillEditor.basic(
+                  controller: _descriptionController,
+                  config: const QuillEditorConfig(
+                    placeholder: 'Enter event description...',
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -757,21 +851,9 @@ class _AddEventScreenState extends State<AddEventScreen>
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
-          Container(
-            height: 300,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: HtmlEditor(
-              controller: _entryDetailsFreeController,
-              htmlEditorOptions: const HtmlEditorOptions(
-                hint: "Add information about event entry...",
-              ),
-              htmlToolbarOptions: const HtmlToolbarOptions(
-                toolbarType: ToolbarType.nativeScrollable,
-              ),
-            ),
+          _buildQuillEditor(
+            _entryDetailsFreeController,
+            'Add information about event entry...',
           ),
         ],
 
@@ -794,21 +876,9 @@ class _AddEventScreenState extends State<AddEventScreen>
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
-          Container(
-            height: 300,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: HtmlEditor(
-              controller: _entryDetailsController,
-              htmlEditorOptions: const HtmlEditorOptions(
-                hint: "Add information about event entry...",
-              ),
-              htmlToolbarOptions: const HtmlToolbarOptions(
-                toolbarType: ToolbarType.nativeScrollable,
-              ),
-            ),
+          _buildQuillEditor(
+            _entryDetailsController,
+            'Add information about event entry...',
           ),
         ],
 
@@ -820,6 +890,61 @@ class _AddEventScreenState extends State<AddEventScreen>
           ),
         ],
       ],
+    );
+  }
+
+  Widget _buildQuillEditor(QuillController controller, String placeholder) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+            ),
+            child: QuillSimpleToolbar(
+              controller: controller,
+              config: const QuillSimpleToolbarConfig(
+                showAlignmentButtons: false,
+                showBackgroundColorButton: false,
+                showCenterAlignment: false,
+                showCodeBlock: false,
+                showColorButton: false,
+                showDirection: false,
+                showDividers: false,
+                showFontFamily: false,
+                showFontSize: false,
+                showHeaderStyle: false,
+                showIndent: false,
+                showInlineCode: false,
+                showJustifyAlignment: false,
+                showLeftAlignment: false,
+                showLink: false,
+                showListCheck: false,
+                showQuote: false,
+                showRightAlignment: false,
+                showSearchButton: false,
+                showSmallButton: false,
+                showStrikeThrough: false,
+                showSubscript: false,
+                showSuperscript: false,
+              ),
+            ),
+          ),
+          Container(
+            height: 250,
+            padding: const EdgeInsets.all(12),
+            child: QuillEditor.basic(
+              controller: controller,
+              config: QuillEditorConfig(placeholder: placeholder),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

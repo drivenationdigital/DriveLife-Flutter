@@ -8,17 +8,20 @@ import 'routes.dart';
 import 'providers/user_provider.dart';
 import 'providers/video_mute_provider.dart';
 
+import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  try{
-  // Initialize Firebase
-  await Firebase.initializeApp();
+  try {
+    // Initialize Firebase
+    await Firebase.initializeApp();
 
-  // Initialize Firebase Messaging
-  await FirebaseMessagingService.initialize();
-  } catch(e){
+    // Initialize Firebase Messaging
+    await FirebaseMessagingService.initialize();
+  } catch (e) {
     print('Error initializing Firebase: $e');
   }
 
@@ -46,23 +49,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    _setupFCMToken();
-  }
-
-  Future<void> _setupFCMToken() async {
-    // Get FCM token
-    String? token = await FirebaseMessagingService.getToken();
-    if (token != null) {
-      print('📱 FCM Token: $token');
-      // TODO: Send to backend when user logs in
-      // You'll do this in your login screen or user provider
-    }
-
-    // Listen for token refresh
-    FirebaseMessagingService.onTokenRefresh((newToken) {
-      print('🔄 FCM Token refreshed: $newToken');
-      // TODO: Send new token to backend
-    });
+    // _setupFCMToken();
   }
 
   @override
@@ -81,6 +68,13 @@ class _MyAppState extends State<MyApp> {
           ),
           onGenerateRoute: AppRoutes.generateRoute,
           initialRoute: AppRoutes.splash,
+          localizationsDelegates: const [
+            FlutterQuillLocalizations.delegate, // <-- Add this!
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('en', 'US')],
         );
       },
     );
