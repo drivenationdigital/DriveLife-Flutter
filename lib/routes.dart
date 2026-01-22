@@ -1,5 +1,5 @@
 import 'package:drivelife/screens/auth/onboarding_screen.dart';
-import 'package:drivelife/screens/create_post_screen.dart';
+import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/event_detail_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';

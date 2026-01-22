@@ -7,14 +7,13 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/search_user.dart';
-import 'package:drivelife/screens/tag_entities_screen.dart';
+import 'package:drivelife/screens/create-post/tag_entities_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:fluttertagger/fluttertagger.dart';
 import 'package:video_compress/video_compress.dart';
-import 'package:rxdart/rxdart.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});

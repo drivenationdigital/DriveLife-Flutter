@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:drivelife/screens/create_post_screen.dart';
+import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/tagged_entity.dart';

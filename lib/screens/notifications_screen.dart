@@ -51,7 +51,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ...(data['last_week'] ?? []),
         ...(data['last_30_days'] ?? []),
       ];
-      print(data['has_more_notifications']);
       setState(() {
         _allNotifications = notifications;
         _groupedNotifications = groupNotificationsFromBuckets(data);
@@ -67,57 +66,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         setState(() => _loading = false);
       }
     }
-  }
-
-  // ✅ Group notifications by time periods
-  Map<String, List<dynamic>> _groupNotificationsByTime(
-    List<dynamic> notifications,
-  ) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    final Map<String, List<dynamic>> grouped = {
-      'Today': [],
-      'Yesterday': [],
-      'This Week': [],
-      'This Month': [],
-      'Earlier': [],
-    };
-
-    for (final notification in notifications) {
-      try {
-        final dateStr = notification['date'] ?? '';
-        final date = DateTime.parse(dateStr);
-        final dateOnly = DateTime(date.year, date.month, date.day);
-
-        final daysDifference = today.difference(dateOnly).inDays;
-
-        if (daysDifference == 0) {
-          // Today
-          grouped['Today']!.add(notification);
-        } else if (daysDifference == 1) {
-          // Yesterday
-          grouped['Yesterday']!.add(notification);
-        } else if (daysDifference >= 2 && daysDifference <= 7) {
-          // This Week (2-7 days ago)
-          grouped['This Week']!.add(notification);
-        } else if (daysDifference > 7 && daysDifference <= 30) {
-          // This Month (8-30 days ago)
-          grouped['This Month']!.add(notification);
-        } else {
-          // Earlier (more than 30 days ago)
-          grouped['Earlier']!.add(notification);
-        }
-      } catch (e) {
-        print('Error parsing notification date: $e');
-        grouped['Earlier']!.add(notification);
-      }
-    }
-
-    // Remove empty groups
-    grouped.removeWhere((key, value) => value.isEmpty);
-
-    return grouped;
   }
 
   Map<String, List<dynamic>> groupNotificationsFromBuckets(

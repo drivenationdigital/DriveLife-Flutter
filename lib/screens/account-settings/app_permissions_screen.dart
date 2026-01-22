@@ -28,12 +28,6 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
   }
 
   Future<void> _checkPermissions() async {
-    // final statuses = await [
-    //   Permission.camera,
-    //   Permission.location,
-    //   Permission.photos,
-    //   Permission.notification,
-    // ].request();
     final cameraStatus = await Permission.camera.status;
     final locationStatus = await Permission.location.status;
     final photosStatus = await Permission.photos.status;
@@ -320,94 +314,6 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
             ),
           ),
           const SizedBox(height: 26),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPermissionTileOld({
-    required IconData icon,
-    required String title,
-    required String description,
-    required String key,
-    required ThemeProvider theme,
-  }) {
-    final isExpanded = _expandedStates[key] ?? false;
-    final status = _permissionStatus[key];
-
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () {
-              setState(() {
-                _expandedStates[key] = !isExpanded;
-              });
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(icon, color: Colors.grey.shade700, size: 24),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ),
-                  if (status != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _getStatusColor(status, theme).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        _getStatusText(status),
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: _getStatusColor(status, theme),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    isExpanded
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                    color: Colors.grey.shade600,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (isExpanded) ...[
-            Divider(height: 1, color: Colors.grey.shade300),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                description,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade700,
-                  height: 1.5,
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );

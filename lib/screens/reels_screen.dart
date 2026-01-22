@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../api/reels_api.dart';
-import '../widgets/feed_video_player.dart';
+import '../widgets/feed/feed_video_player.dart';
 
 class ReelsScreen extends StatefulWidget {
   const ReelsScreen({super.key});

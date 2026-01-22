@@ -392,37 +392,6 @@ class _TagEntitiesScreenState extends State<TagEntitiesScreen> {
     });
   }
 
-  void _addTag(Map<String, dynamic> entity) {
-    // Check if already tagged
-    final alreadyTagged = _tags.any(
-      (t) => t.id == entity['entity_id'] && t.index == _currentIndex,
-    );
-
-    if (alreadyTagged) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Already tagged to this image')),
-      );
-      return;
-    }
-
-    setState(() {
-      _tags.add(
-        TaggedEntity(
-          index: _currentIndex,
-          id: entity['entity_id'].toString(),
-          type: widget.entityType == 'users' ? 'user' : widget.entityType,
-          label: entity['name'] ?? entity['vehicle_name'] ?? 'Unknown',
-          x: 0.5,
-          y: 0.5,
-        ),
-      );
-    });
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Tagged!')));
-  }
-
   void _removeTag(TaggedEntity tag) {
     setState(() {
       _tags.remove(tag);

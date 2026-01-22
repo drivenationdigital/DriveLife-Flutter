@@ -1,6 +1,6 @@
 import 'package:drivelife/providers/user_provider.dart';
-import 'package:drivelife/screens/add_event_screen.dart';
-import 'package:drivelife/screens/order_ticket_view.dart';
+import 'package:drivelife/screens/events/add_event_screen.dart';
+import 'package:drivelife/screens/events/order_ticket_view.dart';
 import 'package:drivelife/utils/date.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/events/event_search_results.dart';
@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/api/events_api.dart';
-import 'package:drivelife/widgets/filter_bottom_sheet.dart';
+import 'package:drivelife/widgets/events/filter_bottom_sheet.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';

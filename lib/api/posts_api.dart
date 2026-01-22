@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:drivelife/models/tagged_entity.dart';
-import 'package:drivelife/screens/create_post_screen.dart';
+import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/utils/chunk_upload_utility.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -230,8 +230,6 @@ class PostsAPI {
         body['mentioned_hashtags'] = json.encode(mentionedHashtags);
       }
 
-      print(body);
-
       final response = await http.post(
         Uri.parse('$_baseUrl/wp-json/app/v1/create-post'),
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -239,7 +237,6 @@ class PostsAPI {
       );
 
       final data = json.decode(response.body);
-      print(data);
       if (response.statusCode == 200) {
         if (data['error'] != null) {
           throw Exception(data['error']);

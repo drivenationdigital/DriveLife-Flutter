@@ -11,7 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../api/interactions_api.dart';
 import '../screens/comments_bottom_sheet.dart';
-import '../widgets/feed_video_player.dart';
+import '../widgets/feed/feed_video_player.dart';
 import '../widgets/profile/profile_avatar.dart';
 
 class PostCard extends StatefulWidget {

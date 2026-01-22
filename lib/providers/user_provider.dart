@@ -18,7 +18,6 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
 
     final profile = await _auth.getUserProfile();
-    print('🚀 [UserProvider] Fetched user profile: $profile');
     _user = profile;
     _loading = false;
     notifyListeners();
