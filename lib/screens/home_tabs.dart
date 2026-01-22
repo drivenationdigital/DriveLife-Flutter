@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:drivelife/api/notifications_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/screens/add_event_screen.dart';
 import 'package:drivelife/screens/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
+import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
 import 'package:drivelife/screens/profile/edit_profile_settings_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/qr_scanner.dart';
@@ -126,9 +128,10 @@ class _HomeTabsState extends State<HomeTabs> {
   }
 
   // Show add menu popup
-  void _showAddMenu() {
+  void _showAddMenu(ThemeProvider theme) {
     showModalBottomSheet(
       context: context,
+      backgroundColor: theme.cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -140,7 +143,7 @@ class _HomeTabsState extends State<HomeTabs> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ListTile(
-                  leading: const Icon(Icons.post_add, color: Colors.blue),
+                  leading: Icon(Icons.photo, color: theme.primaryColor),
                   title: const Text('Add Post'),
                   onTap: () {
                     Navigator.pop(context); // Close bottom sheet
@@ -151,31 +154,27 @@ class _HomeTabsState extends State<HomeTabs> {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(
+                  leading: Icon(
                     Icons.directions_car,
-                    color: Colors.green,
+                    color: theme.primaryColor,
                   ),
                   title: const Text('Add Vehicle'),
                   onTap: () {
                     Navigator.pop(context);
-                    // TODO: Navigate to add vehicle screen
-                    // NavigationHelper.navigateTo(context, const AddVehicleScreen());
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Add Vehicle - Coming soon!'),
-                      ),
+                    NavigationHelper.navigateTo(
+                      context,
+                      const AddVehicleScreen(),
                     );
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.event, color: Colors.orange),
+                  leading: Icon(Icons.event, color: theme.primaryColor),
                   title: const Text('Add Event'),
                   onTap: () {
                     Navigator.pop(context);
-                    // TODO: Navigate to add event screen
-                    // NavigationHelper.navigateTo(context, const AddEventScreen());
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Add Event - Coming soon!')),
+                    NavigationHelper.navigateTo(
+                      context,
+                      const AddEventScreen(),
                     );
                   },
                 ),
@@ -220,7 +219,7 @@ class _HomeTabsState extends State<HomeTabs> {
   }
 
   // Default app bar for all tabs
-  AppBar? _buildAppBar() {
+  AppBar? _buildAppBar(ThemeProvider theme) {
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
@@ -231,7 +230,7 @@ class _HomeTabsState extends State<HomeTabs> {
         children: [
           IconButton(
             icon: const Icon(Icons.add, color: Colors.black),
-            onPressed: () => _showAddMenu(),
+            onPressed: () => _showAddMenu(theme),
           ),
           _buildQrIconButton(),
         ],
@@ -271,50 +270,6 @@ class _HomeTabsState extends State<HomeTabs> {
     final theme = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
-      // drawer: Drawer(
-      //   backgroundColor: theme.cardColor,
-      //   child: SafeArea(
-      //     child: ListView(
-      //       padding: EdgeInsets.zero,
-      //       children: [
-      //         DrawerHeader(
-      //           decoration: BoxDecoration(color: theme.cardColor),
-      //           child: Align(
-      //             alignment: Alignment.centerLeft,
-      //             child: Image.asset('assets/logo-dark.png', height: 24),
-      //           ),
-      //         ),
-      //         ListTile(
-      //           leading: const Icon(Icons.home_outlined),
-      //           title: const Text('Home'),
-      //           onTap: () => _goToTab(0),
-      //         ),
-      //         ListTile(
-      //           leading: const Icon(Icons.explore_outlined),
-      //           title: const Text('Events'),
-      //           onTap: () => _goToTab(1),
-      //         ),
-      //         ListTile(
-      //           leading: const Icon(Icons.explore_outlined),
-      //           title: const Text('Places'),
-      //           onTap: () => _goToTab(2),
-      //         ),
-      //         ListTile(
-      //           leading: const Icon(Icons.explore_outlined),
-      //           title: const Text('Clubs'),
-      //           onTap: () => _goToTab(3),
-      //         ),
-      //         ListTile(
-      //           leading: const Icon(Icons.store_outlined),
-      //           title: const Text('Store'),
-      //           onTap: () => _goToTab(4),
-      //         ),
-      //         ListTile(
-      //           leading: const Icon(Icons.person_outline),
-      //           title: const Text('Profile'),
-      //           onTap: () => _goToTab(5),
-      //         ),
-      //         const Divider(),
       //         Consumer<ThemeProvider>(
       //           builder: (context, themeProvider, child) {
       //             return ListTile(
@@ -334,42 +289,8 @@ class _HomeTabsState extends State<HomeTabs> {
       //             );
       //           },
       //         ),
-      //         ListTile(
-      //           leading: const Icon(Icons.notifications_none),
-      //           title: const Text('Notifications'),
-      //           onTap: () {
-      //             Navigator.pop(context);
-      //             NavigationHelper.navigateTo(
-      //               context,
-      //               const NotificationsScreen(),
-      //             );
-      //           },
-      //         ),
-      //         ListTile(
-      //           leading: const Icon(Icons.settings_outlined),
-      //           title: const Text('Settings'),
-      //           onTap: () {
-      //             Navigator.pop(context);
-      //             NavigationHelper.navigateTo(
-      //               context,
-      //               const EditProfileSettingsScreen(),
-      //             );
-      //           },
-      //         ),
-      //         const Divider(),
-      //         ListTile(
-      //           leading: const Icon(Icons.logout, color: Colors.red),
-      //           title: const Text(
-      //             'Logout',
-      //             style: TextStyle(color: Colors.red),
-      //           ),
-      //           onTap: () => _handleLogout(),
-      //         ),
-      //       ],
-      //     ),
-      //   ),
-      // ),
-      appBar: _buildAppBar(),
+      //
+      appBar: _buildAppBar(theme),
 
       body: IndexedStack(index: _currentIndex, children: _screens),
 
