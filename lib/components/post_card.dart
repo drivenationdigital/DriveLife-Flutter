@@ -35,9 +35,9 @@ class PostCard extends StatefulWidget {
 }
 
 class _PostCardState extends State<PostCard>
-    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true; // ✅ Keep state alive during scrolling
+    with SingleTickerProviderStateMixin {
+  // @override
+  // bool get wantKeepAlive => true; // ✅ Keep state alive during scrolling
 
   late AnimationController _heartController;
   late Animation<double> _heartScale;
@@ -446,7 +446,7 @@ class _PostCardState extends State<PostCard>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // ✅ Required for AutomaticKeepAliveClientMixin
+    // super.build(context); // ✅ Required for AutomaticKeepAliveClientMixin
 
     // ✅ Get providers once, use listen: false
     final theme = Provider.of<ThemeProvider>(context, listen: false);
