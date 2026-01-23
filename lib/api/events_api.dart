@@ -1,5 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:drivelife/models/event_media.dart';
+import 'package:drivelife/utils/event_media_uploader.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
@@ -8,6 +9,7 @@ import '../config/api_config.dart';
 class EventsAPI {
   static final AuthService _authService = AuthService();
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
+  static final _uploader = ChunkedFileUploader(apiUrl: ApiConfig.baseUrl);
 
   /// Fetch paginated events with optional filters
   static Future<Map<String, dynamic>?> getEvents({
@@ -663,38 +665,101 @@ class EventsAPI {
     }
   }
 
-  /// Upload event images
+  /// Upload event images with chunked upload and progress
   static Future<Map<String, dynamic>?> uploadEventImages({
     required String eventId,
-    required List<File> images,
+    required List<ImageData> images,
     required String type, // 'cover' or 'gallery'
+    Function(double progress)? onProgress,
   }) async {
     try {
-      final uri = Uri.parse(
-        '${ApiConfig.baseUrl}/wp-json/app/v1/upload-event-images',
-      );
-
-      var request = http.MultipartRequest('POST', uri);
-      request.fields['event_id'] = eventId;
-      request.fields['type'] = type;
-
-      for (var i = 0; i < images.length; i++) {
-        request.files.add(
-          await http.MultipartFile.fromPath(
-            type == 'cover' ? 'cover_image' : 'gallery_images[$i]',
-            images[i].path,
-          ),
-        );
-      }
-
       print('🌐 [EventsAPI] Uploading $type images for event $eventId');
 
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+      final result = await _uploader.updateEventImages(
+        eventId: eventId,
+        mediaList: images,
+        mediaGroup: type,
+        onOverallProgress: onProgress,
+      );
+
+      print('✅ [EventsAPI] Images uploaded successfully');
+      return result;
+    } catch (e) {
+      print('❌ [EventsAPI] Exception: $e');
+      return null;
+    }
+  }
+
+  /// Remove event image
+  static Future<Map<String, dynamic>?> removeEventImage({
+    required String eventId,
+    required String mediaId,
+  }) async {
+    try {
+      final token = await _storage.read(key: 'token');
+      if (token == null) {
+        print('❌ [EventsAPI] No token available');
+        return null;
+      }
+
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/remove-event-image-cloudflare',
+      );
+
+      print('🌐 [EventsAPI] Removing image $mediaId from event $eventId');
+
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'event_id': eventId, 'media_id': mediaId}),
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('✅ [EventsAPI] Images uploaded successfully');
+        print('✅ [EventsAPI] Image removed successfully');
+        return data;
+      } else {
+        print('❌ [EventsAPI] Error ${response.statusCode}: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ [EventsAPI] Exception: $e');
+      return null;
+    }
+  }
+
+  /// Get event edit data
+  static Future<Map<String, dynamic>?> getEventEditData({
+    required String eventId,
+    required String country,
+  }) async {
+    try {
+      final token = await _storage.read(key: 'token');
+      if (token == null) {
+        print('❌ [EventsAPI] No token available');
+        return null;
+      }
+
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/get-event-edit-data?event_id=$eventId&country=$country&version=2',
+      );
+
+      print('🌐 [EventsAPI] Fetching event edit data for event $eventId');
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('✅ [EventsAPI] Event edit data fetched successfully');
         return data;
       } else {
         print('❌ [EventsAPI] Error ${response.statusCode}: ${response.body}');

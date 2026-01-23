@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:drivelife/api/events_api.dart';
+import 'package:drivelife/models/event_media.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -10,7 +12,9 @@ import 'package:provider/provider.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
 
 class AddEventScreen extends StatefulWidget {
-  const AddEventScreen({super.key});
+  final String? eventId; // Add this parameter
+
+  const AddEventScreen({super.key, this.eventId});
 
   @override
   State<AddEventScreen> createState() => _AddEventScreenState();
@@ -38,9 +42,9 @@ class _AddEventScreenState extends State<AddEventScreen>
   String? _locationName;
 
   // Images
-  File? _coverImage;
-  List<File> _galleryImages = [];
   final ImagePicker _picker = ImagePicker();
+  ImageData? _coverImage;
+  List<ImageData> _galleryImages = [];
 
   // Form data
   String _selectedCountry = 'gb';
@@ -54,7 +58,11 @@ class _AddEventScreenState extends State<AddEventScreen>
   String _visibility = '1'; // 1=Public, 2=Private
   String _status = 'publish'; // publish or draft
 
+  String? _eventID;
+  bool _isCoverImageUploaded = false;
+
   bool _isLoading = false;
+  double _uploadProgress = 0.0; // Add this line
 
   // Track which tabs have been visited for lazy loading
   final Set<int> _visitedTabs = {0};
@@ -79,6 +87,12 @@ class _AddEventScreenState extends State<AddEventScreen>
     });
 
     _fetchCategories();
+
+    // Load event data if editing
+    if (widget.eventId != null) {
+      _eventID = widget.eventId;
+      _loadEventData(widget.eventId!);
+    }
   }
 
   @override
@@ -94,6 +108,225 @@ class _AddEventScreenState extends State<AddEventScreen>
     super.dispose();
   }
 
+  Future<void> _removeGalleryImage(int index) async {
+    final imageData = _galleryImages[index];
+
+    // If it's an uploaded remote image, show confirmation
+    if (imageData.isRemote && imageData.remoteId != null) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Image?'),
+          content: const Text(
+            'This will permanently delete the uploaded image. This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+
+      // Show loading
+      setState(() => _isLoading = true);
+
+      try {
+        final response = await EventsAPI.removeEventImage(
+          eventId: _eventID!,
+          mediaId: imageData.remoteId!,
+        );
+
+        if (response != null && response['success'] == true) {
+          setState(() {
+            _galleryImages.removeAt(index);
+          });
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Image deleted successfully'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          throw Exception('Failed to delete image');
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting image: ${e.toString()}')),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    } else {
+      // Local image, just remove from list
+      setState(() {
+        _galleryImages.removeAt(index);
+      });
+    }
+  }
+
+  String _htmlToPlainText(String html) {
+    if (html.isEmpty) return '';
+
+    // Remove HTML tags
+    String text = html
+        .replaceAll(RegExp(r'<[^>]*>'), '')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#x27;', "'")
+        .trim();
+
+    return text;
+  }
+
+  Future<void> _loadEventData(String eventId) async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final response = await EventsAPI.getEventEditData(
+        eventId: eventId,
+        country: _selectedCountry,
+      );
+
+      if (response != null && response['success'] == true) {
+        final data = response['data'];
+
+        setState(() {
+          // Basic fields
+          _titleController.text = data['title'] ?? '';
+          _selectedCountry = data['country'] ?? 'gb';
+
+          // Location
+          if (data['location'] != null) {
+            _locationName = data['location']['address'];
+            _locationController.text = data['location']['address'] ?? '';
+            _lat = double.tryParse(data['location']['lat']?.toString() ?? '');
+            _lng = double.tryParse(data['location']['lng']?.toString() ?? '');
+          }
+
+          // Categories - convert to List<String>
+          if (data['categories'] != null && data['categories'] is List) {
+            _selectedCategories = (data['categories'] as List)
+                .map((cat) => cat.toString())
+                .toList();
+          }
+
+          // Visibility and status
+          _visibility = data['visibility']?.toString() ?? '1';
+          _status = data['status'] ?? 'publish';
+
+          // Dates
+          if (data['date'] != null) {
+            if (data['date']['start_date'] != null) {
+              _startDate = DateTime.parse(data['date']['start_date']);
+            }
+            if (data['date']['end_date'] != null) {
+              _endDate = DateTime.parse(data['date']['end_date']);
+            }
+
+            // Times
+            if (data['date']['start_time'] != null) {
+              final startTimeParts = data['date']['start_time'].split(':');
+              _startTime = TimeOfDay(
+                hour: int.parse(startTimeParts[0]),
+                minute: int.parse(startTimeParts[1]),
+              );
+            }
+            if (data['date']['end_time'] != null) {
+              final endTimeParts = data['date']['end_time'].split(':');
+              _endTime = TimeOfDay(
+                hour: int.parse(endTimeParts[0]),
+                minute: int.parse(endTimeParts[1]),
+              );
+            }
+          }
+
+          // Ticket type and details
+          _ticketType = data['ticket_type']?.toString() ?? '1';
+          _externalUrlController.text = data['external_ticket_url'] ?? '';
+
+          // Description - populate Quill controllers
+          if (data['description'] != null &&
+              data['description'].toString().isNotEmpty) {
+            final plainDescription = _htmlToPlainText(data['description']);
+            _descriptionController.document = Document()
+              ..insert(0, plainDescription);
+          }
+
+          if (data['entry_details_free'] != null &&
+              data['entry_details_free'].toString().isNotEmpty) {
+            final plainText = _htmlToPlainText(data['entry_details_free']);
+            _entryDetailsFreeController.document = Document()
+              ..insert(0, plainText);
+          }
+
+          if (data['external_ticket_details'] != null &&
+              data['external_ticket_details'].toString().isNotEmpty) {
+            final plainText = _htmlToPlainText(data['external_ticket_details']);
+            _entryDetailsController.document = Document()..insert(0, plainText);
+          }
+
+          // Load cover image
+          if (data['cover_photo'] != null &&
+              data['cover_photo']['url'] != null) {
+            _coverImage = ImageData.fromRemote(
+              url: data['cover_photo']['url'],
+              id: data['cover_photo']['id'],
+            );
+            _isCoverImageUploaded = true;
+          }
+
+          // Load gallery images
+          if (data['gallery'] != null && data['gallery'] is List) {
+            _galleryImages = (data['gallery'] as List).map((img) {
+              return ImageData.fromRemote(url: img['url'], id: img['id']);
+            }).toList();
+          }
+        });
+
+        // Refresh categories for the selected country
+        await _fetchCategories();
+
+        print('✅ Event data loaded successfully');
+      } else {
+        throw Exception('Failed to load event data');
+      }
+    } catch (e) {
+      print('❌ Error loading event data: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading event: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   Future<void> _fetchCategories() async {
     final categories = await EventsAPI.getEventCategories(
       country: _selectedCountry,
@@ -105,37 +338,70 @@ class _AddEventScreenState extends State<AddEventScreen>
     }
   }
 
+  /// Convert File to ImageData with base64
+  Future<ImageData> _fileToImageData(File file) async {
+    final bytes = await file.readAsBytes();
+    final base64String = base64Encode(bytes);
+
+    final lower = file.path.toLowerCase();
+    String mimeType;
+    String extension;
+
+    if (lower.endsWith('.png')) {
+      mimeType = 'image/png';
+      extension = '.png';
+    } else if (lower.endsWith('.webp')) {
+      mimeType = 'image/webp';
+      extension = '.webp';
+    } else {
+      mimeType = 'image/jpeg';
+      extension = '.jpg';
+    }
+
+    return ImageData(
+      file: file,
+      base64: base64String,
+      mimeType: mimeType,
+      extension: extension,
+    );
+  }
+
   Future<void> _pickCoverImage() async {
     final XFile? image = await _picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 1920,
-      maxHeight: 1080,
-      imageQuality: 85,
+      // maxWidth: 1920,
+      // maxHeight: 1080,
+      // imageQuality: 85,
     );
+
     if (image != null) {
+      final imageData = await _fileToImageData(File(image.path));
       setState(() {
-        _coverImage = File(image.path);
+        _coverImage = imageData;
+        _isCoverImageUploaded =
+            false; // Mark as not uploaded when new image selected
       });
     }
   }
 
   Future<void> _pickGalleryImages() async {
     final List<XFile> images = await _picker.pickMultiImage(
-      maxWidth: 1920,
-      maxHeight: 1080,
-      imageQuality: 85,
+      // maxWidth: 1920,
+      // maxHeight: 1080,
+      // imageQuality: 85,
     );
+
     if (images.isNotEmpty) {
+      // Convert all picked images to ImageData
+      final imageDataList = await Future.wait(
+        images.map((xFile) => _fileToImageData(File(xFile.path))),
+      );
+
       setState(() {
-        _galleryImages.addAll(images.map((e) => File(e.path)));
+        _galleryImages.addAll(imageDataList);
+        // Don't reset any flag here - individual images track their own upload status
       });
     }
-  }
-
-  void _removeGalleryImage(int index) {
-    setState(() {
-      _galleryImages.removeAt(index);
-    });
   }
 
   Future<void> _selectDate(bool isStartDate) async {
@@ -204,6 +470,147 @@ class _AddEventScreenState extends State<AddEventScreen>
         .replaceAll("'", '&#x27;');
   }
 
+  Future<void> _showUploadProgress(String eventId) async {
+    final ValueNotifier<double> progressNotifier = ValueNotifier<double>(0);
+    final ValueNotifier<String> statusNotifier = ValueNotifier<String>(
+      'Preparing upload...',
+    );
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: ValueListenableBuilder<double>(
+          valueListenable: progressNotifier,
+          builder: (context, progress, child) {
+            return ValueListenableBuilder<String>(
+              valueListenable: statusNotifier,
+              builder: (context, status, child) {
+                return AlertDialog(
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Uploading Images',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      CircularProgressIndicator(
+                        value: progress / 100,
+                        backgroundColor: Colors.grey.shade200,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '${progress.toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        status,
+                        style: TextStyle(color: Colors.grey.shade600),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+
+    try {
+      // Upload cover image (only if not already uploaded)
+      if (_coverImage != null && !_isCoverImageUploaded) {
+        statusNotifier.value = 'Uploading cover image...';
+        print('📤 Starting cover image upload...');
+
+        await EventsAPI.uploadEventImages(
+          eventId: eventId,
+          images: [_coverImage!],
+          type: 'cover',
+          onProgress: (progress) {
+            print('📊 Cover progress: ${progress.toStringAsFixed(1)}%');
+            progressNotifier.value = progress;
+          },
+        );
+
+        setState(() {
+          _isCoverImageUploaded = true;
+        });
+        print('✅ Cover image uploaded');
+      }
+
+      // Filter gallery images to only upload new ones
+      final imagesToUpload = _galleryImages
+          .where((img) => !img.isUploaded)
+          .toList();
+
+      if (imagesToUpload.isNotEmpty) {
+        statusNotifier.value =
+            'Uploading gallery images (${imagesToUpload.length} new images)...';
+        progressNotifier.value = 0; // Reset for gallery upload
+        print(
+          '📤 Starting gallery upload (${imagesToUpload.length} new images out of ${_galleryImages.length} total)...',
+        );
+
+        await EventsAPI.uploadEventImages(
+          eventId: eventId,
+          images: imagesToUpload,
+          type: 'gallery',
+          onProgress: (progress) {
+            print('📊 Gallery progress: ${progress.toStringAsFixed(1)}%');
+            progressNotifier.value = progress;
+          },
+        );
+
+        // Mark uploaded images as uploaded
+        setState(() {
+          for (var img in imagesToUpload) {
+            img.isUploaded = true;
+          }
+        });
+        print('✅ Gallery images uploaded');
+      }
+
+      progressNotifier.dispose();
+      statusNotifier.dispose();
+
+      if (mounted) {
+        Navigator.of(context).pop(); // Close progress dialog
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Event saved successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Upload error: $e');
+      progressNotifier.dispose();
+      statusNotifier.dispose();
+
+      if (mounted) {
+        Navigator.of(context).pop(); // Close progress dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Upload failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _saveEvent() async {
     if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -243,6 +650,7 @@ class _AddEventScreenState extends State<AddEventScreen>
       );
 
       final response = await EventsAPI.saveEvent(
+        eventId: _eventID, // Will be null for new events, populated for edits
         title: _titleController.text.trim(),
         country: _selectedCountry,
         location: {
@@ -275,33 +683,33 @@ class _AddEventScreenState extends State<AddEventScreen>
 
       if (response != null && response['success'] == true) {
         final eventId = response['event_id'].toString();
-        print('🎉 Event created with ID: $eventId');
 
-        // Upload images
-        // if (_coverImage != null) {
-        //   await EventsAPI.uploadEventImages(
-        //     eventId: eventId,
-        //     images: [_coverImage!],
-        //     type: 'cover',
-        //   );
-        // }
+        setState(() {
+          _eventID = eventId;
+        });
 
-        // if (_galleryImages.isNotEmpty) {
-        //   await EventsAPI.uploadEventImages(
-        //     eventId: eventId,
-        //     images: _galleryImages,
-        //     type: 'gallery',
-        //   );
-        // }
+        print(
+          '🎉 Event ${_eventID != null ? "updated" : "created"} with ID: $eventId',
+        );
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Event created successfully!')),
-          );
-          Navigator.pop(context, true);
+        // Show upload progress dialog only if there are new images to upload
+        bool hasNewCoverImage = _coverImage != null && !_isCoverImageUploaded;
+        bool hasNewGalleryImages = _galleryImages.any((img) => !img.isUploaded);
+
+        if (hasNewCoverImage || hasNewGalleryImages) {
+          await _showUploadProgress(eventId);
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Event saved successfully!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
         }
       } else {
-        throw Exception('Failed to create event');
+        throw Exception('Failed to save event');
       }
     } catch (e) {
       if (mounted) {
@@ -366,19 +774,70 @@ class _AddEventScreenState extends State<AddEventScreen>
           ],
         ),
       ),
-      body: Form(
-        key: _formKey,
-        child: TabBarView(
-          controller: _tabController,
-          children: [
-            _buildTitleTab(theme),
-            _buildLazyTab(1, () => _buildDatesTab(theme)),
-            _buildLazyTab(2, () => _buildDetailsTab(theme)),
-            _buildLazyTab(3, () => _buildGalleryTab(theme)),
-            _buildLazyTab(4, () => _buildTicketsTab(theme)),
-            _buildLazyTab(5, () => _buildVisibilityTab(theme)),
-          ],
-        ),
+      // body: Form(
+      //   key: _formKey,
+      //   child: TabBarView(
+      //     controller: _tabController,
+      //     children: [
+      //       _buildTitleTab(theme),
+      //       _buildLazyTab(1, () => _buildDatesTab(theme)),
+      //       _buildLazyTab(2, () => _buildDetailsTab(theme)),
+      //       _buildLazyTab(3, () => _buildGalleryTab(theme)),
+      //       _buildLazyTab(4, () => _buildTicketsTab(theme)),
+      //       _buildLazyTab(5, () => _buildVisibilityTab(theme)),
+      //     ],
+      //   ),
+      // ),
+      body: Stack(
+        children: [
+          Form(
+            key: _formKey,
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildTitleTab(theme),
+                _buildLazyTab(1, () => _buildDatesTab(theme)),
+                _buildLazyTab(2, () => _buildDetailsTab(theme)),
+                _buildLazyTab(3, () => _buildGalleryTab(theme)),
+                _buildLazyTab(4, () => _buildTicketsTab(theme)),
+                _buildLazyTab(5, () => _buildVisibilityTab(theme)),
+              ],
+            ),
+          ),
+          if (_isLoading && _uploadProgress > 0)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                color: Colors.white,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Uploading images...',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          '${_uploadProgress.toStringAsFixed(0)}%',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(
+                      value: _uploadProgress / 100,
+                      backgroundColor: Colors.grey.shade200,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -389,6 +848,85 @@ class _AddEventScreenState extends State<AddEventScreen>
       return builder();
     }
     return const Center(child: CircularProgressIndicator());
+  }
+
+  Widget _buildCoverImagePreview() {
+    if (_coverImage == null) {
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.cloud_upload, size: 48, color: Colors.grey.shade400),
+          const SizedBox(height: 8),
+          Text('Tap to Upload', style: TextStyle(color: Colors.grey.shade600)),
+        ],
+      );
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: _coverImage!.isRemote
+              ? Image.network(
+                  _coverImage!.remoteUrl!,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Center(
+                      child: CircularProgressIndicator(
+                        value: loadingProgress.expectedTotalBytes != null
+                            ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                            : null,
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error, size: 48, color: Colors.red.shade400),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Failed to load image',
+                          style: TextStyle(color: Colors.red.shade600),
+                        ),
+                      ],
+                    );
+                  },
+                )
+              : Image.file(_coverImage!.file!, fit: BoxFit.cover),
+        ),
+        if (_isCoverImageUploaded)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.green,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(Icons.check_circle, size: 16, color: Colors.white),
+                  SizedBox(width: 4),
+                  Text(
+                    'Uploaded',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _buildTitleTab(ThemeProvider theme) {
@@ -428,26 +966,7 @@ class _AddEventScreenState extends State<AddEventScreen>
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.grey.shade300),
             ),
-            child: _coverImage != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.file(_coverImage!, fit: BoxFit.cover),
-                  )
-                : Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.cloud_upload,
-                        size: 48,
-                        color: Colors.grey.shade400,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Tap to Upload',
-                        style: TextStyle(color: Colors.grey.shade600),
-                      ),
-                    ],
-                  ),
+            child: _buildCoverImagePreview(),
           ),
         ),
 
@@ -789,13 +1308,70 @@ class _AddEventScreenState extends State<AddEventScreen>
             ),
             itemCount: _galleryImages.length,
             itemBuilder: (context, index) {
+              final imageData = _galleryImages[index];
               return Stack(
                 fit: StackFit.expand,
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.file(_galleryImages[index], fit: BoxFit.cover),
+                    child: imageData.isRemote
+                        ? Image.network(
+                            imageData.remoteUrl!,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  value:
+                                      loadingProgress.expectedTotalBytes != null
+                                      ? loadingProgress.cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                      : null,
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: Colors.grey.shade300,
+                                child: Icon(Icons.error, color: Colors.red),
+                              );
+                            },
+                          )
+                        : Image.file(imageData.file!, fit: BoxFit.cover),
                   ),
+                  // Show upload status badge
+                  if (imageData.isUploaded)
+                    Positioned(
+                      top: 4,
+                      left: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.check, size: 12, color: Colors.white),
+                            SizedBox(width: 2),
+                            Text(
+                              'Uploaded',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Delete button
                   Positioned(
                     top: 4,
                     right: 4,
@@ -803,12 +1379,21 @@ class _AddEventScreenState extends State<AddEventScreen>
                       onTap: () => _removeGalleryImage(index),
                       child: Container(
                         padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
+                        decoration: BoxDecoration(
+                          color: imageData.isRemote
+                              ? Colors.red.shade700
+                              : Colors.red,
                           shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
                         ),
-                        child: const Icon(
-                          Icons.close,
+                        child: Icon(
+                          imageData.isRemote ? Icons.delete : Icons.close,
                           size: 16,
                           color: Colors.white,
                         ),
@@ -1119,6 +1704,7 @@ class _AddEventScreenState extends State<AddEventScreen>
                       child: const Text(
                         'Done',
                         style: TextStyle(
+                          color: Colors.white,
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                         ),

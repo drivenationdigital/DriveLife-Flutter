@@ -1,3 +1,5 @@
+import 'package:drivelife/screens/events/add_event_screen.dart';
+import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -495,8 +497,9 @@ class _EventDetailScreenState extends State<EventDetailScreen>
     final ticketUrl = event['ticket_url'];
     final registrationRequired = event?['registrationRequired'] == true;
     final eventUrl = event['url'] ?? '';
+    final isEventOwner = event['is_owner'] == true;
 
-    Widget _buildHtmlContent(String? htmlContent, String emptyMessage) {
+    Widget buildHtmlContent(String? htmlContent, String emptyMessage) {
       final theme = Provider.of<ThemeProvider>(context, listen: false);
 
       if (htmlContent == null || htmlContent.isEmpty) {
@@ -752,6 +755,36 @@ class _EventDetailScreenState extends State<EventDetailScreen>
 
                 const SizedBox(height: 12),
 
+                // edit event button
+                if (isEventOwner)
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        NavigationHelper.navigateTo(
+                          context,
+                          AddEventScreen(eventId: event['id'].toString()),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueGrey.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      icon: const Icon(Icons.edit),
+                      label: const Text(
+                        'Edit Event',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+
                 // Action Buttons
                 if (hasTickets && ticketUrl != null && ticketUrl.isNotEmpty)
                   SizedBox(
@@ -890,7 +923,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                 // About Us Tab
                 SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
-                  child: _buildHtmlContent(
+                  child: buildHtmlContent(
                     eventDescription,
                     'No description available.',
                   ),
@@ -899,7 +932,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                 // Entry & Tickets Tab
                 SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
-                  child: _buildHtmlContent(
+                  child: buildHtmlContent(
                     entryDetails,
                     hasTickets
                         ? 'Tickets are available for this event.'
