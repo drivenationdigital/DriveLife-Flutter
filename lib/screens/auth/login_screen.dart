@@ -125,11 +125,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       alignment: Alignment.topRight,
                       child: TextButton(
                         onPressed: () {
-                          // TODO: Navigate to sign up screen
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Sign up coming soon'),
-                            ),
+                          Navigator.pushNamed(
+                            context,
+                            AppRoutes.registerStepOne,
                           );
                         },
                         child: const Text(

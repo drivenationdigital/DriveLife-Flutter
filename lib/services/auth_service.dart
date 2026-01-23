@@ -47,6 +47,44 @@ class AuthService {
     }
   }
 
+  Future<Map<String, dynamic>> registerUser({
+    required String fullName,
+    required String email,
+    required String password,
+    required String country,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v1/register-user'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'full_name': fullName,
+          'email': email,
+          'password': password,
+          'country': country,
+        }),
+      );
+
+      final data = json.decode(response.body);
+
+      if (response.statusCode != 201) {
+        return {
+          'success': false,
+          'message': data['message'] ?? 'An error occurred',
+          'code': data['code'] ?? 'unknown_error',
+        };
+      }
+
+      return data;
+    } catch (error) {
+      return {
+        'success': false,
+        'message': 'Network error: ${error.toString()}',
+        'code': 'network_error',
+      };
+    }
+  }
+
   /// ✅ Get cached token
   Future<String?> getToken() async {
     return await _storage.read(key: _tokenKey);

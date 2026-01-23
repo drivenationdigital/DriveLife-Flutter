@@ -1,3 +1,4 @@
+import 'package:drivelife/api/profile_api.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
@@ -12,6 +13,8 @@ class UsernameScreen extends StatefulWidget {
 class _UsernameScreenState extends State<UsernameScreen> {
   final _usernameController = TextEditingController();
   bool _isSaving = false;
+  bool _canChangeUsername = false;
+  int _daysUntilNextChange = 0; // TODO: Fetch from user data
 
   @override
   void initState() {
@@ -30,10 +33,19 @@ class _UsernameScreenState extends State<UsernameScreen> {
     final user = userProvider.user;
     if (user != null) {
       _usernameController.text = user['username'] ?? '';
+      _canChangeUsername = user['can_update_username'] ?? false;
+      _daysUntilNextChange = user['next_update_username'] ?? 0;
     }
   }
 
   Future<void> _saveUsername() async {
+    if (!_canChangeUsername) {
+      _showError(
+        'You can change your username every 30 days. Please wait $_daysUntilNextChange days.',
+      );
+      return;
+    }
+
     if (_usernameController.text.isEmpty) {
       _showError('Username cannot be empty');
       return;
@@ -41,11 +53,28 @@ class _UsernameScreenState extends State<UsernameScreen> {
 
     setState(() => _isSaving = true);
 
-    try {
-      // TODO: Call API to update username
-      await Future.delayed(const Duration(seconds: 1));
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final user = userProvider.user;
 
+    try {
       if (!mounted) return;
+
+      final response = await ProfileAPI.updateUsername(
+        username: _usernameController.text,
+        userId: user!['id'],
+      );
+
+      if (response?['success'] != true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              response?['message'] ?? 'An error occurred, please try again',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

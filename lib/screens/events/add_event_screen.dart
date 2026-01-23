@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class AddEventScreen extends StatefulWidget {
   final String? eventId; // Add this parameter
@@ -105,6 +106,11 @@ class _AddEventScreenState extends State<AddEventScreen>
     _descriptionController.dispose();
     _entryDetailsController.dispose();
     _entryDetailsFreeController.dispose();
+
+    // Clear image cache to free memory
+    imageCache.clear();
+    imageCache.clearLiveImages();
+
     super.dispose();
   }
 
@@ -774,20 +780,6 @@ class _AddEventScreenState extends State<AddEventScreen>
           ],
         ),
       ),
-      // body: Form(
-      //   key: _formKey,
-      //   child: TabBarView(
-      //     controller: _tabController,
-      //     children: [
-      //       _buildTitleTab(theme),
-      //       _buildLazyTab(1, () => _buildDatesTab(theme)),
-      //       _buildLazyTab(2, () => _buildDetailsTab(theme)),
-      //       _buildLazyTab(3, () => _buildGalleryTab(theme)),
-      //       _buildLazyTab(4, () => _buildTicketsTab(theme)),
-      //       _buildLazyTab(5, () => _buildVisibilityTab(theme)),
-      //     ],
-      //   ),
-      // ),
       body: Stack(
         children: [
           Form(
@@ -868,35 +860,31 @@ class _AddEventScreenState extends State<AddEventScreen>
         ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: _coverImage!.isRemote
-              ? Image.network(
-                  _coverImage!.remoteUrl!,
+              ? CachedNetworkImage(
+                  imageUrl: _coverImage!.remoteUrl!,
                   fit: BoxFit.cover,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return Center(
-                      child: CircularProgressIndicator(
-                        value: loadingProgress.expectedTotalBytes != null
-                            ? loadingProgress.cumulativeBytesLoaded /
-                                  loadingProgress.expectedTotalBytes!
-                            : null,
+                  memCacheWidth: 800, // Downscale for memory efficiency
+                  memCacheHeight: 600,
+                  placeholder: (context, url) =>
+                      Center(child: CircularProgressIndicator()),
+                  errorWidget: (context, url, error) => Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error, size: 48, color: Colors.red.shade400),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Failed to load image',
+                        style: TextStyle(color: Colors.red.shade600),
                       ),
-                    );
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    return Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.error, size: 48, color: Colors.red.shade400),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Failed to load image',
-                          style: TextStyle(color: Colors.red.shade600),
-                        ),
-                      ],
-                    );
-                  },
+                    ],
+                  ),
                 )
-              : Image.file(_coverImage!.file!, fit: BoxFit.cover),
+              : Image.file(
+                  _coverImage!.file!,
+                  fit: BoxFit.cover,
+                  cacheWidth: 800, // Downscale local images too
+                  cacheHeight: 600,
+                ),
         ),
         if (_isCoverImageUploaded)
           Positioned(
@@ -1315,30 +1303,40 @@ class _AddEventScreenState extends State<AddEventScreen>
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: imageData.isRemote
-                        ? Image.network(
-                            imageData.remoteUrl!,
+                        ? CachedNetworkImage(
+                            imageUrl: imageData.remoteUrl!,
                             fit: BoxFit.cover,
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return Center(
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  value:
-                                      loadingProgress.expectedTotalBytes != null
-                                      ? loadingProgress.cumulativeBytesLoaded /
-                                            loadingProgress.expectedTotalBytes!
-                                      : null,
+                            memCacheWidth: 300, // Small thumbnail size
+                            memCacheHeight: 300,
+                            maxWidthDiskCache: 300,
+                            maxHeightDiskCache: 300,
+                            placeholder: (context, url) => Container(
+                              color: Colors.grey.shade200,
+                              child: Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 ),
-                              );
-                            },
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: Colors.grey.shade300,
-                                child: Icon(Icons.error, color: Colors.red),
-                              );
-                            },
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              color: Colors.grey.shade300,
+                              child: Icon(
+                                Icons.error,
+                                color: Colors.red,
+                                size: 20,
+                              ),
+                            ),
                           )
-                        : Image.file(imageData.file!, fit: BoxFit.cover),
+                        : Image.file(
+                            imageData.file!,
+                            fit: BoxFit.cover,
+                            cacheWidth: 300, // Downscale local images
+                            cacheHeight: 300,
+                          ),
                   ),
                   // Show upload status badge
                   if (imageData.isUploaded)

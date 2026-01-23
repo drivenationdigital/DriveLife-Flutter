@@ -331,6 +331,7 @@ class _EventsScreenState extends State<EventsScreen>
 
     try {
       final response = await EventsAPI.getMyEventTickets();
+      print('🎟️ User tickets response: $response');
       if (!mounted) return;
 
       if (response != null && response['success'] == true) {
@@ -366,11 +367,14 @@ class _EventsScreenState extends State<EventsScreen>
 
   Future<void> _toggleEventLike(String eventId, int index) async {
     final event = _upcomingEvents[index];
+
     final site = event['site'] ?? 'GB';
+
+    final isLiked = event['is_liked'] ?? false;
 
     // Optimistic update
     setState(() {
-      _upcomingEvents[index]['is_liked'] = !_upcomingEvents[index]['is_liked'];
+      _upcomingEvents[index]['is_liked'] = !isLiked;
     });
 
     final success = await EventsAPI.toggleEventLike(

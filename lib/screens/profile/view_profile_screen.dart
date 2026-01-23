@@ -977,6 +977,28 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     );
   }
 
+  String? _getCoverImageUrl() {
+    final coverImage = _userProfile?['cover_image'];
+
+    // Handle null
+    if (coverImage == null) return null;
+
+    // Handle empty list
+    if (coverImage is List && coverImage.isEmpty) return null;
+
+    // Handle list with values
+    if (coverImage is List && coverImage.isNotEmpty) {
+      return coverImage[0].toString();
+    }
+
+    // Handle string
+    if (coverImage is String && coverImage.isNotEmpty) {
+      return coverImage;
+    }
+
+    return null;
+  }
+
   Widget _buildProfileHeader(ThemeProvider theme) {
     return Container(
       color: theme.cardColor,
@@ -991,11 +1013,9 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                 height: 140,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  image:
-                      _userProfile!['cover_image'] != null &&
-                          _userProfile!['cover_image'].toString().isNotEmpty
+                  image: _getCoverImageUrl() != null
                       ? DecorationImage(
-                          image: NetworkImage(_userProfile!['cover_image']),
+                          image: NetworkImage(_getCoverImageUrl()!),
                           fit: BoxFit.cover,
                         )
                       : null,

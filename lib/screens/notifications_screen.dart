@@ -43,7 +43,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     if (!mounted) return;
 
-    if (response != null) {
+    if (response != null && response?['success'] != false) {
       final data = response['data'] ?? response;
 
       final List<dynamic> notifications = [

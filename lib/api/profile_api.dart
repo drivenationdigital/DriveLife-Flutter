@@ -6,6 +6,46 @@ class ProfileAPI {
   static const String _baseUrl = 'https://www.carevents.com/uk';
   static const _storage = FlutterSecureStorage();
 
+  /// Update user's last location
+  static Future<Map<String, dynamic>?> updateLastLocation({
+    required Map<String, double> coords,
+    required int userId,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/wp-json/app/v1/update-last-location'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'coords': {
+            'latitude': coords['latitude'],
+            'longitude': coords['longitude'],
+          },
+          'user_id': userId,
+        }),
+      );
+
+      print('🌍 Update location response: ${response.body}');
+
+      final data = json.decode(response.body);
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Failed to update location',
+          'code': data['code'] ?? 'update_error',
+        };
+      }
+
+      return data;
+    } catch (error) {
+      return {
+        'success': false,
+        'message': 'Network error: ${error.toString()}',
+        'code': 'network_error',
+      };
+    }
+  }
+
   static Future<Map<String, dynamic>?> associateDeviceWithUser({
     required int userId,
     required String deviceToken,
@@ -380,10 +420,11 @@ class ProfileAPI {
   static Future<Map<String, dynamic>?> updateUsername({
     required String username,
     int? userId,
+    bool isRegistration = false,
   }) async {
     try {
       final token = await _storage.read(key: 'token');
-      if (token == null) {
+      if (token == null && !isRegistration) {
         return {'success': false, 'message': 'Not authenticated'};
       }
 

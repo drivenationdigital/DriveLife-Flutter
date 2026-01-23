@@ -1,4 +1,9 @@
 import 'package:drivelife/screens/auth/onboarding_screen.dart';
+import 'package:drivelife/screens/auth/register/step_five.dart';
+import 'package:drivelife/screens/auth/register/step_four.dart';
+import 'package:drivelife/screens/auth/register/step_one.dart';
+import 'package:drivelife/screens/auth/register/step_three.dart';
+import 'package:drivelife/screens/auth/register/step_two.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/event_detail_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
@@ -6,7 +11,6 @@ import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
-import 'screens/auth/register_screen.dart';
 import 'screens/auth/splash_screen.dart';
 import 'screens/home_tabs.dart';
 import 'screens/posts_screen.dart';
@@ -24,6 +28,12 @@ class AppRoutes {
   static const String auth = '/auth';
   static const String login = '/login';
   static const String register = '/register';
+  static const String registerStepOne = '/register-step-1';
+  static const String registerStepTwo = '/register-step-2';
+  static const String registerStepThree = '/register-step-3';
+  static const String registerStepFour = '/register-step-4';
+  static const String registerStepFive = '/register-step-5';
+
   static const String home = '/home';
   static const String posts = '/posts';
   static const String events = '/events';
@@ -47,7 +57,16 @@ class AppRoutes {
       case login:
         return _slide(const LoginScreen());
       case register:
-        return _slide(const RegisterScreen());
+      case registerStepOne:
+        return _slide(const RegisterStepOneScreen());
+      case registerStepTwo:
+        return _slide(const RegisterStepTwoScreen());
+      case registerStepThree:
+        return _slide(const RegisterStepThreeScreen());
+      case registerStepFour:
+        return _slide(const RegisterStepFourScreen());
+      case registerStepFive:
+        return _slide(const RegisterStepFiveScreen());
       case home:
         return _slide(const HomeTabs());
       case posts:

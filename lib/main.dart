@@ -1,6 +1,7 @@
+import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
-import 'package:drivelife/services/firebase_messaging_service.dart';
+// import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -20,7 +21,7 @@ void main() async {
     await Firebase.initializeApp();
 
     // Initialize Firebase Messaging
-    await FirebaseMessagingService.initialize();
+    // await FirebaseMessagingService.initialize();
   } catch (e) {
     print('Error initializing Firebase: $e');
   }
@@ -32,6 +33,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => VideoMuteProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => UploadPostProvider()),
+        ChangeNotifierProvider(create: (_) => RegistrationProvider()),
       ],
       child: const MyApp(),
     ),
