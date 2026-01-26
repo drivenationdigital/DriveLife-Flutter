@@ -297,7 +297,7 @@ class ProfileAPI {
   }) async {
     try {
       final token = await _storage.read(key: 'token');
-      if (token == null) {
+      if (token == null && userId == null) {
         print('No auth token found');
         return null;
       }
@@ -360,7 +360,7 @@ class ProfileAPI {
   }) async {
     try {
       final token = await _storage.read(key: 'token');
-      if (token == null) {
+      if (token == null && userId == null) {
         print('No auth token found');
         return null;
       }

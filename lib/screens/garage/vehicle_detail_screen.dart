@@ -308,7 +308,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
           backgroundColor: Colors.white,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.chevron_left, color: Colors.black),
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
             onPressed: () => Navigator.pop(context),
           ),
           centerTitle: true,
@@ -354,7 +354,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
           backgroundColor: Colors.white,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.chevron_left, color: Colors.black),
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
             onPressed: () => Navigator.pop(context),
           ),
           centerTitle: true,
@@ -373,7 +373,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.black),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
         centerTitle: true,
@@ -628,7 +628,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
               mods: _mods,
               onModsChanged: _loadVehicle,
               isOwner: isVehiclePublisher(),
-
             ),
             _GaragePostsGrid(garageId: widget.garageId, tagged: true),
           ],

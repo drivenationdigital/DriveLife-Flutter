@@ -51,6 +51,11 @@ class _UsernameScreenState extends State<UsernameScreen> {
       return;
     }
 
+    if (_usernameController.text.length < 3) {
+      _showError('Username must be at least 3 characters long');
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     final userProvider = Provider.of<UserProvider>(context, listen: false);
@@ -58,6 +63,12 @@ class _UsernameScreenState extends State<UsernameScreen> {
 
     try {
       if (!mounted) return;
+
+      // if username is unchanged, just pop
+      if (_usernameController.text == user?['username']) {
+        setState(() => _isSaving = false);
+        return;
+      }
 
       final response = await ProfileAPI.updateUsername(
         username: _usernameController.text,

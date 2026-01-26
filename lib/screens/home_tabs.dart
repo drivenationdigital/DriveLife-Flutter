@@ -1,20 +1,17 @@
-import 'dart:async';
-
-import 'package:drivelife/api/notifications_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
-import 'package:drivelife/services/qr_scanner.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
+import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'posts_screen.dart';
 import 'profile/profile_screen.dart';
-import 'notifications_screen.dart';
 
 class HomeTabs extends StatefulWidget {
   const HomeTabs({super.key});
@@ -26,9 +23,6 @@ class HomeTabs extends StatefulWidget {
 class _HomeTabsState extends State<HomeTabs> {
   int _currentIndex = 0;
   String? _currentProfileImageUrl;
-  int _notifCount = 0;
-  bool _notifLoading = false;
-  // Timer? _notifTimer;
 
   final _authService = AuthService();
 
@@ -50,13 +44,6 @@ class _HomeTabsState extends State<HomeTabs> {
   void initState() {
     super.initState();
     _loadProfileImage();
-    _refreshNotificationCount();
-
-    // _notifTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-    //   if (mounted) {
-    //     _refreshNotificationCount();
-    //   }
-    // });
   }
 
   void _loadProfileImage() {
@@ -67,62 +54,6 @@ class _HomeTabsState extends State<HomeTabs> {
         _currentProfileImageUrl = user['profile_image'];
       });
     }
-  }
-
-  Future<void> _refreshNotificationCount() async {
-    if (_notifLoading) return;
-    _notifLoading = true;
-
-    try {
-      final res = await NotificationsAPI.getNotificationCount();
-      if (!mounted) return;
-      setState(() => _notifCount = res);
-    } catch (_) {
-      // ignore
-    } finally {
-      _notifLoading = false;
-    }
-  }
-
-  Widget _notificationIconButton() {
-    return IconButton(
-      padding: const EdgeInsets.only(right: 12),
-      iconSize: 24,
-      onPressed: () async {
-        await NavigationHelper.navigateTo(context, const NotificationsScreen());
-        // refresh after coming back (so count updates after reading)
-        if (mounted) _refreshNotificationCount();
-      },
-      icon: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          const Icon(Icons.notifications_none, color: Colors.black),
-          if (_notifCount > 0)
-            Positioned(
-              right: -5,
-              top: -6,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                child: Text(
-                  _notifCount > 99 ? '99+' : '$_notifCount',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    height: 1.2,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
   }
 
   // Show add menu popup
@@ -184,45 +115,13 @@ class _HomeTabsState extends State<HomeTabs> {
     );
   }
 
-  // Reusable QR code scanner button
-  IconButton _buildQrIconButton() {
-    return IconButton(
-      onPressed: () async {
-        final result = await QrScannerService.showScanner(context);
-        if (result != null && mounted) {
-          QrScannerService.handleScanResult(
-            context,
-            result,
-            onSuccess: (data) {
-              // Navigate based on entity type
-              if (data['entity_type'] == 'profile') {
-                Navigator.pushNamed(
-                  context,
-                  '/view-profile',
-                  arguments: {'userId': data['entity_id']},
-                );
-              } else if (data['entity_type'] == 'vehicle') {
-                Navigator.pushNamed(
-                  context,
-                  '/vehicle-detail',
-                  arguments: {'garageId': data['entity_id'].toString()},
-                );
-              }
-            },
-          );
-        }
-      },
-      icon: const Icon(Icons.qr_code, color: Colors.black),
-    );
-  }
-
   // Default app bar for all tabs
   AppBar? _buildAppBar(ThemeProvider theme) {
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
       centerTitle: true,
-      leadingWidth: 96, // 👈 Increase width to fit two icons
+      leadingWidth: 96,
       leading: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -230,7 +129,7 @@ class _HomeTabsState extends State<HomeTabs> {
             icon: const Icon(Icons.add, color: Colors.black),
             onPressed: () => _showAddMenu(theme),
           ),
-          _buildQrIconButton(),
+          SharedHeaderIcons.qrCodeIcon(),
         ],
       ),
       title: Image.asset('assets/logo-dark.png', height: 18),
@@ -238,10 +137,15 @@ class _HomeTabsState extends State<HomeTabs> {
         IconButton(
           icon: const Icon(Icons.search, color: Colors.black),
           onPressed: () {
-            // Navigator.pushNamed(context, AppRoutes.search);
+            Navigator.pushNamed(context, AppRoutes.search);
           },
         ),
-        _notificationIconButton(),
+        // ✅ Using the actionIcons helper for multiple icons at once
+        ...SharedHeaderIcons.actionIcons(
+          iconColor: Colors.black,
+          showQr: false, // Already shown in leading
+          showNotifications: true,
+        ),
       ],
     );
   }

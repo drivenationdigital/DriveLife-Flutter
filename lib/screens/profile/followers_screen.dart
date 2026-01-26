@@ -160,7 +160,7 @@ class _FollowersScreenState extends State<FollowersScreen> {
         backgroundColor: theme.backgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.chevron_left, color: theme.textColor),
+          icon: Icon(Icons.arrow_back_ios, color: theme.textColor),
           iconSize: 38,
           onPressed: () => Navigator.pop(context),
         ),

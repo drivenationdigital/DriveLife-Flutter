@@ -280,6 +280,11 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           _userProfile = Map<String, dynamic>.from(user);
           _isLoading = false;
         });
+
+        if (user?['cover_image'] != null) {
+          _preloadCoverImage(user?['cover_image']);
+        }
+
         _loadTabContent();
         return;
       }
@@ -319,6 +324,10 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           _userProfile = profile;
           _isLoading = false;
         });
+
+        if (profile?['cover_image'] != null) {
+          _preloadCoverImage(profile?['cover_image']);
+        }
 
         // Cache other users' profiles only
         if (!_isOwnProfile && widget.userId != null) {
@@ -574,7 +583,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                 backgroundColor: theme.backgroundColor,
                 elevation: 0,
                 leading: IconButton(
-                  icon: const Icon(Icons.chevron_left, color: Colors.black),
+                  icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
                   iconSize: 38,
                   onPressed: () => Navigator.of(context).pop(),
                 ),
@@ -604,7 +613,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
               backgroundColor: theme.backgroundColor,
               elevation: 0,
               leading: IconButton(
-                icon: Icon(Icons.chevron_left, color: theme.textColor),
+                icon: Icon(Icons.arrow_back_ios, color: theme.textColor),
                 iconSize: 38,
                 onPressed: () => Navigator.of(context).pop(),
               ),
@@ -959,21 +968,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
             ),
           ),
       ],
-    );
-  }
-
-  Widget _buildPlaceholder(IconData icon, String message, ThemeProvider theme) {
-    return SliverFillRemaining(
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 64, color: theme.subtextColor),
-            const SizedBox(height: 16),
-            Text(message, style: TextStyle(color: theme.subtextColor)),
-          ],
-        ),
-      ),
     );
   }
 

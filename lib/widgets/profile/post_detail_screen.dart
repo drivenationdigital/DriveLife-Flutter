@@ -68,7 +68,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           backgroundColor: Colors.white,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.chevron_left, color: Colors.black),
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
             iconSize: 38,
             onPressed: () => Navigator.of(context).pop(),
           ),
@@ -90,7 +90,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           backgroundColor: Colors.white,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.chevron_left, color: Colors.black),
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
             iconSize: 38,
             onPressed: () => Navigator.of(context).pop(),
           ),
@@ -113,7 +113,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.black),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
           iconSize: 38,
           onPressed: () => Navigator.of(context).pop(),
         ),

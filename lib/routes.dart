@@ -8,6 +8,7 @@ import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/event_detail_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
+import 'package:drivelife/screens/search_screen.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
@@ -47,6 +48,7 @@ class AppRoutes {
   static const String manageSocialLinks = '/manage-social-links';
   static const String createPost = '/create-post';
   static const String garageList = '/garage-list';
+  static const String search = '/search';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -90,6 +92,8 @@ class AppRoutes {
         final args = settings.arguments as Map<String, dynamic>;
         print(args);
         return _slide(EventDetailScreen(event: args['event']));
+      case search:
+        return _slide(const SearchScreen());
       case viewProfile:
         final args = settings.arguments as Map<String, dynamic>?;
 

@@ -740,7 +740,7 @@ class _AddEventScreenState extends State<AddEventScreen>
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.black),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
         title: Image.asset('assets/logo-dark.png', height: 18),

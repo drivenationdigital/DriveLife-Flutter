@@ -122,6 +122,11 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
     try {
       // Upload images if user didn't skip
       if (uploadImages) {
+        // if no profile or cover image selected, throw error
+        if (_profileImage == null && _coverImage == null) {
+          throw Exception('Please select at least one image to upload');
+        }
+
         // Upload profile image
         if (_profileImage != null) {
           print('🖼️ Uploading profile image...');

@@ -38,9 +38,18 @@ class EventsAPI {
       }
 
       final userId = user['id'];
-      final userCountry = user['last_location']?['country'] ?? 'GB';
-      final userLat = latitude ?? user['last_location']?['latitude'];
-      final userLng = longitude ?? user['last_location']?['longitude'];
+
+      // Handle last_location being either a Map or an empty array
+      final lastLocation = user['last_location'];
+      final isLocationValid = lastLocation is Map && lastLocation.isNotEmpty;
+
+      final userCountry = isLocationValid
+          ? (lastLocation['country'] ?? 'GB')
+          : 'GB';
+      final userLat =
+          latitude ?? (isLocationValid ? lastLocation['latitude'] : null);
+      final userLng =
+          longitude ?? (isLocationValid ? lastLocation['longitude'] : null);
 
       // Build query parameters
       final queryParams = {
@@ -205,7 +214,11 @@ class EventsAPI {
       }
 
       final userId = user['id'];
-      final userCountry = user['last_location']?['country'] ?? 'GB';
+
+      final lastLocation = user['last_location'];
+      final userCountry = (lastLocation is Map && lastLocation.isNotEmpty)
+          ? (lastLocation['country'] ?? 'GB')
+          : 'GB';
 
       final queryParams = {
         'event_id': eventId,
@@ -256,8 +269,10 @@ class EventsAPI {
         return null;
       }
 
-      final userCountry = user['last_location']?['country'] ?? 'GB';
-      print(user);
+      final lastLocation = user['last_location'];
+      final userCountry = (lastLocation is Map && lastLocation.isNotEmpty)
+          ? (lastLocation['country'] ?? 'GB')
+          : 'GB';
 
       final uri = Uri.parse(
         '${ApiConfig.baseUrl}/wp-json/app/v1/get-my-event-tickets',
@@ -301,7 +316,10 @@ class EventsAPI {
         return null;
       }
 
-      final userCountry = user['last_location']?['country'] ?? 'GB';
+      final lastLocation = user['last_location'];
+      final userCountry = (lastLocation is Map && lastLocation.isNotEmpty)
+          ? (lastLocation['country'] ?? 'GB')
+          : 'GB';
 
       final queryParams = <String, String>{
         'order': order,
@@ -361,7 +379,11 @@ class EventsAPI {
         return null;
       }
 
-      final userCountry = user['last_location']?['country'] ?? 'GB';
+      final lastLocation = user['last_location'];
+      final userCountry = (lastLocation is Map && lastLocation.isNotEmpty)
+          ? (lastLocation['country'] ?? 'GB')
+          : 'GB';
+
       final site = country ?? userCountry;
 
       final uri = Uri.parse(
@@ -400,7 +422,12 @@ class EventsAPI {
         return null;
       }
 
-      final userCountry = user['last_location']?['country'] ?? 'GB';
+      // Handle last_location being either a Map or an empty array
+      final lastLocation = user['last_location'];
+      final userCountry = (lastLocation is Map && lastLocation.isNotEmpty)
+          ? (lastLocation['country'] ?? 'GB')
+          : 'GB';
+
       final site = country ?? userCountry;
 
       final uri = Uri.parse(

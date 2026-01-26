@@ -223,7 +223,7 @@ class _GarageListScreenState extends State<GarageListScreen> {
         elevation: 0,
         // Use a Builder so Scaffold.of(context).openDrawer() has the right context
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.black),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
         centerTitle: true, // 👈 ensures the title is centered
