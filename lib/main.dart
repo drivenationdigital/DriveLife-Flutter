@@ -61,6 +61,7 @@ class _MyAppState extends State<MyApp> {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: themeProvider.themeData.copyWith(
+            scaffoldBackgroundColor: Colors.white,
             pageTransitionsTheme: const PageTransitionsTheme(
               builders: {
                 TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
@@ -68,10 +69,14 @@ class _MyAppState extends State<MyApp> {
               },
             ),
           ),
+          // Add this builder to set a white background immediately
+          builder: (context, child) {
+            return Container(color: Colors.white, child: child);
+          },
           onGenerateRoute: AppRoutes.generateRoute,
           initialRoute: AppRoutes.splash,
           localizationsDelegates: const [
-            FlutterQuillLocalizations.delegate, // <-- Add this!
+            FlutterQuillLocalizations.delegate,
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,

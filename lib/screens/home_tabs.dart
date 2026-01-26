@@ -9,6 +9,7 @@ import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'posts_screen.dart';
 import 'profile/profile_screen.dart';
@@ -24,16 +25,15 @@ class _HomeTabsState extends State<HomeTabs> {
   int _currentIndex = 0;
   String? _currentProfileImageUrl;
 
+  // ============================================================================
+  // GLOBAL KEY - Access posts screen state
+  // ============================================================================
+  final GlobalKey<PostsScreenState> _postsScreenKey =
+      GlobalKey<PostsScreenState>();
+
   final _authService = AuthService();
 
-  final List<Widget> _screens = const [
-    PostsScreen(),
-    EventsScreen(),
-    Scaffold(body: Center(child: Text('Places'))),
-    Scaffold(body: Center(child: Text('Clubs'))),
-    Scaffold(body: Center(child: Text('Store'))),
-    ProfileScreen(),
-  ];
+  late final List<Widget> _screens;
 
   void _goToTab(int idx) {
     setState(() => _currentIndex = idx);
@@ -43,6 +43,15 @@ class _HomeTabsState extends State<HomeTabs> {
   @override
   void initState() {
     super.initState();
+
+    _screens = [
+      PostsScreen(key: _postsScreenKey),
+      EventsScreen(),
+      Scaffold(body: Center(child: Text('Places'))),
+      Scaffold(body: Center(child: Text('Clubs'))),
+      Scaffold(body: Center(child: Text('Store'))),
+      ProfileScreen(),
+    ];
     _loadProfileImage();
   }
 
@@ -206,6 +215,14 @@ class _HomeTabsState extends State<HomeTabs> {
         iconSize: 28,
         currentIndex: _currentIndex,
         onTap: (index) {
+          // if index is home, and already on home, scroll to top and refresh
+          if (index == 0 && _currentIndex == 0) {
+            _postsScreenKey.currentState?.scrollToTopAndRefresh();
+            // add small vibration or haptic feedback
+            HapticFeedback.lightImpact();
+            return;
+          }
+
           setState(() => _currentIndex = index);
         },
         items: [

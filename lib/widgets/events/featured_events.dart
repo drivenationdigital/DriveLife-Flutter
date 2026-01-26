@@ -32,7 +32,7 @@ class FeaturedBannerCard extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
