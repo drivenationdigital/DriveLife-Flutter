@@ -560,4 +560,37 @@ class ProfileAPI {
       rethrow;
     }
   }
+
+  /// Delete user account
+  static Future<Map<String, dynamic>?> deleteUserAccount({
+    required int userId,
+    required String password,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/wp-json/app/v1/delete_account'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'user_id': userId, 'password': password}),
+      );
+
+      final data = json.decode(response.body);
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Failed to delete account',
+          'code': data['code'] ?? 'delete_error',
+        };
+      }
+
+      return data;
+    } catch (error) {
+      return {
+        'success': false,
+        'message':
+            'Oops, unable to delete your account. Please try again later.',
+        'code': 'network_error',
+      };
+    }
+  }
 }

@@ -1,3 +1,4 @@
+import 'package:drivelife/api/profile_api.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
@@ -11,8 +12,25 @@ class AccountSettingsScreen extends StatefulWidget {
 
 class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   bool _isDeleting = false;
+  final _passwordController = TextEditingController();
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   Future<void> _showDeleteConfirmation() async {
+    // First dialog - password input
+    final password = await _showPasswordDialog();
+
+    if (password == null || password.isEmpty) {
+      return; // User cancelled or didn't enter password
+    }
+
+    // Second dialog - final confirmation
+    if (!mounted) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -40,27 +58,132 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     );
 
     if (confirmed == true) {
-      _deleteAccount();
+      _deleteAccount(password);
     }
   }
 
-  Future<void> _deleteAccount() async {
+  Future<String?> _showPasswordDialog() async {
+    _passwordController.clear();
+    bool obscureText = true;
+
+    return showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.white,
+          title: const Text(
+            'Confirm Password',
+            style: TextStyle(color: Colors.black),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Please enter your password to continue',
+                style: TextStyle(color: Colors.black87, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _passwordController,
+                obscureText: obscureText,
+                autofocus: true,
+                style: const TextStyle(color: Colors.black),
+                decoration: InputDecoration(
+                  hintText: 'Password',
+                  hintStyle: TextStyle(color: Colors.grey.shade400),
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscureText ? Icons.visibility_off : Icons.visibility,
+                      color: Colors.grey.shade600,
+                    ),
+                    onPressed: () {
+                      setDialogState(() {
+                        obscureText = !obscureText;
+                      });
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final password = _passwordController.text.trim();
+                if (password.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter your password'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(context, password);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteAccount(String password) async {
     setState(() => _isDeleting = true);
 
     try {
-      // TODO: Call API to delete account
-      await Future.delayed(const Duration(seconds: 2));
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final user = userProvider.user;
+
+      print('🔐 Deleting account for user: $user');
+
+      if (user == null || user['id'] == null) {
+        throw Exception('User not found');
+      }
+
+      final userId = user['id'];
+
+      // Call API to delete account
+      print('🗑️ Deleting account for user $userId...');
+
+      final result = await ProfileAPI.deleteUserAccount(
+        userId: userId,
+        password: password,
+      );
+
+      print('🔍 Delete account response: $result');
 
       if (!mounted) return;
 
-      // Clear user data and navigate to login
-      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      // Check if deletion was successful
+      if (result?['success'] != true) {
+        throw Exception(result?['message'] ?? 'Failed to delete account');
+      }
+
+      print('✅ Account deleted successfully');
+
+      // Clear user data and logout
       await userProvider.logout();
 
       if (!mounted) return;
 
+      // Navigate to login
       Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
 
+      // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Account deleted successfully'),
@@ -68,12 +191,17 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         ),
       );
     } catch (e) {
+      print('❌ Error deleting account: $e');
+
       if (!mounted) return;
+
+      String errorMessage = e.toString().replaceFirst('Exception: ', '');
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to delete account: $e'),
+          content: Text(errorMessage),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     } finally {
@@ -91,24 +219,11 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.chevron_left, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
         centerTitle: true,
         title: Image.asset('assets/logo-dark.png', height: 18),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Save',
-              style: TextStyle(
-                color: Colors.black,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -144,6 +259,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
+                  disabledBackgroundColor: Colors.grey,
                 ),
                 child: _isDeleting
                     ? const SizedBox(
