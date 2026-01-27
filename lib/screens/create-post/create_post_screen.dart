@@ -16,7 +16,16 @@ import 'package:fluttertagger/fluttertagger.dart';
 import 'package:video_compress/video_compress.dart';
 
 class CreatePostScreen extends StatefulWidget {
-  const CreatePostScreen({super.key});
+  final String? associationId;
+  final String? associationType;
+  final String? associationLabel;
+
+  const CreatePostScreen({
+    super.key,
+    this.associationId,
+    this.associationType,
+    this.associationLabel,
+  });
 
   @override
   State<CreatePostScreen> createState() => _CreatePostScreenState();
@@ -61,10 +70,27 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   int _currentPage = 0;
   bool _isPosting = false;
   String? _linkType;
+  Map<String, dynamic>? _associatedEntity;
 
   @override
   void initState() {
     super.initState();
+
+    print(
+      'CreatePostScreen initialized with association: '
+      'id=${widget.associationId}, '
+      'type=${widget.associationType}, '
+      'label=${widget.associationLabel}',
+    );
+
+    // Set the associated entity from constructor params
+    if (widget.associationId != null && widget.associationType != null) {
+      _associatedEntity = {
+        'id': widget.associationId,
+        'type': widget.associationType,
+        'label': widget.associationLabel,
+      };
+    }
 
     // Update this section 👇
     _compressSubscription = VideoCompress.compressProgress$.subscribe((
@@ -307,130 +333,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 
-  Future<void> _createPostLegacy() async {
-    if (_selectedMedia.isEmpty) {
-      _showMessage('Please select at least one image or video', isError: true);
-      return;
-    }
-
-    if (_linkType != null && _linkUrlController.text.trim().isEmpty) {
-      _showMessage('Please enter a link URL', isError: true);
-      return;
-    }
-
-    String captionText = _captionController.formattedText;
-    final allTags = _captionController.tags;
-
-    final mentionedUsers = <Map<String, dynamic>>[];
-    final mentionedHashtags = <Map<String, dynamic>>[];
-
-    for (final tag in allTags) {
-      if (tag.triggerCharacter == '@') {
-        mentionedUsers.add({
-          'entity_id': tag.id,
-          'entity_type': 'user',
-          'text': tag.text,
-        });
-      } else if (tag.triggerCharacter == '#') {
-        mentionedHashtags.add({
-          'entity_id': tag.id,
-          'entity_type': 'hashtag',
-          'text': tag.text,
-        });
-      }
-    }
-
-    setState(() {
-      _isPosting = true;
-      _isUploading = true;
-      _uploadProgress = 0.0;
-      _uploadStatus = 'Uploading media...';
-    });
-
-    try {
-      final userProvider = Provider.of<UserProvider>(context, listen: false);
-      final user = userProvider.user;
-
-      if (user == null) {
-        throw Exception('User not found');
-      }
-
-      final userId = int.parse(user['id'].toString());
-
-      final uploadedMedia = await PostsAPI.uploadMediaFiles(
-        mediaList: _selectedMedia,
-        userId: userId,
-        onProgress: (current, total, percentage) {
-          if (mounted) {
-            setState(() {
-              _uploadProgress = percentage;
-              _uploadStatus = 'Uploading ${current + 1}/$total items';
-            });
-          }
-        },
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        _uploadStatus = 'Creating post...';
-        _uploadProgress = 0.95;
-      });
-
-      final postResult = await PostsAPI.createPost(
-        userId: userId,
-        media: uploadedMedia,
-        caption: captionText,
-        location: null,
-        linkType: _linkType,
-        linkUrl: _linkUrlController.text.trim().isNotEmpty
-            ? _linkUrlController.text.trim()
-            : null,
-        associationId: null,
-        associationType: null,
-      );
-
-      if (!mounted) return;
-
-      final allEntityTags = [
-        ..._taggedUsers,
-        ..._taggedVehicles,
-        ..._taggedEvents,
-      ];
-
-      if (allEntityTags.isNotEmpty && postResult['post_id'] != null) {
-        setState(() {
-          _uploadStatus = 'Adding tags...';
-        });
-
-        await PostsAPI.addTagsForPost(
-          userId: userId,
-          postId: int.parse(postResult['post_id'].toString()),
-          tags: allEntityTags,
-        );
-      }
-
-      if (!mounted) return;
-
-      _showMessage('Post created successfully!');
-      Navigator.pop(context, true);
-    } catch (e) {
-      if (!mounted) return;
-      _showMessage('Failed to create post: ${e.toString()}', isError: true);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isPosting = false;
-          _isUploading = false;
-          _uploadProgress = 0.0;
-          _uploadStatus = '';
-        });
-      }
-    }
-  }
-
-  // Modify the _createPost method in create_post_screen.dart
-
   Future<void> _createPost() async {
     if (_selectedMedia.isEmpty) {
       _showMessage('Please select at least one image or video', isError: true);
@@ -492,6 +394,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       userId: userId,
       mentionedHashtags: mentionedHashtags,
       mentionedUsers: mentionedUsers,
+      association: _associatedEntity != null
+          ? {'id': _associatedEntity!['id'], 'type': _associatedEntity!['type']}
+          : null,
     );
 
     // Start background upload

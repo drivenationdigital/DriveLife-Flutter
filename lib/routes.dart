@@ -74,7 +74,14 @@ class AppRoutes {
       case posts:
         return _slide(const PostsScreen());
       case createPost:
-        return _slide(const CreatePostScreen());
+        final args = settings.arguments as Map<String, dynamic>;
+        return _slide(
+          CreatePostScreen(
+            associationId: args['association_id'],
+            associationType: args['association_type'],
+            associationLabel: args['association_label'],
+          ),
+        );
       case events:
         return _slide(const EventsScreen());
       case notifications:
@@ -90,7 +97,6 @@ class AppRoutes {
       // In routes.dart or wherever you handle navigation
       case '/event-detail':
         final args = settings.arguments as Map<String, dynamic>;
-        print(args);
         return _slide(EventDetailScreen(event: args['event']));
       case search:
         return _slide(const SearchScreen());

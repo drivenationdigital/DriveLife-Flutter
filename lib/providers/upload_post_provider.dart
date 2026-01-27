@@ -21,6 +21,8 @@ class UploadPostData {
   final int userId;
   final List<Map<String, dynamic>> mentionedUsers;
   final List<Map<String, dynamic>> mentionedHashtags;
+  final String? location;
+  final Map<String, dynamic>? association;
 
   UploadPostData({
     required this.id,
@@ -35,6 +37,8 @@ class UploadPostData {
     required this.userId,
     this.mentionedUsers = const [],
     this.mentionedHashtags = const [],
+    this.location,
+    this.association,
   });
 }
 
@@ -308,8 +312,12 @@ class UploadPostProvider with ChangeNotifier {
         location: null,
         linkType: data.linkType,
         linkUrl: data.linkUrl,
-        associationId: null,
-        associationType: null,
+        associationId: data.association != null
+            ? data.association!['id']
+            : null,
+        associationType: data.association != null
+            ? data.association!['type']
+            : null,
         mentionedUsers: data.mentionedUsers,
         mentionedHashtags: data.mentionedHashtags,
       );

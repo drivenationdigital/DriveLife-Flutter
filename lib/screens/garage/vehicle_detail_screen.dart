@@ -78,6 +78,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   // UPDATE: _loadVehicle
   Future<void> _loadVehicle() async {
     final vehicle = await GarageAPI.getGarageById(widget.garageId);
+
+    print(vehicle);
     final mods = await GarageAPI.getVehicleMods(widget.garageId);
 
     if (!mounted) return;
@@ -94,7 +96,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     });
   }
 
-  // ADD: Skeleton loading widget
   Widget _buildSkeleton() {
     return CustomScrollView(
       slivers: [
@@ -207,7 +208,31 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: () {},
+            onPressed: () {
+              final associationType = isOwner ? 'garage' : 'car';
+
+              if (_vehicle == null) return;
+
+              // Create the label (registration or make/model)
+              String label;
+              if (_vehicle?['registration'] != null &&
+                  _vehicle?['registration'].isNotEmpty) {
+                label = _vehicle?['registration'];
+              } else {
+                label = '${_vehicle?['make']} ${_vehicle?['model']}';
+              }
+
+              // Navigate to create post screen with arguments
+              Navigator.pushNamed(
+                context,
+                '/create-post', // or whatever your route name is
+                arguments: {
+                  'association_id': _vehicle?['id'], // or garageId
+                  'association_type': associationType,
+                  'association_label': label,
+                },
+              );
+            },
             style: ElevatedButton.styleFrom(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
