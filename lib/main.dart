@@ -1,7 +1,6 @@
 import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
-// import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +10,8 @@ import 'providers/video_mute_provider.dart';
 
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+// import League Spartan font from google fonts
+import 'package:google_fonts/google_fonts.dart';
 
 void main() async {
   // Ensure Flutter is initialized
@@ -19,9 +20,6 @@ void main() async {
   try {
     // Initialize Firebase
     await Firebase.initializeApp();
-
-    // Initialize Firebase Messaging
-    // await FirebaseMessagingService.initialize();
   } catch (e) {
     print('Error initializing Firebase: $e');
   }
@@ -51,7 +49,6 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    // _setupFCMToken();
   }
 
   @override
@@ -62,6 +59,9 @@ class _MyAppState extends State<MyApp> {
           debugShowCheckedModeBanner: false,
           theme: themeProvider.themeData.copyWith(
             scaffoldBackgroundColor: Colors.white,
+            textTheme: GoogleFonts.leagueSpartanTextTheme(
+              Theme.of(context).textTheme,
+            ),
             pageTransitionsTheme: const PageTransitionsTheme(
               builders: {
                 TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
