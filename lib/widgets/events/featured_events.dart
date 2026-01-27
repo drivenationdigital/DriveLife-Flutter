@@ -46,72 +46,72 @@ class FeaturedBannerCard extends StatelessWidget {
                   errorBuilder: (_, __, ___) =>
                       Container(color: Colors.grey.shade800),
                 ),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.3),
-                        Colors.black.withOpacity(0.7),
-                      ],
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.5,
-                          height: 1.1,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black,
-                              blurRadius: 8,
-                              offset: Offset(2, 2),
-                            ),
-                          ],
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        date,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        location,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 1,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
+                // Container(
+                //   decoration: BoxDecoration(
+                //     gradient: LinearGradient(
+                //       begin: Alignment.topCenter,
+                //       end: Alignment.bottomCenter,
+                //       colors: [
+                //         Colors.black.withOpacity(0.3),
+                //         Colors.black.withOpacity(0.7),
+                //       ],
+                //     ),
+                //   ),
+                // ),
+                // Padding(
+                //   padding: const EdgeInsets.all(20),
+                //   child: Column(
+                //     mainAxisAlignment: MainAxisAlignment.center,
+                //     children: [
+                //       Text(
+                //         title,
+                //         style: const TextStyle(
+                //           color: Colors.white,
+                //           fontSize: 32,
+                //           fontWeight: FontWeight.w900,
+                //           letterSpacing: 1.5,
+                //           height: 1.1,
+                //           shadows: [
+                //             Shadow(
+                //               color: Colors.black,
+                //               blurRadius: 8,
+                //               offset: Offset(2, 2),
+                //             ),
+                //           ],
+                //         ),
+                //         textAlign: TextAlign.center,
+                //         maxLines: 2,
+                //         overflow: TextOverflow.ellipsis,
+                //       ),
+                //       const SizedBox(height: 8),
+                //       Text(
+                //         date,
+                //         style: const TextStyle(
+                //           color: Colors.white,
+                //           fontSize: 18,
+                //           fontWeight: FontWeight.w600,
+                //           letterSpacing: 0.5,
+                //         ),
+                //         textAlign: TextAlign.center,
+                //         maxLines: 1,
+                //         overflow: TextOverflow.ellipsis,
+                //       ),
+                //       const SizedBox(height: 4),
+                //       Text(
+                //         location,
+                //         style: const TextStyle(
+                //           color: Colors.white,
+                //           fontSize: 16,
+                //           fontWeight: FontWeight.w500,
+                //           letterSpacing: 1,
+                //         ),
+                //         textAlign: TextAlign.center,
+                //         maxLines: 1,
+                //         overflow: TextOverflow.ellipsis,
+                //       ),
+                //     ],
+                //   ),
+                // ),
               ],
             ),
           ),
