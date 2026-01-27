@@ -1,3 +1,4 @@
+import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
@@ -5,6 +6,7 @@ import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
+import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
@@ -49,7 +51,7 @@ class _HomeTabsState extends State<HomeTabs> {
       EventsScreen(),
       Scaffold(body: Center(child: Text('Places'))),
       Scaffold(body: Center(child: Text('Clubs'))),
-      Scaffold(body: Center(child: Text('Store'))),
+      ShopScreen(),
       ProfileScreen(),
     ];
     _loadProfileImage();
@@ -180,74 +182,97 @@ class _HomeTabsState extends State<HomeTabs> {
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
 
-    return Scaffold(
-      //         Consumer<ThemeProvider>(
-      //           builder: (context, themeProvider, child) {
-      //             return ListTile(
-      //               leading: Icon(
-      //                 themeProvider.isDarkMode
-      //                     ? Icons.dark_mode
-      //                     : Icons.light_mode,
-      //               ),
-      //               title: const Text('Dark Mode'),
-      //               trailing: Switch(
-      //                 value: themeProvider.isDarkMode,
-      //                 onChanged: (value) {
-      //                   themeProvider.toggleTheme();
-      //                 },
-      //                 activeColor: theme.primaryColor,
-      //               ),
-      //             );
-      //           },
-      //         ),
-      //
-      appBar: _buildAppBar(theme),
+    return PopScope(
+      canPop: _currentIndex == 0, // Only allow pop if on home tab
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _currentIndex != 0) {
+          // If we didn't pop and we're not on home, go to home
+          setState(() => _currentIndex = 0);
+        }
+      },
+      child: Scaffold(
+        //         Consumer<ThemeProvider>(
+        //           builder: (context, themeProvider, child) {
+        //             return ListTile(
+        //               leading: Icon(
+        //                 themeProvider.isDarkMode
+        //                     ? Icons.dark_mode
+        //                     : Icons.light_mode,
+        //               ),
+        //               title: const Text('Dark Mode'),
+        //               trailing: Switch(
+        //                 value: themeProvider.isDarkMode,
+        //                 onChanged: (value) {
+        //                   themeProvider.toggleTheme();
+        //                 },
+        //                 activeColor: theme.primaryColor,
+        //               ),
+        //             );
+        //           },
+        //         ),
+        //
+        appBar: _buildAppBar(theme),
 
-      body: IndexedStack(index: _currentIndex, children: _screens),
+        body: IndexedStack(index: _currentIndex, children: _screens),
 
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        // showSelectedLabels: false,
-        // showUnselectedLabels: false,
-        backgroundColor: Colors.white,
-        selectedItemColor: theme.primaryColor,
-        unselectedItemColor: Colors.grey,
-        iconSize: 28,
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          // if index is home, and already on home, scroll to top and refresh
-          if (index == 0 && _currentIndex == 0) {
-            _postsScreenKey.currentState?.scrollToTopAndRefresh();
-            // add small vibration or haptic feedback
-            HapticFeedback.lightImpact();
-            return;
-          }
+        bottomNavigationBar: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
+          // showSelectedLabels: false,
+          // showUnselectedLabels: false,
+          backgroundColor: Colors.white,
+          selectedItemColor: theme.primaryColor,
+          unselectedItemColor: Colors.grey,
+          iconSize: 28,
+          currentIndex: _currentIndex,
+          onTap: (index) {
+            // if index is home, and already on home, scroll to top and refresh
+            if (index == 0 && _currentIndex == 0) {
+              _postsScreenKey.currentState?.scrollToTopAndRefresh();
+              // add small vibration or haptic feedback
+              HapticFeedback.lightImpact();
+              return;
+            }
 
-          setState(() => _currentIndex = index);
-        },
-        items: [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Events'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.place_outlined),
-            label: 'Places',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.car_repair_outlined),
-            label: 'Clubs',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.store_outlined),
-            label: 'Store',
-          ),
-          BottomNavigationBarItem(
-            icon: _buildProfileIcon(_currentProfileImageUrl),
-            label: 'Profile',
-          ),
-        ],
+            setState(() => _currentIndex = index);
+          },
+          items: [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Events'),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.place_outlined),
+              label: 'Places',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.car_repair_outlined),
+              label: 'Clubs',
+            ),
+            // In your BottomNavigationBarItem for Store:
+            BottomNavigationBarItem(
+              icon: Consumer<CartProvider>(
+                builder: (context, cart, child) {
+                  final count = cart.itemCount;
+                  // Only show badge when not on store tab and count > 0
+                  if (_currentIndex != 4 && count > 0) {
+                    return Badge(
+                      backgroundColor: theme.primaryColor,
+                      label: Text('$count'),
+                      child: Icon(Icons.store_outlined),
+                    );
+                  }
+                  return Icon(Icons.store_outlined);
+                },
+              ),
+              label: 'Store',
+            ),
+            BottomNavigationBarItem(
+              icon: _buildProfileIcon(_currentProfileImageUrl),
+              label: 'Profile',
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
@@ -32,6 +33,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => UploadPostProvider()),
         ChangeNotifierProvider(create: (_) => RegistrationProvider()),
+        ChangeNotifierProvider(create: (_) => CartProvider()),
       ],
       child: const MyApp(),
     ),

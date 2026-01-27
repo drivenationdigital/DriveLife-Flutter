@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/search_view_model.dart';
 import 'package:drivelife/models/tagged_entity.dart';
 import 'package:drivelife/providers/theme_provider.dart';

@@ -193,9 +193,7 @@ class FeaturedEventsCarousel extends StatelessWidget {
                   ? formatEventDate(event['start_date'])
                   : 'TBA';
               final location = event['location'] ?? 'TBA';
-              final imageUrl =
-                  event['thumbnail'] ??
-                  'https://via.placeholder.com/800x400/000000/ffffff?text=No+Image';
+              final imageUrl = event['thumbnail'];
 
               return FeaturedBannerCard(
                 title: title,

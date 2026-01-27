@@ -637,6 +637,75 @@ class _MediaCarousel extends StatelessWidget {
     return double.tryParse(v.toString()) ?? fallback;
   }
 
+  void _showTagsBottomSheet(BuildContext context, List<dynamic> tags) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Tagged',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const Divider(height: 1),
+            ...tags.map((tag) {
+              final entity = tag['entity'];
+              final type = tag['type'];
+              final name = entity['name'] ?? 'Unknown';
+              final image = entity['image'];
+
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundImage: image != null ? NetworkImage(image) : null,
+                  child: image == null
+                      ? Icon(
+                          type == 'car' ? Icons.directions_car : Icons.person,
+                        )
+                      : null,
+                ),
+                title: Text(name),
+                subtitle: Text(type == 'car' ? 'Vehicle' : 'User'),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (type == 'user') {
+                    Navigator.pushNamed(
+                      context,
+                      '/view-profile',
+                      arguments: {'userId': entity['id']},
+                    );
+                  } else if (type == 'car') {
+                    Navigator.pushNamed(
+                      context,
+                      '/vehicle-detail',
+                      arguments: {'garageId': entity['id']},
+                    );
+                  }
+                },
+              );
+            }),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -733,6 +802,14 @@ class _MediaCarousel extends StatelessWidget {
                         ),
                       ),
                     ),
+
+                    if (item['tags'] != null &&
+                        (item['tags'] as List).isNotEmpty)
+                      _MediaTags(
+                        tags: item['tags'] as List,
+                        onTap: () =>
+                            _showTagsBottomSheet(context, item['tags'] as List),
+                      ),
                   ],
                 );
               },
@@ -929,6 +1006,52 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _MediaTags extends StatelessWidget {
+  final List<dynamic> tags;
+  final VoidCallback? onTap;
+
+  const _MediaTags({required this.tags, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    if (tags.isEmpty) return const SizedBox.shrink();
+
+    return Positioned(
+      left: 12,
+      bottom: 12,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.6),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.local_offer_outlined,
+                color: Colors.white,
+                size: 14,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '${tags.length}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

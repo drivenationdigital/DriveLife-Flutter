@@ -22,6 +22,7 @@ import 'screens/profile/view_profile_screen.dart';
 import 'package:flutter/cupertino.dart';
 import 'screens/profile/edit_profile_settings_screen.dart';
 import 'screens/account-settings/manage_social_links_screen.dart';
+import 'screens/store/shop_screen.dart';
 
 class AppRoutes {
   static const String splash = '/';
@@ -49,6 +50,7 @@ class AppRoutes {
   static const String createPost = '/create-post';
   static const String garageList = '/garage-list';
   static const String search = '/search';
+  static const String shop = '/shop';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -84,6 +86,8 @@ class AppRoutes {
         );
       case events:
         return _slide(const EventsScreen());
+      case shop:
+        return _slide(const ShopScreen());
       case notifications:
         return _slide(const NotificationsScreen());
       case garageList:
