@@ -1,3 +1,4 @@
+import 'package:drivelife/widgets/formatted_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../api/interactions_api.dart';
@@ -5,17 +6,17 @@ import '../api/interactions_api.dart';
 class CommentItem extends StatefulWidget {
   final Map<String, dynamic> comment;
   final bool isReply;
-  final bool isOwner; // ADD THIS
+  final bool isOwner;
   final VoidCallback? onReplyTap;
-  final VoidCallback? onDeleteTap; // ADD THIS
+  final VoidCallback? onDeleteTap;
 
   const CommentItem({
     super.key,
     required this.comment,
     this.isReply = false,
-    this.isOwner = false, // ADD THIS
+    this.isOwner = false,
     this.onReplyTap,
-    this.onDeleteTap, // ADD THIS
+    this.onDeleteTap,
   });
 
   @override
@@ -25,9 +26,7 @@ class CommentItem extends StatefulWidget {
 class _CommentItemState extends State<CommentItem> {
   late bool liked;
   late int likeCount;
-  bool _isExpanded = false; // ADD THIS
-  static const int _maxLines = 3; // ADD THIS
-  static const int _maxChars = 100; // ADD THIS
+  bool _isExpanded = false;
 
   @override
   void initState() {
@@ -87,13 +86,8 @@ class _CommentItemState extends State<CommentItem> {
   }
 
   void _handleDelete() {
-    HapticFeedback.mediumImpact(); // ADD THIS
+    HapticFeedback.mediumImpact();
     widget.onDeleteTap?.call();
-  }
-
-  // ADD THIS METHOD
-  bool _needsReadMore(String text) {
-    return text.length > _maxChars;
   }
 
   @override
@@ -102,12 +96,9 @@ class _CommentItemState extends State<CommentItem> {
     final username = c['display_name'] ?? c['user_login'] ?? 'user';
     final timeAgo = _getTimeAgo(c['date']);
     final commentText = c['comment'] ?? "";
-    final needsReadMore = _needsReadMore(commentText);
 
     return GestureDetector(
-      onLongPress: widget.onDeleteTap != null
-          ? _handleDelete
-          : null, // UPDATE THIS
+      onLongPress: widget.onDeleteTap != null ? _handleDelete : null,
       child: Padding(
         padding: EdgeInsets.only(
           left: widget.isReply ? 56 : 16,
@@ -144,53 +135,41 @@ class _CommentItemState extends State<CommentItem> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Username + comment text
-                  RichText(
-                    text: TextSpan(
-                      children: [
-                        TextSpan(
-                          text: username,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const TextSpan(text: " "),
-                        TextSpan(
-                          text: needsReadMore && !_isExpanded
-                              ? '${commentText.substring(0, _maxChars)}...'
-                              : commentText,
-                          style: const TextStyle(
-                            color: Colors.black87,
-                            fontSize: 14,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
+                  // Username
+                  Text(
+                    username,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
+                      fontSize: 14,
                     ),
                   ),
 
-                  // Read more/less button - ADD THIS
-                  if (needsReadMore)
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _isExpanded = !_isExpanded;
-                        });
+                  // Comment text with FormattedText
+                  if (commentText.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    FormattedText(
+                      text: commentText,
+                      showAllText: _isExpanded,
+                      maxTextLength: 100,
+                      onSuffixPressed: () {
+                        setState(() => _isExpanded = !_isExpanded);
                       },
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          _isExpanded ? 'less' : 'more',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade600,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
+                      suffix: _isExpanded ? 'less' : 'more',
+                      onUserTagPressed: (userId) {
+                        Navigator.pushNamed(
+                          context,
+                          '/view-profile',
+                          arguments: {'userId': userId},
+                        );
+                      },
+                      // style: const TextStyle(
+                      //   color: Colors.black87,
+                      //   fontSize: 14,
+                      //   height: 1.4,
+                      // ),
                     ),
+                  ],
 
                   const SizedBox(height: 8),
 

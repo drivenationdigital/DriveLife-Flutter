@@ -1,9 +1,26 @@
+import 'package:drivelife/models/search_view_model.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/widgets/comment_item.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:fluttertagger/fluttertagger.dart';
 import '../api/interactions_api.dart';
+import 'package:drivelife/screens/search_user.dart';
+
+// Add this search view model or import if you already have one
+class CommentSearchViewModel extends ChangeNotifier {
+  List<Map<String, dynamic>> userResults = [];
+  List<Map<String, dynamic>> hashtagResults = [];
+  bool isSearching = false;
+
+  void clear() {
+    userResults = [];
+    hashtagResults = [];
+    isSearching = false;
+    notifyListeners();
+  }
+}
 
 class CommentsBottomSheet extends StatefulWidget {
   final ScrollController scrollController;
@@ -20,35 +37,37 @@ class CommentsBottomSheet extends StatefulWidget {
 }
 
 class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
-  final TextEditingController _controller = TextEditingController();
+  final FlutterTaggerController _controller = FlutterTaggerController();
   final FocusNode _focusNode = FocusNode();
+  final CommentSearchViewModel _searchViewModel = CommentSearchViewModel();
+
   List<dynamic> comments = [];
   bool loading = true;
   String? _replyingToUsername;
   String? _replyingToCommentId;
 
-  // Add to state variables
-  Map<String, bool> _expandedReplies =
-      {}; // Track which comments have replies expanded
-  String? _currentUserId; // Store current user ID
+  bool addingComment = false;
+  Map<String, bool> _expandedReplies = {};
+  String? _currentUserId;
 
   @override
   void initState() {
     super.initState();
     _loadComments();
-    _getCurrentUserId(); // ADD THIS
+    _getCurrentUserId();
+
+    // _controller.addListener(() {
+    //   setState(() {}); // To update the send button state
+    // });
   }
 
-  // Add method to get current user ID
   Future<void> _getCurrentUserId() async {
-    // Get from your auth/user provider
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     setState(() {
       _currentUserId = userProvider.user?['id']?.toString();
     });
   }
 
-  // Add delete method
   Future<void> _deleteComment(String commentId, ThemeProvider theme) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -80,6 +99,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
   void dispose() {
     _controller.dispose();
     _focusNode.dispose();
+    _searchViewModel.dispose();
     super.dispose();
   }
 
@@ -93,14 +113,18 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
     }
   }
 
-  void _handleReply(String username, String commentId) {
+  void _handleReply(String username, String commentId, String userId) {
     setState(() {
       _replyingToUsername = username;
       _replyingToCommentId = commentId;
-      _controller.text = '@$username ';
+      // _controller.text = '@$username';
     });
     _focusNode.requestFocus();
-    // Move cursor to end
+
+    // Use addTag instead of setting text directly
+    // _controller.addTag(name: username, id: userId);
+
+    // Add a space after the tag
     _controller.selection = TextSelection.fromPosition(
       TextPosition(offset: _controller.text.length),
     );
@@ -118,19 +142,29 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
   Future<void> _addComment() async {
     if (_controller.text.trim().isEmpty) return;
 
+    if (addingComment) return;
+
+    setState(() {
+      addingComment = true;
+    });
+
     await InteractionsAPI.addComment(
       widget.postId,
-      _controller.text.trim(),
+      _controller.formattedText,
       parentId: _replyingToCommentId != null
           ? int.tryParse(_replyingToCommentId!)
           : null,
     );
     _controller.clear();
+
     setState(() {
       _replyingToUsername = null;
       _replyingToCommentId = null;
+      addingComment = false;
     });
+
     _focusNode.unfocus();
+    _searchViewModel.clear();
     await _loadComments();
   }
 
@@ -150,9 +184,8 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
             // Draggable Header
             GestureDetector(
               onVerticalDragUpdate: (details) {
-                // Allow dragging the sheet by the header
                 if (details.primaryDelta! > 0) {
-                  // Dragging down - you can implement custom behavior here
+                  // Dragging down
                 }
               },
               child: Container(
@@ -198,7 +231,6 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                       controller: widget.scrollController,
                       padding: const EdgeInsets.only(bottom: 16),
                       itemCount: comments.length,
-                      // Update ListView.builder itemBuilder
                       itemBuilder: (context, index) {
                         final c = comments[index];
                         final replies = (c['replies'] ?? []) as List<dynamic>;
@@ -207,20 +239,22 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                         final commentId = c['id'].toString();
                         final isExpanded = _expandedReplies[commentId] ?? false;
                         final isOwner =
-                            c['user_id']?.toString() ==
-                            _currentUserId; // ADD THIS
+                            c['user_id']?.toString() == _currentUserId;
 
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             CommentItem(
                               comment: c,
-                              isOwner: isOwner, // PASS THIS
-                              onReplyTap: () =>
-                                  _handleReply(username, commentId),
+                              isOwner: isOwner,
+                              onReplyTap: () => _handleReply(
+                                username,
+                                commentId,
+                                c['user_id'].toString(),
+                              ),
                               onDeleteTap: isOwner
                                   ? () => _deleteComment(commentId, theme)
-                                  : null, // ADD THIS
+                                  : null,
                             ),
 
                             // View/Hide replies button
@@ -273,17 +307,18 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                                 return CommentItem(
                                   comment: r,
                                   isReply: true,
-                                  isOwner: isReplyOwner, // PASS THIS
+                                  isOwner: isReplyOwner,
                                   onReplyTap: () => _handleReply(
                                     replyUsername,
                                     r['id'].toString(),
+                                    r['user_id'].toString(),
                                   ),
                                   onDeleteTap: isReplyOwner
                                       ? () => _deleteComment(
                                           r['id'].toString(),
                                           theme,
                                         )
-                                      : null, // ADD THIS
+                                      : null,
                                 );
                               }),
 
@@ -329,7 +364,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                 ),
               ),
 
-            // Input bar - with proper keyboard handling
+            // Input bar with FlutterTagger
             Container(
               padding: EdgeInsets.only(
                 left: 16,
@@ -349,62 +384,115 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
               ),
               child: SafeArea(
                 top: false,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        style: const TextStyle(fontSize: 14),
-                        controller: _controller,
-                        focusNode: _focusNode,
-                        maxLines: null,
-                        textCapitalization: TextCapitalization.sentences,
-                        decoration: InputDecoration(
-                          hintText: _replyingToUsername != null
-                              ? 'Reply to @$_replyingToUsername...'
-                              : 'Add a comment...',
-                          border: const OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(12)),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: const BorderRadius.all(
-                              Radius.circular(12),
+                child: ChangeNotifierProvider.value(
+                  value: _searchViewModel,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: FlutterTagger(
+                          controller: _controller,
+                          onSearch: (query, triggerCharacter) {
+                            if (triggerCharacter == "@") {
+                              captionSearchViewModel.searchUser(query);
+                            }
+                            if (triggerCharacter == "#") {
+                              captionSearchViewModel.searchHashtag(query);
+                            }
+                          },
+                          triggerCharacterAndStyles: {
+                            '@': TextStyle(
+                              color: theme.primaryColor,
+                              fontWeight: FontWeight.w600,
                             ),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
+                            '#': TextStyle(
+                              color: theme.primaryColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          },
+                          triggerStrategy: TriggerStrategy.eager,
+                          tagTextFormatter: (id, tag, triggerCharacter) =>
+                              '$triggerCharacter$id#$tag#',
+                          overlayHeight: 200,
+                          overlay: SearchResultOverlay(
+                            tagController: _controller,
+                            animation: const AlwaysStoppedAnimation(
+                              Offset.zero,
+                            ),
                           ),
-                          focusedBorder: const OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(12)),
-                            borderSide: BorderSide(color: Color(0xFFAE9159)),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
+                          builder: (context, textFieldKey) {
+                            return TextField(
+                              key: textFieldKey,
+                              controller: _controller,
+                              focusNode: _focusNode,
+                              maxLines: null,
+                              style: const TextStyle(fontSize: 14),
+                              textCapitalization: TextCapitalization.sentences,
+                              decoration: InputDecoration(
+                                hintText: _replyingToUsername != null
+                                    ? 'Reply to @$_replyingToUsername...'
+                                    : 'Add a comment...',
+                                border: const OutlineInputBorder(
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(12),
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: const BorderRadius.all(
+                                    Radius.circular(12),
+                                  ),
+                                  borderSide: BorderSide(
+                                    color: Colors.grey.shade300,
+                                  ),
+                                ),
+                                focusedBorder: const OutlineInputBorder(
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(12),
+                                  ),
+                                  borderSide: BorderSide(
+                                    color: Color(0xFFAE9159),
+                                  ),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                              ),
+                            );
+                          },
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: _addComment,
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: _controller.text.trim().isNotEmpty
-                              ? theme.primaryColor
-                              : Colors.grey.shade300,
-                          shape: BoxShape.rectangle,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.send,
-                          color: Colors.white,
-                          size: 20,
-                        ),
+                      const SizedBox(width: 8),
+                      ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _controller,
+                        builder: (context, value, child) {
+                          return GestureDetector(
+                            onTap: _addComment,
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color:
+                                    value.text.trim().isNotEmpty &&
+                                        !addingComment
+                                    ? theme.primaryColor
+                                    : Colors.grey.shade300,
+                                shape: BoxShape.rectangle,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.send,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
