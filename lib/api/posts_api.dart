@@ -325,4 +325,37 @@ class PostsAPI {
       return false;
     }
   }
+
+  static Future<Map<String, dynamic>?> updatePost({
+    required int userId,
+    required Map<String, dynamic> data,
+  }) async {
+    try {
+      final url = Uri.parse('$_baseUrl/wp-json/app/v1/edit-post');
+
+      final body = {'user_id': userId, ...data};
+
+      print('Updating post with data: $body');
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      print('Response status: ${response.statusCode}');
+      print('Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        return responseData;
+      } else {
+        print('Error: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('Error updating post: $e');
+      return null;
+    }
+  }
 }

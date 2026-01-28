@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/screens/create-post/edit_post_screen.dart';
 import 'package:drivelife/widgets/formatted_text.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -313,6 +314,8 @@ class _PostCardState extends State<PostCard>
   }
 
   void _showPostOptions() {
+    final scaffoldContext = context; // ✅ Store PostCard's context
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -334,9 +337,25 @@ class _PostCardState extends State<PostCard>
             ListTile(
               leading: const Icon(Icons.edit, color: Colors.black),
               title: const Text('Edit Post'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                widget.onEdit?.call();
+                final response = await Navigator.push(
+                  scaffoldContext,
+                  MaterialPageRoute(
+                    builder: (_) => EditPostScreen(post: widget.post),
+                  ),
+                );
+
+                if (response == true) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Post updated successfully'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                  widget.onEdit?.call();
+                }
               },
             ),
             const Divider(height: 1),
@@ -666,6 +685,8 @@ class _MediaCarousel extends StatelessWidget {
             const Divider(height: 1),
             ...tags.map((tag) {
               final entity = tag['entity'];
+              if (entity == null) return const SizedBox.shrink();
+
               final type = tag['type'];
               final name = entity['name'] ?? 'Unknown';
               final image = entity['image'];

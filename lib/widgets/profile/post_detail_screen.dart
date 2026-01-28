@@ -69,7 +69,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-            iconSize: 38,
             onPressed: () => Navigator.of(context).pop(),
           ),
           centerTitle: true,
@@ -91,7 +90,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-            iconSize: 38,
             onPressed: () => Navigator.of(context).pop(),
           ),
           centerTitle: true,
@@ -114,7 +112,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          iconSize: 38,
           onPressed: () => Navigator.of(context).pop(),
         ),
         centerTitle: true,
@@ -138,38 +135,33 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         child: SingleChildScrollView(
           physics:
               const AlwaysScrollableScrollPhysics(), // ✅ Allows pull-to-refresh even if content fits
-          child: PostCard(
-            onEdit: () {
-              // After editing
-              // Navigate back to this screen to refresh
-              // Navigator.pushReplacementNamed(
-              //   context,
-              //   '/edit-post',
-              //   arguments: {'postId': _post!['id']},
-              // );
-
-              // Refresh post
-              _refreshPost();
-            },
-            onDelete: () => Navigator.pop(context, true),
-            post: _post!,
-            onTapProfile: () {
-              Navigator.pushNamed(
-                context,
-                '/view-profile',
-                arguments: {
-                  'userId': _post!['user_id'],
-                  'username': _post!['username'],
-                },
-              );
-            },
-            onLikeChanged: (isLiked) {
-              if (!mounted) return;
-              setState(() {
-                _post!['is_liked'] = isLiked;
-                _post!['likes_count'] += isLiked ? 1 : -1;
-              });
-            },
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 40), // Bottom spacing
+            child: PostCard(
+              onEdit: () {
+                // Refresh post
+                _refreshPost();
+              },
+              onDelete: () => Navigator.pop(context, true),
+              post: _post!,
+              onTapProfile: () {
+                Navigator.pushNamed(
+                  context,
+                  '/view-profile',
+                  arguments: {
+                    'userId': _post!['user_id'],
+                    'username': _post!['username'],
+                  },
+                );
+              },
+              onLikeChanged: (isLiked) {
+                if (!mounted) return;
+                setState(() {
+                  _post!['is_liked'] = isLiked;
+                  _post!['likes_count'] += isLiked ? 1 : -1;
+                });
+              },
+            ),
           ),
         ),
       ),
