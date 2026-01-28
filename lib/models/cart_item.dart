@@ -4,8 +4,15 @@ class CartItem {
   final String name;
   final double price;
   final String image;
-  final String? selectedColor;
+  final String currencySymbol;
+  final String? selectedColorHex;
+  final String? selectedColorName;
+  final String? selectedSize;
+  final String? supplierSku;
+  final String? variant;
   int quantity;
+  final bool? isOnSale;
+  final double? originalPrice;
 
   CartItem({
     required this.variantId,
@@ -13,11 +20,17 @@ class CartItem {
     required this.name,
     required this.price,
     required this.image,
-    this.selectedColor,
+    required this.currencySymbol,
+    this.isOnSale,
+    this.originalPrice,
+    this.variant,
+    this.selectedColorHex,
+    this.selectedColorName,
+    this.selectedSize,
+    this.supplierSku,
     this.quantity = 1,
   });
 
-  // Convert CartItem to Map for storage
   Map<String, dynamic> toJson() {
     return {
       'variantId': variantId,
@@ -25,35 +38,46 @@ class CartItem {
       'name': name,
       'price': price,
       'image': image,
-      'selectedColor': selectedColor,
+      'variant': variant,
+      'currencySymbol': currencySymbol,
+      'selectedColorHex': selectedColorHex,
+      'selectedColorName': selectedColorName,
+      'selectedSize': selectedSize,
+      'supplierSku': supplierSku,
       'quantity': quantity,
     };
   }
 
-  // Create CartItem from Map
   factory CartItem.fromJson(Map<String, dynamic> json) {
     return CartItem(
       variantId: json['variantId'] as String,
       productId: json['productId'] as String,
       name: json['name'] as String,
       price: (json['price'] as num).toDouble(),
+      currencySymbol: json['currencySymbol'] as String,
       image: json['image'] as String,
-      selectedColor: json['selectedColor'] as String?,
+      variant: json['variant'] as String?,
+      selectedColorHex: json['selectedColorHex'] as String?,
+      selectedColorName: json['selectedColorName'] as String?,
+      selectedSize: json['selectedSize'] as String?,
+      supplierSku: json['supplierSku'] as String?,
       quantity: json['quantity'] as int,
     );
   }
 
-  // Calculate total price for this item
   double get totalPrice => price * quantity;
 
-  // Create a copy with updated fields
   CartItem copyWith({
     String? variantId,
     String? productId,
     String? name,
     double? price,
     String? image,
-    String? selectedColor,
+    String? selectedColorHex,
+    String? selectedColorName,
+    String? selectedSize,
+    String? supplierSku,
+    String? currencySymbol,
     int? quantity,
   }) {
     return CartItem(
@@ -61,8 +85,12 @@ class CartItem {
       productId: productId ?? this.productId,
       name: name ?? this.name,
       price: price ?? this.price,
+      currencySymbol: currencySymbol ?? this.currencySymbol,
       image: image ?? this.image,
-      selectedColor: selectedColor ?? this.selectedColor,
+      selectedColorHex: selectedColorHex ?? this.selectedColorHex,
+      selectedColorName: selectedColorName ?? this.selectedColorName,
+      selectedSize: selectedSize ?? this.selectedSize,
+      supplierSku: supplierSku ?? this.supplierSku,
       quantity: quantity ?? this.quantity,
     );
   }

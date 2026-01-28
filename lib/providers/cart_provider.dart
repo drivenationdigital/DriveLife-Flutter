@@ -13,7 +13,8 @@ class CartProvider with ChangeNotifier {
 
   int get totalQuantity => _cart.fold(0, (sum, item) => sum + item.quantity);
 
-  double get subtotal => _cart.fold(0.0, (sum, item) => sum + item.totalPrice);
+  double get subtotal =>
+      _cart.fold(0.0, (sum, item) => sum + item.price * item.quantity);
 
   double get tax => subtotal * 0.2; // 20% VAT
 
@@ -48,33 +49,47 @@ class CartProvider with ChangeNotifier {
 
   // Add item to cart
   Future<void> addToCart({
-    required String variantId,
     required String productId,
     required String name,
     required double price,
     required String image,
-    String? selectedColor,
+    required String currencySymbol,
+    bool? isOnSale,
+    double? originalPrice,
+    String? variant,
+    String? selectedColorHex,
+    String? selectedColorName,
+    String? selectedSize,
+    String? supplierSku,
     int quantity = 1,
   }) async {
-    // Check if item already exists in cart
+    // Create unique variant ID
+    final variantId =
+        '${productId}_${selectedColorHex ?? 'default'}_${selectedSize ?? 'default'}';
+
+    // Check if item already exists
     final existingIndex = _cart.indexWhere(
-      (item) =>
-          item.variantId == variantId && item.selectedColor == selectedColor,
+      (item) => item.variantId == variantId,
     );
 
     if (existingIndex != -1) {
-      // Update quantity of existing item
       _cart[existingIndex].quantity += quantity;
     } else {
-      // Add new item to cart
       _cart.add(
         CartItem(
           variantId: variantId,
           productId: productId,
           name: name,
           price: price,
+          isOnSale: isOnSale,
+          currencySymbol: currencySymbol,
+          originalPrice: originalPrice,
           image: image,
-          selectedColor: selectedColor,
+          variant: variant,
+          selectedColorHex: selectedColorHex,
+          selectedColorName: selectedColorName,
+          selectedSize: selectedSize,
+          supplierSku: supplierSku,
           quantity: quantity,
         ),
       );
@@ -84,31 +99,20 @@ class CartProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // Remove item from cart
-  Future<void> removeFromCart(String variantId, {String? selectedColor}) async {
-    _cart.removeWhere(
-      (item) =>
-          item.variantId == variantId && item.selectedColor == selectedColor,
-    );
+  // Updated remove/update methods to use variantId only
+  Future<void> removeFromCart(String variantId) async {
+    _cart.removeWhere((item) => item.variantId == variantId);
     await _saveCart();
     notifyListeners();
   }
 
-  // Update item quantity
-  Future<void> updateQuantity(
-    String variantId,
-    int quantity, {
-    String? selectedColor,
-  }) async {
+  Future<void> updateQuantity(String variantId, int quantity) async {
     if (quantity <= 0) {
-      await removeFromCart(variantId, selectedColor: selectedColor);
+      await removeFromCart(variantId);
       return;
     }
 
-    final index = _cart.indexWhere(
-      (item) =>
-          item.variantId == variantId && item.selectedColor == selectedColor,
-    );
+    final index = _cart.indexWhere((item) => item.variantId == variantId);
 
     if (index != -1) {
       _cart[index].quantity = quantity;
@@ -117,15 +121,8 @@ class CartProvider with ChangeNotifier {
     }
   }
 
-  // Increment quantity
-  Future<void> incrementQuantity(
-    String variantId, {
-    String? selectedColor,
-  }) async {
-    final index = _cart.indexWhere(
-      (item) =>
-          item.variantId == variantId && item.selectedColor == selectedColor,
-    );
+  Future<void> incrementQuantity(String variantId) async {
+    final index = _cart.indexWhere((item) => item.variantId == variantId);
 
     if (index != -1) {
       _cart[index].quantity++;
@@ -134,15 +131,8 @@ class CartProvider with ChangeNotifier {
     }
   }
 
-  // Decrement quantity
-  Future<void> decrementQuantity(
-    String variantId, {
-    String? selectedColor,
-  }) async {
-    final index = _cart.indexWhere(
-      (item) =>
-          item.variantId == variantId && item.selectedColor == selectedColor,
-    );
+  Future<void> decrementQuantity(String variantId) async {
+    final index = _cart.indexWhere((item) => item.variantId == variantId);
 
     if (index != -1) {
       if (_cart[index].quantity > 1) {
@@ -150,31 +140,18 @@ class CartProvider with ChangeNotifier {
         await _saveCart();
         notifyListeners();
       } else {
-        await removeFromCart(variantId, selectedColor: selectedColor);
+        await removeFromCart(variantId);
       }
     }
   }
 
-  // Clear entire cart
-  Future<void> clearCart() async {
-    _cart.clear();
-    await _saveCart();
-    notifyListeners();
+  bool isInCart(String variantId) {
+    return _cart.any((item) => item.variantId == variantId);
   }
 
-  // Check if item is in cart
-  bool isInCart(String variantId, {String? selectedColor}) {
-    return _cart.any(
-      (item) =>
-          item.variantId == variantId && item.selectedColor == selectedColor,
-    );
-  }
-
-  // Get quantity of specific item in cart
-  int getItemQuantity(String variantId, {String? selectedColor}) {
+  int getItemQuantity(String variantId) {
     final item = _cart.firstWhere(
-      (item) =>
-          item.variantId == variantId && item.selectedColor == selectedColor,
+      (item) => item.variantId == variantId,
       orElse: () => CartItem(
         variantId: '',
         productId: '',
@@ -182,8 +159,16 @@ class CartProvider with ChangeNotifier {
         price: 0,
         image: '',
         quantity: 0,
+        currencySymbol: '',
       ),
     );
     return item.quantity;
+  }
+
+  // Clear entire cart
+  Future<void> clearCart() async {
+    _cart.clear();
+    await _saveCart();
+    notifyListeners();
   }
 }
