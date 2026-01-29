@@ -171,7 +171,8 @@ class DriveLifeApiService {
     required int amount,
     required String currency,
     required String customerEmail,
-    required Map<String, dynamic> shippingAddress,
+    required String customerName,
+    required String shippingMethod,
     required List<Map<String, dynamic>> items,
   }) async {
     try {
@@ -186,7 +187,8 @@ class DriveLifeApiService {
           'amount': amount,
           'currency': currency,
           'customer_email': customerEmail,
-          'shipping_address': shippingAddress,
+          'customer_name': customerName,
+          'shipping_method': shippingMethod,
           'items': items,
         }),
       );
@@ -209,12 +211,9 @@ class DriveLifeApiService {
     }
   }
 
-  // Create Order
+  /// Create Order after successful payment
   static Future<Map<String, dynamic>> createOrder({
     required String paymentIntentId,
-    required String customerEmail,
-    required Map<String, dynamic> shippingAddress,
-    required List<Map<String, dynamic>> items,
     required String shippingMethod,
   }) async {
     try {
@@ -225,9 +224,6 @@ class DriveLifeApiService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'payment_intent_id': paymentIntentId,
-          'customer_email': customerEmail,
-          'shipping_address': shippingAddress,
-          'items': items,
           'shipping_method': shippingMethod,
         }),
       );

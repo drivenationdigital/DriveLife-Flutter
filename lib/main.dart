@@ -24,8 +24,9 @@ void main() async {
 
   try {
     Stripe.publishableKey = stripePublishableKey;
+    // await Stripe.instance.applySettings();
   } catch (e) {
-    print('Error setting Stripe publishable key: $e');
+    print('[Stripe Err] $e');
   }
 
   try {

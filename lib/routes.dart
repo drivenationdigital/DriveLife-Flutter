@@ -9,6 +9,8 @@ import 'package:drivelife/screens/events/event_detail_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
 import 'package:drivelife/screens/search_screen.dart';
+import 'package:drivelife/screens/store/checkout/checkout_screen.dart';
+import 'package:drivelife/screens/store/checkout/order_success_screen.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
@@ -51,6 +53,8 @@ class AppRoutes {
   static const String garageList = '/garage-list';
   static const String search = '/search';
   static const String shop = '/shop';
+  static const String checkout = '/checkout';
+  static const String orderSuccess = '/order-success';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -88,6 +92,11 @@ class AppRoutes {
         return _slide(const EventsScreen());
       case shop:
         return _slide(const ShopScreen());
+      case checkout:
+        return _slide(const CheckoutScreen());
+      case orderSuccess:
+        final args = settings.arguments as Map<String, dynamic>?;
+        return _slide(OrderSuccessScreen(orderData: args));
       case notifications:
         return _slide(const NotificationsScreen());
       case garageList:

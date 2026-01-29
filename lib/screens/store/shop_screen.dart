@@ -1,6 +1,7 @@
 import 'package:drivelife/api/drivelife_api_service.dart';
 import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/screens/store/checkout/stripe_checkout_screen.dart';
 import 'package:drivelife/screens/store/product_view_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -624,140 +625,121 @@ class _ShopScreenState extends State<ShopScreen>
                                     ),
                                   const SizedBox(height: 12),
 
+                                  PriceDisplay(
+                                    product: Product(
+                                      id: 0,
+                                      name: item.name,
+                                      permalink: '',
+                                      image: item.image,
+                                      price:
+                                          item.isOnSale == true &&
+                                              item.originalPrice != null
+                                          ? item.originalPrice!
+                                          : item.price,
+                                      formattedSalePrice: item.isOnSale == true
+                                          ? '${item.currencySymbol}${item.price.toStringAsFixed(2)}'
+                                          : null,
+                                      formattedPrice:
+                                          '${item.currencySymbol}${item.price.toStringAsFixed(2)}',
+                                      salePrice: item.isOnSale == true
+                                          ? item.price
+                                          : null,
+                                      isOnSale: item.isOnSale ?? false,
+                                      currencySymbol: item.currencySymbol,
+                                      inStock: true,
+                                      stockStatus: 'instock',
+                                      colours: [],
+                                      sizes: [],
+                                    ),
+                                    // fontSize: 20,
+                                    showSavings: true,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFFAE9159),
+                                  ),
+                                  const SizedBox(height: 12),
+
                                   Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
+                                    spacing: 10,
+                                    mainAxisAlignment: MainAxisAlignment.start,
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    spacing: 20,
+                                        CrossAxisAlignment.center,
                                     children: [
-                                      // Price
-                                      PriceDisplay(
-                                        product: Product(
-                                          id: 0,
-                                          name: item.name,
-                                          permalink: '',
-                                          image: item.image,
-                                          price:
-                                              item.isOnSale == true &&
-                                                  item.originalPrice != null
-                                              ? item.originalPrice!
-                                              : item.price,
-                                          formattedSalePrice:
-                                              item.isOnSale == true
-                                              ? '${item.currencySymbol}${item.price.toStringAsFixed(2)}'
-                                              : null,
-                                          formattedPrice:
-                                              '${item.currencySymbol}${item.price.toStringAsFixed(2)}',
-                                          salePrice: item.isOnSale == true
-                                              ? item.price
-                                              : null,
-                                          isOnSale: item.isOnSale ?? false,
-                                          currencySymbol: item.currencySymbol,
-                                          inStock: true,
-                                          stockStatus: 'instock',
-                                          colours: [],
-                                          sizes: [],
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4, // Reduced from 8 to 4
                                         ),
-                                        fontSize: 20,
-                                        showSavings: true,
-                                        fontWeight: FontWeight.bold,
-                                        color: const Color(0xFFAE9159),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: Colors.grey.shade300,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                        ),
+                                        child: DropdownButton<int>(
+                                          value: item.quantity,
+                                          underline: const SizedBox(),
+                                          isDense:
+                                              true, // ADD THIS - makes dropdown more compact
+                                          icon: const Icon(
+                                            Icons.keyboard_arrow_down,
+                                            size: 18, // Reduced from 20 to 18
+                                          ),
+                                          style: const TextStyle(
+                                            fontSize:
+                                                14, // ADD THIS - smaller text
+                                            color: Colors.black,
+                                          ),
+                                          items: List.generate(
+                                            10,
+                                            (index) => DropdownMenuItem(
+                                              value: index + 1,
+                                              child: Text('${index + 1}'),
+                                            ),
+                                          ),
+                                          onChanged: (value) {
+                                            if (value != null) {
+                                              // Update quantity
+                                              final diff =
+                                                  value - item.quantity;
+                                              if (diff > 0) {
+                                                for (int i = 0; i < diff; i++) {
+                                                  cartProvider
+                                                      .incrementQuantity(
+                                                        item.variantId,
+                                                      );
+                                                }
+                                              } else if (diff < 0) {
+                                                for (
+                                                  int i = 0;
+                                                  i < -diff;
+                                                  i++
+                                                ) {
+                                                  cartProvider
+                                                      .decrementQuantity(
+                                                        item.variantId,
+                                                      );
+                                                }
+                                              }
+                                            }
+                                          },
+                                        ),
                                       ),
 
-                                      const SizedBox(height: 12),
-
-                                      // Quantity and Remove
-                                      Row(
-                                        spacing: 10,
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.end,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.center,
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical:
-                                                  4, // Reduced from 8 to 4
-                                            ),
-                                            decoration: BoxDecoration(
-                                              border: Border.all(
-                                                color: Colors.grey.shade300,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: DropdownButton<int>(
-                                              value: item.quantity,
-                                              underline: const SizedBox(),
-                                              isDense:
-                                                  true, // ADD THIS - makes dropdown more compact
-                                              icon: const Icon(
-                                                Icons.keyboard_arrow_down,
-                                                size:
-                                                    18, // Reduced from 20 to 18
-                                              ),
-                                              style: const TextStyle(
-                                                fontSize:
-                                                    14, // ADD THIS - smaller text
-                                                color: Colors.black,
-                                              ),
-                                              items: List.generate(
-                                                10,
-                                                (index) => DropdownMenuItem(
-                                                  value: index + 1,
-                                                  child: Text('${index + 1}'),
-                                                ),
-                                              ),
-                                              onChanged: (value) {
-                                                if (value != null) {
-                                                  // Update quantity
-                                                  final diff =
-                                                      value - item.quantity;
-                                                  if (diff > 0) {
-                                                    for (
-                                                      int i = 0;
-                                                      i < diff;
-                                                      i++
-                                                    ) {
-                                                      cartProvider
-                                                          .incrementQuantity(
-                                                            item.variantId,
-                                                          );
-                                                    }
-                                                  } else if (diff < 0) {
-                                                    for (
-                                                      int i = 0;
-                                                      i < -diff;
-                                                      i++
-                                                    ) {
-                                                      cartProvider
-                                                          .decrementQuantity(
-                                                            item.variantId,
-                                                          );
-                                                    }
-                                                  }
-                                                }
-                                              },
-                                            ),
+                                      // Remove item
+                                      GestureDetector(
+                                        onTap: () => cartProvider
+                                            .removeFromCart(item.variantId),
+                                        child: Text(
+                                          'Remove Item',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey.shade700,
+                                            decoration:
+                                                TextDecoration.underline,
                                           ),
-
-                                          // Remove item
-                                          GestureDetector(
-                                            onTap: () => cartProvider
-                                                .removeFromCart(item.variantId),
-                                            child: Text(
-                                              'Remove Item',
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                color: Colors.grey.shade700,
-                                                decoration:
-                                                    TextDecoration.underline,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -916,7 +898,14 @@ class _ShopScreenState extends State<ShopScreen>
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: () {
-                          // Proceed to checkout
+                          // Navigator.pushNamed(context, '/checkout');
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const HybridCheckoutScreen(),
+                            ),
+                          );
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF22C55E),
