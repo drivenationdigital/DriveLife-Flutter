@@ -1,7 +1,9 @@
 import 'package:drivelife/api/drivelife_api_service.dart';
 import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/store/checkout/stripe_checkout_screen.dart';
+import 'package:drivelife/screens/store/my_orders_tab.dart';
 import 'package:drivelife/screens/store/product_view_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -485,7 +487,7 @@ class _ShopScreenState extends State<ShopScreen>
               children: [
                 _buildBrowseTab(theme),
                 _buildBasketTab(),
-                const Center(child: Text('My Orders')),
+                MyOrdersTab(userId: context.read<UserProvider>().user!.id),
               ],
             ),
           ),
