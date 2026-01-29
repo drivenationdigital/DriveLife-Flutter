@@ -150,11 +150,11 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
 
       print('🔐 Deleting account for user: $user');
 
-      if (user == null || user['id'] == null) {
+      if (user == null || user.id == null) {
         throw Exception('User not found');
       }
 
-      final userId = user['id'];
+      final userId = user.id;
 
       // Call API to delete account
       print('🗑️ Deleting account for user $userId...');

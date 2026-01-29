@@ -300,7 +300,7 @@ class _EventsScreenState extends State<EventsScreen>
       if (user == null) return;
 
       final response = await EventsAPI.getProfileEvents(
-        userId: user['id'].toString(),
+        userId: user.id.toString(),
       );
 
       if (response != null && response['success'] == true && mounted) {

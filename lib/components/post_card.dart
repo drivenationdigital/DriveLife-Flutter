@@ -427,7 +427,7 @@ class _PostCardState extends State<PostCard>
 
       final success = await PostsAPI.deletePost(
         postId: widget.post['id'].toString(),
-        userId: user['id'].toString(),
+        userId: user.id.toString(),
       );
 
       if (!mounted) return;
@@ -486,7 +486,7 @@ class _PostCardState extends State<PostCard>
               username: widget.post['username'] ?? '',
               isVerified: widget.post['user_verified'] == true,
               date: _formattedDate,
-              currentUserId: user?['id'],
+              currentUserId: user?.id,
               postUserId: widget.post['user_id'],
               onTapProfile: widget.onTapProfile,
               onSettings: _showPostOptions,

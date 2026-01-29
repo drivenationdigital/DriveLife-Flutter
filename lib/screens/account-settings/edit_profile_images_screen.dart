@@ -33,8 +33,8 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
     final user = userProvider.user;
     if (user != null) {
       setState(() {
-        _currentProfileImageUrl = user['profile_image'];
-        _currentCoverImageUrl = user['cover_image'];
+        _currentProfileImageUrl = user.profileImage;
+        _currentCoverImageUrl = user.coverImage;
       });
     }
   }
@@ -142,10 +142,7 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
         throw Exception('User not found');
       }
 
-      final userId = user['id'];
-      if (userId == null) {
-        throw Exception('User ID not found');
-      }
+      final userId = user.id;
 
       // Upload profile image
       if (_profileImage != null) {

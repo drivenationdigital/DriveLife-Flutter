@@ -1,4 +1,5 @@
 import 'package:drivelife/api/garage_api.dart';
+import 'package:drivelife/models/user_model.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
@@ -19,7 +20,7 @@ class _GarageListScreenState extends State<GarageListScreen> {
   List<dynamic> _pastVehicles = [];
   List<dynamic> _dreamVehicles = [];
 
-  Map<String, dynamic>? _userProfile;
+  User? _userProfile;
   bool _garageLoaded = false;
 
   @override
@@ -47,7 +48,7 @@ class _GarageListScreenState extends State<GarageListScreen> {
       _garageLoaded = true; // prevents double calls
     });
 
-    final garage = await GarageAPI.getUserGarage(_userProfile!['id']);
+    final garage = await GarageAPI.getUserGarage(_userProfile!.id);
 
     if (!mounted) return;
 

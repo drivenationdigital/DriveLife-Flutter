@@ -211,7 +211,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
         res = await GarageAPI.updateVehicleMod(
           payload,
           widget.mod!['id'].toString(),
-          currentUser['id'].toString(),
+          currentUser.id.toString(),
           onUploadProgress: (current, total, percentage) {
             if (mounted && willUploadNewImage) {
               setState(() {
@@ -224,7 +224,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
       } else {
         res = await GarageAPI.addVehicleMod(
           payload,
-          currentUser['id'].toString(),
+          currentUser.id.toString(),
           onUploadProgress: (current, total, percentage) {
             if (mounted && willUploadNewImage) {
               setState(() {
@@ -318,7 +318,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
 
       final res = await GarageAPI.deleteVehicleMod(
         widget.mod!['id'].toString(),
-        currentUser['id'].toString(),
+        currentUser.id.toString(),
       );
 
       if (!mounted) return;

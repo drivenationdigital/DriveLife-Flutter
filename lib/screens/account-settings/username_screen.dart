@@ -32,9 +32,9 @@ class _UsernameScreenState extends State<UsernameScreen> {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final user = userProvider.user;
     if (user != null) {
-      _usernameController.text = user['username'] ?? '';
-      _canChangeUsername = user['can_update_username'] ?? false;
-      _daysUntilNextChange = user['next_update_username'] ?? 0;
+      _usernameController.text = user.username;
+      _canChangeUsername = user.canUpdateUsername;
+      _daysUntilNextChange = user.nextUpdateUsername;
     }
   }
 
@@ -65,14 +65,14 @@ class _UsernameScreenState extends State<UsernameScreen> {
       if (!mounted) return;
 
       // if username is unchanged, just pop
-      if (_usernameController.text == user?['username']) {
+      if (_usernameController.text == user?.username) {
         setState(() => _isSaving = false);
         return;
       }
 
       final response = await ProfileAPI.updateUsername(
         username: _usernameController.text,
-        userId: user!['id'],
+        userId: user!.id,
       );
 
       if (response?['success'] != true) {
@@ -94,7 +94,7 @@ class _UsernameScreenState extends State<UsernameScreen> {
         ),
       );
 
-      Navigator.pop(context);
+      Navigator.pop(context, true); // Return true to indicate success
     } catch (e) {
       if (!mounted) return;
 

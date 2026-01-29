@@ -46,23 +46,23 @@ class _ManageSocialLinksScreenState extends State<ManageSocialLinksScreen> {
 
     if (user != null) {
       setState(() {
-        final profileLinks = user['profile_links'] as Map<String, dynamic>?;
-        final externalLinks = profileLinks?['external_links'] as List<dynamic>?;
+        final profileLinks = user.profileLinks;
+        final externalLinks = profileLinks?.externalLinks;
 
-        _instagramController.text = profileLinks?['instagram'] ?? '';
-        _facebookController.text = profileLinks?['facebook'] ?? '';
-        _tiktokController.text = profileLinks?['tiktok'] ?? '';
-        _youtubeController.text = profileLinks?['youtube'] ?? '';
-        _miviaController.text = profileLinks?['mivia'] ?? '';
-        _custodianController.text = profileLinks?['custodian'] ?? '';
+        _instagramController.text = profileLinks?.instagram ?? '';
+        _facebookController.text = profileLinks?.facebook ?? '';
+        _tiktokController.text = profileLinks?.tiktok ?? '';
+        _youtubeController.text = profileLinks?.youtube ?? '';
+        _miviaController.text = profileLinks?.mivia ?? '';
+        _custodianController.text = profileLinks?.custodian ?? '';
 
         if (externalLinks != null) {
           _otherLinks = externalLinks
               .map(
                 (link) => {
-                  'id': link['id'],
-                  'label': link['link']['label'],
-                  'url': link['link']['url'],
+                  'id': link.id,
+                  'label': link.link.label,
+                  'url': link.link.url,
                 },
               )
               .toList();
@@ -191,14 +191,7 @@ class _ManageSocialLinksScreenState extends State<ManageSocialLinksScreen> {
       if (response != null && response['success'] == true) {
         // Update UserProvider
         final userProvider = Provider.of<UserProvider>(context, listen: false);
-        final currentUser = Map<String, dynamic>.from(userProvider.user ?? {});
-        currentUser['instagram'] = instagram;
-        currentUser['facebook'] = facebook;
-        currentUser['tiktok'] = tiktok;
-        currentUser['youtube'] = youtube;
-        currentUser['mivia'] = mivia;
-        currentUser['custodian'] = custodian;
-        userProvider.setUser(currentUser);
+        await userProvider.refreshUser();
 
         // Clear profile cache
         print('✅ [ManageSocialLinks] Social links updated');
@@ -359,20 +352,7 @@ class _ManageSocialLinksScreenState extends State<ManageSocialLinksScreen> {
 
         // Update UserProvider
         final userProvider = Provider.of<UserProvider>(context, listen: false);
-        final currentUser = Map<String, dynamic>.from(userProvider.user ?? {});
-        final profileLinks = Map<String, dynamic>.from(
-          currentUser['profile_links'] ?? {},
-        );
-        final externalLinks = List<dynamic>.from(
-          (profileLinks['external_links'] as List<dynamic>?) ?? [],
-        );
-        externalLinks.add({
-          'id': response['id'],
-          'link': {'label': title, 'url': url},
-        });
-        profileLinks['external_links'] = externalLinks;
-        currentUser['profile_links'] = profileLinks;
-        userProvider.setUser(currentUser);
+        await userProvider.refreshUser();
 
         print('✅ [ManageSocialLinks] External link added');
 
@@ -437,17 +417,7 @@ class _ManageSocialLinksScreenState extends State<ManageSocialLinksScreen> {
 
         // Update UserProvider
         final userProvider = Provider.of<UserProvider>(context, listen: false);
-        final currentUser = Map<String, dynamic>.from(userProvider.user ?? {});
-        final profileLinks = Map<String, dynamic>.from(
-          currentUser['profile_links'] ?? {},
-        );
-        final externalLinks = List<dynamic>.from(
-          (profileLinks['external_links'] as List<dynamic>?) ?? [],
-        );
-        externalLinks.removeWhere((item) => item['id'] == linkId);
-        profileLinks['external_links'] = externalLinks;
-        currentUser['profile_links'] = profileLinks;
-        userProvider.setUser(currentUser);
+        await userProvider.refreshUser();
 
         print('✅ [ManageSocialLinks] Link deleted');
 

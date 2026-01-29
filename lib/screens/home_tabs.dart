@@ -60,9 +60,9 @@ class _HomeTabsState extends State<HomeTabs> {
   void _loadProfileImage() {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final user = userProvider.user;
-    if (mounted && user != null && user['profile_image'] != null) {
+    if (mounted && user != null && user.profileImage != null) {
       setState(() {
-        _currentProfileImageUrl = user['profile_image'];
+        _currentProfileImageUrl = user.profileImage;
       });
     }
   }

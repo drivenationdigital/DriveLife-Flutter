@@ -186,7 +186,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   bool isVehiclePublisher() {
     final ownerId = _vehicle?['owner_id']?.toString();
     final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final currentUserId = userProvider.user?['id']?.toString();
+    final currentUserId = userProvider.user?.id.toString();
 
     if (currentUserId == null) return false;
     if (ownerId == null || ownerId != currentUserId) {

@@ -66,6 +66,8 @@ dependencies:
   shimmer: ^3.0.0
   shared_preferences: ^2.2.2
   html_unescape: ^2.0.0
+  flutter_stripe: ^10.1.1
+  confetti: ^0.7.0
 
 dev_dependencies:
   flutter_test:

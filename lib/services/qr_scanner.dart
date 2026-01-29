@@ -183,7 +183,7 @@ class QrScannerService {
   ) async {
     // Get current user ID from UserProvider
     final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final userId = userProvider.user?['id'];
+    final userId = userProvider.user?.id;
 
     print('🔗 [QrScannerService] Linking QR code to profile:');
     print('   QR Code: $qrCode');

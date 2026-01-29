@@ -202,7 +202,7 @@ class _PostsTabState extends State<_PostsTab>
     try {
       final newPosts = await PostsAPI.getPosts(
         token: token,
-        userId: user['id'],
+        userId: user.id,
         page: _page,
         limit: 10,
         followingOnly: followingOnly,

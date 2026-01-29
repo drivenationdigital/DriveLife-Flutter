@@ -235,8 +235,8 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
 
     if (currentUser != null) {
       _isOwnProfile =
-          currentUser['id'] == widget.userId ||
-          currentUser['username'] == widget.username;
+          currentUser.id == widget.userId ||
+          currentUser.username == widget.username;
     }
   }
 
@@ -267,13 +267,8 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     // ✅ Own profile → Use UserProvider (no cache)
     if (_isOwnProfile) {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
-      final user = userProvider.user;
-
-      // print all user data for debugging
-      // loop through user map and print key-value pairs
-      // user!.forEach((key, value) {
-      //   print('UserProvider data: $key => $value');
-      // });
+      final user =
+          userProvider.userMap; // Use userMap for backward compatibility
 
       if (user != null) {
         setState(() {
@@ -281,8 +276,8 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           _isLoading = false;
         });
 
-        if (user?['cover_image'] != null) {
-          _preloadCoverImage(user?['cover_image']);
+        if (user['cover_image'] != null) {
+          _preloadCoverImage(user['cover_image']);
         }
 
         _loadTabContent();
@@ -325,8 +320,8 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           _isLoading = false;
         });
 
-        if (profile?['cover_image'] != null) {
-          _preloadCoverImage(profile?['cover_image']);
+        if (profile['cover_image'] != null) {
+          _preloadCoverImage(profile['cover_image']);
         }
 
         // Cache other users' profiles only
@@ -345,34 +340,87 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     }
   }
 
+  /// 🔄 NEW: Refresh profile WITHOUT losing data
+  /// This is what you should call after updating user details
   Future<void> _refreshProfile() async {
     print('🔄 Refreshing profile...');
 
-    // Clear cache
-    if (widget.userId != null) {
-      ProfileCache.remove(widget.userId!);
+    if (_isOwnProfile) {
+      // For own profile, refresh from UserProvider
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+
+      // This keeps old data while fetching new data
+      await userProvider.refreshUser();
+
+      // Update local state with new data
+      final user = userProvider.userMap;
+      if (user != null && mounted) {
+        setState(() {
+          _userProfile = Map<String, dynamic>.from(user);
+        });
+
+        if (user['cover_image'] != null) {
+          _preloadCoverImage(user['cover_image']);
+        }
+      }
+    } else {
+      // For other profiles, clear cache and refetch
+      if (widget.userId != null) {
+        ProfileCache.remove(widget.userId!);
+      }
+
+      setState(() {
+        _posts.clear();
+        _taggedPosts.clear();
+        _currentVehicles.clear();
+        _pastVehicles.clear();
+        _dreamVehicles.clear();
+        _postsPage = 1;
+        _taggedPage = 1;
+        _hasMorePosts = true;
+        _hasMoreTagged = true;
+        _garageLoaded = false;
+      });
+
+      await _loadUserProfileOptimized();
     }
 
-    setState(() {
-      _posts.clear();
-      _taggedPosts.clear();
-      _currentVehicles.clear();
-      _pastVehicles.clear();
-      _dreamVehicles.clear();
-      _postsPage = 1;
-      _taggedPage = 1;
-      _hasMorePosts = true;
-      _hasMoreTagged = true;
-      _garageLoaded = false;
-    });
-
-    await _loadUserProfileOptimized();
     print('✅ Profile refreshed');
+  }
+
+  /// 🔄 NEW: Hard refresh with loading indicator
+  /// Use this if you want to show a loading state
+  Future<void> _hardRefreshProfile() async {
+    print('🔄 Hard refreshing profile...');
+
+    if (_isOwnProfile) {
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+
+      // Show loading indicator
+      setState(() => _isLoading = true);
+
+      // Force refresh with loading state
+      await userProvider.forceRefresh();
+
+      // Update local state
+      final user = userProvider.userMap;
+      if (user != null && mounted) {
+        setState(() {
+          _userProfile = Map<String, dynamic>.from(user);
+          _isLoading = false;
+        });
+      }
+    } else {
+      // Same as regular refresh for other profiles
+      await _refreshProfile();
+    }
+
+    print('✅ Profile hard refreshed');
   }
 
   Future<void> _checkFollowStatus(int userId) async {
     final sessionUserFollowing =
-        Provider.of<UserProvider>(context, listen: false).user?['following']
+        Provider.of<UserProvider>(context, listen: false).user?.following
             as List<dynamic>?;
 
     if (sessionUserFollowing == null) return;
@@ -394,7 +442,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
 
     final userId = _userProfile!['id'];
     final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final currentUserId = userProvider.user?['id'];
+    final currentUserId = userProvider.user?.id;
 
     if (userId == null || currentUserId == null) return;
 
@@ -426,37 +474,12 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
         }
       });
 
-      // Update UserProvider's following list
-      final currentUser = Map<String, dynamic>.from(userProvider.user ?? {});
-      final following = List<dynamic>.from(currentUser['following'] ?? []);
-
-      if (_isFollowing) {
-        // Add to following list if not already there
-        if (!following.any((id) {
-          if (id is int) return id == userId;
-          if (id is String) return int.tryParse(id) == userId;
-          return false;
-        })) {
-          following.add(userId);
-        }
+      if (!_isFollowing) {
+        // Optimistic update
+        userProvider.addFollowing(userId.toString());
       } else {
-        // Remove from following list
-        following.removeWhere((id) {
-          if (id is int) return id == userId;
-          if (id is String) return int.tryParse(id) == userId;
-          return false;
-        });
+        userProvider.removeFollowing(userId.toString());
       }
-
-      currentUser['following'] = following;
-      userProvider.setUser(currentUser);
-
-      print('✅ [ViewProfileScreen] Follow status updated:');
-      print('   Following: $_isFollowing');
-      print(
-        '   Profile followers: ${(_userProfile!['followers'] as List).length}',
-      );
-      print('   Current user following: ${following.length}');
     }
   }
 
@@ -584,7 +607,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                 elevation: 0,
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-                  iconSize: 38,
                   onPressed: () => Navigator.of(context).pop(),
                 ),
                 centerTitle: true,
@@ -614,7 +636,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
               elevation: 0,
               leading: IconButton(
                 icon: Icon(Icons.arrow_back_ios, color: theme.textColor),
-                iconSize: 38,
                 onPressed: () => Navigator.of(context).pop(),
               ),
               centerTitle: true,
@@ -994,229 +1015,250 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   }
 
   Widget _buildProfileHeader(ThemeProvider theme) {
-    return Container(
-      color: theme.cardColor,
-      child: Column(
-        children: [
-          Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.bottomCenter,
+    return Consumer<UserProvider>(
+      // ✅ ADD THIS
+      builder: (context, userProvider, child) {
+        // ✅ ADD: Sync local state with UserProvider for own profile
+        if (_isOwnProfile && userProvider.userMap != null) {
+          _userProfile = Map<String, dynamic>.from(userProvider.userMap!);
+        }
+        return Container(
+          color: theme.cardColor,
+          child: Column(
             children: [
-              // Cover image
-              Container(
-                height: 140,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  image: _getCoverImageUrl() != null
-                      ? DecorationImage(
-                          image: NetworkImage(_getCoverImageUrl()!),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
-                  color: _userProfile!['cover_image'] == null
-                      ? theme.primaryColor.withOpacity(0.1)
-                      : null,
-                ),
-              ),
-
-              // ✅ White overlay gradient
-              if (_userProfile!['cover_image'] != null &&
-                  _userProfile!['cover_image'].toString().isNotEmpty)
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    height: 60,
+              Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.bottomCenter,
+                children: [
+                  // Cover image
+                  Container(
+                    height: 140,
+                    width: double.infinity,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          theme.cardColor.withOpacity(0.6),
-                          theme.cardColor,
-                        ],
-                      ),
+                      image: _getCoverImageUrl() != null
+                          ? DecorationImage(
+                              image: NetworkImage(_getCoverImageUrl()!),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
+                      color: _userProfile!['cover_image'] == null
+                          ? theme.primaryColor.withOpacity(0.1)
+                          : null,
                     ),
                   ),
-                ),
 
-              // ✅ Floating avatar (only this element overlaps)
-              Positioned(
-                bottom: -50, // Half of avatar size overlaps
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: theme.backgroundColor, width: 4),
-                  ),
-                  child: ProfileAvatar(
-                    imageUrl: _userProfile!['profile_image'],
-                    radius: 60,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          // ✅ Normal flow content (no transform translate!)
-          const SizedBox(height: 60), // Space for overlapping avatar
-          // Name and username
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        '${_userProfile!['first_name'] ?? ''} ${_userProfile!['last_name'] ?? ''}'
-                            .trim(),
-                        style: TextStyle(
-                          color: theme.textColor,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                  // ✅ White overlay gradient
+                  if (_userProfile!['cover_image'] != null &&
+                      _userProfile!['cover_image'].toString().isNotEmpty)
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        height: 60,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              theme.cardColor.withOpacity(0.6),
+                              theme.cardColor,
+                            ],
+                          ),
                         ),
                       ),
-                      if (_userProfile!['verified'] == true) ...[
-                        const SizedBox(width: 4),
-                        Icon(
-                          Icons.verified,
-                          size: 16,
-                          color: theme.primaryColor,
+                    ),
+
+                  // ✅ Floating avatar (only this element overlaps)
+                  Positioned(
+                    bottom: -50, // Half of avatar size overlaps
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: theme.backgroundColor,
+                          width: 4,
                         ),
-                      ],
-                    ],
-                  ),
-                  Text(
-                    '@${_userProfile!['username']}',
-                    style: TextStyle(
-                      color: theme.subtextColor,
-                      fontSize: _userProfile!['username'].length > 15 ? 12 : 14,
+                      ),
+                      child: ProfileAvatar(
+                        imageUrl: _userProfile!['profile_image'],
+                        radius: 60,
+                      ),
                     ),
                   ),
                 ],
               ),
 
-              // ✅ Gap between username and stats
-              const SizedBox(width: 20),
-              Container(width: 1, height: 40, color: theme.dividerColor),
-              const SizedBox(width: 20),
-
-              // Stats row
+              // ✅ Normal flow content (no transform translate!)
+              const SizedBox(height: 60), // Space for overlapping avatar
+              // Name and username
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                spacing: 30,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  GestureDetector(
-                    onTap: () => NavigationHelper.navigateTo(
-                      context,
-                      FollowersScreen(userId: _userProfile!['id']),
-                    ),
-                    child: _buildStat(
-                      _getFollowerCount(
-                        followers: _userProfile!['followers'],
-                        formattedString: true,
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            '${_userProfile!['first_name'] ?? ''} ${_userProfile!['last_name'] ?? ''}'
+                                .trim(),
+                            style: TextStyle(
+                              color: theme.textColor,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (_userProfile!['verified'] == true) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.verified,
+                              size: 16,
+                              color: theme.primaryColor,
+                            ),
+                          ],
+                        ],
                       ),
-                      'Followers',
-                      theme,
-                    ),
+                      Text(
+                        '@${_userProfile!['username']}',
+                        style: TextStyle(
+                          color: theme.subtextColor,
+                          fontSize: _userProfile!['username'].length > 15
+                              ? 12
+                              : 14,
+                        ),
+                      ),
+                    ],
                   ),
+
+                  // ✅ Gap between username and stats
+                  const SizedBox(width: 20),
                   Container(width: 1, height: 40, color: theme.dividerColor),
-                  _buildStat(
-                    _getPostsCount(_userProfile!['posts_count']).toString(),
-                    'Posts',
-                    theme,
+                  const SizedBox(width: 20),
+
+                  // Stats row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    spacing: 30,
+                    children: [
+                      GestureDetector(
+                        onTap: () => NavigationHelper.navigateTo(
+                          context,
+                          FollowersScreen(userId: _userProfile!['id']),
+                        ),
+                        child: _buildStat(
+                          _getFollowerCount(
+                            followers: _userProfile!['followers'],
+                            formattedString: true,
+                          ),
+                          'Followers',
+                          theme,
+                        ),
+                      ),
+                      Container(
+                        width: 1,
+                        height: 40,
+                        color: theme.dividerColor,
+                      ),
+                      _buildStat(
+                        _getPostsCount(_userProfile!['posts_count']).toString(),
+                        'Posts',
+                        theme,
+                      ),
+                    ],
                   ),
                 ],
               ),
+              const SizedBox(height: 16),
+
+              // Buttons
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _isOwnProfile
+                    ? _buildOwnProfileButtons(theme)
+                    : _buildOtherProfileButtons(theme),
+              ),
+              const SizedBox(height: 12),
+
+              // Social buttons
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    _buildSocialButton(
+                      icon: FontAwesomeIcons.instagram,
+                      label: 'Instagram',
+                      onTap: () => _launchSocialMedia(
+                        'instagram',
+                        _userProfile!['profile_links']?['instagram'],
+                      ),
+                      isEnabled:
+                          _userProfile!['profile_links']?['instagram']
+                              ?.isNotEmpty ??
+                          false,
+                      theme: theme,
+                    ),
+                    const SizedBox(width: 8),
+                    _buildSocialButton(
+                      icon: FontAwesomeIcons.facebook,
+                      label: 'Facebook',
+                      onTap: () => _launchSocialMedia(
+                        'facebook',
+                        _userProfile!['profile_links']?['facebook'],
+                      ),
+                      isEnabled:
+                          _userProfile!['profile_links']?['facebook']
+                              ?.isNotEmpty ??
+                          false,
+                      theme: theme,
+                    ),
+                    const SizedBox(width: 8),
+                    _buildSocialButton(
+                      icon: FontAwesomeIcons.tiktok,
+                      label: 'TikTok',
+                      onTap: () => _launchSocialMedia(
+                        'tiktok',
+                        _userProfile!['profile_links']?['tiktok'],
+                      ),
+                      isEnabled:
+                          _userProfile!['profile_links']?['tiktok']
+                              ?.isNotEmpty ??
+                          false,
+                      theme: theme,
+                    ),
+                    const SizedBox(width: 8),
+                    _buildSocialButton(
+                      icon: FontAwesomeIcons.youtube,
+                      label: 'YouTube',
+                      onTap: () => _launchSocialMedia(
+                        'youtube',
+                        _userProfile!['profile_links']?['youtube'],
+                      ),
+                      isEnabled:
+                          _userProfile!['profile_links']?['youtube']
+                              ?.isNotEmpty ??
+                          false,
+                      theme: theme,
+                    ),
+                    const SizedBox(width: 8),
+                    // ✅ More button for external links
+                    _buildSocialButton(
+                      icon: Icons.link,
+                      label: 'More',
+                      onTap: _showExternalLinks,
+                      isEnabled: true,
+                      theme: theme,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
             ],
           ),
-          const SizedBox(height: 16),
-
-          // Buttons
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _isOwnProfile
-                ? _buildOwnProfileButtons(theme)
-                : _buildOtherProfileButtons(theme),
-          ),
-          const SizedBox(height: 12),
-
-          // Social buttons
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                _buildSocialButton(
-                  icon: FontAwesomeIcons.instagram,
-                  label: 'Instagram',
-                  onTap: () => _launchSocialMedia(
-                    'instagram',
-                    _userProfile!['profile_links']?['instagram'],
-                  ),
-                  isEnabled:
-                      _userProfile!['profile_links']?['instagram']
-                          ?.isNotEmpty ??
-                      false,
-                  theme: theme,
-                ),
-                const SizedBox(width: 8),
-                _buildSocialButton(
-                  icon: FontAwesomeIcons.facebook,
-                  label: 'Facebook',
-                  onTap: () => _launchSocialMedia(
-                    'facebook',
-                    _userProfile!['profile_links']?['facebook'],
-                  ),
-                  isEnabled:
-                      _userProfile!['profile_links']?['facebook']?.isNotEmpty ??
-                      false,
-                  theme: theme,
-                ),
-                const SizedBox(width: 8),
-                _buildSocialButton(
-                  icon: FontAwesomeIcons.tiktok,
-                  label: 'TikTok',
-                  onTap: () => _launchSocialMedia(
-                    'tiktok',
-                    _userProfile!['profile_links']?['tiktok'],
-                  ),
-                  isEnabled:
-                      _userProfile!['profile_links']?['tiktok']?.isNotEmpty ??
-                      false,
-                  theme: theme,
-                ),
-                const SizedBox(width: 8),
-                _buildSocialButton(
-                  icon: FontAwesomeIcons.youtube,
-                  label: 'YouTube',
-                  onTap: () => _launchSocialMedia(
-                    'youtube',
-                    _userProfile!['profile_links']?['youtube'],
-                  ),
-                  isEnabled:
-                      _userProfile!['profile_links']?['youtube']?.isNotEmpty ??
-                      false,
-                  theme: theme,
-                ),
-                const SizedBox(width: 8),
-                // ✅ More button for external links
-                _buildSocialButton(
-                  icon: Icons.link,
-                  label: 'More',
-                  onTap: _showExternalLinks,
-                  isEnabled: true,
-                  theme: theme,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
+        );
+      },
     );
   }
 

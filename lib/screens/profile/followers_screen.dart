@@ -114,7 +114,7 @@ class _FollowersScreenState extends State<FollowersScreen> {
   void _checkIfOwnProfile() {
     final currentUser = Provider.of<UserProvider>(context, listen: false).user;
     if (currentUser != null) {
-      _isOwnProfile = currentUser['id'] == widget.userId;
+      _isOwnProfile = currentUser.id == widget.userId;
     }
   }
 
@@ -161,7 +161,6 @@ class _FollowersScreenState extends State<FollowersScreen> {
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios, color: theme.textColor),
-          iconSize: 38,
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(

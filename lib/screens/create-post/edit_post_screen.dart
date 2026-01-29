@@ -128,7 +128,7 @@ class _EditPostScreenState extends State<EditPostScreen> {
     setState(() => _isSaving = true);
 
     try {
-      final userId = int.parse(user['id'].toString());
+      final userId = int.parse(user.id.toString());
       final postId = widget.post['id'].toString();
 
       final Map<String, dynamic> data = {

@@ -230,7 +230,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (!mounted) return;
 
     final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final currentUserId = userProvider.user?['id'];
+    final currentUserId = userProvider.user?.id;
 
     if (currentUserId == null) return;
 
@@ -245,27 +245,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     if (success) {
       // Update UserProvider's following list
-      final currentUser = Map<String, dynamic>.from(userProvider.user ?? {});
-      final following = List<dynamic>.from(currentUser['following'] ?? []);
-
       if (!wasFollowing) {
-        if (!following.any((id) {
-          if (id is int) return id == userId;
-          if (id is String) return int.tryParse(id) == userId;
-          return false;
-        })) {
-          following.add(userId);
-        }
+        // Optimistic update
+        userProvider.addFollowing(userId.toString());
       } else {
-        following.removeWhere((id) {
-          if (id is int) return id == userId;
-          if (id is String) return int.tryParse(id) == userId;
-          return false;
-        });
+        userProvider.removeFollowing(userId.toString());
       }
-
-      currentUser['following'] = following;
-      userProvider.setUser(currentUser);
 
       _refreshNotifications();
 
@@ -296,7 +281,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final theme = Provider.of<ThemeProvider>(context);
 
     final sessionUserFollowing =
-        Provider.of<UserProvider>(context, listen: false).user?['following']
+        Provider.of<UserProvider>(context, listen: false).user?.following
             as List<dynamic>?;
 
     return Scaffold(

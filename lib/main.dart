@@ -13,10 +13,20 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 // import League Spartan font from google fonts
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
+
+const String stripePublishableKey =
+    'pk_test_51KPRpjHPxUaL4Jbz1Kn3SK5I4T5mL539JGCSyuM81qvXeExgBhxxngXg5FZyb0iqxLjK4FwpyFbG21lXLcinbynl008v1d9eo1';
 
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    Stripe.publishableKey = stripePublishableKey;
+  } catch (e) {
+    print('Error setting Stripe publishable key: $e');
+  }
 
   try {
     // Initialize Firebase

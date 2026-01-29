@@ -351,7 +351,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       return;
     }
 
-    final userId = int.parse(user['id'].toString());
+    final userId = int.parse(user.id.toString());
 
     // Generate unique upload ID
     final uploadId = 'upload_${DateTime.now().millisecondsSinceEpoch}';

@@ -57,14 +57,13 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
     final user = userProvider.user;
 
     if (user != null) {
-      _firstNameController.text = user['first_name'] ?? '';
-      _lastNameController.text = user['last_name'] ?? '';
-      _emailController.text = user['email'] ?? '';
-      _telController.text = user['phone'] ?? '';
-      _originalEmail = user['email'];
-
+      _firstNameController.text = user.firstName;
+      _lastNameController.text = user.lastName;
+      _emailController.text = user.email;
+      _telController.text = user.billingInfo?.phone ?? '';
+      _originalEmail = user.email;
       // Set country dropdown value
-      final userCountry = user['country'] as String?;
+      final userCountry = user.billingInfo?.country;
       if (userCountry != null && _countries.contains(userCountry)) {
         _selectedCountry = userCountry;
       } else {
@@ -80,7 +79,7 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
 
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
-      final userId = userProvider.user?['id'];
+      final userId = userProvider.user?.id;
 
       if (userId == null) {
         throw Exception('User not found');
@@ -114,13 +113,7 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
 
       if (response != null && response['success'] == true) {
         // Update UserProvider with new data
-        final currentUser = Map<String, dynamic>.from(userProvider.user ?? {});
-        currentUser['first_name'] = _firstNameController.text.trim();
-        currentUser['last_name'] = _lastNameController.text.trim();
-        currentUser['email'] = _emailController.text.trim();
-        currentUser['phone'] = _telController.text.trim();
-        currentUser['country'] = _selectedCountry;
-        userProvider.setUser(currentUser);
+        await userProvider.refreshUser();
 
         print('✅ [MyDetailsScreen] Details updated successfully');
         print('   UserProvider updated');

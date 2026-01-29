@@ -64,7 +64,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
   Future<void> _getCurrentUserId() async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     setState(() {
-      _currentUserId = userProvider.user?['id']?.toString();
+      _currentUserId = userProvider.user?.id.toString();
     });
   }
 

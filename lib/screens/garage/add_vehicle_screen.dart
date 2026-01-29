@@ -465,7 +465,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         res = await GarageAPI.updateVehicle(
           widget.vehicle!['id'].toString(),
           payload,
-          currentUser['id'].toString(),
+          currentUser.id.toString(),
           onUploadProgress: (current, total, percentage) {
             if (mounted) {
               setState(() {
@@ -478,7 +478,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       } else {
         res = await GarageAPI.addVehicleToGarage(
           payload,
-          currentUser['id'].toString(),
+          currentUser.id.toString(),
           onUploadProgress: (current, total, percentage) {
             if (mounted) {
               setState(() {
@@ -711,7 +711,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
       final res = await GarageAPI.deleteVehicle(
         widget.vehicle!['id'].toString(),
-        currentUser['id'].toString(),
+        currentUser.id.toString(),
       );
 
       if (!mounted) return;
