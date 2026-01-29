@@ -166,4 +166,85 @@ class DriveLifeApiService {
       throw Exception('Error fetching categories: $e');
     }
   }
+
+  static Future<Map<String, dynamic>> createPaymentIntent({
+    required int amount,
+    required String currency,
+    required String customerEmail,
+    required Map<String, dynamic> shippingAddress,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    try {
+      final uri = Uri.parse(
+        '$baseUrl/wp-json/app-store/v2/create-payment-intent',
+      );
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'amount': amount,
+          'currency': currency,
+          'customer_email': customerEmail,
+          'shipping_address': shippingAddress,
+          'items': items,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['success'] == false) {
+          throw Exception(data['message'] ?? 'Failed to create payment intent');
+        }
+
+        return data['data'];
+      } else {
+        throw Exception(
+          'Failed to create payment intent: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Error creating payment intent: $e');
+    }
+  }
+
+  // Create Order
+  static Future<Map<String, dynamic>> createOrder({
+    required String paymentIntentId,
+    required String customerEmail,
+    required Map<String, dynamic> shippingAddress,
+    required List<Map<String, dynamic>> items,
+    required String shippingMethod,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/wp-json/app-store/v2/create-order');
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'payment_intent_id': paymentIntentId,
+          'customer_email': customerEmail,
+          'shipping_address': shippingAddress,
+          'items': items,
+          'shipping_method': shippingMethod,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['success'] == false) {
+          throw Exception(data['message'] ?? 'Failed to create order');
+        }
+
+        return data['data'];
+      } else {
+        throw Exception('Failed to create order: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error creating order: $e');
+    }
+  }
 }

@@ -118,7 +118,10 @@ class _ShopScreenState extends State<ShopScreen>
       return;
     }
 
-    setState(() => _isLoadingProducts = true);
+    setState(() {
+      _isLoadingProducts = true;
+      _selectedCategory = categorySlug;
+    });
 
     try {
       final response = await DriveLifeApiService.getProductsByCategory(
@@ -130,7 +133,7 @@ class _ShopScreenState extends State<ShopScreen>
         _products = response.products;
         _pagination = response.pagination;
         _categoryInfo = response.category;
-        _selectedCategory = categorySlug;
+
         _currentPage = page;
         _isLoadingProducts = false;
       });
@@ -439,17 +442,35 @@ class _ShopScreenState extends State<ShopScreen>
                 indicatorColor: const Color(0xFFAE9159),
                 indicatorWeight: 3,
                 tabs: [
-                  const Tab(
-                    icon: Icon(Icons.shopping_bag_outlined, size: 20),
-                    text: 'Browse',
+                  Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.shopping_bag_outlined, size: 20),
+                        const SizedBox(width: 6),
+                        const Text('Browse'),
+                      ],
+                    ),
                   ),
                   Tab(
-                    icon: Icon(Icons.shopping_basket_outlined, size: 20),
-                    text: 'Basket (${cartProvider.itemCount})',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.shopping_basket_outlined, size: 20),
+                        const SizedBox(width: 6),
+                        Text('Basket (${cartProvider.itemCount})'),
+                      ],
+                    ),
                   ),
-                  const Tab(
-                    icon: Icon(Icons.receipt_long_outlined, size: 20),
-                    text: 'My Orders',
+                  Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.receipt_long_outlined, size: 20),
+                        const SizedBox(width: 6),
+                        const Text('My Orders'),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -510,276 +531,415 @@ class _ShopScreenState extends State<ShopScreen>
           );
         }
 
-        return Column(
-          children: [
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: cartProvider.cart.length,
-                itemBuilder: (context, index) {
-                  final item = cartProvider.cart[index];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Product image
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
-                              item.image,
-                              width: 80,
-                              height: 80,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Basket Header
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: const Text(
+                  'Basket',
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                ),
+              ),
 
-                          // Product details
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+              Divider(height: 1, color: Colors.grey.shade300),
+
+              // Product Section
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'PRODUCT',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Product items
+                    ...cartProvider.cart.map(
+                      (item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Product image
+                            Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                  item.image,
+                                  fit: BoxFit.cover,
                                 ),
-                                if (item.variant != null) ...[
-                                  const SizedBox(height: 2),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+
+                            // Product details
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Text(
-                                    'Variant: ${item.variant}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
-                                      fontStyle: FontStyle.italic,
+                                    item.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
                                     ),
                                   ),
-                                ],
-                                const SizedBox(height: 4),
-                                // Show color and size
-                                if (item.selectedColorHex != null ||
-                                    item.selectedSize != null)
+                                  const SizedBox(height: 4),
+
+                                  if (item.selectedSize != null)
+                                    Text(
+                                      'Size: ${item.selectedSize}',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey.shade700,
+                                      ),
+                                    ),
+
+                                  if (item.selectedColorName != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(
+                                        'Colour: ${item.selectedColorName}',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey.shade700,
+                                        ),
+                                      ),
+                                    ),
+                                  const SizedBox(height: 12),
+
                                   Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    spacing: 20,
                                     children: [
-                                      if (item.selectedColorHex != null) ...[
-                                        Container(
-                                          width: 16,
-                                          height: 16,
-                                          decoration: BoxDecoration(
-                                            color: Color(
-                                              int.parse(
-                                                item.selectedColorHex!
-                                                    .replaceFirst('#', '0xFF'),
+                                      // Price
+                                      PriceDisplay(
+                                        product: Product(
+                                          id: 0,
+                                          name: item.name,
+                                          permalink: '',
+                                          image: item.image,
+                                          price:
+                                              item.isOnSale == true &&
+                                                  item.originalPrice != null
+                                              ? item.originalPrice!
+                                              : item.price,
+                                          formattedSalePrice:
+                                              item.isOnSale == true
+                                              ? '${item.currencySymbol}${item.price.toStringAsFixed(2)}'
+                                              : null,
+                                          formattedPrice:
+                                              '${item.currencySymbol}${item.price.toStringAsFixed(2)}',
+                                          salePrice: item.isOnSale == true
+                                              ? item.price
+                                              : null,
+                                          isOnSale: item.isOnSale ?? false,
+                                          currencySymbol: item.currencySymbol,
+                                          inStock: true,
+                                          stockStatus: 'instock',
+                                          colours: [],
+                                          sizes: [],
+                                        ),
+                                        fontSize: 20,
+                                        showSavings: true,
+                                        fontWeight: FontWeight.bold,
+                                        color: const Color(0xFFAE9159),
+                                      ),
+
+                                      const SizedBox(height: 12),
+
+                                      // Quantity and Remove
+                                      Row(
+                                        spacing: 10,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.end,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical:
+                                                  4, // Reduced from 8 to 4
+                                            ),
+                                            decoration: BoxDecoration(
+                                              border: Border.all(
+                                                color: Colors.grey.shade300,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: DropdownButton<int>(
+                                              value: item.quantity,
+                                              underline: const SizedBox(),
+                                              isDense:
+                                                  true, // ADD THIS - makes dropdown more compact
+                                              icon: const Icon(
+                                                Icons.keyboard_arrow_down,
+                                                size:
+                                                    18, // Reduced from 20 to 18
+                                              ),
+                                              style: const TextStyle(
+                                                fontSize:
+                                                    14, // ADD THIS - smaller text
+                                                color: Colors.black,
+                                              ),
+                                              items: List.generate(
+                                                10,
+                                                (index) => DropdownMenuItem(
+                                                  value: index + 1,
+                                                  child: Text('${index + 1}'),
+                                                ),
+                                              ),
+                                              onChanged: (value) {
+                                                if (value != null) {
+                                                  // Update quantity
+                                                  final diff =
+                                                      value - item.quantity;
+                                                  if (diff > 0) {
+                                                    for (
+                                                      int i = 0;
+                                                      i < diff;
+                                                      i++
+                                                    ) {
+                                                      cartProvider
+                                                          .incrementQuantity(
+                                                            item.variantId,
+                                                          );
+                                                    }
+                                                  } else if (diff < 0) {
+                                                    for (
+                                                      int i = 0;
+                                                      i < -diff;
+                                                      i++
+                                                    ) {
+                                                      cartProvider
+                                                          .decrementQuantity(
+                                                            item.variantId,
+                                                          );
+                                                    }
+                                                  }
+                                                }
+                                              },
+                                            ),
+                                          ),
+
+                                          // Remove item
+                                          GestureDetector(
+                                            onTap: () => cartProvider
+                                                .removeFromCart(item.variantId),
+                                            child: Text(
+                                              'Remove Item',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                color: Colors.grey.shade700,
+                                                decoration:
+                                                    TextDecoration.underline,
                                               ),
                                             ),
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: Colors.grey.shade300,
-                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        if (item.selectedColorName != null)
-                                          Text(
-                                            item.selectedColorName!,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                          ),
-                                      ],
-                                      if (item.selectedSize != null) ...[
-                                        if (item.selectedColorHex != null)
-                                          const SizedBox(width: 8),
-                                        Text(
-                                          '• ${item.selectedSize}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade600,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ],
                                   ),
-                                const SizedBox(height: 8),
-                                // Price
-                                PriceDisplay(
-                                  product: Product(
-                                    id: 0,
-                                    name: item.name,
-                                    permalink: '',
-                                    image: item.image,
-                                    price:
-                                        item.isOnSale == true &&
-                                            item.originalPrice != null
-                                        ? item.originalPrice!
-                                        : item.price,
-                                    formattedSalePrice: item.isOnSale == true
-                                        ? '${item.currencySymbol}${item.price.toStringAsFixed(2)}'
-                                        : null,
-                                    formattedPrice:
-                                        '${item.currencySymbol}${item.price.toStringAsFixed(2)}',
-                                    salePrice: item.isOnSale == true
-                                        ? item.price
-                                        : null,
-                                    isOnSale: item.isOnSale ?? false,
-                                    currencySymbol: item.currencySymbol,
-                                    inStock: true,
-                                    stockStatus: 'instock',
-                                    colours: [],
-                                    sizes: [],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Divider(height: 1, color: Colors.grey.shade300),
+
+              // Basket Totals
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'BASKET TOTALS',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Add Coupon
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: ExpansionTile(
+                        title: const Text(
+                          'Add Coupon',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                TextField(
+                                  decoration: InputDecoration(
+                                    hintText: 'Enter coupon code',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 12,
+                                    ),
                                   ),
-                                  fontSize: 14,
-                                  showSavings: true,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFFAE9159),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      // Apply coupon
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.black,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Apply',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-
-                          // Quantity controls
-                          Column(
-                            children: [
-                              IconButton(
-                                onPressed: () =>
-                                    cartProvider.removeFromCart(item.variantId),
-                                icon: const Icon(Icons.delete_outline),
-                                color: Colors.red,
-                                iconSize: 20,
-                              ),
-                              Container(
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: Colors.grey.shade300,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  children: [
-                                    IconButton(
-                                      onPressed: () => cartProvider
-                                          .decrementQuantity(item.variantId),
-                                      icon: const Icon(Icons.remove),
-                                      iconSize: 16,
-                                      constraints: const BoxConstraints(
-                                        minWidth: 32,
-                                        minHeight: 32,
-                                      ),
-                                    ),
-                                    Text(
-                                      '${item.quantity}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      onPressed: () => cartProvider
-                                          .incrementQuantity(item.variantId),
-                                      icon: const Icon(Icons.add),
-                                      iconSize: 16,
-                                      constraints: const BoxConstraints(
-                                        minWidth: 32,
-                                        minHeight: 32,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
                         ],
                       ),
                     ),
-                  );
-                },
-              ),
-            ),
 
-            // Cart summary
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                border: Border(top: BorderSide(color: Colors.grey.shade200)),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Subtotal:'),
-                      Text(
-                        '£${cartProvider.subtotal.toStringAsFixed(2)}',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Tax (20%):'),
-                      Text(
-                        '£${cartProvider.tax.toStringAsFixed(2)}',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Total:',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                    const SizedBox(height: 20),
+
+                    // Sub Total
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Sub Total:',
+                          style: TextStyle(fontSize: 14),
                         ),
-                      ),
-                      Text(
-                        '£${cartProvider.total.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFFAE9159),
+                        Text(
+                          '£${cartProvider.subtotal.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        // Proceed to checkout
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFAE9159),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      child: const Text(
-                        'Proceed to Checkout',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // Shipping
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Shipping: 5-10 days',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                        Text(
+                          '£${(cartProvider.subtotal * 0.12).toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Estimated Total
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Estimated Total',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '£${(cartProvider.subtotal * 1.12).toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Proceed to Checkout
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          // Proceed to checkout
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF22C55E),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text(
+                          'Proceed to Checkout',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -816,7 +976,7 @@ class _ShopScreenState extends State<ShopScreen>
             _buildCategoryPills(),
 
             // Category info with sort and filter dropdowns
-            if (_categoryInfo != null) ...[
+            if (_categoryInfo != null && !_isLoadingProducts) ...[
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
