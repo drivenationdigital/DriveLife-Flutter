@@ -170,9 +170,9 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
           ),
 
           // Apple Pay (iOS only)
-          applePay: Platform.isIOS
-              ? const PaymentSheetApplePay(merchantCountryCode: 'GB')
-              : null,
+          // applePay: Platform.isIOS
+          //     ? const PaymentSheetApplePay(merchantCountryCode: 'GB')
+          //     : null,
 
           // Google Pay (Android only)
           googlePay: Platform.isAndroid

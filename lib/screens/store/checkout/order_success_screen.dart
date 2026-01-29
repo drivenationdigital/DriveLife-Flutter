@@ -78,7 +78,7 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen> {
               // Order info grid
               _buildInfoItem(
                 'ORDER NUMBER',
-                _orderData?['orderID']?.toString() ?? 'N/A',
+                _orderData?['orderId']?.toString() ?? 'N/A',
               ),
               const SizedBox(height: 16),
               _buildInfoItem('DATE:', _formatDate(DateTime.now())),
