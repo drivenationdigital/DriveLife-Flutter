@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:drivelife/models/user_model.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
@@ -215,6 +216,35 @@ class ProfileAPI {
     } catch (e) {
       print('Error updating user details: $e');
       rethrow;
+    }
+  }
+
+  // Update user billing details
+  static Future<Map<String, dynamic>?> updateUserBillingInfo({
+    required BillingInfo billingDetails,
+  }) async {
+    try {
+      final token = await _storage.read(key: 'token');
+      final uri = Uri.parse('$_baseUrl/wp-json/app/v1/update-billing-info');
+
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'billing_details': billingDetails.toJson()}),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        print('Failed to update billing details: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Error updating billing details: $e');
+      return null;
     }
   }
 

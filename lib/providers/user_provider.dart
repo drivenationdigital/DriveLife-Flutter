@@ -256,6 +256,28 @@ class UserProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> updateUserBillingDetails({
+    required BillingInfo billingDetails,
+  }) async {
+    if (_user == null) return;
+
+    try {
+      final updatedProfile = await ProfileAPI.updateUserBillingInfo(
+        billingDetails: billingDetails,
+      );
+
+      if (updatedProfile != null) {
+        // Update JUST the billing details locally
+        _user = _user!.copyWith(billingInfo: billingDetails);
+
+        notifyListeners();
+        print('✅ User billing details updated');
+      }
+    } catch (e) {
+      print('❌ Error updating billing details: $e');
+    }
+  }
+
   /// 🔹 Set user manually (e.g. after login)
   void setUser(Map<String, dynamic> userData) {
     _user = User.fromJson(userData);

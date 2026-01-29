@@ -1,5 +1,7 @@
 import 'dart:io' show Platform;
+import 'package:drivelife/api/orders_api_services.dart';
 import 'package:drivelife/api/stripe_api_service.dart';
+import 'package:drivelife/models/user_model.dart';
 import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
@@ -105,6 +107,19 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
               )['price']
               as double;
       final total = subtotal + shipping;
+
+      // Quietly update user billing data in the background
+      await userProvider.updateUserBillingDetails(
+        billingDetails: BillingInfo(
+          phone: _phoneController.text,
+          address1: _addressController.text,
+          address2: _address2Controller.text,
+          city: _cityController.text,
+          postcode: _postcodeController.text,
+          country: _selectedCountry,
+          state: '',
+        ),
+      );
 
       // Create Payment Intent
       final paymentIntentData = await StripeApiService.createPaymentIntentV2(
@@ -228,16 +243,26 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
     int userId,
   ) async {
     try {
-      final orderData = await StripeApiService.createOrderV2(
+      final orderData = await OrderApiService.createOrderV2(
         userId: userId,
         paymentIntentId: paymentIntentId,
         shippingMethod: _selectedShipping,
+        billingDetails: {
+          'email': _emailController.text,
+          'first_name': _firstNameController.text,
+          'last_name': _lastNameController.text,
+          'phone': _phoneController.text,
+          'address_1': _addressController.text,
+          'address_2': _address2Controller.text,
+          'city': _cityController.text,
+          'postcode': _postcodeController.text,
+          'country': _selectedCountry,
+        },
       );
 
-      print('Order created: $orderData');
       cartProvider.clearCart();
 
-      if (mounted) {
+      if (mounted && orderData.isNotEmpty) {
         Navigator.of(
           context,
         ).pushReplacementNamed('/order-success', arguments: orderData);
