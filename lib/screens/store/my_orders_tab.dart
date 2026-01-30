@@ -1,12 +1,12 @@
 import 'package:drivelife/api/orders_api_services.dart';
+import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 
 class MyOrdersTab extends StatefulWidget {
-  final int? userId; // Pass the authenticated user ID
-
-  const MyOrdersTab({super.key, this.userId});
+  const MyOrdersTab({super.key});
 
   @override
   State<MyOrdersTab> createState() => _MyOrdersTabState();
@@ -21,6 +21,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> {
   int _totalPages = 1;
   int _totalOrders = 0;
   final int _perPage = 10;
+  late int? userId; // Replace with actual user ID retrieval
 
   // State management
   bool _isLoading = false;
@@ -34,15 +35,17 @@ class _MyOrdersTabState extends State<MyOrdersTab> {
   @override
   void initState() {
     super.initState();
+    userId = context.read<UserProvider>().user!.id;
     _loadOrders();
   }
 
   String _getCacheKey() {
-    return 'user_${widget.userId}_status_${_selectedStatus ?? 'all'}_page_$_currentPage';
+    return 'user_${userId}_status_${_selectedStatus ?? 'all'}_page_$_currentPage';
   }
 
   Future<void> _loadOrders({bool forceRefresh = false}) async {
-    if (widget.userId == null) {
+    if (userId == null) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = 'Please log in to view your orders';
         _isLoading = false;
@@ -56,6 +59,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> {
     final cachedData = _ordersCache[cacheKey];
 
     if (!forceRefresh && cachedData != null && !cachedData.isExpired) {
+      if (!mounted) return;
       setState(() {
         _orders = cachedData.orders;
         _totalPages = cachedData.totalPages;
@@ -67,6 +71,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> {
       return;
     }
 
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -74,11 +79,13 @@ class _MyOrdersTabState extends State<MyOrdersTab> {
 
     try {
       final result = await OrderApiService.getUserOrders(
-        userId: widget.userId!,
+        userId: userId!,
         page: _currentPage,
         perPage: _perPage,
         status: _selectedStatus,
       );
+
+      if (!mounted) return;
 
       if (result['success'] == true) {
         final orders = List<Map<String, dynamic>>.from(result['data'] ?? []);
@@ -92,6 +99,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> {
           timestamp: DateTime.now(),
         );
 
+        if (!mounted) return;
         setState(() {
           _orders = orders;
           _totalPages = pagination['total_pages'] ?? 1;
@@ -100,6 +108,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> {
           _isInitialLoad = false;
         });
       } else {
+        if (!mounted) return;
         setState(() {
           _errorMessage = result['message'] ?? 'Failed to load orders';
           _isLoading = false;
@@ -108,6 +117,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> {
       }
     } catch (e) {
       print('Error loading orders: $e');
+      if (!mounted) return;
       setState(() {
         _errorMessage = 'Error loading orders. Please try again.';
         _isLoading = false;
@@ -278,7 +288,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> {
           Navigator.pushNamed(
             context,
             AppRoutes.orderDetails,
-            arguments: {'orderId': order['order_id'], 'userId': widget.userId},
+            arguments: {'orderId': order['order_id'], 'userId': userId},
           );
         },
         borderRadius: BorderRadius.circular(8),

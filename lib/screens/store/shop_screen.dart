@@ -487,7 +487,7 @@ class _ShopScreenState extends State<ShopScreen>
               children: [
                 _buildBrowseTab(theme),
                 _buildBasketTab(),
-                MyOrdersTab(userId: context.read<UserProvider>().user!.id),
+                MyOrdersTab(),
               ],
             ),
           ),

@@ -1,10 +1,13 @@
 import 'package:drivelife/api/drivelife_api_service.dart';
 import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/routes.dart';
+import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/models/product_model.dart';
 import 'package:html_unescape/html_unescape.dart';
+import 'package:shimmer/shimmer.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final int productId;
@@ -20,7 +23,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Product? _product;
   List<String> _galleryImages = [];
   String? _error;
-  late PageController _imagePageController; // ADD THIS
+  late PageController _imagePageController;
 
   // Selection states
   int _selectedImageIndex = 0;
@@ -41,7 +44,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   @override
   void dispose() {
-    _imagePageController.dispose(); // ADD THIS
+    _imagePageController.dispose();
     super.dispose();
   }
 
@@ -156,7 +159,200 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Widget _buildLoadingState(ThemeProvider theme) {
-    return Center(child: CircularProgressIndicator(color: theme.primaryColor));
+    return CustomScrollView(
+      slivers: [
+        // App bar skeleton
+        SliverAppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          leadingWidth: 96,
+          leading: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          title: Image.asset('assets/logo-dark.png', height: 18),
+        ),
+
+        SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Image skeleton
+              Shimmer.fromColors(
+                baseColor: Colors.grey.shade300,
+                highlightColor: Colors.grey.shade100,
+                child: Container(
+                  height: 400,
+                  width: double.infinity,
+                  color: Colors.white,
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Product name skeleton
+                    Shimmer.fromColors(
+                      baseColor: Colors.grey.shade300,
+                      highlightColor: Colors.grey.shade100,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: 28,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            height: 28,
+                            width: 200,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Price skeleton
+                    Shimmer.fromColors(
+                      baseColor: Colors.grey.shade300,
+                      highlightColor: Colors.grey.shade100,
+                      child: Container(
+                        height: 32,
+                        width: 120,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 30),
+
+                    // Size selector skeleton
+                    Shimmer.fromColors(
+                      baseColor: Colors.grey.shade300,
+                      highlightColor: Colors.grey.shade100,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: 16,
+                            width: 60,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: List.generate(
+                              5,
+                              (index) => Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Container(
+                                  height: 45,
+                                  width: 50,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 30),
+
+                    // Color selector skeleton
+                    Shimmer.fromColors(
+                      baseColor: Colors.grey.shade300,
+                      highlightColor: Colors.grey.shade100,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: 16,
+                            width: 80,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: List.generate(
+                              5,
+                              (index) => Padding(
+                                padding: const EdgeInsets.only(right: 12),
+                                child: Container(
+                                  height: 40,
+                                  width: 40,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 30),
+
+                    // Description skeleton
+                    Shimmer.fromColors(
+                      baseColor: Colors.grey.shade300,
+                      highlightColor: Colors.grey.shade100,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: List.generate(
+                          4,
+                          (index) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Container(
+                              height: 16,
+                              width: index == 3 ? 150 : double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildErrorState() {
@@ -201,26 +397,31 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           backgroundColor: Colors.white,
           elevation: 0,
           centerTitle: true,
-          pinned: true,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-            onPressed: () => Navigator.pop(context),
+          leadingWidth: 96,
+          leading: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
           ),
           title: Image.asset('assets/logo-dark.png', height: 18),
-          // actions: [
-          //   IconButton(
-          //     icon: const Icon(Icons.share_outlined, color: Colors.black),
-          //     onPressed: () {
-          //       // Share product
-          //     },
-          //   ),
-          //   IconButton(
-          //     icon: const Icon(Icons.favorite_border, color: Colors.black),
-          //     onPressed: () {
-          //       // Add to favorites
-          //     },
-          //   ),
-          // ],
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.search, color: Colors.black),
+              onPressed: () {
+                Navigator.pushNamed(context, AppRoutes.search);
+              },
+            ),
+            // ✅ Using the actionIcons helper for multiple icons at once
+            ...SharedHeaderIcons.actionIcons(
+              iconColor: Colors.black,
+              showQr: false, // Already shown in leading
+              showNotifications: true,
+            ),
+          ],
         ),
 
         // Content
@@ -274,15 +475,39 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       ),
 
                     if (_product!.inStock) ...[
-                      // Color selector
-                      if (_product!.colours.isNotEmpty) ...[
-                        _buildColorSelector(),
-                        const SizedBox(height: 24),
-                      ],
-
                       // Size selector
                       if (_product!.sizes.isNotEmpty) ...[
                         _buildSizeSelector(),
+                        const SizedBox(height: 12),
+
+                        // Sizing information link
+                        GestureDetector(
+                          onTap: _showSizingInfo,
+                          child: const Row(
+                            children: [
+                              Text(
+                                'Sizing Information',
+                                style: TextStyle(
+                                  color: Color(0xFFAE9159),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              Icon(
+                                Icons.chevron_right,
+                                color: Color(0xFFAE9159),
+                                size: 18,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+
+                      // Color selector
+                      if (_product!.colours.isNotEmpty) ...[
+                        _buildColorSelector(),
                         const SizedBox(height: 24),
                       ],
 
@@ -290,32 +515,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       _buildDescription(),
                       const SizedBox(height: 24),
 
-                      // Sizing information link
-                      if (_product!.sizes.isNotEmpty)
-                        GestureDetector(
-                          onTap: () {
-                            // Show sizing information
-                            _showSizingInfo();
-                          },
-                          child: const Row(
-                            children: [
-                              Text(
-                                'Sizing information',
-                                style: TextStyle(
-                                  color: Color(0xFFAE9159),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15,
-                                ),
-                              ),
-                              SizedBox(width: 4),
-                              Icon(
-                                Icons.chevron_right,
-                                color: Color(0xFFAE9159),
-                                size: 20,
-                              ),
-                            ],
-                          ),
-                        ),
+                      // Service features grid
+                      _buildServiceFeatures(),
                       const SizedBox(height: 24),
 
                       // More information
@@ -333,7 +534,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  // 2. Update _buildImageGallery to use PageView
   Widget _buildImageGallery() {
     return Column(
       children: [
@@ -540,37 +740,42 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: _product!.sizes.map((size) {
-            final isSelected = _selectedSize == size;
-            return GestureDetector(
-              onTap: () => setState(() => _selectedSize = size),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected ? Colors.black : Colors.white,
-                  border: Border.all(
-                    color: isSelected ? Colors.black : Colors.grey.shade300,
-                    width: 1.5,
+        SizedBox(
+          height: 45,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _product!.sizes.length,
+            itemBuilder: (context, index) {
+              final size = _product!.sizes[index];
+              final isSelected = _selectedSize == size;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedSize = size),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: isSelected ? Colors.black : Colors.white,
+                      border: Border.all(
+                        color: isSelected ? Colors.black : Colors.grey.shade300,
+                        width: 1,
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      size.toUpperCase(),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isSelected ? Colors.white : Colors.black87,
+                        fontSize: 14,
+                      ),
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
-                  size.toUpperCase(),
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: isSelected ? Colors.white : Colors.black87,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
+              );
+            },
+          ),
         ),
       ],
     );
@@ -612,8 +817,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               child: Column(
                 children: [
                   Container(
-                    width: 50,
-                    height: 50,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: Color(
                         int.parse(colour.hex.replaceFirst('#', '0xFF')),
@@ -621,16 +826,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: isSelected ? Colors.black : Colors.grey.shade300,
-                        width: isSelected ? 3 : 2,
+                        width: isSelected ? 2.5 : 1.5,
                       ),
                     ),
-                    child: isSelected
-                        ? Icon(
-                            Icons.check,
-                            color: _getContrastColor(colour.hex),
-                            size: 24,
-                          )
-                        : null,
                   ),
                 ],
               ),
@@ -641,10 +839,82 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           const SizedBox(height: 12),
           Text(
             'Selected: ${_selectedColour!.name}',
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
           ),
         ],
       ],
+    );
+  }
+
+  Widget _buildServiceFeatures() {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 1.5,
+      children: [
+        _buildFeatureCard(
+          icon: Icons.print_outlined,
+          title: 'PRINT ON-DEMAND',
+          subtitle: '2-3 days to dispatch',
+        ),
+        _buildFeatureCard(
+          icon: Icons.local_shipping_outlined,
+          title: 'GLOBAL DELIVERY',
+          subtitle: 'Tracked worldwide',
+        ),
+        _buildFeatureCard(
+          icon: Icons.credit_card_outlined,
+          title: 'SECURE PAYMENT',
+          subtitle: 'All orders encrypted',
+        ),
+        _buildFeatureCard(
+          icon: Icons.autorenew,
+          title: 'REQUEST A RETURN',
+          subtitle: 'Changed your mind?',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeatureCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: Colors.white, size: 28),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 11,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 10,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 
@@ -764,17 +1034,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       child: SafeArea(
         child: Row(
           children: [
-            // Quantity selector - 30% width
+            // Quantity selector
             Expanded(flex: 5, child: _buildQuantitySelector()),
+            const SizedBox(width: 12),
 
-            // Add to basket button - 70% width
+            // Add to basket button
             Expanded(
               flex: 7,
               child: ElevatedButton(
                 onPressed: _product!.inStock ? _addToCart : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  backgroundColor: const Color(0xFF00C853),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                   disabledBackgroundColor: Colors.grey.shade300,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
