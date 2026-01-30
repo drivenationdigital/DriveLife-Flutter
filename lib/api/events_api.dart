@@ -823,18 +823,6 @@ class EventsAPI {
         '${ApiConfig.baseUrl}/wp-json/app/v1/discover-search',
       );
 
-      print('🔍 [EventsAPI] Searching: $search (type: $type)');
-      print(
-        jsonEncode({
-          'search': search,
-          'user_id': userId,
-          'page': page,
-          'type': type,
-          'per_page': perPage,
-          'site': site,
-        }),
-      );
-
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
@@ -850,6 +838,7 @@ class EventsAPI {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        print(data);
         return data;
       } else {
         print('❌ [EventsAPI] Error ${response.statusCode}: ${response.body}');

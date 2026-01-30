@@ -712,7 +712,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                     indicatorSize: TabBarIndicatorSize.tab,
                     indicatorColor: theme.primaryColor,
                     indicatorWeight: 3,
-                    labelColor: theme.textColor,
+                    labelColor: theme.primaryColor,
                     unselectedLabelColor: theme.subtextColor,
                     labelStyle: const TextStyle(
                       fontSize: 14,

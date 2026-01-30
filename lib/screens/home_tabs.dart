@@ -6,6 +6,7 @@ import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
+import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
@@ -49,8 +50,8 @@ class _HomeTabsState extends State<HomeTabs> {
     _screens = [
       PostsScreen(key: _postsScreenKey),
       EventsScreen(),
-      Scaffold(body: Center(child: Text('Places'))),
-      Scaffold(body: Center(child: Text('Clubs'))),
+      VenuesScreen(),
+      Scaffold(body: Center(child: Text('Clubs Coming Soon'))),
       ShopScreen(),
       ProfileScreen(),
     ];

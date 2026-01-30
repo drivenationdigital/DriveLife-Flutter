@@ -8,6 +8,7 @@ import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/event_detail_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
+import 'package:drivelife/screens/places/view_venue_screen.dart';
 import 'package:drivelife/screens/search_screen.dart';
 import 'package:drivelife/screens/store/checkout/order_details_screen.dart';
 import 'package:drivelife/screens/store/checkout/order_success_screen.dart';
@@ -56,6 +57,7 @@ class AppRoutes {
   static const String checkout = '/checkout';
   static const String orderSuccess = '/order-success';
   static const String orderDetails = '/order-details';
+  static const String venueDetails = '/venue-details';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -115,6 +117,11 @@ class AppRoutes {
       case '/event-detail':
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(EventDetailScreen(event: args['event']));
+      case venueDetails:
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => VenueDetailScreen(venueId: args['venueId']),
+        );
       case search:
         return _slide(const SearchScreen());
       case viewProfile:

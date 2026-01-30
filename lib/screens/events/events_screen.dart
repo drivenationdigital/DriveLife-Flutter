@@ -709,10 +709,11 @@ class _EventsScreenState extends State<EventsScreen>
               ),
               child: TabBar(
                 controller: _tabController,
+                indicatorSize: TabBarIndicatorSize.tab,
                 indicatorColor: theme.primaryColor,
                 indicatorWeight: 3,
                 labelColor: theme.primaryColor,
-                unselectedLabelColor: Colors.grey.shade600,
+                unselectedLabelColor: theme.subtextColor,
                 labelStyle: const TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
