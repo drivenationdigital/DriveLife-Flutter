@@ -28,11 +28,14 @@ class _VenuesScreenState extends State<VenuesScreen>
   bool _isLoading = false;
   bool _isLoadingMore = false;
   List<Venue> _venues = [];
-  List<Venue> _followedVenues = [];
+  List<dynamic> _followedVenues = [];
   List<Venue> _filteredVenues = [];
   List<Venue> _searchResults = [];
   String? _errorMessage;
   bool _isSearching = false;
+
+  bool _isMyVenuesLoading = true;
+  List<dynamic> _ownedVenues = [];
 
   // Pagination
   int _currentPage = 1;
@@ -54,19 +57,7 @@ class _VenuesScreenState extends State<VenuesScreen>
   String? _customLocationName;
   String? _selectedLocation = 'near-me';
 
-  // Mock banner data
-  final List<Map<String, String>> _banners = [
-    {
-      'image':
-          'https://www.carevents.com/uk/wp-content/uploads/sites/3/2021/11/surry5b-1-1024x623.png',
-      'title': 'MOTORIST',
-    },
-    {
-      'image':
-          'https://www.carevents.com/uk/wp-content/uploads/sites/3/2021/07/ace-comp-cover-1024x320.jpg',
-      'title': 'Featured Venue',
-    },
-  ];
+  List<Map<String, String>> _banners = [];
 
   @override
   void initState() {
@@ -75,7 +66,9 @@ class _VenuesScreenState extends State<VenuesScreen>
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
     _scrollController.addListener(_onScroll);
+    _loadFeaturedVenues();
     _loadVenues();
+    _loadMyVenues();
   }
 
   @override
@@ -90,7 +83,7 @@ class _VenuesScreenState extends State<VenuesScreen>
 
   void _onTabChanged() {
     if (_tabController.index == 1) {
-      _loadFollowedVenues();
+      _loadMyVenues();
     }
   }
 
@@ -106,6 +99,36 @@ class _VenuesScreenState extends State<VenuesScreen>
         _loadMoreVenues();
       }
     }
+  }
+
+  Future<void> _loadFeaturedVenues() async {
+    try {
+      final result = await VenueApiService.getFeaturedVenues();
+      print('Featured Venues Result: $result');
+
+      if (!mounted) return;
+
+      if (result != null && result.isNotEmpty) {
+        setState(() {
+          _banners = result
+              .map<Map<String, String>>(
+                (venue) => {
+                  'image': venue['banner_image'] ?? '',
+                  'title': venue['name'] ?? '',
+                  'id': venue['id'].toString(),
+                },
+              )
+              .toList();
+        });
+      }
+    } catch (e) {
+      print('Error loading featured venues: $e');
+    }
+  }
+
+  Future<void> _refreshVenues() async {
+    await _loadVenues();
+    await _loadFeaturedVenues();
   }
 
   Future<void> _loadVenues() async {
@@ -349,6 +372,41 @@ class _VenuesScreenState extends State<VenuesScreen>
     _performSearch(query);
   }
 
+  Future<void> _loadMyVenues() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final result = await VenueApiService.getMyVenues();
+
+      if (!mounted) return;
+
+      if (result != null) {
+        setState(() {
+          _ownedVenues = VenuesResponse.fromJson({
+            'data': result['owned_venues'],
+          }).data;
+          _followedVenues = VenuesResponse.fromJson({
+            'data': result['followed_venues'],
+          }).data;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading my venues: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -521,7 +579,7 @@ class _VenuesScreenState extends State<VenuesScreen>
     }
 
     return RefreshIndicator(
-      onRefresh: _loadVenues,
+      onRefresh: _refreshVenues,
       color: theme.primaryColor,
       child: SingleChildScrollView(
         controller: _scrollController,
@@ -556,6 +614,16 @@ class _VenuesScreenState extends State<VenuesScreen>
   }
 
   Widget _buildBanner() {
+    // Add a check to see if banners are loaded
+    if (_banners.isEmpty) {
+      return const SizedBox(
+        height: 150,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    print(_banners);
+
     return SizedBox(
       height: 150,
       child: ListView.builder(
@@ -564,63 +632,72 @@ class _VenuesScreenState extends State<VenuesScreen>
         itemCount: _banners.length,
         itemBuilder: (context, index) {
           final banner = _banners[index];
-          return Container(
-            width: MediaQuery.of(context).size.width * 0.85,
-            margin: const EdgeInsets.only(right: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.network(
-                    banner['image']!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: Colors.grey.shade200,
-                        child: Icon(
-                          Icons.image_not_supported,
-                          color: Colors.grey.shade400,
-                          size: 40,
-                        ),
-                      );
-                    },
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.7),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // Changed positioning to center the title
-                  Center(
-                    child: Text(
-                      banner['title']!,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        shadows: [Shadow(color: Colors.black, blurRadius: 4)],
-                      ),
-                    ),
+          return GestureDetector(
+            onTap: () => {
+              Navigator.pushNamed(
+                context,
+                AppRoutes.venueDetails,
+                arguments: {'venueId': banner['id']},
+              ),
+            },
+            child: Container(
+              width: MediaQuery.of(context).size.width * 0.85,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
                 ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.network(
+                      banner['image']!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.grey.shade200,
+                          child: Icon(
+                            Icons.image_not_supported,
+                            color: Colors.grey.shade400,
+                            size: 40,
+                          ),
+                        );
+                      },
+                    ),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.7),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Changed positioning to center the title
+                    Center(
+                      child: Text(
+                        banner['title']!,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -896,11 +973,13 @@ class _VenuesScreenState extends State<VenuesScreen>
   }
 
   Widget _buildMyVenuesTab() {
-    if (_isLoading && _followedVenues.isEmpty) {
+    // Loading state
+    if (_isLoading && _ownedVenues.isEmpty && _followedVenues.isEmpty) {
       return _buildLoadingSkeleton(showBanner: false);
     }
 
-    if (_followedVenues.isEmpty) {
+    // Empty state - no owned or followed venues
+    if (_ownedVenues.isEmpty && _followedVenues.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -912,7 +991,7 @@ class _VenuesScreenState extends State<VenuesScreen>
             ),
             const SizedBox(height: 16),
             Text(
-              'No saved venues',
+              'No venues found',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -921,7 +1000,7 @@ class _VenuesScreenState extends State<VenuesScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              'Venues you save will appear here',
+              'You don\'t own or follow any venues yet',
               style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
             ),
           ],
@@ -929,16 +1008,124 @@ class _VenuesScreenState extends State<VenuesScreen>
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _followedVenues.length,
-      itemBuilder: (context, index) {
-        final venue = _followedVenues[index];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: VenueCard(venue: venue, onTap: () => _onVenueTap(venue)),
-        );
-      },
+    // Show venues with sections
+    return RefreshIndicator(
+      onRefresh: _loadMyVenues,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [
+          // Owned Venues Section
+          if (_ownedVenues.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  Icon(Icons.business, color: Theme.of(context).primaryColor),
+                  const SizedBox(width: 8),
+                  Text(
+                    'My Venues',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${_ownedVenues.length}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ..._ownedVenues.map((venue) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                child: VenueCard(
+                  venue: venue,
+                  onTap: () => _onVenueTap(venue),
+                  showOwnerBadge: true,
+                ),
+              );
+            }).toList(),
+          ],
+
+          // Followed Venues Section
+          if (_followedVenues.isNotEmpty) ...[
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                _ownedVenues.isNotEmpty
+                    ? 24
+                    : 16, // Add more spacing if owned venues exist
+                16,
+                8,
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    'Following',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${_followedVenues.length}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: theme.primaryColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ..._followedVenues.map((venue) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                child: VenueCard(
+                  venue: venue,
+                  onTap: () => _onVenueTap(venue),
+                  showOwnerBadge: false,
+                ),
+              );
+            }).toList(),
+          ],
+        ],
+      ),
     );
   }
 

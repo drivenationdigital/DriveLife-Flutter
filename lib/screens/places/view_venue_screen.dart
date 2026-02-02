@@ -303,12 +303,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
     );
   }
 
-  Widget _buildLoadingState() {
-    return Center(
-      child: CircularProgressIndicator(color: const Color(0xFFAE9159)),
-    );
-  }
-
   Widget _buildErrorState() {
     return Center(
       child: Column(
@@ -450,7 +444,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.black),
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
             onPressed: () => Navigator.pop(context),
           ),
           const Spacer(),
@@ -552,27 +546,56 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildSocialIcon(Icons.facebook, () {}),
+        _buildSocialIcon(Icons.facebook, () {
+          // Open Facebook link
+          if (_venue!.facebook != null && _venue!.facebook!.isNotEmpty) {
+            launchUrl(Uri.parse(_venue!.facebook!));
+          }
+        }, _venue!.facebook != null && _venue!.facebook!.isNotEmpty),
         const SizedBox(width: 12),
-        _buildSocialIcon(Icons.camera_alt, () {}),
+        _buildSocialIcon(
+          Icons.camera_alt,
+          () {
+            // Open Instagram link
+            if (_venue!.instagram != null && _venue!.instagram!.isNotEmpty) {
+              launchUrl(Uri.parse(_venue!.instagram!));
+            }
+          },
+          _venue!.instagram != null && _venue!.instagram!.isNotEmpty,
+        ),
         const SizedBox(width: 12),
-        _buildSocialIcon(Icons.language, () {}),
+        _buildSocialIcon(Icons.language, () {
+          // Open Website link
+          if (_venue!.website != null && _venue!.website!.isNotEmpty) {
+            launchUrl(Uri.parse(_venue!.website!));
+          }
+        }, _venue!.website != null && _venue!.website!.isNotEmpty),
         const SizedBox(width: 12),
-        _buildSocialIcon(Icons.email, () {}),
+        _buildSocialIcon(Icons.email, () {
+          // Open Email link
+          if (_venue!.venueEmail != null && _venue!.venueEmail!.isNotEmpty) {
+            launchUrl(Uri(scheme: 'mailto', path: _venue!.venueEmail!));
+          }
+        }, _venue!.venueEmail != null && _venue!.venueEmail!.isNotEmpty),
         const SizedBox(width: 12),
-        _buildSocialIcon(Icons.phone, () {}),
+        _buildSocialIcon(Icons.phone, () {
+          // Open Phone link
+          if (_venue!.venuePhone != null && _venue!.venuePhone!.isNotEmpty) {
+            launchUrl(Uri(scheme: 'tel', path: _venue!.venuePhone!));
+          }
+        }, _venue!.venuePhone != null && _venue!.venuePhone!.isNotEmpty),
       ],
     );
   }
 
-  Widget _buildSocialIcon(IconData icon, VoidCallback onTap) {
+  Widget _buildSocialIcon(IconData icon, VoidCallback onTap, bool hasLink) {
     return InkWell(
       onTap: onTap,
       child: Container(
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: const Color(0xFFAE9159),
+          color: hasLink ? Color(0xFFAE9159) : Colors.grey.shade400,
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white, size: 20),
@@ -637,133 +660,150 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
   }
 
   Widget _buildEventCard(VenueEvent event) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Event image with caching
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: CachedNetworkImage(
-                imageUrl: event.thumbnail,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  color: Colors.grey.shade200,
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      color: const Color(0xFFAE9159),
-                      strokeWidth: 2,
+    return GestureDetector(
+      onTap: () {
+        Navigator.pushNamed(
+          context,
+          AppRoutes.eventDetail,
+          arguments: {'event': event.toJson()},
+        );
+      },
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 16),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.grey.shade200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Event image with caching
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: CachedNetworkImage(
+                  imageUrl: event.thumbnail,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    color: Colors.grey.shade200,
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: const Color(0xFFAE9159),
+                        strokeWidth: 2,
+                      ),
                     ),
                   ),
-                ),
-                errorWidget: (context, url, error) => Container(
-                  color: Colors.grey.shade200,
-                  child: Icon(
-                    Icons.event,
-                    color: Colors.grey.shade400,
-                    size: 40,
+                  errorWidget: (context, url, error) => Container(
+                    color: Colors.grey.shade200,
+                    child: Icon(
+                      Icons.event,
+                      color: Colors.grey.shade400,
+                      size: 40,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
 
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Event title
-                Text(
-                  event.title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Date
-                Row(
-                  children: [
-                    Icon(
-                      Icons.calendar_today,
-                      size: 14,
-                      color: Colors.grey.shade600,
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Event title
+                  Text(
+                    event.title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      event.getFormattedDate(),
-                      style: TextStyle(
-                        fontSize: 13,
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Date
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today,
+                        size: 14,
                         color: Colors.grey.shade600,
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-
-                // Location
-                Row(
-                  children: [
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 14,
-                      color: Colors.grey.shade600,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        event.location,
+                      const SizedBox(width: 6),
+                      Text(
+                        event.getFormattedDate(),
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.grey.shade600,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Location
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.location_on_outlined,
+                        size: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          event.location,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Entry type button
+                  OutlinedButton(
+                    onPressed: () {
+                      // Navigate to event details
+                    },
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: const Color(0xFFAE9159),
+                      side: const BorderSide(color: Color(0xFFAE9159)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // Entry type button
-                OutlinedButton(
-                  onPressed: () {
-                    // Navigate to event details
-                  },
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: const Color(0xFFAE9159),
-                    side: const BorderSide(color: Color(0xFFAE9159)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
+                    child: Text(
+                      event.entryType.isEmpty
+                          ? 'View Event'
+                          : event.entryType == '2'
+                          ? 'Paid Entry'
+                          : event.entryType == '3'
+                          ? 'CarEvent Tickets'
+                          : 'View Event',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
-                  child: Text(
-                    event.entryType.isEmpty ? 'View Event' : event.entryType,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

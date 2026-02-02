@@ -304,4 +304,88 @@ class VenueApiService {
       return null;
     }
   }
+
+  static Future<List<dynamic>?> getFeaturedVenues({
+    String? country,
+    int limit = 5,
+  }) async {
+    try {
+      final user = await _authService.getUser();
+
+      if (user == null) {
+        return null;
+      }
+
+      final lastLocation = user['last_location'];
+      final userCountry = (lastLocation is Map && lastLocation.isNotEmpty)
+          ? (lastLocation['country'] ?? 'GB')
+          : 'GB';
+
+      final site = country ?? userCountry;
+
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v1/featured-venues',
+      ).replace(queryParameters: {'site': site, 'limit': limit.toString()});
+
+      final response = await http.get(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        // Extract the 'data' array from the response
+        if (responseData['success'] == true && responseData['data'] != null) {
+          return responseData['data'] as List<dynamic>;
+        }
+        return null;
+      } else {
+        return null;
+      }
+    } catch (e) {
+      print('❌ [VenueAPI] Exception: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, List<dynamic>>?> getMyVenues() async {
+    try {
+      final token = await _authService.getToken();
+
+      if (token == null) {
+        return null;
+      }
+
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v1/get-my-venues',
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final responseData = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        if (responseData['success'] == true && responseData['data'] != null) {
+          final data = responseData['data'];
+          return {
+            'owned_venues': (data['owned_venues'] as List<dynamic>?) ?? [],
+            'followed_venues':
+                (data['followed_venues'] as List<dynamic>?) ?? [],
+          };
+        }
+        return null;
+      } else {
+        print('❌ [VenueAPI] Error: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ [VenueAPI] Exception: $e');
+      return null;
+    }
+  }
 }

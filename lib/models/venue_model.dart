@@ -6,6 +6,7 @@ class Venue {
   final String venueLocation;
   final double distance;
   final String site;
+  final bool? isOwner;
 
   Venue({
     required this.id,
@@ -15,6 +16,7 @@ class Venue {
     required this.venueLocation,
     required this.distance,
     required this.site,
+    this.isOwner,
   });
 
   factory Venue.fromJson(Map<String, dynamic> json) {
@@ -27,6 +29,11 @@ class Venue {
         venueLocation: _parseVenueLocation(json['venue_location']),
         distance: _parseDistance(json['distance']),
         site: _parseString(json['site']),
+        isOwner: json['is_owner'] != null
+            ? (json['is_owner'] is bool
+                  ? json['is_owner']
+                  : (json['is_owner'].toString().toLowerCase() == 'true'))
+            : null,
       );
     } catch (e) {
       print('❌ Error parsing venue: $e');
@@ -71,6 +78,7 @@ class Venue {
       'venue_location': venueLocation,
       'distance': distance,
       'site': site,
+      'is_owner': isOwner,
     };
   }
 }

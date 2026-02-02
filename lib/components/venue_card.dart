@@ -7,8 +7,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 class VenueCard extends StatelessWidget {
   final Venue venue;
   final VoidCallback? onTap;
+  final bool showOwnerBadge;
 
-  const VenueCard({super.key, required this.venue, this.onTap});
+  const VenueCard({
+    super.key,
+    required this.venue,
+    this.onTap,
+    this.showOwnerBadge = false,
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -8,6 +8,13 @@ class VenueDetail {
   final List<VenueEvent> events;
   final bool isFollowing;
 
+  // Socials
+  final String? venueEmail;
+  final String? venuePhone;
+  final String? website;
+  final String? facebook;
+  final String? instagram;
+
   VenueDetail({
     required this.id,
     required this.title,
@@ -17,6 +24,12 @@ class VenueDetail {
     required this.logo,
     required this.events,
     required this.isFollowing,
+
+    this.venueEmail,
+    this.venuePhone,
+    this.website,
+    this.facebook,
+    this.instagram,
   });
 
   factory VenueDetail.fromJson(Map<String, dynamic> json) {
@@ -34,6 +47,11 @@ class VenueDetail {
                 .toList() ??
             [],
         isFollowing: json['is_following'] == true,
+        venueEmail: json['venue_email']?.toString(),
+        venuePhone: json['venue_phone']?.toString(),
+        website: json['website']?.toString(),
+        facebook: json['facebook']?.toString(),
+        instagram: json['instagram']?.toString(),
       );
     } catch (e) {
       print('❌ Error parsing VenueDetail: $e');
@@ -52,6 +70,11 @@ class VenueDetail {
       'logo': logo.toJson(),
       'events': events.map((e) => e.toJson()).toList(),
       'is_following': isFollowing,
+      'venue_email': venueEmail,
+      'venue_phone': venuePhone,
+      'website': website,
+      'facebook': facebook,
+      'instagram': instagram,
     };
   }
 }
@@ -109,6 +132,7 @@ class VenueEvent {
   final String endDate;
   final String entryType;
   final String thumbnail;
+  final String? ticketsUrl;
 
   VenueEvent({
     required this.id,
@@ -118,6 +142,7 @@ class VenueEvent {
     required this.endDate,
     required this.entryType,
     required this.thumbnail,
+    this.ticketsUrl,
   });
 
   factory VenueEvent.fromJson(Map<String, dynamic> json) {
@@ -129,6 +154,7 @@ class VenueEvent {
       endDate: json['end_date']?.toString() ?? '',
       entryType: json['entry_type']?.toString() ?? '',
       thumbnail: json['thumbnail']?.toString() ?? '',
+      ticketsUrl: json['tickets_url']?.toString(),
     );
   }
 
@@ -181,6 +207,7 @@ class VenueEvent {
       'end_date': endDate,
       'entry_type': entryType,
       'thumbnail': thumbnail,
+      'tickets_url': ticketsUrl,
     };
   }
 }

@@ -42,6 +42,7 @@ class AppRoutes {
   static const String home = '/home';
   static const String posts = '/posts';
   static const String events = '/events';
+  static const String eventDetail = '/event-detail';
   static const String notifications = '/notifications';
   static const String profile = '/profile';
   static const String viewProfile = '/view-profile';
@@ -114,14 +115,12 @@ class AppRoutes {
       case manageSocialLinks:
         return _slide(const ManageSocialLinksScreen());
       // In routes.dart or wherever you handle navigation
-      case '/event-detail':
+      case eventDetail:
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(EventDetailScreen(event: args['event']));
       case venueDetails:
         final args = settings.arguments as Map<String, dynamic>;
-        return MaterialPageRoute(
-          builder: (_) => VenueDetailScreen(venueId: args['venueId']),
-        );
+        return _slide(VenueDetailScreen(venueId: args['venueId']));
       case search:
         return _slide(const SearchScreen());
       case viewProfile:
