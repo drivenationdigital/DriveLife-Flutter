@@ -88,18 +88,21 @@ flutter_launcher_icons:
   image_path: "assets/icons/512x512.png"
   remove_alpha_ios: true
   # No adaptive_icon settings = square icon
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icons/512x512.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 flutter_native_splash:
   color: "#FFFFFF"
-  image: assets/splash-dark.png
+  image: assets/splash1.png
   android_12:
-    image: assets/splash-dark.png
+    image: assets/splash1.png
     icon_background_color: "#FFFFFF"
+
+
 # The following section is specific to Flutter packages.
 flutter:
-
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
@@ -109,6 +112,7 @@ flutter:
   assets:
     - assets/logo-dark.png
     - assets/splash-dark.png
+    - assets/splash1.png
     - assets/profile-placeholder.jpg
     - assets/logo-large.png
     - assets/video01.mp4

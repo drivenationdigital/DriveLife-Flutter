@@ -11,26 +11,12 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen> {
   final _auth = AuthService();
-  late AnimationController _controller;
-  late Animation<double> _opacity;
 
   @override
   void initState() {
     super.initState();
-
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    )..forward();
-
-    _opacity = Tween<double>(
-      begin: 0,
-      end: 1,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
-
     _initApp();
   }
 
@@ -59,7 +45,6 @@ class _SplashScreenState extends State<SplashScreen>
           const Duration(seconds: 10),
           onTimeout: () {
             print('⏱️ [SplashScreen] User load timed out');
-            // Continue anyway - user can try again from home
           },
         );
 
@@ -78,7 +63,6 @@ class _SplashScreenState extends State<SplashScreen>
     } catch (e) {
       print('❌ [SplashScreen] Error during init: $e');
 
-      // On error, go to welcome screen
       if (mounted) {
         Navigator.pushReplacementNamed(context, AppRoutes.welcome);
       }
@@ -86,19 +70,10 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: FadeTransition(
-        opacity: _opacity,
-        child: Center(child: Image.asset('assets/splash-dark.png')),
-      ),
+      backgroundColor: Colors.white,
+      body: Center(child: Image.asset('assets/splash1.png')),
     );
   }
 }
