@@ -9,7 +9,7 @@ import 'package:drivelife/api/events_api.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
+// import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
 
 class EventDetailScreen extends StatefulWidget {
   final Map<String, dynamic>? event;
@@ -34,8 +34,8 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   String? _errorMessage;
 
   // Map controller
-  gmaps.GoogleMapController? _mapController;
-  Set<gmaps.Marker> _markers = {};
+  // gmaps.GoogleMapController? _mapController;
+  // Set<gmaps.Marker> _markers = {};
 
   @override
   void initState() {
@@ -49,7 +49,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   void dispose() {
     _tabController.dispose();
     _imageController.dispose();
-    _mapController?.dispose();
+    // _mapController?.dispose();
     super.dispose();
   }
 
@@ -84,7 +84,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
           _fullEventData = eventData;
           _isFavorite = eventData['is_liked'] ?? false;
           _isLoadingEvent = false;
-          _setupMapMarker();
+          // _setupMapMarker();
         });
       } else {
         setState(() {
@@ -103,41 +103,41 @@ class _EventDetailScreenState extends State<EventDetailScreen>
     }
   }
 
-  void _setupMapMarker() {
-    if (_fullEventData == null) return;
+  // void _setupMapMarker() {
+  //   if (_fullEventData == null) return;
 
-    final lat = _fullEventData!['latitude'];
-    final lng = _fullEventData!['longitude'];
+  //   final lat = _fullEventData!['latitude'];
+  //   final lng = _fullEventData!['longitude'];
 
-    if (lat != null && lng != null) {
-      final position = gmaps.LatLng(
-        double.tryParse(lat.toString()) ?? 0.0,
-        double.tryParse(lng.toString()) ?? 0.0,
-      );
+  //   if (lat != null && lng != null) {
+  //     final position = gmaps.LatLng(
+  //       double.tryParse(lat.toString()) ?? 0.0,
+  //       double.tryParse(lng.toString()) ?? 0.0,
+  //     );
 
-      _markers = {
-        gmaps.Marker(
-          markerId: const gmaps.MarkerId('event_location'),
-          position: position,
-          infoWindow: gmaps.InfoWindow(
-            title: _fullEventData!['title'] ?? 'Event Location',
-            snippet: _fullEventData!['location'] ?? '',
-          ),
-        ),
-        // Marker(
-        //   markerId: MarkerId('event_location'),
-        //   position: position,
-        //   infoWindow: InfoWindow(
-        //     title: _fullEventData!['title'] ?? 'Event Location',
-        //     snippet: _fullEventData!['location'] ?? '',
-        //   ),
-        //   icon: BitmapDescriptor.defaultMarkerWithHue(
-        //     BitmapDescriptor.hueAzure,
-        //   ),
-        // ),
-      };
-    }
-  }
+  //     _markers = {
+  //       gmaps.Marker(
+  //         markerId: const gmaps.MarkerId('event_location'),
+  //         position: position,
+  //         infoWindow: gmaps.InfoWindow(
+  //           title: _fullEventData!['title'] ?? 'Event Location',
+  //           snippet: _fullEventData!['location'] ?? '',
+  //         ),
+  //       ),
+  //       // Marker(
+  //       //   markerId: MarkerId('event_location'),
+  //       //   position: position,
+  //       //   infoWindow: InfoWindow(
+  //       //     title: _fullEventData!['title'] ?? 'Event Location',
+  //       //     snippet: _fullEventData!['location'] ?? '',
+  //       //   ),
+  //       //   icon: BitmapDescriptor.defaultMarkerWithHue(
+  //       //     BitmapDescriptor.hueAzure,
+  //       //   ),
+  //       // ),
+  //     };
+  //   }
+  // }
 
   Future<void> _openInMaps() async {
     if (_fullEventData == null) return;
@@ -1241,91 +1241,98 @@ class _EventDetailScreenState extends State<EventDetailScreen>
       );
     }
 
-    final position = gmaps.LatLng(latitude, longitude);
-
-    return Stack(
-      children: [
-        gmaps.GoogleMap(
-          initialCameraPosition: gmaps.CameraPosition(
-            target: position,
-            zoom: 14,
-          ),
-          markers: _markers,
-          onMapCreated: (controller) {
-            _mapController = controller;
-          },
-          myLocationButtonEnabled: true,
-          zoomControlsEnabled: true,
-          mapToolbarEnabled: false,
-        ),
-        Positioned(
-          top: 16,
-          left: 16,
-          right: 16,
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  location,
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '$latitude, $longitude',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 16,
-          left: 16,
-          right: 16,
-          child: ElevatedButton.icon(
-            onPressed: _openInMaps,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.primaryColor,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            icon: const Icon(Icons.directions),
-            label: const Text(
-              'Open in Maps',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ),
-      ],
+    return const Center(
+      child: Text(
+        'Map functionality is currently unavailable.',
+        style: TextStyle(fontSize: 16, color: Colors.grey),
+      ),
     );
+
+    // final position = gmaps.LatLng(latitude, longitude);
+
+    // return Stack(
+    //   children: [
+    //     gmaps.GoogleMap(
+    //       initialCameraPosition: gmaps.CameraPosition(
+    //         target: position,
+    //         zoom: 14,
+    //       ),
+    //       markers: _markers,
+    //       onMapCreated: (controller) {
+    //         _mapController = controller;
+    //       },
+    //       myLocationButtonEnabled: true,
+    //       zoomControlsEnabled: true,
+    //       mapToolbarEnabled: false,
+    //     ),
+    //     Positioned(
+    //       top: 16,
+    //       left: 16,
+    //       right: 16,
+    //       child: Container(
+    //         padding: const EdgeInsets.all(16),
+    //         decoration: BoxDecoration(
+    //           color: Colors.white,
+    //           borderRadius: BorderRadius.circular(8),
+    //           boxShadow: [
+    //             BoxShadow(
+    //               color: Colors.black.withOpacity(0.1),
+    //               blurRadius: 8,
+    //               offset: const Offset(0, 2),
+    //             ),
+    //           ],
+    //         ),
+    //         child: Column(
+    //           crossAxisAlignment: CrossAxisAlignment.start,
+    //           children: [
+    //             Text(
+    //               title,
+    //               style: const TextStyle(
+    //                 fontSize: 16,
+    //                 fontWeight: FontWeight.bold,
+    //               ),
+    //               maxLines: 1,
+    //               overflow: TextOverflow.ellipsis,
+    //             ),
+    //             const SizedBox(height: 4),
+    //             Text(
+    //               location,
+    //               style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+    //               maxLines: 2,
+    //               overflow: TextOverflow.ellipsis,
+    //             ),
+    //             const SizedBox(height: 4),
+    //             Text(
+    //               '$latitude, $longitude',
+    //               style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+    //             ),
+    //           ],
+    //         ),
+    //       ),
+    //     ),
+    //     Positioned(
+    //       bottom: 16,
+    //       left: 16,
+    //       right: 16,
+    //       child: ElevatedButton.icon(
+    //         onPressed: _openInMaps,
+    //         style: ElevatedButton.styleFrom(
+    //           backgroundColor: theme.primaryColor,
+    //           foregroundColor: Colors.white,
+    //           padding: const EdgeInsets.symmetric(vertical: 14),
+    //           shape: RoundedRectangleBorder(
+    //             borderRadius: BorderRadius.circular(8),
+    //           ),
+    //         ),
+    //         icon: const Icon(Icons.directions),
+    //         label: const Text(
+    //           'Open in Maps',
+    //           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+    //         ),
+    //       ),
+    //     ),
+    //   ],
+    // );
   }
 
   @override
