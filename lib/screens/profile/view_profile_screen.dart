@@ -340,7 +340,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     }
   }
 
-  /// 🔄 NEW: Refresh profile WITHOUT losing data
   /// This is what you should call after updating user details
   Future<void> _refreshProfile() async {
     print('🔄 Refreshing profile...');
@@ -362,6 +361,22 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
         if (user['cover_image'] != null) {
           _preloadCoverImage(user['cover_image']);
         }
+
+        // Clear and reload posts and garage
+        setState(() {
+          _posts.clear();
+          _taggedPosts.clear();
+          _currentVehicles.clear();
+          _pastVehicles.clear();
+          _dreamVehicles.clear();
+          _postsPage = 1;
+          _taggedPage = 1;
+          _hasMorePosts = true;
+          _hasMoreTagged = true;
+          _garageLoaded = false;
+        });
+
+        _loadTabContent();
       }
     } else {
       // For other profiles, clear cache and refetch
@@ -386,36 +401,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     }
 
     print('✅ Profile refreshed');
-  }
-
-  /// 🔄 NEW: Hard refresh with loading indicator
-  /// Use this if you want to show a loading state
-  Future<void> _hardRefreshProfile() async {
-    print('🔄 Hard refreshing profile...');
-
-    if (_isOwnProfile) {
-      final userProvider = Provider.of<UserProvider>(context, listen: false);
-
-      // Show loading indicator
-      setState(() => _isLoading = true);
-
-      // Force refresh with loading state
-      await userProvider.forceRefresh();
-
-      // Update local state
-      final user = userProvider.userMap;
-      if (user != null && mounted) {
-        setState(() {
-          _userProfile = Map<String, dynamic>.from(user);
-          _isLoading = false;
-        });
-      }
-    } else {
-      // Same as regular refresh for other profiles
-      await _refreshProfile();
-    }
-
-    print('✅ Profile hard refreshed');
   }
 
   Future<void> _checkFollowStatus(int userId) async {

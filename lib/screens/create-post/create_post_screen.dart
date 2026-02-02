@@ -400,10 +400,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     // Start background upload
     if (mounted) {
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+
       Provider.of<UploadPostProvider>(
         context,
         listen: false,
-      ).startUpload(uploadData);
+      ).startUpload(uploadData, userProvider);
     }
 
     // Close screen immediately

@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/tagged_entity.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 enum UploadStatus { idle, uploading, processing, completed, failed }
@@ -237,7 +239,10 @@ class UploadPostProvider with ChangeNotifier {
     }
   }
 
-  Future<void> startUpload(UploadPostData data) async {
+  Future<void> startUpload(
+    UploadPostData data,
+    UserProvider userProvider,
+  ) async {
     // Initialize notifications
     await initializeNotifications();
 
@@ -359,6 +364,8 @@ class UploadPostProvider with ChangeNotifier {
         'Your post has been published successfully!',
         postResult['post_id']?.toString(),
       );
+
+      await userProvider.refreshUser();
 
       // Auto-remove after 3 seconds
       Future.delayed(const Duration(seconds: 3), () {

@@ -34,22 +34,10 @@ class ProfileScreen extends StatelessWidget {
       );
     }
 
-    // int? userIdInt;
-    // final userId = user.id;
-    // if (userId != null) {
-    //   if (userId is int) {
-    //     userIdInt = userId;
-    //   } else if (userId is String) {
-    //     userIdInt = int.tryParse(userId);
-    //   } else {
-    //     userIdInt = int.tryParse(userId.toString());
-    //   }
-    // }
-
     // ✅ Pass showAppBar: false to hide the app bar
     return ViewProfileScreen(
       userId: user.id,
-      username: user.username?.toString() ?? '',
+      username: user.username.toString(),
       showAppBar: false, // ✅ Don't show app bar (HomeTabs will handle it)
     );
   }

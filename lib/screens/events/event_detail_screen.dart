@@ -40,7 +40,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this); // Changed to 3 tabs
+    _tabController = TabController(length: 2, vsync: this);
     _isFavorite = widget.event?['is_liked'] ?? false;
     _fetchEventDetails();
   }
@@ -1153,7 +1153,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                   child: TabBar(
                     controller: _tabController,
                     indicatorColor: theme.primaryColor,
-                    indicatorWeight: 3,
+                    indicatorWeight: 2,
                     labelColor: theme.primaryColor,
                     unselectedLabelColor: Colors.grey.shade600,
                     labelStyle: const TextStyle(
@@ -1163,7 +1163,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                     tabs: const [
                       Tab(text: 'About Us'),
                       Tab(text: 'Entry & Tickets'),
-                      Tab(text: 'Map'),
+                      // Tab(text: 'Map'),
                     ],
                   ),
                 ),
@@ -1196,7 +1196,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
           ),
 
           // Map Tab
-          _buildMapTab(latitude, longitude, eventTitle, eventLocation, theme),
+          // _buildMapTab(latitude, longitude, eventTitle, eventLocation, theme),
         ],
       ),
     );
