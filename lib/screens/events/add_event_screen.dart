@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 
 class AddEventScreen extends StatefulWidget {
   final String? eventId; // Add this parameter
@@ -452,19 +453,25 @@ class _AddEventScreenState extends State<AddEventScreen>
   }
 
   String _getQuillContentAsHtml(QuillController controller) {
-    // Convert Quill delta to HTML
-    final delta = controller.document.toDelta();
-    final plainText = controller.document.toPlainText();
+    try {
+      final delta = controller.document.toDelta();
+      final operations = delta.toJson();
 
-    // Simple conversion - you may want to use a proper delta to HTML converter
-    // For now, return plain text wrapped in <p> tags
-    if (plainText.trim().isEmpty) return '';
+      // Convert delta to HTML
+      final converter = QuillDeltaToHtmlConverter(
+        List.castFrom(operations),
+        ConverterOptions.forEmail(), // or ConverterOptions() for default
+      );
 
-    return plainText
-        .split('\n')
-        .where((line) => line.trim().isNotEmpty)
-        .map((line) => '<p>${_escapeHtml(line)}</p>')
-        .join('');
+      final html = converter.convert();
+
+      return html.trim().isEmpty ? '' : html;
+    } catch (e) {
+      print('Error converting Quill to HTML: $e');
+      // Fallback to plain text
+      final plainText = controller.document.toPlainText();
+      return plainText.trim().isEmpty ? '' : '<p>${plainText.trim()}</p>';
+    }
   }
 
   String _escapeHtml(String text) {

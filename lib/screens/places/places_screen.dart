@@ -104,8 +104,6 @@ class _VenuesScreenState extends State<VenuesScreen>
   Future<void> _loadFeaturedVenues() async {
     try {
       final result = await VenueApiService.getFeaturedVenues();
-      print('Featured Venues Result: $result');
-
       if (!mounted) return;
 
       if (result != null && result.isNotEmpty) {
@@ -972,6 +970,51 @@ class _VenuesScreenState extends State<VenuesScreen>
     );
   }
 
+  Widget _createVenueSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFB8935E), width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            'Hosting your own event?',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.black,
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              final response = await Navigator.pushNamed(
+                context,
+                AppRoutes.createVenue,
+              );
+
+              if (response == true) {
+                _loadMyVenues();
+              }
+            },
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add Venue'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFB8935E),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMyVenuesTab() {
     // Loading state
     if (_isLoading && _ownedVenues.isEmpty && _followedVenues.isEmpty) {
@@ -1011,16 +1054,28 @@ class _VenuesScreenState extends State<VenuesScreen>
     // Show venues with sections
     return RefreshIndicator(
       onRefresh: _loadMyVenues,
+      color: theme.primaryColor,
       child: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              _ownedVenues.isNotEmpty
+                  ? 24
+                  : 16, // Add more spacing if owned venues exist
+              16,
+              8,
+            ),
+            child: _createVenueSection(),
+          ),
+
           // Owned Venues Section
           if (_ownedVenues.isNotEmpty) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: Row(
                 children: [
-                  Icon(Icons.business, color: Theme.of(context).primaryColor),
                   const SizedBox(width: 8),
                   Text(
                     'My Venues',
@@ -1028,25 +1083,6 @@ class _VenuesScreenState extends State<VenuesScreen>
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: Colors.grey.shade800,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${_ownedVenues.length}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).primaryColor,
-                      ),
                     ),
                   ),
                 ],
@@ -1064,7 +1100,7 @@ class _VenuesScreenState extends State<VenuesScreen>
                   showOwnerBadge: true,
                 ),
               );
-            }).toList(),
+            }),
           ],
 
           // Followed Venues Section
@@ -1078,34 +1114,21 @@ class _VenuesScreenState extends State<VenuesScreen>
                 16,
                 8,
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  Text(
-                    'Following',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade800,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: theme.primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${_followedVenues.length}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: theme.primaryColor,
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const SizedBox(width: 8),
+                      Text(
+                        'Followed Venues',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade800,
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -1122,7 +1145,7 @@ class _VenuesScreenState extends State<VenuesScreen>
                   showOwnerBadge: false,
                 ),
               );
-            }).toList(),
+            }),
           ],
         ],
       ),

@@ -1,10 +1,75 @@
 import 'dart:convert';
 import 'package:drivelife/config/api_config.dart';
+import 'package:drivelife/models/event_media.dart';
+import 'package:drivelife/utils/event_media_uploader.dart';
 import 'package:http/http.dart' as http;
 import 'package:drivelife/services/auth_service.dart';
 
 class VenueApiService {
   static final AuthService _authService = AuthService();
+  static final _uploader = ChunkedFileUploader(apiUrl: ApiConfig.baseUrl);
+
+  // In your VenuesAPI class:
+  static Future<Map<String, dynamic>?> uploadVenueImages({
+    required String venueId,
+    required List<ImageData> images,
+    required String type, // 'logo' or 'cover'
+    Function(double progress)? onProgress,
+  }) async {
+    try {
+      print('🌐 [VenuesAPI] Uploading $type images for venue $venueId');
+
+      final result = await _uploader.updateVenueImages(
+        venueId: venueId,
+        mediaList: images,
+        mediaGroup: type,
+        onOverallProgress: onProgress,
+      );
+
+      print('✅ [VenuesAPI] Images uploaded successfully');
+      return result;
+    } catch (e) {
+      print('❌ [VenuesAPI] Exception: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> saveVenue(
+    Map<String, dynamic> venueData,
+  ) async {
+    try {
+      final token = await _authService.getToken();
+      final user = await _authService.getUser();
+
+      if (token == null || user == null) {
+        print('❌ [VenueAPI] No token or user found');
+        return null;
+      }
+
+      final uri = Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/save-venue');
+
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(venueData),
+      );
+
+      final data = jsonDecode(response.body);
+      print(data);
+      if (response.statusCode == 200) {
+        return data;
+      } else {
+        print('❌ [VenueAPI] Error ${response.statusCode}: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ [VenueAPI] Exception: $e');
+      return null;
+    }
+  }
 
   /// Fetch trending venues with filters
   static Future<Map<String, dynamic>?> getTrendingVenues({

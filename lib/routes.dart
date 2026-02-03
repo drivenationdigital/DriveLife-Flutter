@@ -8,6 +8,7 @@ import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/event_detail_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
+import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/view_venue_screen.dart';
 import 'package:drivelife/screens/search_screen.dart';
 import 'package:drivelife/screens/store/checkout/order_details_screen.dart';
@@ -59,6 +60,7 @@ class AppRoutes {
   static const String orderSuccess = '/order-success';
   static const String orderDetails = '/order-details';
   static const String venueDetails = '/venue-details';
+  static const String createVenue = '/create-venue';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -92,6 +94,8 @@ class AppRoutes {
             associationLabel: args['association_label'],
           ),
         );
+      case createVenue:
+        return _slide(const CreateVenueScreen());
       case events:
         return _slide(const EventsScreen());
       case shop:
