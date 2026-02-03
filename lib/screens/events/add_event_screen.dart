@@ -474,15 +474,6 @@ class _AddEventScreenState extends State<AddEventScreen>
     }
   }
 
-  String _escapeHtml(String text) {
-    return text
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#x27;');
-  }
-
   Future<void> _showUploadProgress(String eventId) async {
     final ValueNotifier<double> progressNotifier = ValueNotifier<double>(0);
     final ValueNotifier<String> statusNotifier = ValueNotifier<String>(
