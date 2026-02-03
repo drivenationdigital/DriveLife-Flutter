@@ -95,7 +95,7 @@ flutter_launcher_icons:
 # following page: https://dart.dev/tools/pub/pubspec
 flutter_native_splash:
   color: "#FFFFFF"
-  image: assets/splash1.png
+  image: assets/splash2.png
   android_12:
     image: assets/splash1.png
     icon_background_color: "#FFFFFF"
