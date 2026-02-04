@@ -69,6 +69,7 @@ dependencies:
   flutter_stripe: ^10.1.1
   confetti: ^0.7.0
   vsc_quill_delta_to_html: ^1.0.5
+  flutter_quill_delta_from_html: ^1.4.1
   # google_maps_flutter: ^2.5.0
 
 dev_dependencies:

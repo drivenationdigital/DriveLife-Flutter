@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:drivelife/api/places_api.dart';
 import 'package:drivelife/models/event_media.dart';
+import 'package:drivelife/models/venue_view_model.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:flutter/material.dart';
@@ -11,9 +12,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
+import 'package:flutter_quill_delta_from_html/flutter_quill_delta_from_html.dart';
 
 class CreateVenueScreen extends StatefulWidget {
-  final Map<String, dynamic>? existingVenue; // For editing
+  final VenueDetail? existingVenue; // For editing
 
   const CreateVenueScreen({Key? key, this.existingVenue}) : super(key: key);
 
@@ -62,6 +64,7 @@ class _CreateVenueScreenState extends State<CreateVenueScreen>
   @override
   void initState() {
     super.initState();
+
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(_onTabChanged);
 
@@ -116,14 +119,55 @@ class _CreateVenueScreenState extends State<CreateVenueScreen>
 
   void _loadExistingData() {
     final venue = widget.existingVenue!;
-    _titleController.text = venue['title'] ?? '';
-    _locationController.text = venue['location'] ?? '';
-    _emailController.text = venue['email'] ?? '';
-    _phoneController.text = venue['phone'] ?? '';
-    _websiteController.text = venue['website'] ?? '';
-    _facebookController.text = venue['facebook'] ?? '';
-    _instagramController.text = venue['instagram'] ?? '';
-    _isPublished = venue['is_published'] ?? false;
+    _titleController.text = venue.title;
+    _locationController.text = venue.location;
+    _emailController.text = venue.venueEmail ?? '';
+    _phoneController.text = venue.venuePhone ?? '';
+    _websiteController.text = venue.website ?? '';
+    _facebookController.text = venue.facebook ?? '';
+    _instagramController.text = venue.instagram ?? '';
+    _isPublished = venue.status == 'publish';
+
+    print(venue.status);
+
+    final descriptionHtml = venue.description ?? '';
+    if (descriptionHtml.isNotEmpty) {
+      try {
+        final delta = HtmlToDelta().convert(descriptionHtml);
+        _descriptionController.document = Document.fromDelta(delta);
+      } catch (e) {
+        print('Error converting HTML to Quill: $e');
+        // Fallback: load as plain text
+        _descriptionController.document = Document()
+          ..insert(0, descriptionHtml);
+      }
+    } else {
+      _descriptionController.document = Document();
+    }
+
+    // Load images if URLs are provided
+    if (venue.coverPhoto.url.isNotEmpty) {
+      _coverImage = ImageData(
+        file: File(''), // Placeholder, actual file not available
+        base64: '',
+        mimeType: '',
+        extension: '',
+        isUploaded: true,
+        remoteUrl: venue.coverPhoto.url,
+      );
+      _isCoverUploaded = true;
+    }
+    if (venue.logo.url.isNotEmpty) {
+      _logoImage = ImageData(
+        file: File(''), // Placeholder, actual file not available
+        base64: '',
+        mimeType: '',
+        extension: '',
+        isUploaded: true,
+        remoteUrl: venue.logo.url,
+      );
+      _isLogoUploaded = true;
+    }
   }
 
   Future<void> _pickImage(bool isLogo) async {
@@ -291,7 +335,8 @@ class _CreateVenueScreenState extends State<CreateVenueScreen>
       return;
     }
 
-    if (_locationController.text.trim().isEmpty) {
+    if (_locationController.text.trim().isEmpty &&
+        widget.existingVenue == null) {
       _showError('Venue location is required');
       _tabController.animateTo(0);
       return;
@@ -354,6 +399,10 @@ class _CreateVenueScreenState extends State<CreateVenueScreen>
         'status': publish ? 'publish' : 'draft',
       };
 
+      if (widget.existingVenue != null) {
+        venueData['venue_id'] = widget.existingVenue!.id;
+      }
+
       print('💾 Saving venue data: $venueData');
 
       final response = await VenueApiService.saveVenue(venueData);
@@ -405,10 +454,12 @@ class _CreateVenueScreenState extends State<CreateVenueScreen>
 
   Future<void> _deleteVenue() async {
     Navigator.pop(context); // Close publish modal
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: theme.backgroundColor,
         title: const Text('Delete Venue'),
         content: const Text(
           'Are you sure you want to delete this venue? This action cannot be undone.',
@@ -431,12 +482,18 @@ class _CreateVenueScreenState extends State<CreateVenueScreen>
       setState(() => _isLoading = true);
 
       try {
-        // TODO: Implement delete API call
-        await Future.delayed(const Duration(seconds: 1));
+        final response = await VenueApiService.deleteVenue(
+          venueId: widget.existingVenue!.id,
+          site: _selectedCountry,
+        );
+
+        if (response == null || response['success'] != true) {
+          throw Exception('Failed to delete venue');
+        }
 
         if (!mounted) return;
 
-        Navigator.pop(context); // Return to previous screen
+        Navigator.pop(context, 'deleted'); // Return to previous screen
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Venue deleted successfully'),
@@ -497,8 +554,8 @@ class _CreateVenueScreenState extends State<CreateVenueScreen>
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text(
-                    'Create',
+                : Text(
+                    widget.existingVenue != null ? 'Update' : 'Create',
                     style: TextStyle(
                       color: Color(0xFFAE9159),
                       fontWeight: FontWeight.w600,
@@ -1307,40 +1364,40 @@ class _PublishVenueModal extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // Status Dropdown
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Venue Status',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    isPublished
-                        ? 'Published - Live on CarEvents.com'
-                        : 'Unpublished',
-                    style: const TextStyle(fontSize: 14, color: Colors.black87),
-                  ),
-                  Icon(Icons.keyboard_arrow_down, color: Colors.grey.shade600),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
+            // // Status Dropdown
+            // const Align(
+            //   alignment: Alignment.centerLeft,
+            //   child: Text(
+            //     'Venue Status',
+            //     style: TextStyle(
+            //       fontSize: 14,
+            //       fontWeight: FontWeight.w600,
+            //       color: Colors.black87,
+            //     ),
+            //   ),
+            // ),
+            // const SizedBox(height: 8),
+            // Container(
+            //   width: double.infinity,
+            //   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            //   decoration: BoxDecoration(
+            //     border: Border.all(color: Colors.grey.shade300),
+            //     borderRadius: BorderRadius.circular(8),
+            //   ),
+            //   child: Row(
+            //     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            //     children: [
+            //       Text(
+            //         !isPublished
+            //             ? 'Publish Live on CarEvents.com'
+            //             : 'Unpublished',
+            //         style: const TextStyle(fontSize: 14, color: Colors.black87),
+            //       ),
+            //       // Icon(Icons.keyboard_arrow_down, color: Colors.grey.shade600),
+            //     ],
+            //   ),
+            // ),
+            // const SizedBox(height: 24),
 
             // Status Messages
             Container(
@@ -1386,7 +1443,7 @@ class _PublishVenueModal extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Save Draft',
                       style: TextStyle(
                         fontSize: 15,
@@ -1410,8 +1467,8 @@ class _PublishVenueModal extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    child: const Text(
-                      'Publish Venue',
+                    child: Text(
+                      isPublished ? 'Save Changes' : 'Publish Venue',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,

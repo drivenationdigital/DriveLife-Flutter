@@ -1,6 +1,7 @@
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/services/user_service.dart';
+import 'package:drivelife/widgets/formatted_text.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/notifications_api.dart';
@@ -147,10 +148,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         final snippet = _ellipsis(comment, 50);
         if (snippet.isEmpty) return '$name commented on your post';
         return '$name commented on your post: "$snippet"';
-
       case 'follow':
         return '$name followed you';
-
       case 'mention':
         final comment = entityData['comment']?.toString();
         final base = '$name mentioned you in a ${_typeLabel(entityType)}';
@@ -472,14 +471,40 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   ),
                                 ),
                               ],
-                              TextSpan(
-                                text:
-                                    ' ${message.substring(displayName.length)}',
-                                style: const TextStyle(
-                                  color: Colors.black87,
-                                  fontSize: 14,
+
+                              if (notification['type'] != 'comment') ...[
+                                const WidgetSpan(child: SizedBox(width: 6)),
+                                TextSpan(
+                                  text: message.substring(displayName.length),
+                                  style: const TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 14,
+                                  ),
                                 ),
-                              ),
+                              ] else ...[
+                                TextSpan(
+                                  text: ' ',
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                                WidgetSpan(
+                                  child: SizedBox(
+                                    width:
+                                        MediaQuery.of(context).size.width - 140,
+                                    child: FormattedText(
+                                      text: message.substring(
+                                        displayName.length,
+                                      ),
+                                      showAllText: false,
+                                      maxTextLength: 100,
+                                      // style: const TextStyle(
+                                      //   color: Colors.black87,
+                                      //   fontSize: 14,
+                                      //   height: 1.4,
+                                      // ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),

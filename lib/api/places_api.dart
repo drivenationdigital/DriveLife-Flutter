@@ -71,6 +71,47 @@ class VenueApiService {
     }
   }
 
+  // Delete venue
+  static Future<Map<String, dynamic>?> deleteVenue({
+    required String venueId,
+    String? site,
+  }) async {
+    try {
+      final token = await _authService.getToken();
+
+      if (token == null) {
+        print('❌ [VenueAPI] No token found');
+        return null;
+      }
+
+      final uri = Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/delete-venue');
+
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'venue_id': venueId,
+          'site': site?.toLowerCase() ?? 'gb',
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      print(data);
+      if (response.statusCode == 200) {
+        return data;
+      } else {
+        print('❌ [VenueAPI] Error ${response.statusCode}: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ [VenueAPI] Exception: $e');
+      return null;
+    }
+  }
+
   /// Fetch trending venues with filters
   static Future<Map<String, dynamic>?> getTrendingVenues({
     required int page,

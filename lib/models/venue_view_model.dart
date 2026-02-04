@@ -7,6 +7,8 @@ class VenueDetail {
   final VenueLogo logo;
   final List<VenueEvent> events;
   final bool isFollowing;
+  final bool isOwner;
+  final String status;
 
   // Socials
   final String? venueEmail;
@@ -24,7 +26,8 @@ class VenueDetail {
     required this.logo,
     required this.events,
     required this.isFollowing,
-
+    required this.isOwner,
+    required this.status,
     this.venueEmail,
     this.venuePhone,
     this.website,
@@ -47,11 +50,13 @@ class VenueDetail {
                 .toList() ??
             [],
         isFollowing: json['is_following'] == true,
+        isOwner: json['is_owner'] == true,
         venueEmail: json['venue_email']?.toString(),
         venuePhone: json['venue_phone']?.toString(),
         website: json['website']?.toString(),
         facebook: json['facebook']?.toString(),
         instagram: json['instagram']?.toString(),
+        status: json['status']?.toString() ?? '',
       );
     } catch (e) {
       print('❌ Error parsing VenueDetail: $e');
@@ -75,6 +80,8 @@ class VenueDetail {
       'website': website,
       'facebook': facebook,
       'instagram': instagram,
+      'is_owner': isOwner,
+      'status': status,
     };
   }
 }

@@ -1,5 +1,8 @@
 import 'package:drivelife/api/places_api.dart';
 import 'package:drivelife/models/venue_view_model.dart';
+import 'package:drivelife/screens/places/add_venue_screen.dart';
+import 'package:drivelife/utils/navigation_helper.dart';
+import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
@@ -402,6 +405,50 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
                       ),
                       const SizedBox(height: 20),
 
+                      // edit venue button if owner
+                      if (_venue!.isOwner) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              final response =
+                                  await NavigationHelper.navigateTo(
+                                    context,
+                                    CreateVenueScreen(existingVenue: _venue),
+                                  );
+
+                              if (response == true) {
+                                print('Reloading venue details');
+                                _loadVenue();
+                              }
+
+                              if (!mounted) return;
+
+                              // If the venue was deleted, pop back
+                              if (response == 'deleted') {
+                                Navigator.pop(context, true);
+                              }
+                            },
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFFAE9159)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Text(
+                              'Edit Venue',
+                              style: TextStyle(
+                                color: Color(0xFFAE9159),
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+
                       // Social media icons
                       _buildSocialIcons(),
                       const SizedBox(height: 20),
@@ -456,11 +503,10 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
               Navigator.pushNamed(context, AppRoutes.search);
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: Colors.black),
-            onPressed: () {
-              // Navigate to notifications
-            },
+          ...SharedHeaderIcons.actionIcons(
+            iconColor: Colors.black,
+            showQr: false, // Already shown in leading
+            showNotifications: true,
           ),
         ],
       ),

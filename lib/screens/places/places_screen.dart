@@ -225,41 +225,6 @@ class _VenuesScreenState extends State<VenuesScreen>
     }
   }
 
-  Future<void> _loadFollowedVenues() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final result = await VenueApiService.getFollowedVenues();
-
-      if (!mounted) return;
-
-      if (result != null) {
-        final venues = result.map((json) => Venue.fromJson(json)).toList();
-        setState(() {
-          _followedVenues = venues;
-          _isLoading = false;
-        });
-      } else {
-        if (!mounted) return;
-        setState(() {
-          _errorMessage = 'Failed to load followed venues';
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      print('Error loading followed venues: $e');
-      if (!mounted) return;
-      setState(() {
-        _errorMessage = 'Error loading followed venues. Please try again.';
-        _isLoading = false;
-      });
-    }
-  }
-
   Future<void> _performSearch(String query) async {
     if (query.trim().isEmpty) {
       setState(() {
@@ -619,8 +584,6 @@ class _VenuesScreenState extends State<VenuesScreen>
         child: Center(child: CircularProgressIndicator()),
       );
     }
-
-    print(_banners);
 
     return SizedBox(
       height: 150,
