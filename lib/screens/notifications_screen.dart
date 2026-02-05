@@ -4,6 +4,7 @@ import 'package:drivelife/services/user_service.dart';
 import 'package:drivelife/widgets/formatted_text.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shimmer/shimmer.dart';
 import '../api/notifications_api.dart';
 import '../widgets/profile/profile_avatar.dart';
 
@@ -19,6 +20,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Map<String, List<dynamic>> _groupedNotifications = {};
   bool _loading = true;
   bool _hasMore = true;
+  String? _errorMessage;
 
   final UserService _userService = UserService();
 
@@ -35,7 +37,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (!mounted) return;
 
     if (!isRefresh) {
-      setState(() => _loading = true);
+      setState(() {
+        _loading = true;
+        _errorMessage = null; // ✅ ADD THIS
+      });
     }
 
     final response = await NotificationsAPI.getUserNotifications(
@@ -54,7 +59,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ];
       setState(() {
         _allNotifications = notifications;
-        _groupedNotifications = groupNotificationsFromBuckets(data);
+        _groupedNotifications = _groupNotificationsFromBuckets(data);
         _hasMore = data['has_more_notifications'] ?? false;
         _loading = false;
       });
@@ -69,7 +74,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  Map<String, List<dynamic>> groupNotificationsFromBuckets(
+  Map<String, List<dynamic>> _groupNotificationsFromBuckets(
     Map<String, dynamic> notifications,
   ) {
     List<dynamic> safeList(dynamic v) => v is List ? v : <dynamic>[];
@@ -278,7 +283,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
-
     final sessionUserFollowing =
         Provider.of<UserProvider>(context, listen: false).user?.following
             as List<dynamic>?;
@@ -296,73 +300,105 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         title: Image.asset('assets/logo-dark.png', height: 18),
       ),
       body: _loading
-          ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
+          ? const _NotificationSkeleton() // ✅ SKELETON LOADER
+          : _errorMessage != null
+          ? _buildErrorState() // ✅ ERROR STATE
           : _allNotifications.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.notifications_none, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'No notifications yet',
-                    style: TextStyle(color: Colors.grey, fontSize: 16),
-                  ),
-                ],
-              ),
-            )
-          : RefreshIndicator(
-              onRefresh: _refreshNotifications,
-              color: theme.primaryColor,
-              child: ListView.builder(
-                padding: const EdgeInsets.only(top: 8),
-                itemCount: _groupedNotifications.length,
-                itemBuilder: (context, groupIndex) {
-                  final groupName = _groupedNotifications.keys.elementAt(
-                    groupIndex,
-                  );
-                  final groupNotifications = _groupedNotifications[groupName]!;
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ✅ Section Header
-                      _buildSectionHeader(groupName),
-
-                      // ✅ Notifications in this group
-                      ...groupNotifications.asMap().entries.map((entry) {
-                        final notification = entry.value;
-                        final isLast =
-                            entry.key == groupNotifications.length - 1;
-
-                        return Column(
-                          children: [
-                            _buildNotificationTile(
-                              notification,
-                              theme,
-                              sessionUserFollowing,
-                            ),
-                            if (!isLast)
-                              const Divider(
-                                height: 1,
-                                indent: 68,
-                                color: Color(0xFFEEEEEE),
-                              ),
-                          ],
-                        );
-                      }).toList(),
-
-                      // Spacing after group
-                      const SizedBox(height: 16),
-                    ],
-                  );
-                },
-              ),
-            ),
+          ? _buildEmptyState() // ✅ EMPTY STATE
+          : _buildNotificationsList(theme, sessionUserFollowing),
     );
   }
 
-  // ✅ Section header widget
+  // ✅ EXTRACT EMPTY STATE
+  Widget _buildEmptyState() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.notifications_none, size: 64, color: Colors.grey),
+          SizedBox(height: 16),
+          Text(
+            'No notifications yet',
+            style: TextStyle(color: Colors.grey, fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ ADD ERROR STATE
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, size: 64, color: Colors.red),
+          const SizedBox(height: 16),
+          Text(
+            _errorMessage!,
+            style: const TextStyle(color: Colors.grey, fontSize: 16),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () => _loadNotifications(),
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ EXTRACT NOTIFICATIONS LIST
+  Widget _buildNotificationsList(
+    ThemeProvider theme,
+    List<dynamic>? sessionUserFollowing,
+  ) {
+    return RefreshIndicator(
+      onRefresh: _refreshNotifications,
+      color: theme.primaryColor,
+      child: ListView.builder(
+        padding: const EdgeInsets.only(top: 8),
+        itemCount: _groupedNotifications.length,
+        itemBuilder: (context, groupIndex) {
+          final groupName = _groupedNotifications.keys.elementAt(groupIndex);
+          final groupNotifications = _groupedNotifications[groupName]!;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader(groupName),
+              ...groupNotifications.asMap().entries.map((entry) {
+                final notification = entry.value;
+                final isLast = entry.key == groupNotifications.length - 1;
+
+                return Column(
+                  children: [
+                    _NotificationTile(
+                      notification: notification,
+                      theme: theme,
+                      sessionUserFollowing: sessionUserFollowing,
+                      onTap: () => _handleNotificationTap(notification),
+                      onFollowBack: _handleFollowBack,
+                    ),
+                    if (!isLast)
+                      const Divider(
+                        height: 1,
+                        indent: 68,
+                        color: Color(0xFFEEEEEE),
+                      ),
+                  ],
+                );
+              }),
+              const SizedBox(height: 16),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // ✅ KEEP SECTION HEADER AS IS
   Widget _buildSectionHeader(String title) {
     return Container(
       width: double.infinity,
@@ -379,16 +415,95 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
     );
   }
+}
 
-  Widget _buildNotificationTile(
-    Map<String, dynamic> notification,
-    ThemeProvider theme,
-    List<dynamic>? sessionUserFollowing,
-  ) {
+// ✅ ADD THIS CLASS
+class _NotificationSkeleton extends StatelessWidget {
+  const _NotificationSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey.shade300,
+      highlightColor: Colors.grey.shade100,
+      child: ListView.builder(
+        padding: const EdgeInsets.only(top: 8),
+        itemCount: 8,
+        itemBuilder: (context, index) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Avatar skeleton
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Content skeleton
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        height: 14,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(height: 8),
+                      Container(width: 150, height: 14, color: Colors.white),
+                      const SizedBox(height: 8),
+                      Container(width: 80, height: 12, color: Colors.white),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(width: 12),
+
+                // Thumbnail skeleton
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ✅ EXTRACT THIS AS SEPARATE WIDGET
+class _NotificationTile extends StatelessWidget {
+  final Map<String, dynamic> notification;
+  final ThemeProvider theme;
+  final List<dynamic>? sessionUserFollowing;
+  final VoidCallback onTap;
+  final Function(int userId, bool wasFollowing) onFollowBack;
+
+  const _NotificationTile({
+    required this.notification,
+    required this.theme,
+    required this.sessionUserFollowing,
+    required this.onTap,
+    required this.onFollowBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     final entity = notification['entity'] ?? {};
     final initiatorData = entity['initiator_data'] ?? {};
-
-    // ✅ entity_data can be Map or List (empty array)
     final entityDataRaw = entity['entity_data'];
     final Map<String, dynamic> entityData =
         entityDataRaw is Map<String, dynamic> ? entityDataRaw : {};
@@ -399,117 +514,39 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final message = _buildNotificationMessage(notification);
     final timeAgo = _formatTimeAgo(notification['date'] ?? '');
     final isRead = notification['is_read'] == '1';
-
     final isFollow = notification['type'] == 'follow';
-    final postMedia = entityData['media']; // Now safe to access
+    final postMedia = entityData['media'];
 
     final userId = initiatorData['id'] is int
         ? initiatorData['id'] as int
         : int.tryParse(initiatorData['id']?.toString() ?? '') ?? 0;
 
-    bool following = false;
-
-    if (sessionUserFollowing != null) {
-      following = sessionUserFollowing.any((id) {
-        if (id is int) return id == userId;
-        if (id is String) return int.tryParse(id) == userId;
-        return false;
-      });
-    }
+    final following = _isFollowing(userId);
 
     return InkWell(
-      onTap: () => _handleNotificationTap(notification),
+      onTap: onTap,
       child: Container(
         color: isRead ? Colors.white : const Color(0xFFF8F8F8),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Profile avatar
             ProfileAvatar(
               imageUrl: profileImage,
               radius: 22,
-              onTap: () {
-                Navigator.pushNamed(
-                  context,
-                  '/view-profile',
-                  arguments: {
-                    'userId': initiatorData['id'],
-                    'username': displayName,
-                  },
-                );
-              },
+              onTap: () =>
+                  _navigateToProfile(context, initiatorData, displayName),
             ),
             const SizedBox(width: 12),
-
-            // Message content
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RichText(
-                          text: TextSpan(
-                            children: [
-                              TextSpan(
-                                text: displayName,
-                                style: const TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              if (isVerified) ...[
-                                const WidgetSpan(child: SizedBox(width: 4)),
-                                WidgetSpan(
-                                  child: Icon(
-                                    Icons.verified,
-                                    size: 14,
-                                    color: theme.primaryColor,
-                                  ),
-                                ),
-                              ],
-
-                              if (notification['type'] != 'comment') ...[
-                                const WidgetSpan(child: SizedBox(width: 6)),
-                                TextSpan(
-                                  text: message.substring(displayName.length),
-                                  style: const TextStyle(
-                                    color: Colors.black87,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ] else ...[
-                                TextSpan(
-                                  text: ' ',
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                                WidgetSpan(
-                                  child: SizedBox(
-                                    width:
-                                        MediaQuery.of(context).size.width - 140,
-                                    child: FormattedText(
-                                      text: message.substring(
-                                        displayName.length,
-                                      ),
-                                      showAllText: false,
-                                      maxTextLength: 100,
-                                      // style: const TextStyle(
-                                      //   color: Colors.black87,
-                                      //   fontSize: 14,
-                                      //   height: 1.4,
-                                      // ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+                  _buildMessageContent(
+                    context,
+                    displayName,
+                    isVerified,
+                    message,
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -519,53 +556,231 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ],
               ),
             ),
-
             const SizedBox(width: 12),
-
-            // Right side: Follow button OR post thumbnail
-            if (isFollow)
-              ElevatedButton(
-                onPressed: () =>
-                    _handleFollowBack(initiatorData['id'], following),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.primaryColor,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 3,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                child: Text(
-                  following ? 'Following' : 'Follow',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              )
-            else if (postMedia != null && postMedia.isNotEmpty)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Image.network(
-                  postMedia,
-                  width: 50,
-                  height: 50,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    width: 50,
-                    height: 50,
-                    color: Colors.grey.shade300,
-                    child: const Icon(Icons.broken_image, color: Colors.grey),
-                  ),
-                ),
-              ),
+            _buildRightWidget(isFollow, following, userId, postMedia),
           ],
         ),
       ),
     );
+  }
+
+  bool _isFollowing(int userId) {
+    if (sessionUserFollowing == null) return false;
+    return sessionUserFollowing!.any((id) {
+      if (id is int) return id == userId;
+      if (id is String) return int.tryParse(id) == userId;
+      return false;
+    });
+  }
+
+  void _navigateToProfile(
+    BuildContext context,
+    Map initiatorData,
+    String displayName,
+  ) {
+    Navigator.pushNamed(
+      context,
+      '/view-profile',
+      arguments: {'userId': initiatorData['id'], 'username': displayName},
+    );
+  }
+
+  Widget _buildMessageContent(
+    BuildContext context,
+    String displayName,
+    bool isVerified,
+    String message,
+  ) {
+    return Row(
+      children: [
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: displayName,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                if (isVerified) ...[
+                  const WidgetSpan(child: SizedBox(width: 4)),
+                  WidgetSpan(
+                    child: Icon(
+                      Icons.verified,
+                      size: 14,
+                      color: theme.primaryColor,
+                    ),
+                  ),
+                ],
+                if (notification['type'] != 'comment') ...[
+                  const WidgetSpan(child: SizedBox(width: 6)),
+                  TextSpan(
+                    text: message.substring(displayName.length),
+                    style: const TextStyle(color: Colors.black87, fontSize: 14),
+                  ),
+                ] else ...[
+                  const TextSpan(text: ' ', style: TextStyle(fontSize: 14)),
+                  WidgetSpan(
+                    child: SizedBox(
+                      width: MediaQuery.of(context).size.width - 140,
+                      child: FormattedText(
+                        text: message.substring(displayName.length),
+                        showAllText: false,
+                        maxTextLength: 100,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRightWidget(
+    bool isFollow,
+    bool following,
+    int userId,
+    dynamic postMedia,
+  ) {
+    if (isFollow) {
+      return ElevatedButton(
+        onPressed: () => onFollowBack(userId, following),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: theme.primaryColor,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        ),
+        child: Text(
+          following ? 'Following' : 'Follow',
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      );
+    } else if (postMedia != null && postMedia.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Image.network(
+          postMedia,
+          width: 50,
+          height: 50,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            width: 50,
+            height: 50,
+            color: Colors.grey.shade300,
+            child: const Icon(Icons.broken_image, color: Colors.grey),
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  // ✅ OPTIMIZE - Cache these helper methods
+  static String _buildNotificationMessage(Map<String, dynamic> notification) {
+    final type = notification['type']?.toString() ?? '';
+    final entity = (notification['entity'] is Map)
+        ? Map<String, dynamic>.from(notification['entity'])
+        : <String, dynamic>{};
+    final initiator = (entity['initiator_data'] is Map)
+        ? Map<String, dynamic>.from(entity['initiator_data'])
+        : <String, dynamic>{};
+    final name =
+        (initiator['display_name']?.toString().trim().isNotEmpty ?? false)
+        ? initiator['display_name'].toString()
+        : 'User';
+    final entityType = entity['entity_type']?.toString();
+    final rawEntityData = entity['entity_data'];
+    final Map<String, dynamic> entityData = rawEntityData is Map
+        ? Map<String, dynamic>.from(rawEntityData)
+        : <String, dynamic>{};
+
+    String ellipsis(String s, int max) =>
+        s.length <= max ? s : '${s.substring(0, max)}...';
+
+    String typeLabel(String? t) {
+      switch (t) {
+        case 'comment':
+          return 'comment';
+        case 'car':
+          return 'car';
+        case 'post':
+        case 'tag':
+          return 'post';
+        default:
+          return 'post';
+      }
+    }
+
+    switch (type) {
+      case 'like':
+        final comment = entityData['comment']?.toString();
+        final base = '$name liked your ${typeLabel(entityType)}';
+        return comment != null && comment.trim().isNotEmpty
+            ? '$base: "$comment"'
+            : base;
+
+      case 'comment':
+        final comment = entityData['comment']?.toString() ?? '';
+        final snippet = ellipsis(comment, 50);
+        return snippet.isEmpty
+            ? '$name commented on your post'
+            : '$name commented on your post: "$snippet"';
+
+      case 'follow':
+        return '$name followed you';
+
+      case 'mention':
+        final comment = entityData['comment']?.toString();
+        final base = '$name mentioned you in a ${typeLabel(entityType)}';
+        return comment != null && comment.trim().isNotEmpty
+            ? '$base: "$comment"'
+            : base;
+
+      case 'post':
+        final taggedTarget = entityType == 'car' ? 'your car' : 'you';
+        return '$name has tagged $taggedTarget in a post';
+
+      case 'tag':
+        return entityType == 'car'
+            ? '$name tagged your car in a post'
+            : '$name tagged you in a post';
+
+      default:
+        return '$name interacted with your content';
+    }
+  }
+
+  static String _formatTimeAgo(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      final now = DateTime.now();
+      final diff = now.difference(date);
+
+      if (diff.inDays > 365) {
+        final years = (diff.inDays / 365).floor();
+        return '${years}y ago';
+      } else if (diff.inDays > 30) {
+        final months = (diff.inDays / 30).floor();
+        return '${months}mo ago';
+      } else if (diff.inDays > 0) {
+        return '${diff.inDays}d ago';
+      } else if (diff.inHours > 0) {
+        return '${diff.inHours}h ago';
+      } else if (diff.inMinutes > 0) {
+        return '${diff.inMinutes}m ago';
+      } else {
+        return 'Just now';
+      }
+    } catch (e) {
+      return '';
+    }
   }
 }
