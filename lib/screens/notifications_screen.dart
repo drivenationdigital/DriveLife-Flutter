@@ -96,113 +96,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     await _loadNotifications(isRefresh: true);
   }
 
-  String _buildNotificationMessage(Map<String, dynamic> notification) {
-    final type = notification['type']?.toString() ?? '';
-
-    final entity = (notification['entity'] is Map)
-        ? Map<String, dynamic>.from(notification['entity'])
-        : <String, dynamic>{};
-
-    final initiator = (entity['initiator_data'] is Map)
-        ? Map<String, dynamic>.from(entity['initiator_data'])
-        : <String, dynamic>{};
-
-    final name =
-        (initiator['display_name']?.toString().trim().isNotEmpty ?? false)
-        ? initiator['display_name'].toString()
-        : ' User';
-
-    final entityType = entity['entity_type']?.toString();
-
-    // FIX: entity_data can be Map OR List
-    final rawEntityData = entity['entity_data'];
-    final Map<String, dynamic> entityData = rawEntityData is Map
-        ? Map<String, dynamic>.from(rawEntityData)
-        : <String, dynamic>{};
-
-    String _ellipsis(String s, int max) {
-      if (s.length <= max) return s;
-      return '${s.substring(0, max)}...';
-    }
-
-    String _typeLabel(String? t) {
-      switch (t) {
-        case 'comment':
-          return 'comment';
-        case 'car':
-          return 'car';
-        case 'post':
-        case 'tag':
-          return 'post';
-        default:
-          return 'post';
-      }
-    }
-
-    switch (type) {
-      case 'like':
-        final comment = entityData['comment']?.toString();
-        final base = '$name liked your ${_typeLabel(entityType)}';
-        if (comment != null && comment.trim().isNotEmpty) {
-          return '$base: "$comment"';
-        }
-        return base;
-
-      case 'comment':
-        final comment = entityData['comment']?.toString() ?? '';
-        final snippet = _ellipsis(comment, 50);
-        if (snippet.isEmpty) return '$name commented on your post';
-        return '$name commented on your post: "$snippet"';
-      case 'follow':
-        return '$name followed you';
-      case 'mention':
-        final comment = entityData['comment']?.toString();
-        final base = '$name mentioned you in a ${_typeLabel(entityType)}';
-        if (comment != null && comment.trim().isNotEmpty) {
-          return '$base: "$comment"';
-        }
-        return base;
-
-      case 'post':
-        final taggedTarget = entityType == 'car' ? 'your car' : 'you';
-        return '$name has tagged $taggedTarget in a post';
-
-      case 'tag':
-        return entityType == 'car'
-            ? '$name tagged your car in a post'
-            : '$name tagged you in a post';
-
-      default:
-        return '$name interacted with your content';
-    }
-  }
-
-  String _formatTimeAgo(String dateStr) {
-    try {
-      final date = DateTime.parse(dateStr);
-      final now = DateTime.now();
-      final diff = now.difference(date);
-
-      if (diff.inDays > 365) {
-        final years = (diff.inDays / 365).floor();
-        return '${years}y ago';
-      } else if (diff.inDays > 30) {
-        final months = (diff.inDays / 30).floor();
-        return '${months}mo ago';
-      } else if (diff.inDays > 0) {
-        return '${diff.inDays}d ago';
-      } else if (diff.inHours > 0) {
-        return '${diff.inHours}h ago';
-      } else if (diff.inMinutes > 0) {
-        return '${diff.inMinutes}m ago';
-      } else {
-        return 'Just now';
-      }
-    } catch (e) {
-      return '';
-    }
-  }
-
   void _handleNotificationTap(Map<String, dynamic> notification) {
     final entity = notification['entity'];
     final entityType = entity?['entity_type'];
@@ -309,7 +202,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  // ✅ EXTRACT EMPTY STATE
   Widget _buildEmptyState() {
     return const Center(
       child: Column(
@@ -326,7 +218,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  // ✅ ADD ERROR STATE
   Widget _buildErrorState() {
     return Center(
       child: Column(
@@ -349,7 +240,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  // ✅ EXTRACT NOTIFICATIONS LIST
   Widget _buildNotificationsList(
     ThemeProvider theme,
     List<dynamic>? sessionUserFollowing,
@@ -398,7 +288,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  // ✅ KEEP SECTION HEADER AS IS
   Widget _buildSectionHeader(String title) {
     return Container(
       width: double.infinity,
@@ -417,7 +306,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 }
 
-// ✅ ADD THIS CLASS
 class _NotificationSkeleton extends StatelessWidget {
   const _NotificationSkeleton();
 
@@ -484,7 +372,6 @@ class _NotificationSkeleton extends StatelessWidget {
   }
 }
 
-// ✅ EXTRACT THIS AS SEPARATE WIDGET
 class _NotificationTile extends StatelessWidget {
   final Map<String, dynamic> notification;
   final ThemeProvider theme;
