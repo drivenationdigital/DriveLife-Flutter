@@ -1,3 +1,4 @@
+import 'package:drivelife/utils/deeplinks_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../routes.dart';
@@ -21,6 +22,20 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _initApp() async {
+    // ⭐ Check if this is a warm start deep link
+    final isWarmStart = DeepLinkHandler().isHandlingWarmStart;
+
+    if (isWarmStart) {
+      debugPrint(
+        '🔥 [SplashScreen] Warm start detected, marking initialized without navigation',
+      );
+      // Just mark as initialized, don't navigate anywhere
+      await Future.delayed(const Duration(milliseconds: 300));
+      DeepLinkHandler().markAppAsInitialized();
+      return;
+    }
+
+    // ⭐ Cold start - normal flow
     await Future.delayed(const Duration(milliseconds: 800));
 
     try {
@@ -48,16 +63,25 @@ class _SplashScreenState extends State<SplashScreen> {
           },
         );
 
-        print('✅ [SplashScreen] User loaded, navigating to home');
+        print('✅ [SplashScreen] User loaded: ${userProvider.user != null}');
 
         if (mounted) {
           Navigator.pushReplacementNamed(context, AppRoutes.home);
+
+          Future.delayed(const Duration(milliseconds: 500), () {
+            debugPrint('✅ [SplashScreen] Marking app as initialized');
+            DeepLinkHandler().markAppAsInitialized();
+          });
         }
       } else {
         print('📱 [SplashScreen] Not logged in, navigating to welcome');
 
         if (mounted) {
           Navigator.pushReplacementNamed(context, AppRoutes.welcome);
+
+          Future.delayed(const Duration(milliseconds: 500), () {
+            DeepLinkHandler().markAppAsInitialized();
+          });
         }
       }
     } catch (e) {

@@ -1,3 +1,4 @@
+import 'package:drivelife/main.dart';
 import 'package:drivelife/screens/auth/onboarding_screen.dart';
 import 'package:drivelife/screens/auth/register/step_five.dart';
 import 'package:drivelife/screens/auth/register/step_four.dart';
@@ -13,6 +14,7 @@ import 'package:drivelife/screens/places/view_venue_screen.dart';
 import 'package:drivelife/screens/search_screen.dart';
 import 'package:drivelife/screens/store/checkout/order_details_screen.dart';
 import 'package:drivelife/screens/store/checkout/order_success_screen.dart';
+import 'package:drivelife/utils/deeplinks_helper.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
@@ -63,6 +65,45 @@ class AppRoutes {
   static const String createVenue = '/create-venue';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
+    final routeName = settings.name ?? '';
+    debugPrint('🔍 [AppRoutes] Requested route: $routeName');
+
+    // ⭐ Check if this is a deep link URL
+    final isDeepLink =
+        routeName.startsWith('https://') ||
+        routeName.startsWith('http://') ||
+        routeName.contains('app.mydrivelife.com') ||
+        routeName.startsWith('?') ||
+        (routeName.startsWith('/') && routeName.contains('?'));
+
+    if (isDeepLink) {
+      // ⭐ Check if this is a warm start (app already initialized)
+      final isWarmStart = DeepLinkHandler().isHandlingWarmStart;
+
+      if (isWarmStart) {
+        debugPrint(
+          '🔥 [AppRoutes] Warm start deep link, returning empty route: $routeName',
+        );
+        // Return a route that immediately pops itself
+        return MaterialPageRoute(
+          builder: (context) {
+            // Pop immediately after first frame
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
+            });
+            return const SizedBox.shrink(); // Empty widget
+          },
+        );
+      }
+
+      // Cold start - redirect to splash normally
+      debugPrint(
+        '🔗 [AppRoutes] Cold start deep link, redirecting to splash: $routeName',
+      );
+      return _slide(const SplashScreen());
+    }
     switch (settings.name) {
       case splash:
         return _slide(const SplashScreen());
@@ -155,9 +196,26 @@ class AppRoutes {
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(VehicleDetailScreen(garageId: args['garageId']));
       default:
+        debugPrint('⚠️ [AppRoutes] No route defined for: ${settings.name}');
         return _slide(
           Scaffold(
-            body: Center(child: Text('No route defined for ${settings.name}')),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('No route defined for ${settings.name}'),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () {
+                      navigatorKey.currentState?.pushReplacementNamed(
+                        AppRoutes.splash,
+                      );
+                    },
+                    child: const Text('Go to Home'),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
     }

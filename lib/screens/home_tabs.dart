@@ -6,6 +6,7 @@ import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
+import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
@@ -116,6 +117,20 @@ class _HomeTabsState extends State<HomeTabs> {
                     NavigationHelper.navigateTo(
                       context,
                       const AddEventScreen(),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.place_outlined,
+                    color: theme.primaryColor,
+                  ),
+                  title: const Text('Add Venue'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    NavigationHelper.navigateTo(
+                      context,
+                      const CreateVenueScreen(),
                     );
                   },
                 ),

@@ -71,6 +71,7 @@ dependencies:
   vsc_quill_delta_to_html: ^1.0.5
   flutter_quill_delta_from_html: ^1.4.1
   # google_maps_flutter: ^2.5.0
+  app_links: ^6.3.2
 
 dev_dependencies:
   flutter_test:
