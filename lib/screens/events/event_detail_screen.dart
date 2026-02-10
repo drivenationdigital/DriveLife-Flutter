@@ -968,34 +968,34 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                       const SizedBox(height: 12),
 
                       // Edit event button
-                      if (isEventOwner)
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              NavigationHelper.navigateTo(
-                                context,
-                                AddEventScreen(eventId: event['id'].toString()),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blueGrey.shade700,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            icon: const Icon(Icons.edit),
-                            label: const Text(
-                              'Edit Event',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
+                      // if (isEventOwner)
+                      //   SizedBox(
+                      //     width: double.infinity,
+                      //     child: ElevatedButton.icon(
+                      //       onPressed: () {
+                      //         NavigationHelper.navigateTo(
+                      //           context,
+                      //           AddEventScreen(eventId: event['id'].toString()),
+                      //         );
+                      //       },
+                      //       style: ElevatedButton.styleFrom(
+                      //         backgroundColor: Colors.blueGrey.shade700,
+                      //         foregroundColor: Colors.white,
+                      //         padding: const EdgeInsets.symmetric(vertical: 14),
+                      //         shape: RoundedRectangleBorder(
+                      //           borderRadius: BorderRadius.circular(8),
+                      //         ),
+                      //       ),
+                      //       icon: const Icon(Icons.edit),
+                      //       label: const Text(
+                      //         'Edit Event',
+                      //         style: TextStyle(
+                      //           fontSize: 16,
+                      //           fontWeight: FontWeight.w600,
+                      //         ),
+                      //       ),
+                      //     ),
+                      //   ),
 
                       // Action Buttons
                       if (hasTickets &&

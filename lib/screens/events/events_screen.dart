@@ -1176,6 +1176,18 @@ class _EventsScreenState extends State<EventsScreen>
         NavigationHelper.navigateTo(context, AddEventScreen());
       },
       onEventTap: (event) {
+        if (event['is_owner'] == true) {
+          Navigator.pushNamed(
+            context,
+            '/event-owner-view',
+            arguments: {
+              'eventId': event['id'].toString(),
+              'site': event['country'] ?? 'GB',
+            },
+          );
+          return;
+        }
+
         Navigator.pushNamed(
           context,
           '/event-detail',

@@ -6,6 +6,7 @@ import 'package:drivelife/screens/auth/register/step_one.dart';
 import 'package:drivelife/screens/auth/register/step_three.dart';
 import 'package:drivelife/screens/auth/register/step_two.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
+import 'package:drivelife/screens/events/event_admin_view_screen.dart';
 import 'package:drivelife/screens/events/event_detail_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
@@ -63,6 +64,7 @@ class AppRoutes {
   static const String orderDetails = '/order-details';
   static const String venueDetails = '/venue-details';
   static const String createVenue = '/create-venue';
+  static const String eventOwnerView = '/event-owner-view';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     final routeName = settings.name ?? '';
@@ -104,6 +106,7 @@ class AppRoutes {
       );
       return _slide(const SplashScreen());
     }
+
     switch (settings.name) {
       case splash:
         return _slide(const SplashScreen());
@@ -163,6 +166,11 @@ class AppRoutes {
       case eventDetail:
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(EventDetailScreen(event: args['event']));
+      case eventOwnerView:
+        final args = settings.arguments as Map<String, dynamic>;
+        return _slide(
+          EventAdminPage(eventId: args['eventId'], site: args['site']),
+        );
       case venueDetails:
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(VenueDetailScreen(venueId: args['venueId']));

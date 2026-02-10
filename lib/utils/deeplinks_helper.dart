@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
 import '../routes.dart';
 import '../main.dart';
+import '../api/qr_code_api.dart';
+import '../widgets/qr_scanner_modal.dart';
 import 'dart:async';
 
 class DeepLinkHandler {
@@ -16,22 +18,17 @@ class DeepLinkHandler {
 
   Uri? _pendingDeepLink;
   bool _isAppInitialized = false;
-  bool _isHandlingWarmStart = false; // ⭐ NEW
+  bool _isHandlingWarmStart = false;
 
   void initialize() {
-    // ⭐ Listen for deep links when app is already running (warm start)
     _linkSubscription = _appLinks.uriLinkStream.listen(
       (uri) {
         debugPrint('🔗 [DeepLink] Received while app running: $uri');
-
-        // ⭐ Mark that we're handling a warm start link
         _isHandlingWarmStart = true;
 
         if (_isAppInitialized) {
-          // App is already initialized, handle immediately
           _handleDeepLink(uri);
         } else {
-          // App still initializing, store for later
           _pendingDeepLink = uri;
         }
       },
@@ -40,35 +37,30 @@ class DeepLinkHandler {
       },
     );
 
-    // ⭐ Get initial deep link (cold start)
     _appLinks.getInitialLink().then((uri) {
       if (uri != null) {
         debugPrint('🔗 [DeepLink] Initial link detected (cold start): $uri');
         _pendingDeepLink = uri;
-        _isHandlingWarmStart = false; // This is a cold start
+        _isHandlingWarmStart = false;
       }
     });
   }
 
-  // ⭐ Check if currently handling a warm start
   bool get isHandlingWarmStart => _isHandlingWarmStart;
 
   void markAppAsInitialized() {
     _isAppInitialized = true;
 
-    // Handle pending deep link if any
     if (_pendingDeepLink != null) {
       debugPrint('🔗 [DeepLink] App initialized, handling pending link');
       final uri = _pendingDeepLink!;
       _pendingDeepLink = null;
 
-      // Small delay to ensure navigation is ready
       Future.delayed(const Duration(milliseconds: 500), () {
         _handleDeepLink(uri);
       });
     }
 
-    // Reset warm start flag after handling
     _isHandlingWarmStart = false;
   }
 
@@ -88,21 +80,19 @@ class DeepLinkHandler {
 
       final params = uri.queryParameters;
 
-      // Handle QR code
+      // ⭐ Handle QR code: https://app.mydrivelife.com/?qr=0C013CE0
       if (params.containsKey('qr')) {
-        final qrCode = params['qr']!;
-        debugPrint('🔗 [DeepLink] QR code: $qrCode');
+        final qrCodeParam = params['qr']!;
+        debugPrint('🔗 [DeepLink] QR code param: $qrCodeParam');
 
         if (currentUser == null) {
-          debugPrint('⚠️ [DeepLink] User not logged in');
+          debugPrint('⚠️ [DeepLink] User not logged in for QR');
           navigatorKey.currentState?.pushNamed(AppRoutes.login);
           return;
         }
 
-        navigatorKey.currentState?.pushNamed(
-          '/qr-result',
-          arguments: {'qrCode': qrCode},
-        );
+        // Parse and verify QR code
+        _handleQrCode(navContext, qrCodeParam, currentUser.id);
         return;
       }
 
@@ -117,7 +107,6 @@ class DeepLinkHandler {
           return;
         }
 
-        // Navigate to post detail
         navigatorKey.currentState?.pushNamed(
           AppRoutes.postDetail,
           arguments: {'postId': postId},
@@ -129,6 +118,107 @@ class DeepLinkHandler {
     } catch (e) {
       debugPrint('❌ [DeepLink] Error: $e');
     }
+  }
+
+  // ⭐ Handle QR Code Deep Link
+  Future<void> _handleQrCode(
+    BuildContext context,
+    String qrCodeParam,
+    int userId,
+  ) async {
+    try {
+      debugPrint('📱 [DeepLink] Verifying QR code: $qrCodeParam');
+
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // Verify the QR code
+      final response = await QrCodeAPI.verifyScan(qrCodeParam, userId);
+
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+
+      if (response == null || response['status'] == 'error') {
+        debugPrint('❌ [DeepLink] Invalid/unused QR code');
+
+        if (context.mounted) {
+          // Show scanner modal for invalid QR codes
+          _showQrScannerModal(context);
+        }
+        return;
+      }
+
+      debugPrint('✅ [DeepLink] QR code verified: ${response['entity_type']}');
+
+      // Navigate based on entity type
+      if (!context.mounted) return;
+
+      final entityType = response['entity_type'];
+      final entityId = response['entity_id'];
+
+      if (entityType == 'profile') {
+        navigatorKey.currentState?.pushNamed(
+          AppRoutes.viewProfile,
+          arguments: {'userId': entityId},
+        );
+      } else if (entityType == 'vehicle') {
+        navigatorKey.currentState?.pushNamed(
+          AppRoutes.vehicleDetail,
+          arguments: {'garageId': entityId.toString()},
+        );
+      } else {
+        debugPrint('⚠️ [DeepLink] Unknown entity type: $entityType');
+        _showQrScannerModal(context);
+      }
+    } catch (e) {
+      debugPrint('❌ [DeepLink] Error verifying QR code: $e');
+
+      // Close loading dialog if still showing
+      if (context.mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      // Show scanner modal on error
+      if (context.mounted) {
+        _showQrScannerModal(context);
+      }
+    }
+  }
+
+  // Show QR Scanner Modal
+  void _showQrScannerModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const QrScannerModal(),
+    ).then((result) {
+      if (result != null) {
+        debugPrint('✅ [DeepLink] QR scanned from modal: $result');
+
+        // Handle the scanned result
+        final entityType = result['entity_type'];
+        final entityId = result['entity_id'];
+
+        if (entityType == 'profile') {
+          navigatorKey.currentState?.pushNamed(
+            AppRoutes.viewProfile,
+            arguments: {'userId': entityId},
+          );
+        } else if (entityType == 'vehicle') {
+          navigatorKey.currentState?.pushNamed(
+            AppRoutes.vehicleDetail,
+            arguments: {'garageId': entityId.toString()},
+          );
+        }
+      }
+    });
   }
 
   void dispose() {

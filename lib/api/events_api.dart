@@ -849,4 +849,144 @@ class EventsAPI {
       return null;
     }
   }
+
+  /// Cancel an event
+  static Future<Map<String, dynamic>?> cancelEvent({
+    required String eventId,
+    required String site,
+  }) async {
+    try {
+      // Get user and token
+      final token = await _authService.getToken();
+      if (token == null) {
+        print('❌ [EventDetailService] No user found for cancel event');
+        return null;
+      }
+
+      // Make API request
+      final url = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/ce-cancel-event',
+      );
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({'event_id': eventId, 'country': site}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+
+        print('✅ [EventDetailService] Event cancelled successfully');
+        return data;
+      } else {
+        print(
+          '❌ [EventDetailService] Failed to cancel event: ${response.statusCode}',
+        );
+        throw Exception('Failed to cancel event: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ [EventDetailService] Error cancelling event: $e');
+      return null;
+    }
+  }
+
+  /// Delete an event
+  static Future<Map<String, dynamic>?> deleteEvent({
+    required String eventId,
+    required String site,
+  }) async {
+    try {
+      // Get user and token
+      final token = await _authService.getToken();
+
+      if (token == null) {
+        print('❌ [EventDetailService] No user found for delete event');
+        return null;
+      }
+
+      // Make API request
+      final url = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/ce-delete-event',
+      );
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({'event_id': eventId, 'country': site}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+
+        print('✅ [EventDetailService] Event deleted successfully');
+        return data;
+      } else {
+        print(
+          '❌ [EventDetailService] Failed to delete event: ${response.statusCode}',
+        );
+        throw Exception('Failed to delete event: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ [EventDetailService] Error deleting event: $e');
+      return null;
+    }
+  }
+
+  /// Fetches event details for the owner with 5-minute caching
+  static Future<Map<String, dynamic>?> getProfileEventForOwner({
+    required String eventId,
+    required String site,
+  }) async {
+    try {
+      // // Check cache first
+      // final cachedData = await _getCachedData(eventId);
+      // if (cachedData != null) {
+      //   return cachedData;
+      // }
+
+      final user = await _authService.getUser();
+      final token = await _authService.getToken();
+
+      if (user == null || token == null) {
+        print('❌ [EventsAPI] No user found');
+        return null;
+      }
+
+      final userId = user['id'];
+
+      // Make API request
+      final url = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/get-profile-event-for-owner?user_id=$userId&event_id=$eventId&country=$site',
+      );
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+
+        // // Cache the response
+        // await _cacheData(eventId, data);
+
+        return data;
+      } else {
+        throw Exception('Failed to load event details: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching event details: $e');
+      rethrow;
+    }
+  }
 }
