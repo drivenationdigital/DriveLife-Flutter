@@ -1,4 +1,6 @@
 import 'package:app_links/app_links.dart';
+import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/services/qr_scanner.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
@@ -127,13 +129,15 @@ class DeepLinkHandler {
     int userId,
   ) async {
     try {
+      final theme = Provider.of<ThemeProvider>(context, listen: false);
       debugPrint('📱 [DeepLink] Verifying QR code: $qrCodeParam');
 
       // Show loading indicator
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
+        builder: (context) =>
+            Center(child: CircularProgressIndicator(color: theme.primaryColor)),
       );
 
       // Verify the QR code
@@ -144,37 +148,8 @@ class DeepLinkHandler {
         Navigator.of(context).pop();
       }
 
-      if (response == null || response['status'] == 'error') {
-        debugPrint('❌ [DeepLink] Invalid/unused QR code');
-
-        if (context.mounted) {
-          // Show scanner modal for invalid QR codes
-          _showQrScannerModal(context);
-        }
-        return;
-      }
-
-      debugPrint('✅ [DeepLink] QR code verified: ${response['entity_type']}');
-
-      // Navigate based on entity type
-      if (!context.mounted) return;
-
-      final entityType = response['entity_type'];
-      final entityId = response['entity_id'];
-
-      if (entityType == 'profile') {
-        navigatorKey.currentState?.pushNamed(
-          AppRoutes.viewProfile,
-          arguments: {'userId': entityId},
-        );
-      } else if (entityType == 'vehicle') {
-        navigatorKey.currentState?.pushNamed(
-          AppRoutes.vehicleDetail,
-          arguments: {'garageId': entityId.toString()},
-        );
-      } else {
-        debugPrint('⚠️ [DeepLink] Unknown entity type: $entityType');
-        _showQrScannerModal(context);
+      if (context.mounted) {
+        QrScannerService.handleScanResult(context, response);
       }
     } catch (e) {
       debugPrint('❌ [DeepLink] Error verifying QR code: $e');
