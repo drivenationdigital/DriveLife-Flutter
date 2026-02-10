@@ -84,5 +84,26 @@
 		<false/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
+
+		<!-- URL Schemes (for fallback) -->
+		<key>CFBundleURLTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLName</key>
+				<string>com.app.carcalendar</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>drivelife</string>
+				</array>
+			</dict>
+		</array>
+
+		<!-- Universal Links -->
+		<key>com.apple.developer.associated-domains</key>
+		<array>
+			<string>applinks:app.mydrivelife.com</string>
+		</array>
 	</dict>
 </plist>
