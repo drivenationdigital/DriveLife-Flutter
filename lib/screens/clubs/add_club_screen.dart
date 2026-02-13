@@ -8,7 +8,6 @@ import 'package:drivelife/providers/user_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_quill_delta_from_html/flutter_quill_delta_from_html.dart';
-import 'package:http/http.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
@@ -82,10 +81,13 @@ class _CreateClubScreenState extends State<CreateClubScreen>
 
   // Track which tabs have been loaded
   final Set<int> _loadedTabs = {0}; // First tab loaded by default
+  late ThemeProvider theme;
 
   @override
   void initState() {
     super.initState();
+
+    theme = Provider.of<ThemeProvider>(context, listen: false);
 
     _tabController = TabController(length: 6, vsync: this);
     _tabController.addListener(_onTabChanged);
@@ -457,7 +459,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
                       CircularProgressIndicator(
                         value: progress / 100,
                         backgroundColor: Colors.grey.shade200,
-                        color: const Color(0xFFAE9159),
+                        color: theme.primaryColor,
                       ),
                       const SizedBox(height: 16),
                       Text(
@@ -721,6 +723,8 @@ class _CreateClubScreenState extends State<CreateClubScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -765,8 +769,8 @@ class _CreateClubScreenState extends State<CreateClubScreen>
                   )
                 : Text(
                     widget.existingClubId != null ? 'Update' : 'Create',
-                    style: const TextStyle(
-                      color: Color(0xFFAE9159),
+                    style: TextStyle(
+                      color: theme.primaryColor,
                       fontWeight: FontWeight.w600,
                       fontSize: 16,
                     ),
@@ -815,9 +819,9 @@ class _CreateClubScreenState extends State<CreateClubScreen>
             ),
             child: TabBar(
               controller: _tabController,
-              labelColor: const Color(0xFFAE9159),
+              labelColor: theme.primaryColor,
               unselectedLabelColor: Colors.grey.shade600,
-              indicatorColor: const Color(0xFFAE9159),
+              indicatorColor: theme.primaryColor,
               indicatorWeight: 3,
               isScrollable: true,
               labelStyle: const TextStyle(
@@ -1043,6 +1047,8 @@ class _BasicDetailsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -1078,7 +1084,7 @@ class _BasicDetailsTab extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFAE9159)),
+                borderSide: BorderSide(color: theme.primaryColor),
               ),
               counterStyle: TextStyle(
                 color: Colors.grey.shade500,
@@ -1134,8 +1140,8 @@ class _BasicDetailsTab extends StatelessWidget {
                       onSelected: (_) => onCategoryToggled(
                         category.termId,
                       ), // ✅ Changed to termId
-                      selectedColor: const Color(0xFFAE9159).withOpacity(0.1),
-                      checkmarkColor: const Color(0xFFAE9159),
+                      selectedColor: theme.primaryColor.withOpacity(0.1),
+                      checkmarkColor: theme.primaryColor,
                     );
                   }).toList(),
                 ),
@@ -1208,7 +1214,7 @@ class _BasicDetailsTab extends StatelessWidget {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFFAE9159)),
+                  borderSide: BorderSide(color: theme.primaryColor),
                 ),
               ),
               debounceTime: 400,
@@ -1229,26 +1235,6 @@ class _BasicDetailsTab extends StatelessWidget {
             ),
 
           const SizedBox(height: 40),
-
-          // Next Button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: onNext,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFAE9159),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text(
-                'Next Step',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -1291,6 +1277,8 @@ class _ClubProfileTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -1377,7 +1365,7 @@ class _ClubProfileTab extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFAE9159)),
+                borderSide: BorderSide(color: theme.primaryColor),
               ),
             ),
           ),
@@ -1411,7 +1399,7 @@ class _ClubProfileTab extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFAE9159)),
+                borderSide: BorderSide(color: theme.primaryColor),
               ),
             ),
           ),
@@ -1445,7 +1433,7 @@ class _ClubProfileTab extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFAE9159)),
+                borderSide: BorderSide(color: theme.primaryColor),
               ),
             ),
           ),
@@ -1478,7 +1466,7 @@ class _ClubProfileTab extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFAE9159)),
+                borderSide: BorderSide(color: theme.primaryColor),
               ),
             ),
           ),
@@ -1517,53 +1505,12 @@ class _ClubProfileTab extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFAE9159)),
+                borderSide: BorderSide(color: theme.primaryColor),
               ),
             ),
           ),
 
           const SizedBox(height: 40),
-
-          // Navigation Buttons
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onBack,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.black87,
-                    side: BorderSide(color: Colors.grey.shade300),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Go Back',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: onNext,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFAE9159),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Next Step',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -1665,52 +1612,6 @@ class _DescriptionTab extends StatelessWidget {
             ),
           ),
         ),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Colors.grey.shade200)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onBack,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.black87,
-                    side: BorderSide(color: Colors.grey.shade300),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Go Back',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: onNext,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFAE9159),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Next Step',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
       ],
     );
   }
@@ -1734,6 +1635,8 @@ class _MembershipQuestionsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return Column(
       children: [
         Expanded(
@@ -1806,9 +1709,7 @@ class _MembershipQuestionsTab extends StatelessWidget {
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: Color(0xFFAE9159),
-                              ),
+                              borderSide: BorderSide(color: theme.primaryColor),
                             ),
                           ),
                         ),
@@ -1824,7 +1725,7 @@ class _MembershipQuestionsTab extends StatelessWidget {
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Add another'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFAE9159),
+                      backgroundColor: theme.primaryColor,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 24,
@@ -1838,52 +1739,6 @@ class _MembershipQuestionsTab extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Colors.grey.shade200)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onBack,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.black87,
-                    side: BorderSide(color: Colors.grey.shade300),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Go Back',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: onNext,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFAE9159),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Next Step',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
       ],
@@ -1982,52 +1837,6 @@ class _ClubTermsTab extends StatelessWidget {
             ),
           ),
         ),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Colors.grey.shade200)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onBack,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.black87,
-                    side: BorderSide(color: Colors.grey.shade300),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Go Back',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: onNext,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFAE9159),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Next Step',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
       ],
     );
   }
@@ -2053,6 +1862,8 @@ class _AdministratorsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return Column(
       children: [
         Expanded(
@@ -2090,9 +1901,7 @@ class _AdministratorsTab extends StatelessWidget {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFAE9159),
-                            ),
+                            borderSide: BorderSide(color: theme.primaryColor),
                           ),
                         ),
                       ),
@@ -2103,7 +1912,7 @@ class _AdministratorsTab extends StatelessWidget {
                       icon: const Icon(Icons.add, size: 18),
                       label: const Text('Invite'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFAE9159),
+                        backgroundColor: theme.primaryColor,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 24,
@@ -2196,174 +2005,7 @@ class _AdministratorsTab extends StatelessWidget {
             ),
           ),
         ),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Colors.grey.shade200)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onBack,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.black87,
-                    side: BorderSide(color: Colors.grey.shade300),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Go Back',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: onNext,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFAE9159),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Next Step',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
       ],
-    );
-  }
-}
-
-// Publish Tab
-class _PublishTab extends StatelessWidget {
-  final bool isPublished;
-  final VoidCallback onBack;
-  final VoidCallback onPublish;
-
-  const _PublishTab({
-    required this.isPublished,
-    required this.onBack,
-    required this.onPublish,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Club Status Dropdown
-          const Text(
-            'Club Status',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              isPublished ? 'Published' : 'Unpublished',
-              style: const TextStyle(fontSize: 14, color: Colors.black87),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Status Messages
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              children: [
-                _StatusRow(
-                  icon: isPublished ? Icons.check_circle : Icons.cancel,
-                  iconColor: isPublished
-                      ? const Color(0xFFAE9159)
-                      : Colors.grey,
-                  text: isPublished
-                      ? 'Your club is currently published.'
-                      : 'Your club is currently unpublished.',
-                ),
-                const SizedBox(height: 8),
-                const _StatusRow(
-                  icon: Icons.check_circle,
-                  iconColor: Color(0xFFAE9159),
-                  text: 'You will be able to view and share it once it\'s live',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          // Action Buttons
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onBack,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.black87,
-                    side: BorderSide(color: Colors.grey.shade300),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Go Back',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: onPublish,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFAE9159),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(
-                    isPublished ? 'Update Club' : 'Publish Club',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }
@@ -2386,6 +2028,7 @@ class _ImageUploadBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
     final hasImage = image != null;
 
     return GestureDetector(
@@ -2430,9 +2073,7 @@ class _ImageUploadBox extends StatelessWidget {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: isUploaded
-                            ? Colors.green
-                            : const Color(0xFFAE9159),
+                        color: isUploaded ? Colors.green : theme.primaryColor,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -2471,7 +2112,7 @@ class _ImageUploadBox extends StatelessWidget {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFAE9159),
+                      color: theme.primaryColor,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Text(
