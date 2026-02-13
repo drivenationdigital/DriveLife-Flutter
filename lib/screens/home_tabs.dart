@@ -2,6 +2,9 @@ import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
+import 'package:drivelife/screens/clubs/add_club_screen.dart';
+import 'package:drivelife/screens/clubs/club_creation_screen.dart';
+import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
 import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
@@ -52,7 +55,7 @@ class _HomeTabsState extends State<HomeTabs> {
       PostsScreen(key: _postsScreenKey),
       EventsScreen(),
       VenuesScreen(),
-      Scaffold(body: Center(child: Text('Clubs Coming Soon'))),
+      MyClubsScreen(),
       ShopScreen(),
       ProfileScreen(),
     ];
@@ -132,6 +135,37 @@ class _HomeTabsState extends State<HomeTabs> {
                       context,
                       const CreateVenueScreen(),
                     );
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.place_outlined,
+                    color: theme.primaryColor,
+                  ),
+                  title: const Text('Add Club'),
+                  onTap: () async {
+                    Navigator.pop(context);
+
+                    // Show bottom sheet first
+                    final result =
+                        await showModalBottomSheet<Map<String, dynamic>>(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (context) => const ClubTypeSelectionSheet(),
+                        );
+
+                    // If club was created, navigate to edit screen
+                    if (result != null && result['clubId'] != null) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CreateClubScreen(
+                            existingClubId: result['clubId'],
+                          ),
+                        ),
+                      );
+                    }
                   },
                 ),
               ],

@@ -5,6 +5,7 @@ import 'package:drivelife/screens/auth/register/step_four.dart';
 import 'package:drivelife/screens/auth/register/step_one.dart';
 import 'package:drivelife/screens/auth/register/step_three.dart';
 import 'package:drivelife/screens/auth/register/step_two.dart';
+import 'package:drivelife/screens/clubs/add_club_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/event_admin_view_screen.dart';
 import 'package:drivelife/screens/events/event_detail_screen.dart';
@@ -65,6 +66,9 @@ class AppRoutes {
   static const String venueDetails = '/venue-details';
   static const String createVenue = '/create-venue';
   static const String eventOwnerView = '/event-owner-view';
+
+  static const String addClub = '/add-club';
+  static const String clubDetail = '/club-detail';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     final routeName = settings.name ?? '';
@@ -138,6 +142,8 @@ class AppRoutes {
             associationLabel: args['association_label'],
           ),
         );
+      case addClub:
+        return _slide(const CreateClubScreen());
       case createVenue:
         return _slide(const CreateVenueScreen());
       case events:
