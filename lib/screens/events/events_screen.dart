@@ -1,5 +1,4 @@
 import 'package:drivelife/providers/account_provider.dart';
-import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/events/order_ticket_view.dart';
 import 'package:drivelife/utils/date.dart';

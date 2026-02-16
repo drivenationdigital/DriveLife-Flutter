@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 import 'dart:async';
 
 import '../api/posts_api.dart';
-import '../providers/user_provider.dart';
 import '../services/auth_service.dart';
 import '../components/post_card.dart';
 

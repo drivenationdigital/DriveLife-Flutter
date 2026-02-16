@@ -100,7 +100,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final entity = notification['entity'];
     final entityType = entity?['entity_type'];
     final entityId = entity?['entity_id'];
-    final userId = entity?['user_id'];
+    // final userId = entity?['user_id'];
     final initiatorData = entity?['initiator_data'] ?? {};
 
     if (entityType == 'post' && entityId != null) {

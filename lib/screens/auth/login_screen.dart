@@ -1,4 +1,3 @@
-import 'package:drivelife/providers/user_provider.dart';
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../routes.dart';

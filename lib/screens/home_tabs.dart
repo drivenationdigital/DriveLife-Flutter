@@ -32,7 +32,6 @@ class HomeTabs extends StatefulWidget {
 
 class _HomeTabsState extends State<HomeTabs> {
   int _currentIndex = 0;
-  // String? _currentProfileImageUrl;
 
   // ============================================================================
   // GLOBAL KEY - Access posts screen state
@@ -43,11 +42,6 @@ class _HomeTabsState extends State<HomeTabs> {
   final _authService = AuthService();
 
   late final List<Widget> _screens;
-
-  void _goToTab(int idx) {
-    setState(() => _currentIndex = idx);
-    Navigator.pop(context); // close drawer after tap
-  }
 
   @override
   void initState() {
