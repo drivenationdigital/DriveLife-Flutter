@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:drivelife/models/post_model.dart';
+import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/post_cache.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -7,7 +8,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class PostsService {
   static const String _apiUrl = 'https://www.carevents.com/uk';
   final _storage = const FlutterSecureStorage();
-  final _cache = PostCache(); // ✅ Cache instance
+  final _cache = PostCache();
+  static final AuthService _authService = AuthService();
 
   /// Fetch posts for a specific user with pagination
   ///
@@ -25,7 +27,7 @@ class PostsService {
     bool forceRefresh = false,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
 
       final queryParams = {
         'user_id': userId.toString(),
@@ -82,12 +84,11 @@ class PostsService {
 
     // Cache miss or force refresh - fetch from API
     try {
-      final token = await _storage.read(key: 'token');
-      final userData = await _storage.read(key: 'user_data');
+      final token = await _authService.getToken();
+      final user = await _authService.getUser();
 
-      if (userData == null) return null;
+      if (user == null) return null;
 
-      final user = jsonDecode(userData);
       final userId = user['id'];
 
       final uri = Uri.parse('$_apiUrl/wp-json/app/v2/get-post').replace(
@@ -122,7 +123,7 @@ class PostsService {
   /// Like a post
   Future<bool> likePost(String postId) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) return false;
 
       final uri = Uri.parse('$_apiUrl/wp-json/app/v2/like-post');
@@ -145,7 +146,7 @@ class PostsService {
   /// Unlike a post
   Future<bool> unlikePost(String postId) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) return false;
 
       final uri = Uri.parse('$_apiUrl/wp-json/app/v2/unlike-post');
@@ -168,7 +169,7 @@ class PostsService {
   /// Delete a post
   Future<bool> deletePost(String postId) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) return false;
 
       final uri = Uri.parse('$_apiUrl/wp-json/app/v2/delete-post');

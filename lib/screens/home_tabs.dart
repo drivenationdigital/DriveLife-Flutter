@@ -1,7 +1,9 @@
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
+import 'package:drivelife/screens/auth/account_switcher.dart';
 import 'package:drivelife/screens/clubs/add_club_screen.dart';
 import 'package:drivelife/screens/clubs/club_creation_screen.dart';
 import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
@@ -30,7 +32,7 @@ class HomeTabs extends StatefulWidget {
 
 class _HomeTabsState extends State<HomeTabs> {
   int _currentIndex = 0;
-  String? _currentProfileImageUrl;
+  // String? _currentProfileImageUrl;
 
   // ============================================================================
   // GLOBAL KEY - Access posts screen state
@@ -59,17 +61,13 @@ class _HomeTabsState extends State<HomeTabs> {
       ShopScreen(),
       ProfileScreen(),
     ];
-    _loadProfileImage();
+    _reloadUserData();
   }
 
-  void _loadProfileImage() {
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final user = userProvider.user;
-    if (mounted && user != null && user.profileImage != null) {
-      setState(() {
-        _currentProfileImageUrl = user.profileImage;
-      });
-    }
+  void _reloadUserData() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<UserProvider>().loadUser();
+    });
   }
 
   // Show add menu popup
@@ -211,20 +209,91 @@ class _HomeTabsState extends State<HomeTabs> {
     );
   }
 
-  Widget _buildProfileIcon(String? url) {
-    final hasUrl = (url != null && url.trim().isNotEmpty);
+  Widget _buildProfileIcon() {
+    return Consumer<AccountManager>(
+      builder: (context, accountManager, child) {
+        final user = accountManager.activeUser;
+        final url = user?.profileImage;
+        final hasUrl = (url != null && url.trim().isNotEmpty);
 
-    if (!hasUrl) {
-      return const Icon(Icons.person_outline);
-    }
-
-    return CircleAvatar(
-      radius: 16,
-      backgroundColor: Colors.transparent,
-      backgroundImage: NetworkImage(url!),
-      onBackgroundImageError: (_, __) {
-        // Optional: fallback if URL fails
+        return GestureDetector(
+          onLongPress: () => _showAccountSwitcher(),
+          child: hasUrl
+              ? CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Colors.transparent,
+                  backgroundImage: NetworkImage(url!),
+                  onBackgroundImageError: (_, __) {},
+                )
+              : const Icon(Icons.person_outline),
+        );
       },
+    );
+  }
+
+  void _showAccountSwitcher() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => const AccountSwitcherSheet(),
+    );
+  }
+
+  Widget _buildBottomNav(ThemeProvider theme) {
+    return BottomNavigationBar(
+      type: BottomNavigationBarType.fixed,
+      backgroundColor: Colors.white,
+      selectedItemColor: theme.primaryColor,
+      unselectedItemColor: Colors.grey,
+      iconSize: 28,
+      currentIndex: _currentIndex,
+      onTap: (index) {
+        // Special handling for profile tab (index 5)
+        if (index == 5 && _currentIndex == 5) {
+          _showAccountSwitcher();
+          HapticFeedback.lightImpact();
+          return;
+        }
+
+        // Home tab double-tap refresh
+        if (index == 0 && _currentIndex == 0) {
+          _postsScreenKey.currentState?.scrollToTopAndRefresh();
+          HapticFeedback.lightImpact();
+          return;
+        }
+
+        setState(() => _currentIndex = index);
+      },
+      items: [
+        BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
+        BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Events'),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.place_outlined),
+          label: 'Places',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.car_repair_outlined),
+          label: 'Clubs',
+        ),
+        BottomNavigationBarItem(
+          icon: Consumer<CartProvider>(
+            builder: (context, cart, child) {
+              final count = cart.itemCount;
+              if (_currentIndex != 4 && count > 0) {
+                return Badge(
+                  backgroundColor: theme.primaryColor,
+                  label: Text('$count'),
+                  child: Icon(Icons.store_outlined),
+                );
+              }
+              return Icon(Icons.store_outlined);
+            },
+          ),
+          label: 'Store',
+        ),
+        BottomNavigationBarItem(icon: _buildProfileIcon(), label: 'Profile'),
+      ],
     );
   }
 
@@ -262,67 +331,8 @@ class _HomeTabsState extends State<HomeTabs> {
         //         ),
         //
         appBar: _buildAppBar(theme),
-
         body: IndexedStack(index: _currentIndex, children: _screens),
-
-        bottomNavigationBar: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed,
-          // showSelectedLabels: false,
-          // showUnselectedLabels: false,
-          backgroundColor: Colors.white,
-          selectedItemColor: theme.primaryColor,
-          unselectedItemColor: Colors.grey,
-          iconSize: 28,
-          currentIndex: _currentIndex,
-          onTap: (index) {
-            // if index is home, and already on home, scroll to top and refresh
-            if (index == 0 && _currentIndex == 0) {
-              _postsScreenKey.currentState?.scrollToTopAndRefresh();
-              // add small vibration or haptic feedback
-              HapticFeedback.lightImpact();
-              return;
-            }
-
-            setState(() => _currentIndex = index);
-          },
-          items: [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Events'),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.place_outlined),
-              label: 'Places',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.car_repair_outlined),
-              label: 'Clubs',
-            ),
-            // In your BottomNavigationBarItem for Store:
-            BottomNavigationBarItem(
-              icon: Consumer<CartProvider>(
-                builder: (context, cart, child) {
-                  final count = cart.itemCount;
-                  // Only show badge when not on store tab and count > 0
-                  if (_currentIndex != 4 && count > 0) {
-                    return Badge(
-                      backgroundColor: theme.primaryColor,
-                      label: Text('$count'),
-                      child: Icon(Icons.store_outlined),
-                    );
-                  }
-                  return Icon(Icons.store_outlined);
-                },
-              ),
-              label: 'Store',
-            ),
-            BottomNavigationBarItem(
-              icon: _buildProfileIcon(_currentProfileImageUrl),
-              label: 'Profile',
-            ),
-          ],
-        ),
+        bottomNavigationBar: _buildBottomNav(theme),
       ),
     );
   }

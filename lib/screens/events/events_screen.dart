@@ -1,3 +1,4 @@
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/events/order_ticket_view.dart';
@@ -75,6 +76,8 @@ class _EventsScreenState extends State<EventsScreen>
   // Debounce timer
   Timer? _scrollDebounce;
 
+  int? _currentUserId; // NEW: Track current user ID for profile events
+
   @override
   void initState() {
     super.initState();
@@ -83,12 +86,32 @@ class _EventsScreenState extends State<EventsScreen>
 
     // Fetch initial data
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final accountManager = Provider.of<AccountManager>(
+        context,
+        listen: false,
+      );
+      _currentUserId = accountManager.activeUser?.id;
+
       _fetchFeaturedEvents();
       _fetchCategories();
       _fetchEvents(refresh: true);
       _fetchProfileEvents();
       _fetchUserTickets();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // ✅ Only check if we're actually coming back from account switch
+    final accountManager = Provider.of<AccountManager>(context, listen: false);
+    final newUserId = accountManager.activeUser?.id;
+
+    if (newUserId != null && newUserId != _currentUserId) {
+      _currentUserId = newUserId;
+      _fetchProfileEvents();
+      _fetchUserTickets();
+    }
   }
 
   @override
@@ -294,8 +317,11 @@ class _EventsScreenState extends State<EventsScreen>
 
   Future<void> _fetchProfileEvents() async {
     try {
-      final userProvider = Provider.of<UserProvider>(context, listen: false);
-      final user = userProvider.user;
+      final accountManager = Provider.of<AccountManager>(
+        context,
+        listen: false,
+      );
+      final user = accountManager.activeUser;
 
       if (user == null) return;
 
@@ -331,7 +357,6 @@ class _EventsScreenState extends State<EventsScreen>
 
     try {
       final response = await EventsAPI.getMyEventTickets();
-      print('🎟️ User tickets response: $response');
       if (!mounted) return;
 
       if (response != null && response['success'] == true) {

@@ -167,13 +167,9 @@ class EventsAPI {
       queryParams['filters'] = jsonEncode(filters);
       queryParams['version'] = '2';
 
-      print('🔍 [EventsAPI] Filters: ${jsonEncode(filters)}');
-
       final uri = Uri.parse(
         '${ApiConfig.baseUrl}/wp-json/app/v2/get-events-trending',
       ).replace(queryParameters: queryParams);
-
-      print('🌐 [EventsAPI] Fetching events: $uri');
 
       final response = await http.get(
         uri,
@@ -277,8 +273,6 @@ class EventsAPI {
       final uri = Uri.parse(
         '${ApiConfig.baseUrl}/wp-json/app/v1/get-my-event-tickets',
       ).replace(queryParameters: {'site': (site ?? userCountry)});
-
-      print('🌐 [TicketsAPI] Fetching my tickets: $uri');
 
       final response = await http.get(
         uri,
@@ -591,8 +585,6 @@ class EventsAPI {
             },
           );
 
-      print('🌐 [EventsAPI] Fetching profile events: $uri');
-
       final response = await http.get(
         uri,
         headers: {
@@ -632,7 +624,7 @@ class EventsAPI {
     String? entryDetails,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) {
         print('No auth token found');
         return null;
@@ -726,7 +718,7 @@ class EventsAPI {
     required String mediaId,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) {
         print('❌ [EventsAPI] No token available');
         return null;
@@ -767,7 +759,7 @@ class EventsAPI {
     required String country,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) {
         print('❌ [EventsAPI] No token available');
         return null;

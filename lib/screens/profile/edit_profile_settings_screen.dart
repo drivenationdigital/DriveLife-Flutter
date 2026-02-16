@@ -1,3 +1,4 @@
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/services/auth_service.dart';
@@ -16,12 +17,19 @@ class EditProfileSettingsScreen extends StatelessWidget {
   EditProfileSettingsScreen({super.key});
 
   Future<void> _handleLogout(BuildContext context) async {
+    final accountManager = context.read<AccountManager>();
+    final hasMultipleAccounts = accountManager.accounts.length > 1;
+
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
+        content: Text(
+          hasMultipleAccounts
+              ? 'Remove this account from the app?'
+              : 'Are you sure you want to logout?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -41,8 +49,12 @@ class EditProfileSettingsScreen extends StatelessWidget {
     try {
       print('🚪 [HomeTabs] Logging out...');
 
-      // Clear auth token
-      await _authService.logout();
+      // Get current account index before logout
+      final activeAccount = accountManager.activeAccount;
+      final currentIndex = accountManager.accounts.indexOf(activeAccount!);
+
+      // Remove current account
+      await accountManager.removeAccount(currentIndex);
 
       // Clear user from provider
       if (context.mounted) {
@@ -52,13 +64,22 @@ class EditProfileSettingsScreen extends StatelessWidget {
 
       print('✅ [HomeTabs] Logout successful');
 
-      // Navigate to login and clear navigation stack
       if (context.mounted) {
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          AppRoutes.login,
-          (route) => false, // Remove all routes
-        );
+        if (accountManager.accounts.isEmpty) {
+          // No accounts left - go to login
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            AppRoutes.login,
+            (route) => false,
+          );
+        } else {
+          // Still have accounts - reload home with new active account
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            AppRoutes.home,
+            (route) => false,
+          );
+        }
       }
     } catch (e) {
       print('❌ [HomeTabs] Logout error: $e');

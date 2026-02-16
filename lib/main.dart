@@ -2,12 +2,14 @@ import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
+import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/deeplinks_helper.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'routes.dart';
 import 'providers/user_provider.dart';
+import 'providers/account_provider.dart';
 import 'providers/video_mute_provider.dart';
 
 import 'package:flutter_quill/flutter_quill.dart';
@@ -26,6 +28,12 @@ void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
 
+  final accountManager = AccountManager();
+  await accountManager.loadAccounts();
+
+  final authService = AuthService();
+  authService.setAccountManager(accountManager);
+
   try {
     Stripe.publishableKey = stripePublishableKey;
     // await Stripe.instance.applySettings();
@@ -43,6 +51,8 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider.value(value: accountManager),
+        Provider.value(value: authService),
         ChangeNotifierProvider(create: (_) => UserProvider()),
         ChangeNotifierProvider(create: (_) => VideoMuteProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),

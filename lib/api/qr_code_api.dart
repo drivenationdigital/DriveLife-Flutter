@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 class QrCodeAPI {
   static const String _baseUrl = 'https://www.carevents.com/uk';
   static const _storage = FlutterSecureStorage();
+  static final AuthService _authService = AuthService();
 
   /// Verify a scanned QR code
   static Future<Map<String, dynamic>?> verifyScan(
@@ -12,7 +14,7 @@ class QrCodeAPI {
     int userId,
   ) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
 
       if (token == null) {
         print('No auth token found');
@@ -63,7 +65,7 @@ class QrCodeAPI {
     required String entityType, // "profile", "vehicle", etc
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
 
       if (token == null) {
         print('No auth token found');
@@ -104,7 +106,7 @@ class QrCodeAPI {
     required String entityType,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
 
       if (token == null) {
         print('No auth token found');
@@ -141,7 +143,7 @@ class QrCodeAPI {
   /// Get entity ID from QR code
   static Future<Map<String, dynamic>?> getLinkedEntity(String qrCode) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
 
       final uri = Uri.parse('$_baseUrl/wp-json/app/v1/get-linked-entity');
 

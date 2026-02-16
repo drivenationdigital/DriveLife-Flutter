@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'package:drivelife/models/user_model.dart';
+import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 class ProfileAPI {
   static const String _baseUrl = 'https://www.carevents.com/uk';
   static const _storage = FlutterSecureStorage();
+  static final AuthService _authService = AuthService();
 
   /// Update user's last location
   static Future<Map<String, dynamic>?> updateLastLocation({
@@ -82,7 +84,7 @@ class ProfileAPI {
     required String type,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) {
         print('No auth token found');
         return null;
@@ -116,7 +118,7 @@ class ProfileAPI {
     Map<String, String> links,
   ) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) {
         print('No auth token found');
         return null;
@@ -149,7 +151,7 @@ class ProfileAPI {
   /// Remove profile link
   static Future<bool> removeProfileLink(String linkId) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) {
         print('No auth token found');
         return false;
@@ -183,7 +185,7 @@ class ProfileAPI {
     bool emailChanged = false,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) {
         print('No auth token found');
         return null;
@@ -224,7 +226,7 @@ class ProfileAPI {
     required BillingInfo billingDetails,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       final uri = Uri.parse('$_baseUrl/wp-json/app/v1/update-billing-info');
 
       final response = await http.post(
@@ -326,7 +328,7 @@ class ProfileAPI {
     int? userId,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null && userId == null) {
         print('No auth token found');
         return null;
@@ -389,7 +391,7 @@ class ProfileAPI {
     int? userId,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null && userId == null) {
         print('No auth token found');
         return null;
@@ -453,7 +455,7 @@ class ProfileAPI {
     bool isRegistration = false,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null && !isRegistration) {
         return {'success': false, 'message': 'Not authenticated'};
       }
@@ -552,7 +554,7 @@ class ProfileAPI {
     required String oldPassword,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) {
         print('No auth token found');
         return null;

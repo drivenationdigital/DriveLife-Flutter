@@ -16,7 +16,7 @@ import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 import 'package:shimmer/shimmer.dart';
 
 class CreateClubScreen extends StatefulWidget {
-  final String? existingClubId; // CHANGE: from ClubDetail? to String?
+  final String? existingClubId;
 
   const CreateClubScreen({Key? key, this.existingClubId}) : super(key: key);
 

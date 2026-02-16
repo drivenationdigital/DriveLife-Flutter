@@ -14,7 +14,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _authService = AuthService();
+  // final _authService = AuthService();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -45,7 +45,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
       print('🔐 [LoginScreen] Attempting login...');
 
-      final success = await _authService
+      // ✅ USE THE PROVIDED AUTHSERVICE:
+      final authService = context.read<AuthService>();
+
+      final success = await authService
           .login(email, password)
           .timeout(
             const Duration(seconds: 10),
@@ -58,22 +61,14 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (success) {
-        print('✅ [LoginScreen] Login successful, loading user...');
+        print('✅ [LoginScreen] Login successful, navigating to home');
 
-        // Load user into provider
-        await context.read<UserProvider>().loadUser().timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            print('⏱️ [LoginScreen] User load timed out');
-          },
-        );
-
-        print('✅ [LoginScreen] User loaded, navigating to home');
-
+        // Navigate to home - account is already added by AuthService
         if (mounted) {
           Navigator.pushReplacementNamed(context, AppRoutes.home);
         }
       } else {
+        print('❌ [LoginScreen] Login failed: $success');
         _showError('Invalid email or password');
       }
     } catch (e) {

@@ -1,3 +1,4 @@
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/widgets/upload_progress_card.dart';
@@ -112,6 +113,8 @@ class _PostsTabState extends State<_PostsTab>
   final ScrollController _scrollController = ScrollController();
   final AuthService _auth = AuthService();
 
+  int? _currentUserId;
+
   List<dynamic> _posts = [];
   int _page = 1;
   bool _isLoading = false;
@@ -129,6 +132,11 @@ class _PostsTabState extends State<_PostsTab>
     // Delay initial load slightly to ensure widget is mounted
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        final accountManager = Provider.of<AccountManager>(
+          context,
+          listen: false,
+        );
+        _currentUserId = accountManager.activeUser?.id;
         _fetchPosts();
       }
     });
@@ -170,8 +178,8 @@ class _PostsTabState extends State<_PostsTab>
 
     setState(() => _isLoading = true);
 
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final user = userProvider.user;
+    final accountManager = Provider.of<AccountManager>(context, listen: false);
+    final user = accountManager.activeUser;
     final token = await _auth.getToken();
 
     if (user == null || token == null) {
@@ -249,6 +257,19 @@ class _PostsTabState extends State<_PostsTab>
     }
 
     _completedUploads.removeWhere((id) => !uploads.containsKey(id));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // ✅ Only check if we're actually coming back from account switch
+    final accountManager = Provider.of<AccountManager>(context, listen: false);
+    final newUserId = accountManager.activeUser?.id;
+
+    if (newUserId != null && newUserId != _currentUserId) {
+      _currentUserId = newUserId;
+      _fetchPosts(refresh: true);
+    }
   }
 
   @override

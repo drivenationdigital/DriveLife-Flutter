@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:drivelife/models/tagged_entity.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
+import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/chunk_upload_utility.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -8,6 +9,7 @@ import 'package:http/http.dart' as http;
 class PostsAPI {
   static const String _baseUrl = 'https://www.carevents.com/uk';
   static const _storage = FlutterSecureStorage();
+  static final AuthService _authService = AuthService();
 
   static Future<List<dynamic>> getPosts({
     required String token,
@@ -297,7 +299,7 @@ class PostsAPI {
     required String userId,
   }) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) {
         print('No auth token found');
         return false;

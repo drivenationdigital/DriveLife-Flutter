@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'package:drivelife/services/auth_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class UserService {
   static const String _apiUrl = 'https://www.carevents.com/uk';
   final _storage = const FlutterSecureStorage();
+  static final AuthService _authService = AuthService();
 
   /// Fetch any user's public profile by user ID or username
   Future<Map<String, dynamic>?> getUserProfile({
@@ -16,7 +18,7 @@ class UserService {
     }
 
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
 
       // Construct query parameters
       final queryParams = <String, String>{};
@@ -127,7 +129,7 @@ class UserService {
   /// Follow a user
   Future<bool> followUser(int userId, int sessionUserId) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) return false;
 
       print('🔍 [UserService] Following user $userId');
@@ -156,7 +158,7 @@ class UserService {
   /// Check if current user is following another user
   Future<bool> isFollowing(int userId) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) return false;
 
       final uri = Uri.parse(
@@ -187,7 +189,7 @@ class UserService {
   /// Get user's followers list
   Future<List<Map<String, dynamic>>> getFollowers(int userId, int page) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
 
       final uri = Uri.parse(
         '$_apiUrl/wp-json/app/v2/get-followers/?user_id=$userId&page=$page',
@@ -215,7 +217,7 @@ class UserService {
   /// Get user's following list
   Future<List<Map<String, dynamic>>> getFollowing(int userId) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
 
       final uri = Uri.parse(
         '$_apiUrl/wp-json/app/v2/get-following/?user_id=$userId',
@@ -243,7 +245,7 @@ class UserService {
   /// Remove follower
   Future<bool> removeFollower(String followerId) async {
     try {
-      final token = await _storage.read(key: 'token');
+      final token = await _authService.getToken();
       if (token == null) {
         print('No auth token found');
         return false;

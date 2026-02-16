@@ -1,17 +1,29 @@
 import 'dart:convert';
+import 'package:drivelife/models/user_model.dart';
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuthService {
   static const String _apiUrl = 'https://www.carevents.com/uk';
   final _storage = const FlutterSecureStorage();
+  AccountManager? _accountManager;
 
   static const _tokenKey = 'token';
   static const _userKey = 'user_data';
 
-  /// ✅ Login user and cache token + user profile
+  static final AuthService _instance = AuthService._internal();
+  factory AuthService() => _instance;
+  AuthService._internal();
+
+  void setAccountManager(AccountManager manager) {
+    _accountManager = manager;
+  }
+
+  /// Login user and cache token + user profile
   Future<bool> login(String email, String password) async {
     try {
+      print('🔐 Attempting login for $email');
       final uri = Uri.parse(
         '$_apiUrl/wp-json/ticket_scanner/v1/verify_user/?email=$email&password=$password',
       );
@@ -24,16 +36,24 @@ class AuthService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
+        print('✅ [AuthService] Login response: $data');
+
         final token = data['token'];
         if (token == null || token.isEmpty) return false;
 
-        // ✅ Save token securely
-        await _storage.write(key: _tokenKey, value: token);
+        // Fetch user profile
+        final userProfile = await _getUserProfileWithToken(token);
+        if (userProfile == null) return false;
 
-        // ✅ Immediately fetch user profile and save it
-        final user = await getUserProfile();
-        if (user != null) {
-          await _storage.write(key: _userKey, value: jsonEncode(user));
+        if (_accountManager != null) {
+          print('✅ Adding account to AccountManager');
+          print('📊 Current accounts: ${_accountManager!.accounts.length}');
+          await _accountManager!.addAccount(token, User.fromJson(userProfile));
+          print('📊 After adding: ${_accountManager!.accounts.length}');
+        } else {
+          print('⚠️ AccountManager is NULL - using fallback storage');
+          await _storage.write(key: _tokenKey, value: token);
+          await _storage.write(key: _userKey, value: jsonEncode(userProfile));
         }
 
         return true;
@@ -85,23 +105,29 @@ class AuthService {
     }
   }
 
-  /// ✅ Get cached token
+  /// Get cached token
   Future<String?> getToken() async {
+    if (_accountManager != null) {
+      return _accountManager!.activeToken;
+    }
+    // Fallback to old storage
     return await _storage.read(key: _tokenKey);
   }
 
-  /// ✅ Get cached user (no network call)
+  /// Get cached user (no network call)
   Future<Map<String, dynamic>?> getUser() async {
+    if (_accountManager != null) {
+      return _accountManager!.activeUser?.toJson();
+    }
+
+    // Fallback to old storage
     final data = await _storage.read(key: _userKey);
     if (data == null) return null;
     return jsonDecode(data);
   }
 
-  /// ✅ Fetch fresh user profile from API using stored token
-  Future<Map<String, dynamic>?> getUserProfile() async {
-    final token = await getToken();
-    if (token == null) return null;
-
+  /// ✅ Fetch user profile with specific token
+  Future<Map<String, dynamic>?> _getUserProfileWithToken(String token) async {
     try {
       final uri = Uri.parse('$_apiUrl/wp-json/app/v2/get-user-profile/');
       final response = await http.get(
@@ -114,14 +140,7 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final user = data['user'];
-
-        // ✅ Update cached user
-        if (user != null) {
-          await _storage.write(key: _userKey, value: jsonEncode(user));
-        }
-
-        return user;
+        return data['user'];
       } else {
         print('Failed to get profile: ${response.statusCode}');
         return null;
@@ -132,21 +151,47 @@ class AuthService {
     }
   }
 
-  /// ✅ Save session manually (for custom login flows)
-  Future<void> saveSession(String token, Map<String, dynamic> user) async {
-    await _storage.write(key: _tokenKey, value: token);
-    await _storage.write(key: _userKey, value: jsonEncode(user));
+  /// ✅ Fetch fresh user profile from API using active token
+  Future<Map<String, dynamic>?> getUserProfile() async {
+    final token = await getToken();
+    if (token == null) return null;
+
+    final profile = await _getUserProfileWithToken(token);
+
+    // Update account manager if available
+    if (profile != null && _accountManager != null) {
+      _accountManager!.updateActiveUser(User.fromJson(profile));
+    }
+
+    return profile;
   }
 
-  /// ✅ Check login state
+  /// Save session manually (for custom login flows)
+  Future<void> saveSession(String token, Map<String, dynamic> user) async {
+    if (_accountManager != null) {
+      await _accountManager!.addAccount(token, User.fromJson(user));
+    } else {
+      await _storage.write(key: _tokenKey, value: token);
+      await _storage.write(key: _userKey, value: jsonEncode(user));
+    }
+  }
+
+  /// Check login state
   Future<bool> isLoggedIn() async {
     final token = await getToken();
     return token != null && token.isNotEmpty;
   }
 
-  /// ✅ Logout (clear everything)
+  /// Logout (clear everything)
   Future<void> logout() async {
-    await _storage.delete(key: _tokenKey);
-    await _storage.delete(key: _userKey);
+    if (_accountManager != null) {
+      final activeIndex = _accountManager!.accounts.indexOf(
+        _accountManager!.activeAccount!,
+      );
+      await _accountManager!.removeAccount(activeIndex);
+    } else {
+      await _storage.delete(key: _tokenKey);
+      await _storage.delete(key: _userKey);
+    }
   }
 }
