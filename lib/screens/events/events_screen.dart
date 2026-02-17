@@ -49,7 +49,7 @@ class _EventsScreenState extends State<EventsScreen>
   // Filters
   String? _selectedDate = 'anytime'; // Changed default
   List<String> _selectedCategories = [];
-  String? _selectedLocation = 'near-me'; // Changed default
+  String? _selectedLocation = 'national'; // Changed default
 
   DateTime? _customDateFrom;
   DateTime? _customDateTo;

@@ -181,9 +181,6 @@ class EventsAPI {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print(
-          '✅ [EventsAPI] Events fetched: ${data['data']?.length ?? 0} events',
-        );
         return data;
       } else {
         print('❌ [EventsAPI] Error ${response.statusCode}: ${response.body}');
@@ -830,7 +827,6 @@ class EventsAPI {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print(data);
         return data;
       } else {
         print('❌ [EventsAPI] Error ${response.statusCode}: ${response.body}');
