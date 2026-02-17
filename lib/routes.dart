@@ -13,6 +13,7 @@ import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
 import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/view_venue_screen.dart';
+import 'package:drivelife/screens/profile/view_club_screen.dart';
 import 'package:drivelife/screens/search_screen.dart';
 import 'package:drivelife/screens/store/checkout/order_details_screen.dart';
 import 'package:drivelife/screens/store/checkout/order_success_screen.dart';
@@ -140,6 +141,16 @@ class AppRoutes {
             associationId: args['association_id'],
             associationType: args['association_type'],
             associationLabel: args['association_label'],
+          ),
+        );
+      case '/club-detail':
+        final args = settings.arguments as Map<String, dynamic>;
+
+        return _slide(
+          ClubViewScreen(
+            clubPostId: args['clubId'],
+            showAppBar: true, // Show app bar when viewing from search
+            isOwnClub: false, // Visitor view
           ),
         );
       case addClub:

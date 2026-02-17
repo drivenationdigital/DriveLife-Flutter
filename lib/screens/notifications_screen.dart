@@ -100,26 +100,43 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final entity = notification['entity'];
     final entityType = entity?['entity_type'];
     final entityId = entity?['entity_id'];
-    // final userId = entity?['user_id'];
     final initiatorData = entity?['initiator_data'] ?? {};
 
+    // ✅ Check initiator type
+    final initiatorEntityType = initiatorData['entity_type'] ?? 'user';
+    final initiatorId = initiatorData['id'];
+    final entityPostId = initiatorData['entity_post_id'];
+
     if (entityType == 'post' && entityId != null) {
-      // Navigate to post detail
       Navigator.pushNamed(
         context,
         '/post-detail',
         arguments: {'postId': entityId.toString()},
       );
-    } else if (entityType == 'user' || notification['type'] == 'follow') {
-      // Navigate to user profile
-      Navigator.pushNamed(
-        context,
-        '/view-profile',
-        arguments: {
-          'userId': initiatorData['id'],
-          'username': initiatorData['display_name'] ?? '',
-        },
-      );
+    } else if (notification['type'] == 'follow' || entityType == 'user') {
+      // ✅ Route to club or user profile based on who initiated
+      if (initiatorEntityType == 'club' && entityPostId != null) {
+        Navigator.pushNamed(
+          context,
+          '/club-detail',
+          arguments: {'clubId': entityPostId},
+        );
+      } else if (initiatorEntityType == 'venue' && entityPostId != null) {
+        Navigator.pushNamed(
+          context,
+          '/venue-detail',
+          arguments: {'venueId': entityPostId},
+        );
+      } else {
+        Navigator.pushNamed(
+          context,
+          '/view-profile',
+          arguments: {
+            'userId': initiatorId,
+            'username': initiatorData['display_name'] ?? '',
+          },
+        );
+      }
     }
   }
 
@@ -387,6 +404,63 @@ class _NotificationTile extends StatelessWidget {
     required this.onFollowBack,
   });
 
+  Widget _buildEntityAvatar(
+    BuildContext context,
+    Map<String, dynamic> initiatorData,
+    String? imageUrl,
+    bool isClub,
+  ) {
+    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+
+    return GestureDetector(
+      onTap: () => _navigateToInitiator(context, initiatorData),
+      child: CircleAvatar(
+        radius: 22,
+        backgroundColor: Colors.grey.shade200,
+        backgroundImage: hasImage ? NetworkImage(imageUrl!) : null,
+        child: !hasImage
+            ? Icon(
+                isClub ? Icons.car_repair : Icons.place,
+                color: Colors.grey.shade600,
+                size: 22,
+              )
+            : null,
+      ),
+    );
+  }
+
+  void _navigateToInitiator(
+    BuildContext context,
+    Map<String, dynamic> initiatorData,
+  ) {
+    final initiatorEntityType = initiatorData['entity_type'] ?? 'user';
+    final entityPostId = initiatorData['entity_post_id'];
+    final userId = initiatorData['id'];
+
+    if (initiatorEntityType == 'club' && entityPostId != null) {
+      Navigator.pushNamed(
+        context,
+        '/club-detail',
+        arguments: {'clubId': entityPostId},
+      );
+    } else if (initiatorEntityType == 'venue' && entityPostId != null) {
+      Navigator.pushNamed(
+        context,
+        '/venue-detail',
+        arguments: {'venueId': entityPostId},
+      );
+    } else {
+      Navigator.pushNamed(
+        context,
+        '/view-profile',
+        arguments: {
+          'userId': userId,
+          'username': initiatorData['display_name'] ?? '',
+        },
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final entity = notification['entity'] ?? {};
@@ -404,6 +478,12 @@ class _NotificationTile extends StatelessWidget {
     final isFollow = notification['type'] == 'follow';
     final postMedia = entityData['media'];
 
+    final initiatorEntityType = initiatorData['entity_type'] ?? 'user';
+    final entityPostId = initiatorData['entity_post_id'];
+    final isClub = initiatorEntityType == 'club';
+    final isVenue = initiatorEntityType == 'venue';
+    final isEntityAccount = isClub || isVenue;
+
     final userId = initiatorData['id'] is int
         ? initiatorData['id'] as int
         : int.tryParse(initiatorData['id']?.toString() ?? '') ?? 0;
@@ -418,12 +498,18 @@ class _NotificationTile extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ProfileAvatar(
-              imageUrl: profileImage,
-              radius: 22,
-              onTap: () =>
-                  _navigateToProfile(context, initiatorData, displayName),
-            ),
+            isEntityAccount
+                ? _buildEntityAvatar(
+                    context,
+                    initiatorData,
+                    profileImage,
+                    isClub,
+                  )
+                : ProfileAvatar(
+                    imageUrl: profileImage,
+                    radius: 22,
+                    onTap: () => _navigateToInitiator(context, initiatorData),
+                  ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

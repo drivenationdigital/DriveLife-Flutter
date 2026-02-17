@@ -114,6 +114,20 @@ class AuthService {
     return await _storage.read(key: _tokenKey);
   }
 
+  Future<String?> getParentUserToken() async {
+    // if active account is club, return parent user token
+    if (_accountManager != null && _accountManager!.activeAccount != null) {
+      final active = _accountManager!.activeAccount!;
+      if (active.isClubAccount && active.parentUserId != null) {
+        final parentAccount = _accountManager!.accounts.firstWhere(
+          (acc) => acc.user.id == active.parentUserId,
+        );
+
+        return parentAccount.token;
+      }
+    }
+  }
+
   /// Get cached user (no network call)
   Future<Map<String, dynamic>?> getUser() async {
     if (_accountManager != null) {

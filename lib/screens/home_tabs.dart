@@ -1,9 +1,11 @@
+import 'package:drivelife/models/account_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/auth/account_switcher.dart';
+import 'package:drivelife/screens/auth/entity_switcher.dart';
 import 'package:drivelife/screens/clubs/add_club_screen.dart';
 import 'package:drivelife/screens/clubs/club_creation_screen.dart';
 import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
@@ -13,6 +15,7 @@ import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
 import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
+import 'package:drivelife/screens/profile/my_club_profile_view.dart';
 import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
@@ -32,6 +35,7 @@ class HomeTabs extends StatefulWidget {
 
 class _HomeTabsState extends State<HomeTabs> {
   int _currentIndex = 0;
+  AccountType? _lastAccountType;
 
   // ============================================================================
   // GLOBAL KEY - Access posts screen state
@@ -41,21 +45,99 @@ class _HomeTabsState extends State<HomeTabs> {
 
   final _authService = AuthService();
 
-  late final List<Widget> _screens;
+  List<Widget> _screens = [];
 
   @override
   void initState() {
     super.initState();
 
-    _screens = [
-      PostsScreen(key: _postsScreenKey),
-      EventsScreen(),
-      VenuesScreen(),
-      MyClubsScreen(),
-      ShopScreen(),
-      ProfileScreen(),
-    ];
+    _buildScreens();
     _reloadUserData();
+    _loadManagedEntities();
+  }
+
+  // In home_tabs.dart
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final accountManager = Provider.of<AccountManager>(context, listen: false);
+    final currentAccount = accountManager.activeAccount;
+
+    // Rebuild screens if account type changed
+    final currentAccountType = currentAccount?.accountType;
+
+    if (currentAccountType != _lastAccountType) {
+      _lastAccountType = currentAccountType;
+      _buildScreens();
+    }
+  }
+
+  void _buildScreens() {
+    final accountManager = Provider.of<AccountManager>(context, listen: false);
+    final currentAccount = accountManager.activeAccount;
+
+    print('🏗️ Building screens...');
+    print('🏗️ Account type: ${currentAccount?.accountType}');
+    print('🏗️ Is club account: ${currentAccount?.isClubAccount}');
+
+    if (currentAccount?.isClubAccount ?? false) {
+      print('✅ Building CLUB screens');
+      // Club view - limited screens
+      _screens = [
+        PostsScreen(key: _postsScreenKey),
+        EventsScreen(),
+        VenuesScreen(),
+        MyClubsScreen(),
+        ShopScreen(),
+        ClubProfileScreen(),
+      ];
+    } else {
+      print('✅ Building USER screens');
+      // User view - full screens
+      _screens = [
+        PostsScreen(key: _postsScreenKey),
+        EventsScreen(),
+        VenuesScreen(),
+        MyClubsScreen(),
+        ShopScreen(),
+        ProfileScreen(),
+      ];
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  void _loadManagedEntities() async {
+    final accountManager = Provider.of<AccountManager>(context, listen: false);
+    final authService = AuthService();
+
+    final activeAccount = accountManager.activeAccount;
+
+    // ✅ Only load if we're on a USER account (not club/venue)
+    if (activeAccount == null || !activeAccount.isUserAccount) {
+      print('⏭️ Skipping entity load - not a user account');
+      return;
+    }
+
+    final user = activeAccount.user;
+    final token = await authService.getToken();
+
+    if (token == null) return;
+
+    // ✅ Check if we already have entities for this user
+    final existingEntities = accountManager.getEntitiesForUser(user.id);
+
+    if (existingEntities.isNotEmpty) {
+      print(
+        '✅ Already have ${existingEntities.length} entities for user ${user.id}',
+      );
+      return;
+    }
+
+    print('🔄 Loading managed entities for user ${user.id}');
+    await accountManager.loadManagedEntities(user.id, token);
   }
 
   void _reloadUserData() {
@@ -66,6 +148,10 @@ class _HomeTabsState extends State<HomeTabs> {
 
   // Show add menu popup
   void _showAddMenu(ThemeProvider theme) {
+    final accountManager = Provider.of<AccountManager>(context, listen: false);
+
+    final isUser = accountManager.activeAccount?.isUserAccount ?? false;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: theme.cardColor,
@@ -79,31 +165,79 @@ class _HomeTabsState extends State<HomeTabs> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                ListTile(
-                  leading: Icon(Icons.photo, color: theme.primaryColor),
-                  title: const Text('Add Post'),
-                  onTap: () {
-                    Navigator.pop(context); // Close bottom sheet
-                    NavigationHelper.navigateTo(
-                      context,
-                      const CreatePostScreen(),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.directions_car,
-                    color: theme.primaryColor,
+                if (isUser) ...[
+                  ListTile(
+                    leading: Icon(Icons.photo, color: theme.primaryColor),
+                    title: const Text('Add Post'),
+                    onTap: () {
+                      Navigator.pop(context); // Close bottom sheet
+                      NavigationHelper.navigateTo(
+                        context,
+                        const CreatePostScreen(),
+                      );
+                    },
                   ),
-                  title: const Text('Add Vehicle'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    NavigationHelper.navigateTo(
-                      context,
-                      const AddVehicleScreen(),
-                    );
-                  },
-                ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.place_outlined,
+                      color: theme.primaryColor,
+                    ),
+                    title: const Text('Add Venue'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      NavigationHelper.navigateTo(
+                        context,
+                        const CreateVenueScreen(),
+                      );
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.place_outlined,
+                      color: theme.primaryColor,
+                    ),
+                    title: const Text('Add Club'),
+                    onTap: () async {
+                      Navigator.pop(context);
+
+                      // Show bottom sheet first
+                      final result =
+                          await showModalBottomSheet<Map<String, dynamic>>(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (context) =>
+                                const ClubTypeSelectionSheet(),
+                          );
+
+                      // If club was created, navigate to edit screen
+                      if (result != null && result['clubId'] != null) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => CreateClubScreen(
+                              existingClubId: result['clubId'],
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.directions_car,
+                      color: theme.primaryColor,
+                    ),
+                    title: const Text('Add Vehicle'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      NavigationHelper.navigateTo(
+                        context,
+                        const AddVehicleScreen(),
+                      );
+                    },
+                  ),
+                ],
                 ListTile(
                   leading: Icon(Icons.event, color: theme.primaryColor),
                   title: const Text('Add Event'),
@@ -113,51 +247,6 @@ class _HomeTabsState extends State<HomeTabs> {
                       context,
                       const AddEventScreen(),
                     );
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.place_outlined,
-                    color: theme.primaryColor,
-                  ),
-                  title: const Text('Add Venue'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    NavigationHelper.navigateTo(
-                      context,
-                      const CreateVenueScreen(),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.place_outlined,
-                    color: theme.primaryColor,
-                  ),
-                  title: const Text('Add Club'),
-                  onTap: () async {
-                    Navigator.pop(context);
-
-                    // Show bottom sheet first
-                    final result =
-                        await showModalBottomSheet<Map<String, dynamic>>(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (context) => const ClubTypeSelectionSheet(),
-                        );
-
-                    // If club was created, navigate to edit screen
-                    if (result != null && result['clubId'] != null) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => CreateClubScreen(
-                            existingClubId: result['clubId'],
-                          ),
-                        ),
-                      );
-                    }
                   },
                 ),
               ],
@@ -206,8 +295,32 @@ class _HomeTabsState extends State<HomeTabs> {
   Widget _buildProfileIcon() {
     return Consumer<AccountManager>(
       builder: (context, accountManager, child) {
-        final user = accountManager.activeUser;
-        final url = user?.profileImage;
+        final account = accountManager.activeAccount;
+
+        if (account == null) {
+          return const Icon(Icons.person_outline);
+        }
+
+        // Show club icon for club accounts
+        if (account.isClubAccount) {
+          final url = account.user.profileImage;
+          final hasUrl = (url != null && url.trim().isNotEmpty);
+
+          return GestureDetector(
+            onLongPress: () => _showAccountSwitcher(),
+            child: hasUrl
+                ? CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Colors.transparent,
+                    backgroundImage: NetworkImage(url!),
+                    onBackgroundImageError: (_, __) {},
+                  )
+                : const Icon(Icons.car_repair),
+          );
+        }
+
+        // Show user icon for user accounts
+        final url = account.user.profileImage;
         final hasUrl = (url != null && url.trim().isNotEmpty);
 
         return GestureDetector(
@@ -226,11 +339,13 @@ class _HomeTabsState extends State<HomeTabs> {
   }
 
   void _showAccountSwitcher() {
+    _loadManagedEntities();
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => const AccountSwitcherSheet(),
+      builder: (context) => const EntitySwitcherSheet(),
     );
   }
 
@@ -294,6 +409,19 @@ class _HomeTabsState extends State<HomeTabs> {
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
+    final accountManager = Provider.of<AccountManager>(context);
+
+    // ✅ Rebuild screens if account type changes
+    final currentAccountType = accountManager.activeAccount?.accountType;
+    if (currentAccountType != _lastAccountType) {
+      _lastAccountType = currentAccountType;
+      _buildScreens();
+    }
+
+    // Safety check
+    if (_screens.isEmpty) {
+      return Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     return PopScope(
       canPop: _currentIndex == 0, // Only allow pop if on home tab

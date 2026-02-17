@@ -1,10 +1,12 @@
 // providers/account_manager.dart
 import 'dart:convert';
+import 'package:drivelife/config/api_config.dart';
 import 'package:drivelife/models/account_model.dart';
 import 'package:drivelife/models/user_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 
 class AccountManager extends ChangeNotifier {
   List<Account> _accounts = [];
@@ -15,6 +17,177 @@ class AccountManager extends ChangeNotifier {
       _accounts.isEmpty ? null : _accounts[_activeAccountIndex];
   User? get activeUser => activeAccount?.user;
   String? get activeToken => activeAccount?.token;
+
+  List<Account> get userAccounts =>
+      _accounts.where((a) => a.isUserAccount).toList();
+  List<Account> get entityAccounts =>
+      _accounts.where((a) => a.isEntityAccount).toList();
+
+  // Get entities for specific user
+  List<Account> getEntitiesForUser(int userId) {
+    return _accounts.where((a) => a.parentUserId == userId).toList();
+  }
+
+  // Get parent user account
+  Account? getParentAccount(Account entityAccount) {
+    if (entityAccount.parentUserId == null) return null;
+    return _accounts.firstWhere(
+      (a) => a.isUserAccount && a.user.id == entityAccount.parentUserId,
+      orElse: () => entityAccount,
+    );
+  }
+
+  // providers/account_manager.dart
+
+  // ✅ Fix loadManagedEntities to properly handle entity accounts
+  Future<void> loadManagedEntities(int userId, String token) async {
+    try {
+      print('🔄 Loading managed entities for user $userId...');
+
+      // Fetch clubs/venues where user is owner/admin
+      final entities = await _fetchManagedEntities(userId, token);
+
+      print('📊 Fetched ${entities.length} entities from API');
+
+      // ✅ Remove OLD entities for this user ONLY (not all entities)
+      _accounts.removeWhere(
+        (a) => a.isEntityAccount && a.parentUserId == userId,
+      );
+
+      print('🗑️ Removed old entities for user $userId');
+
+      // Add new entities
+      for (var entity in entities) {
+        print(
+          '➕ Processing entity: ${entity['user']['username']} (Type: ${entity['type']})',
+        );
+        final entityType = entity['type'] == 'club'
+            ? AccountType.club
+            : AccountType.venue;
+
+        await addEntityAccount(
+          token: entity['token'],
+          entityUser: User.fromJson(entity['user']),
+          parentUserId: userId,
+          type: entityType,
+          entityMeta: entity['meta'],
+        );
+
+        print(
+          '✅ Added ${entityType.toString()}: ${entity['user']['username']}',
+        );
+      }
+
+      print('✅ Loaded ${entities.length} entities for user $userId');
+    } catch (e) {
+      print('❌ Error loading managed entities: $e');
+    }
+  }
+
+  // ✅ Add this method to clean up duplicates (run once)
+  Future<void> cleanupDuplicates() async {
+    print('🧹 Cleaning up duplicate accounts...');
+
+    final seen = <int, Set<AccountType>>{};
+    final toRemove = <int>[];
+
+    for (var i = 0; i < _accounts.length; i++) {
+      final account = _accounts[i];
+      final userId = account.user.id;
+      final type = account.accountType;
+
+      if (seen[userId] == null) {
+        seen[userId] = {type};
+      } else if (seen[userId]!.contains(type)) {
+        // Duplicate found
+        print('🗑️ Found duplicate: ${account.user.username} (${type})');
+        toRemove.add(i);
+      } else {
+        seen[userId]!.add(type);
+      }
+    }
+
+    // Remove duplicates in reverse order
+    for (var i in toRemove.reversed) {
+      _accounts.removeAt(i);
+    }
+
+    print('✅ Removed ${toRemove.length} duplicates');
+
+    await _saveAccounts();
+    notifyListeners();
+  }
+
+  // ✅ Make sure addEntityAccount doesn't add duplicates
+  Future<void> addEntityAccount({
+    required String token,
+    required User entityUser,
+    required int parentUserId,
+    required AccountType type,
+    required Map<String, dynamic> entityMeta,
+  }) async {
+    print(
+      '➕ Adding entity: ${entityUser.username}, Type: $type, UserID: ${entityUser.id}',
+    );
+
+    // ✅ Check if this exact entity already exists
+    final existingIndex = _accounts.indexWhere(
+      (a) => a.user.id == entityUser.id && a.accountType == type,
+    );
+
+    if (existingIndex != -1) {
+      print('⚠️ Entity already exists at index $existingIndex - SKIPPING');
+      return; // ✅ Don't update, just skip
+    }
+
+    final account = Account(
+      token: token,
+      user: entityUser,
+      lastUsed: DateTime.now(),
+      accountType: type,
+      parentUserId: parentUserId,
+      entityMeta: entityMeta,
+    );
+
+    _accounts.add(account);
+    print('✅ Added ${type.toString()} account: ${entityUser.username}');
+
+    await _saveAccounts();
+    notifyListeners();
+  }
+
+  // In account_manager.dart, update the fetch method:
+
+  Future<List<Map<String, dynamic>>> _fetchManagedEntities(
+    int userId,
+    String token,
+  ) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/managed-entities'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('📡 Fetching managed entities for user $userId');
+      print('📊 Response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print(data);
+        print('✅ Fetched ${data['total']} entities');
+        return List<Map<String, dynamic>>.from(data['entities'] ?? []);
+      } else {
+        print('❌ Failed to fetch entities: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('❌ Error fetching entities: $e');
+      return [];
+    }
+  }
 
   // Load all accounts from storage
   Future<void> loadAccounts() async {
@@ -88,17 +261,27 @@ class AccountManager extends ChangeNotifier {
   }
 
   // Switch to account
+  // In account_manager.dart - FIXED:
+
   Future<void> switchAccount(int index) async {
     if (index < 0 || index >= _accounts.length) return;
 
     _activeAccountIndex = index;
+
+    // ✅ Keep all the account data, just update lastUsed
     _accounts[index] = Account(
       token: _accounts[index].token,
       user: _accounts[index].user,
       lastUsed: DateTime.now(),
+      accountType: _accounts[index].accountType, // ✅ Keep the type!
+      parentUserId: _accounts[index].parentUserId, // ✅ Keep parent!
+      entityMeta: _accounts[index].entityMeta, // ✅ Keep meta!
     );
 
     await _saveAccounts();
+    print(
+      '✅ Switched to ${_accounts[index].accountType}: ${_accounts[index].user.username}',
+    );
     notifyListeners();
   }
 

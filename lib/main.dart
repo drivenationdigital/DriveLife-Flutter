@@ -31,6 +31,8 @@ void main() async {
   final accountManager = AccountManager();
   await accountManager.loadAccounts();
 
+  await accountManager.cleanupDuplicates();
+
   final authService = AuthService();
   authService.setAccountManager(accountManager);
 

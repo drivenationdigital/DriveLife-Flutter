@@ -25,6 +25,8 @@ class SearchResultsContent extends StatelessWidget {
   // Vehicle callbacks
   final Function(Map<String, dynamic>)? onVehicleTap;
 
+  final Function(Map<String, dynamic>)? onClubTap;
+
   const SearchResultsContent({
     Key? key,
     required this.isSearching,
@@ -32,6 +34,7 @@ class SearchResultsContent extends StatelessWidget {
     required this.resultType,
     required this.primaryColor,
     this.onEventTap,
+    this.onClubTap,
     this.formatEventDate,
     this.formatEventTime,
     this.onUserTap,
@@ -101,10 +104,87 @@ class SearchResultsContent extends StatelessWidget {
             return _buildVenueCard(context, item);
           case 'vehicles':
             return _buildVehicleCard(context, item);
+          case 'clubs':
+            return _buildClubCard(context, item);
           default:
             return const SizedBox();
         }
       },
+    );
+  }
+
+  Widget _buildClubCard(BuildContext context, Map<String, dynamic> club) {
+    final memberCount = club['member_count'] ?? 0;
+    final clubType = club['club_type'] ?? 'Public';
+    final location = club['location'] ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: () => onClubTap?.call(club),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: Colors.grey.shade300,
+                backgroundImage: (club['thumbnail'] ?? '').isNotEmpty
+                    ? NetworkImage(club['thumbnail'])
+                    : null,
+                child: (club['thumbnail'] ?? '').isEmpty
+                    ? Icon(
+                        Icons.car_repair,
+                        color: Colors.grey.shade600,
+                        size: 32,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      club['name'] ?? '',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$clubType • $memberCount members',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    if (location.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on,
+                            size: 12,
+                            color: primaryColor,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            location,
+                            style: TextStyle(fontSize: 12, color: primaryColor),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: Colors.grey.shade400),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -136,6 +216,8 @@ class SearchResultsContent extends StatelessWidget {
         return Icons.location_off;
       case 'vehicles':
         return Icons.directions_car_outlined;
+      case 'clubs':
+        return Icons.group_off;
       default:
         return Icons.search_off;
     }
@@ -546,7 +628,7 @@ class _SearchScreenState extends State<SearchScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     _searchController.text = '';
 
     // Perform initial search
@@ -652,6 +734,7 @@ class _SearchScreenState extends State<SearchScreen>
                   _buildEventsTab(theme),
                   _buildVenuesTab(theme),
                   _buildUsersTab(theme),
+                  _buildClubsTab(theme),
                   _buildVehiclesTab(theme),
                 ],
               ),
@@ -659,6 +742,23 @@ class _SearchScreenState extends State<SearchScreen>
           ],
         ),
       ),
+    );
+  }
+
+  // ✅ Add clubs tab builder
+  Widget _buildClubsTab(ThemeProvider theme) {
+    return SearchResultsContent(
+      isSearching: _isSearching,
+      searchResults: _searchResults,
+      resultType: 'clubs',
+      primaryColor: theme.primaryColor,
+      onClubTap: (club) {
+        Navigator.pushNamed(
+          context,
+          '/club-detail',
+          arguments: {'clubId': club['club_post_id']},
+        );
+      },
     );
   }
 
@@ -715,6 +815,7 @@ class _SearchScreenState extends State<SearchScreen>
           Tab(text: 'Events'),
           Tab(text: 'Venues'),
           Tab(text: 'Users'),
+          Tab(text: 'Clubs'),
           Tab(text: 'Vehicles'),
         ],
       ),
@@ -784,6 +885,17 @@ class _SearchScreenState extends State<SearchScreen>
           const SizedBox(height: 24),
         ],
 
+        if (topResults['clubs'] != null &&
+            (topResults['clubs'] as List).isNotEmpty) ...[
+          _buildSectionHeader('Clubs', () {
+            _tabController.animateTo(4);
+          }, theme),
+          ...((topResults['clubs'] as List)
+              .take(3)
+              .map((club) => _buildClubCard(club, theme))),
+          const SizedBox(height: 24),
+        ],
+
         // Venues section
         if (topResults['venues'] != null &&
             (topResults['venues'] as List).isNotEmpty) ...[
@@ -795,6 +907,65 @@ class _SearchScreenState extends State<SearchScreen>
           )),
         ],
       ],
+    );
+  }
+
+  Widget _buildClubCard(Map<String, dynamic> club, ThemeProvider theme) {
+    final memberCount = club['member_count'] ?? 0;
+    final clubType = club['club_type'] ?? 'Public';
+    final location = club['location'] ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: () {
+          Navigator.pushNamed(
+            context,
+            '/club-detail',
+            arguments: {'clubId': club['club_post_id']},
+          );
+        },
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 25,
+              backgroundColor: Colors.grey.shade300,
+              backgroundImage: (club['thumbnail'] ?? '').isNotEmpty
+                  ? NetworkImage(club['thumbnail'])
+                  : null,
+              child: (club['thumbnail'] ?? '').isEmpty
+                  ? Icon(
+                      Icons.car_repair,
+                      color: Colors.grey.shade600,
+                      size: 28,
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    club['name'] ?? '',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    '$clubType • $memberCount members${location.isNotEmpty ? ' • $location' : ''}',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: Colors.grey.shade400),
+          ],
+        ),
+      ),
     );
   }
 

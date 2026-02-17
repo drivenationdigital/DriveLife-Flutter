@@ -49,6 +49,154 @@ class ClubApiService {
     }
   }
 
+  static Future<Map<String, dynamic>?> getClubDetails({
+    required int clubPostId,
+  }) async {
+    try {
+      final token = await AuthService().getParentUserToken();
+      final response = await http.get(
+        Uri.parse(
+          '${ApiConfig.baseUrl}/wp-json/app/v1/club-details/$clubPostId',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('Requesting club details $clubPostId');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          return data['club'];
+        }
+        print('❌ Failed to load club details: ${data['message']}');
+        return null;
+      }
+      return null;
+    } catch (e) {
+      print('❌ Error fetching club: $e');
+      return null;
+    }
+  }
+
+  static Future<bool> submitJoinRequest({
+    required String clubId,
+    required List<Map<String, String>> questionsAndAnswers,
+    // questionsAndAnswers: [{'question': '...', 'answer': '...'}]
+  }) async {
+    try {
+      final token = await AuthService().getToken();
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/club-join'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: json.encode({
+          'club_id': clubId,
+          'questions': questionsAndAnswers,
+        }),
+      );
+
+      print(
+        'Submitting join request for club $clubId with answers: $questionsAndAnswers',
+      );
+
+      final data = json.decode(response.body);
+      print(data);
+
+      if (response.statusCode == 200) {
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('Error submitting join request: $e');
+      return false;
+    }
+  }
+
+  // Cancel your own join request
+  static Future<bool> cancelJoinRequest({required String clubId}) async {
+    return _postSimple('/club-cancel-join', {'club_id': clubId});
+  }
+
+  // Accept a pending member (owner/admin)
+  static Future<bool> acceptMemberRequest({
+    required String clubId,
+    required String userId,
+  }) async {
+    return _postSimple('/club-accept-request', {
+      'club_id': clubId,
+      'user_id': userId,
+    });
+  }
+
+  // Decline a pending member (owner/admin)
+  static Future<bool> declineMemberRequest({
+    required String clubId,
+    required String userId,
+  }) async {
+    return _postSimple('/club-decline-request', {
+      'club_id': clubId,
+      'user_id': userId,
+    });
+  }
+
+  // Shared POST helper
+  static Future<bool> _postSimple(
+    String endpoint,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      final token = await AuthService().getToken();
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1$endpoint'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: json.encode(body),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body)['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('Error calling $endpoint: $e');
+      return false;
+    }
+  }
+
+  static Future<List<dynamic>?> fetchClubMembers(String clubId) async {
+    try {
+      final token = await AuthService().getToken();
+
+      final response = await http.get(
+        Uri.parse(
+          '${ApiConfig.baseUrl}/wp-json/app/v1/club-members?club_id=$clubId',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          return data['members'];
+        }
+      }
+      throw Exception('Failed to load club members');
+    } catch (e) {
+      print('Error fetching club members: $e');
+      throw e;
+    }
+  }
+
   /// Invite a club administrator
   ///
   /// [encryptedClubId] - Encrypted club ID from the server
