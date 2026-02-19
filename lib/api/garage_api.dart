@@ -132,7 +132,7 @@ class GarageAPI {
   ) async {
     try {
       final response = await http.put(
-        Uri.parse('${_apiUrl}/wp-json/app/v1/garage/$vehicleId'),
+        Uri.parse('$_apiUrl/wp-json/app/v1/garage/$vehicleId'),
         headers: const {'Content-Type': 'application/json'},
         body: json.encode({...payload, 'user_id': userId}),
       );
@@ -302,7 +302,7 @@ class GarageAPI {
   ) async {
     try {
       final response = await http.post(
-        Uri.parse('${_apiUrl}/wp-json/app/v1/delete-garage'),
+        Uri.parse('$_apiUrl/wp-json/app/v1/delete-garage'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'user_id': userId, 'garage_id': garageId}),
       );
@@ -323,7 +323,7 @@ class GarageAPI {
   ) async {
     try {
       final response = await http.post(
-        Uri.parse('${_apiUrl}/wp-json/app/v2/add-vehicle-mod'),
+        Uri.parse('$_apiUrl/wp-json/app/v2/add-vehicle-mod'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({...payload, 'user_id': userId}),
       );
@@ -345,7 +345,7 @@ class GarageAPI {
   ) async {
     try {
       final response = await http.post(
-        Uri.parse('${_apiUrl}/wp-json/app/v2/update-vehicle-mod'),
+        Uri.parse('$_apiUrl/wp-json/app/v2/update-vehicle-mod'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({...payload, 'mod_id': modId, 'user_id': userId}),
       );
@@ -512,7 +512,7 @@ class GarageAPI {
   ) async {
     try {
       final response = await http.post(
-        Uri.parse('${_apiUrl}/wp-json/app/v2/delete-vehicle-mod'),
+        Uri.parse('$_apiUrl/wp-json/app/v2/delete-vehicle-mod'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'mod_id': modId, 'user_id': userId}),
       );
@@ -530,7 +530,7 @@ class GarageAPI {
   static Future<Map<String, dynamic>?> getModById(String modId) async {
     try {
       final response = await http.get(
-        Uri.parse('${_apiUrl}/wp-json/app/v2/get-vehicle-mod?mod_id=$modId'),
+        Uri.parse('$_apiUrl/wp-json/app/v2/get-vehicle-mod?mod_id=$modId'),
         headers: {'Content-Type': 'application/json'},
       );
 

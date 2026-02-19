@@ -238,8 +238,9 @@ class ClubUpdateRequest {
     if (instagram != null) data['instagram'] = instagram;
     if (merchandiseLink != null) data['merchandise_link'] = merchandiseLink;
     if (description != null) data['description'] = description;
-    if (membershipQuestions != null)
+    if (membershipQuestions != null) {
       data['membership_questions'] = membershipQuestions;
+    }
     if (clubTerms != null) data['club_terms'] = clubTerms;
 
     return data;

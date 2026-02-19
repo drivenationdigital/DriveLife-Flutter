@@ -199,7 +199,7 @@ class PostsAPI {
     String? location,
     String? linkType,
     String? linkUrl,
-    dynamic? associationId,
+    dynamic associationId,
     String? associationType,
     List<Map<String, dynamic>>? mentionedUsers,
     List<Map<String, dynamic>>? mentionedHashtags,

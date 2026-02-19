@@ -45,7 +45,7 @@ class ClubApiService {
       throw Exception('Failed to load club details');
     } catch (e) {
       print('Error fetching club details: $e');
-      throw e;
+      rethrow;
     }
   }
 
@@ -193,7 +193,7 @@ class ClubApiService {
       throw Exception('Failed to load club members');
     } catch (e) {
       print('Error fetching club members: $e');
-      throw e;
+      rethrow;
     }
   }
 
@@ -526,7 +526,7 @@ class ClubApiService {
       throw Exception('Failed to load categories');
     } catch (e) {
       print('Error fetching categories: $e');
-      throw e;
+      rethrow;
     }
   }
 }

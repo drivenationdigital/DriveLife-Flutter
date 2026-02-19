@@ -100,7 +100,7 @@ class AccountManager extends ChangeNotifier {
         seen[userId] = {type};
       } else if (seen[userId]!.contains(type)) {
         // Duplicate found
-        print('🗑️ Found duplicate: ${account.user.username} (${type})');
+        print('🗑️ Found duplicate: ${account.user.username} ($type)');
         toRemove.add(i);
       } else {
         seen[userId]!.add(type);
