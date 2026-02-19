@@ -1,6 +1,8 @@
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/widgets/formatted_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../api/interactions_api.dart';
 
 class CommentItem extends StatefulWidget {
@@ -90,12 +92,55 @@ class _CommentItemState extends State<CommentItem> {
     widget.onDeleteTap?.call();
   }
 
+  IconData _getEntityIcon(String? entityType) {
+    switch (entityType) {
+      case 'club':
+        return Icons.car_repair;
+      case 'venue':
+        return Icons.place;
+      default:
+        return Icons.person;
+    }
+  }
+
+  void _onCommentUserTap(Map<String, dynamic> comment) {
+    final entityType = comment['entity_type'] ?? 'user';
+    final entityPostId = comment['entity_post_id'];
+    final userId = comment['user_id'];
+
+    if (entityType == 'club' && entityPostId != null) {
+      Navigator.pushNamed(
+        context,
+        '/club-detail',
+        arguments: {'clubId': entityPostId},
+      );
+    } else if (entityType == 'venue' && entityPostId != null) {
+      Navigator.pushNamed(
+        context,
+        '/venue-detail',
+        arguments: {'venueId': entityPostId},
+      );
+    } else {
+      Navigator.pushNamed(
+        context,
+        '/view-profile',
+        arguments: {'userId': userId, 'username': comment['user_login'] ?? ''},
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     final c = widget.comment;
     final username = c['display_name'] ?? c['user_login'] ?? 'user';
     final timeAgo = _getTimeAgo(c['date']);
     final commentText = c['comment'] ?? "";
+    final entityType = c['entity_type'] ?? 'user';
+    final isEntity = entityType == 'club' || entityType == 'venue';
+    final likedByOwner = c['liked_by_owner'] == true;
+    final ownerProfileImage = c['owner_profile_image'];
 
     return GestureDetector(
       onLongPress: widget.onDeleteTap != null ? _handleDelete : null,
@@ -109,24 +154,63 @@ class _CommentItemState extends State<CommentItem> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Profile picture
-            CircleAvatar(
-              radius: widget.isReply ? 14 : 18,
-              backgroundColor: Colors.grey.shade300,
-              backgroundImage:
-                  (c['profile_image'] != null &&
-                      c['profile_image'].toString().isNotEmpty)
-                  ? NetworkImage(c['profile_image'])
-                  : null,
-              child:
-                  (c['profile_image'] == null ||
-                      c['profile_image'].toString().isEmpty)
-                  ? Icon(
-                      Icons.person,
-                      size: widget.isReply ? 14 : 18,
-                      color: Colors.grey.shade600,
-                    )
-                  : null,
+            // ✅ Profile picture with owner like overlay
+            GestureDetector(
+              onTap: () => _onCommentUserTap(c),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  CircleAvatar(
+                    radius: widget.isReply ? 14 : 18,
+                    backgroundColor: Colors.grey.shade300,
+                    backgroundImage:
+                        (c['profile_image'] != null &&
+                            c['profile_image'].toString().isNotEmpty)
+                        ? NetworkImage(c['profile_image'])
+                        : null,
+                    child:
+                        (c['profile_image'] == null ||
+                            c['profile_image'].toString().isEmpty)
+                        ? Icon(
+                            _getEntityIcon(c['entity_type']),
+                            size: widget.isReply ? 14 : 18,
+                            color: Colors.grey.shade600,
+                          )
+                        : null,
+                  ),
+
+                  // ✅ Owner liked indicator (floating circle)
+                  if (likedByOwner)
+                    Positioned(
+                      right:-10,
+                      bottom: 20,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        child: CircleAvatar(
+                          radius: 7,
+                          backgroundColor: Colors.grey.shade200,
+                          backgroundImage:
+                              (ownerProfileImage != null &&
+                                  ownerProfileImage.toString().isNotEmpty)
+                              ? NetworkImage(ownerProfileImage)
+                              : null,
+                          child:
+                              (ownerProfileImage == null ||
+                                  ownerProfileImage.toString().isEmpty)
+                              ? Icon(
+                                  Icons.favorite,
+                                  size: 7,
+                                  color: Colors.red,
+                                )
+                              : null,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
             const SizedBox(width: 12),
 
@@ -135,14 +219,55 @@ class _CommentItemState extends State<CommentItem> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Username
-                  Text(
-                    username,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black,
-                      fontSize: 14,
-                    ),
+                  // ✅ Username with entity badge
+                  Row(
+                    children: [
+                      Text(
+                        username,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black,
+                          fontSize: 14,
+                        ),
+                      ),
+
+                      // ✅ Entity badge (like Discord)
+                      if (isEntity) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.primaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                entityType == 'club'
+                                    ? Icons.car_repair
+                                    : Icons.place,
+                                size: 10,
+                                color: theme.primaryColor.withOpacity(0.8),
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                entityType.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  color: theme.primaryColor.withOpacity(0.8),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
 
                   // Comment text with FormattedText
@@ -163,11 +288,6 @@ class _CommentItemState extends State<CommentItem> {
                           arguments: {'userId': userId},
                         );
                       },
-                      // style: const TextStyle(
-                      //   color: Colors.black87,
-                      //   fontSize: 14,
-                      //   height: 1.4,
-                      // ),
                     ),
                   ],
 

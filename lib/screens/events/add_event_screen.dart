@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/models/event_media.dart';
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -647,6 +648,14 @@ class _AddEventScreenState extends State<AddEventScreen>
     setState(() => _isLoading = true);
 
     try {
+      final accountManager = Provider.of<AccountManager>(
+        context,
+        listen: false,
+      );
+      final currentAccount = accountManager.activeAccount;
+
+      final clubId = currentAccount?.isClubAccount == true ? currentAccount?.entityMeta!['club_post_id'] : null;
+            
       final description = _getQuillContentAsHtml(_descriptionController);
       final entryDetails = _getQuillContentAsHtml(_entryDetailsController);
       final entryDetailsFree = _getQuillContentAsHtml(
@@ -683,6 +692,7 @@ class _AddEventScreenState extends State<AddEventScreen>
         ticketType: _ticketType,
         entryDetailsFree: _ticketType == '1' ? entryDetailsFree : null,
         entryDetails: _ticketType == '3' ? entryDetails : null,
+          clubId: currentAccount?.isClubAccount == true ? clubId : null, // Pass club ID if available
       );
 
       if (response != null && response['success'] == true) {

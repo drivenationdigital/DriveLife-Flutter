@@ -1,4 +1,3 @@
-// screens/clubs/club_view_screen.dart
 import 'package:drivelife/api/club_api_service.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/routes.dart';
@@ -36,10 +35,15 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   bool _hasPendingRequest = false;
   bool _isOwner = false;
 
+  List<Map<String, dynamic>> _events = [];
+  bool _loadingEvents = false;
+  bool _eventsLoaded = false;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _loadClubData();
   }
 
@@ -47,6 +51,39 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (_tabController.index == 0 && !_eventsLoaded) {
+      _loadClubEvents();
+    }
+  }
+
+  Future<void> _loadClubEvents() async {
+    if (_loadingEvents || _clubData == null) return;
+
+    setState(() => _loadingEvents = true);
+
+    try {
+      final data = await ClubApiService.getClubEvents(
+        clubPostId: _clubData!['id'],
+        page: 1,
+        perPage: 20,
+      );
+
+      print(data);
+
+      if (mounted && data != null && data['success'] == true) {
+        setState(() {
+          _events = List<Map<String, dynamic>>.from(data['events'] ?? []);
+          _eventsLoaded = true;
+          _loadingEvents = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading events: $e');
+      if (mounted) setState(() => _loadingEvents = false);
+    }
   }
 
   Future<void> _loadClubData() async {
@@ -96,6 +133,9 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             _hasPendingRequest = data['has_pending_request'] ?? false;
             _isLoading = false;
           });
+
+          
+          _loadClubEvents();
         }
       }
     } catch (e) {
@@ -105,6 +145,9 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   }
 
   Future<void> _refreshClub() async {
+    setState(
+      () => _eventsLoaded = false,
+    ); // Reset events loaded state to allow reloading
     await _loadClubData();
   }
 
@@ -608,24 +651,177 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   }
 
   Widget _buildEventsTab(ThemeProvider theme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.event_rounded, size: 56, color: Colors.grey.shade300),
-          const SizedBox(height: 14),
-          Text(
-            'No upcoming events',
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Check back soon',
-            style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+    if (_loadingEvents) {
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
+      );
+    }
+
+    if (_events.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.event_rounded, size: 56, color: Colors.grey.shade300),
+            const SizedBox(height: 14),
+            Text(
+              'No upcoming events',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Check back soon',
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _events.length,
+      itemBuilder: (context, index) {
+        final event = _events[index];
+        return _buildEventCard(event, theme);
+      },
+    );
+  }
+
+  Widget _buildEventCard(Map<String, dynamic> event, ThemeProvider theme) {
+    final startDate = event['start_date'] ?? '';
+    final location = event['location'] ?? 'TBA';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.shade200,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
+      child: InkWell(
+        onTap: () {
+          Navigator.pushNamed(
+            context,
+            '/event-detail',
+            arguments: {'event': event},
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Row(
+          children: [
+            // Event image
+            ClipRRect(
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                bottomLeft: Radius.circular(12),
+              ),
+              child: event['cover_image'] != null
+                  ? Image.network(
+                      event['cover_image'],
+                      width: 100,
+                      height: 100,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _buildEventPlaceholder(),
+                    )
+                  : _buildEventPlaceholder(),
+            ),
+
+            // Event details
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      event['name'] ?? '',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (startDate.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatEventDate(startDate),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: theme.primaryColor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      location,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  Widget _buildEventPlaceholder() {
+    return Container(
+      width: 100,
+      height: 100,
+      color: Colors.grey.shade300,
+      child: const Icon(Icons.event, size: 40, color: Colors.grey),
+    );
+  }
+
+  String _formatEventDate(String date) {
+    try {
+      // Parse "02/15/2026 10:00 AM" format
+      final parts = date.split(' ');
+      if (parts.isEmpty) return date;
+
+      final dateParts = parts[0].split('/');
+      if (dateParts.length != 3) return date;
+
+      final month = int.parse(dateParts[0]);
+      final day = int.parse(dateParts[1]);
+      final year = int.parse(dateParts[2]);
+
+      final monthNames = [
+        '',
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+
+      return '${monthNames[month]} $day, $year';
+    } catch (e) {
+      return date;
+    }
   }
 
   Widget _buildAnnouncementsTab(ThemeProvider theme) {
@@ -930,10 +1126,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
 
   void _handleEmailClub() {
     // TODO: Implement email club
-  }
-
-  void _showClubOptions() {
-    // TODO: Show options for club owner/admin
   }
 
   void _openUrl(String url) {

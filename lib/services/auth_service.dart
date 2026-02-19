@@ -126,6 +126,9 @@ class AuthService {
         return parentAccount.token;
       }
     }
+
+    // Fallback to active token
+    return await getToken();
   }
 
   /// Get cached user (no network call)
@@ -138,6 +141,23 @@ class AuthService {
     final data = await _storage.read(key: _userKey);
     if (data == null) return null;
     return jsonDecode(data);
+  }
+
+  // Get parent user (for club accounts)
+  Future<Map<String, dynamic>?> getParentUser() async {
+    if (_accountManager != null && _accountManager!.activeAccount != null) {
+      final active = _accountManager!.activeAccount!;
+      if (active.isClubAccount && active.parentUserId != null) {
+        final parentAccount = _accountManager!.accounts.firstWhere(
+          (acc) => acc.user.id == active.parentUserId,
+        );
+
+        return parentAccount.user.toJson();
+      }
+    }
+
+    // Fallback to active user
+    return await getUser();
   }
 
   /// ✅ Fetch user profile with specific token

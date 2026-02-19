@@ -479,7 +479,6 @@ class _NotificationTile extends StatelessWidget {
     final postMedia = entityData['media'];
 
     final initiatorEntityType = initiatorData['entity_type'] ?? 'user';
-    final entityPostId = initiatorData['entity_post_id'];
     final isClub = initiatorEntityType == 'club';
     final isVenue = initiatorEntityType == 'venue';
     final isEntityAccount = isClub || isVenue;
@@ -546,24 +545,16 @@ class _NotificationTile extends StatelessWidget {
     });
   }
 
-  void _navigateToProfile(
-    BuildContext context,
-    Map initiatorData,
-    String displayName,
-  ) {
-    Navigator.pushNamed(
-      context,
-      '/view-profile',
-      arguments: {'userId': initiatorData['id'], 'username': displayName},
-    );
-  }
-
   Widget _buildMessageContent(
     BuildContext context,
     String displayName,
     bool isVerified,
     String message,
   ) {
+      final initiatorData = notification['entity']?['initiator_data'] ?? {};
+    final entityType = initiatorData['entity_type'] ?? 'user';
+    final isEntity = entityType == 'club' || entityType == 'venue';
+
     return Row(
       children: [
         Expanded(
@@ -578,6 +569,49 @@ class _NotificationTile extends StatelessWidget {
                     fontSize: 14,
                   ),
                 ),
+
+                // ✅ Entity badge (like Discord)
+                if (isEntity)
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              entityType == 'club'
+                                  ? Icons.car_repair
+                                  : Icons.place,
+                              size: 10,
+                              color: theme.primaryColor.withOpacity(0.8),
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              entityType.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: theme.primaryColor.withOpacity(0.8),
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+
                 if (isVerified) ...[
                   const WidgetSpan(child: SizedBox(width: 4)),
                   WidgetSpan(

@@ -49,6 +49,36 @@ class ClubApiService {
     }
   }
 
+  // api/club_api_service.dart
+
+  static Future<Map<String, dynamic>?> getClubEvents({
+    required int clubPostId,
+    int page = 1,
+    int perPage = 10,
+  }) async {
+    try {
+      final token = await AuthService().getParentUserToken();
+
+      final response = await http.get(
+        Uri.parse(
+          '${ApiConfig.baseUrl}/wp-json/app/v1/club/$clubPostId/events?page=$page&per_page=$perPage',
+        ),
+        headers: {'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data;
+      }
+      return null;
+    } catch (e) {
+      print('❌ Error fetching club events: $e');
+      return null;
+    }
+  }
+
   static Future<Map<String, dynamic>?> getClubDetails({
     required int clubPostId,
   }) async {

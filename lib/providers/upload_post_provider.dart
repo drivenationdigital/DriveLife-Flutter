@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/tagged_entity.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 enum UploadStatus { idle, uploading, processing, completed, failed }

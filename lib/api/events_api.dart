@@ -619,15 +619,16 @@ class EventsAPI {
     String? ticketType,
     String? entryDetailsFree,
     String? entryDetails,
+    int? clubId,
   }) async {
     try {
-      final token = await _authService.getToken();
+      final token = await _authService.getParentUserToken();
       if (token == null) {
         print('No auth token found');
         return null;
       }
 
-      final user = await _authService.getUser();
+      final user = await _authService.getParentUser();
 
       if (user == null) {
         print('❌ [EventsAPI] No user found');
@@ -656,6 +657,7 @@ class EventsAPI {
         if (ticketType != null) 'ticket_type': ticketType,
         if (entryDetailsFree != null) 'entry_details_free': entryDetailsFree,
         if (entryDetails != null) 'entry_details': entryDetails,
+        if (clubId != null) 'club_id': clubId,
       };
 
       print('📦 [EventsAPI] Event data: ${jsonEncode(body)}');
