@@ -3,6 +3,7 @@ import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/clubs/join_club_modal.dart';
 import 'package:drivelife/screens/clubs/view_members_screen.dart';
+import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
@@ -34,6 +35,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   bool _isMember = false;
   bool _hasPendingRequest = false;
   bool _isOwner = false;
+  int _pendingRequestsCount = 0;
 
   List<Map<String, dynamic>> _events = [];
   bool _loadingEvents = false;
@@ -59,6 +61,30 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     }
   }
 
+  Future<void> _refreshClubDataForOwnClub() async {
+    if (!widget.isOwnClub) return;
+
+    final accountManager = Provider.of<AccountManager>(context, listen: false);
+    final authService = AuthService();
+
+    // Get parent user ID and token
+    final clubAccount = accountManager.activeAccount!;
+    final parentUserId = clubAccount.parentUserId!;
+    final token = await authService.getToken();
+
+    if (token == null) return;
+
+    print('🔄 Refreshing entities for own club');
+
+    // Refresh entities from API
+    await accountManager.refreshManagedEntities(parentUserId, token);
+
+    // Reload club data from refreshed entity
+    await _loadClubData();
+
+    print('✅ Club data refreshed');
+  }
+
   Future<void> _loadClubEvents() async {
     if (_loadingEvents || _clubData == null) return;
 
@@ -70,8 +96,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         page: 1,
         perPage: 20,
       );
-
-      print(data);
 
       if (mounted && data != null && data['success'] == true) {
         setState(() {
@@ -119,12 +143,14 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           _isOwner = true;
           _isLoading = false;
         });
+
+        _loadClubEvents();
+        _loadPendingRequestsCount();
       } else {
         final data = await ClubApiService.getClubDetails(
           clubPostId: widget.clubPostId!,
         );
 
-        print(data);
         if (mounted && data != null) {
           setState(() {
             _clubData = data;
@@ -134,7 +160,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             _isLoading = false;
           });
 
-          
           _loadClubEvents();
         }
       }
@@ -144,11 +169,32 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     }
   }
 
+  Future<void> _loadPendingRequestsCount() async {
+    try {
+      final data = await ClubApiService.getClubPendingRequests(
+        clubPostId: _clubData!['id'],
+      );
+
+      if (mounted && data != null && data['success'] == true) {
+        setState(() {
+          _pendingRequestsCount = data['total'] ?? 0;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading pending count: $e');
+    }
+  }
+
   Future<void> _refreshClub() async {
     setState(
       () => _eventsLoaded = false,
     ); // Reset events loaded state to allow reloading
-    await _loadClubData();
+
+    // if (widget.isOwnClub) {
+    //   await _refreshClubDataForOwnClub(); // Ensure we also refresh the account manager's entities if it's our own club
+    // } else {
+      await _loadClubData();
+    // }
   }
 
   @override
@@ -624,27 +670,101 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   }
 
   // ✅ Tab bar rendered as a normal widget (not a SliverPersistentHeader), so it scrolls
+  // Replace _buildTabBar method:
+
   Widget _buildTabBar(ThemeProvider theme) {
     return Container(
       margin: const EdgeInsets.only(top: 4),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.2))),
       ),
-      child: TabBar(
-        controller: _tabController,
-        labelColor: theme.primaryColor,
-        unselectedLabelColor: Colors.grey,
-        indicatorColor: theme.primaryColor,
-        indicatorWeight: 2.5,
-        labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-        unselectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.w400,
-          fontSize: 14,
-        ),
-        tabs: const [
-          Tab(text: 'Events'),
-          Tab(text: 'Announcements'),
-          Tab(text: 'About'),
+      child: Column(
+        children: [
+          // ✅ Pending requests banner (only for owners)
+          if (_isOwner && _pendingRequestsCount > 0)
+            InkWell(
+              onTap: () async {
+                final result = await Navigator.pushNamed(
+                  context,
+                  '/club-pending-requests',
+                  arguments: {
+                    'clubId': _clubData!['id'],
+                    'clubName': _clubData!['title'],
+                  },
+                );
+
+                if (result == true) {
+                  _loadPendingRequestsCount(); // Refresh count
+                  // _refreshClubDataForOwnClub(); // Refresh member count
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                color: theme.primaryColor.withOpacity(0.08),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: theme.primaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '$_pendingRequestsCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _pendingRequestsCount == 1
+                            ? '1 pending membership request'
+                            : '$_pendingRequestsCount pending membership requests',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: theme.primaryColor,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.arrow_forward_ios,
+                      size: 14,
+                      color: theme.primaryColor,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // Existing tab bar
+          TabBar(
+            controller: _tabController,
+            labelColor: theme.primaryColor,
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: theme.primaryColor,
+            indicatorWeight: 2.5,
+            labelStyle: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontWeight: FontWeight.w400,
+              fontSize: 14,
+            ),
+            tabs: const [
+              Tab(text: 'Events'),
+              Tab(text: 'Announcements'),
+              Tab(text: 'About'),
+            ],
+          ),
         ],
       ),
     );

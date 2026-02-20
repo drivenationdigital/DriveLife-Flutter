@@ -60,6 +60,7 @@ class _AddEventScreenState extends State<AddEventScreen>
   String _ticketType = '1'; // 1=Free, 2=Platform, 3=External
   String _visibility = '1'; // 1=Public, 2=Private
   String _status = 'publish'; // publish or draft
+  int _eventClubId = 0; // Default to 0 for non-club events
 
   String? _eventID;
   bool _isCoverImageUploaded = false;
@@ -279,6 +280,10 @@ class _AddEventScreenState extends State<AddEventScreen>
             final plainDescription = _htmlToPlainText(data['description']);
             _descriptionController.document = Document()
               ..insert(0, plainDescription);
+          }
+
+          if (data['club_id'] != null && data['event_type'] == 'club_events') {
+            _eventClubId = int.tryParse(data['club_id'].toString()) ?? 0;
           }
 
           if (data['entry_details_free'] != null &&
@@ -654,7 +659,15 @@ class _AddEventScreenState extends State<AddEventScreen>
       );
       final currentAccount = accountManager.activeAccount;
 
-      final clubId = currentAccount?.isClubAccount == true ? currentAccount?.entityMeta!['club_post_id'] : null;
+      final int? clubId;
+
+      if (currentAccount?.isClubAccount == true) {
+        clubId = currentAccount?.entityMeta!['club_post_id'];
+      } else if (_eventClubId != 0) {
+        clubId = _eventClubId;
+      } else {
+        clubId = null; // Default to null for non-club events
+      }
             
       final description = _getQuillContentAsHtml(_descriptionController);
       final entryDetails = _getQuillContentAsHtml(_entryDetailsController);
@@ -692,7 +705,7 @@ class _AddEventScreenState extends State<AddEventScreen>
         ticketType: _ticketType,
         entryDetailsFree: _ticketType == '1' ? entryDetailsFree : null,
         entryDetails: _ticketType == '3' ? entryDetails : null,
-          clubId: currentAccount?.isClubAccount == true ? clubId : null, // Pass club ID if available
+          clubId: clubId, // Pass club ID if available
       );
 
       if (response != null && response['success'] == true) {

@@ -361,8 +361,10 @@ class _EventAdminPageState extends State<EventAdminPage> {
       return Center(child: Text('No event data available'));
     }
 
+    print(_eventData);
+
     final event = _eventData!['event'] as Map<String, dynamic>;
-    final sales = _eventData!['sales'] as Map<String, dynamic>;
+    final sales = _eventData!['sales'];
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(16),
@@ -371,11 +373,11 @@ class _EventAdminPageState extends State<EventAdminPage> {
         children: [
           _buildEventCard(event, theme),
           SizedBox(height: 20),
-          _buildSalesSummary(sales['sales'] as Map<String, dynamic>, theme),
+          _buildSalesSummary(sales['sales'], theme),
           SizedBox(height: 20),
-          _buildTicketBreakdown(sales['tickets'] as List<dynamic>, theme),
+          _buildTicketBreakdown(sales['tickets'], theme),
           SizedBox(height: 20),
-          _buildOrders(sales['orders'] as List<dynamic>, theme),
+          _buildOrders(sales['orders'], theme),
           SizedBox(height: 100), // Bottom padding for navigation bar
         ],
       ),
@@ -517,7 +519,7 @@ class _EventAdminPageState extends State<EventAdminPage> {
     );
   }
 
-  Widget _buildSalesSummary(Map<String, dynamic> sales, ThemeProvider theme) {
+  Widget _buildSalesSummary(dynamic sales, ThemeProvider theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -590,6 +592,30 @@ class _EventAdminPageState extends State<EventAdminPage> {
   }
 
   Widget _buildTicketBreakdown(List<dynamic> tickets, ThemeProvider theme) {
+    // if list is empty, show placeholder
+    if (tickets.isEmpty) {
+      return Container(
+        padding: EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            'No tickets sold yet',
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          ),
+        ),
+      );
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,

@@ -592,7 +592,6 @@ class EventsAPI {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('✅ [EventsAPI] Profile events fetched');
         return data;
       } else {
         print('❌ [EventsAPI] Error ${response.statusCode}: ${response.body}');

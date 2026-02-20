@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:drivelife/api/club_api_service.dart';
 import 'package:drivelife/models/club_api_models.dart';
 import 'package:drivelife/models/event_media.dart';
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_quill_delta_from_html/flutter_quill_delta_from_html.dart';
@@ -372,6 +374,13 @@ class _CreateClubScreenState extends State<CreateClubScreen>
       return;
     }
 
+    // Club email is required for new clubs
+    if (_emailController.text.trim().isEmpty) {
+      _showError('Club email is required');
+      _tabController.animateTo(1);
+      return;
+    }
+
     if (_selectedCategoryIds.isEmpty) {
       // ✅ Changed
       _showError('Please select at least one category');
@@ -563,6 +572,36 @@ class _CreateClubScreenState extends State<CreateClubScreen>
     }
   }
 
+  void _loadManagedClubs() async {
+    final accountManager = Provider.of<AccountManager>(context, listen: false);
+    final authService = AuthService();
+
+    final activeAccount = accountManager.activeAccount;
+
+    // ✅ Only load if we're on a USER account (not club/venue)
+    if (activeAccount == null || !activeAccount.isUserAccount) {
+      print('⏭️ Skipping entity load - not a user account');
+      return;
+    }
+
+    final user = activeAccount.user;
+    final token = await authService.getToken();
+
+    if (token == null) return;
+
+    // ✅ Check if we already have entities for this user
+    final existingEntities = accountManager.getEntitiesForUser(user.id);
+
+    if (existingEntities.isNotEmpty) {
+      print(
+        '✅ Already have ${existingEntities.length} entities for user ${user.id}',
+      );
+    }
+
+    print('🔄 Loading managed entities for user ${user.id}');
+    await accountManager.loadManagedEntities(user.id, token);
+  }
+
   Future<void> _saveClub({required bool publish}) async {
     setState(() => _isLoading = true);
 
@@ -603,6 +642,8 @@ class _CreateClubScreenState extends State<CreateClubScreen>
       if (!mounted) return;
 
       if (response.success) {
+        _loadManagedClubs();
+
         print('🎉 Club data saved successfully');
 
         // Check if there are new images to upload
@@ -622,6 +663,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
             ),
           );
         }
+
       } else {
         throw Exception(response.message ?? 'Failed to update club');
       }

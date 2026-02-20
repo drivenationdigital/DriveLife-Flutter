@@ -58,7 +58,6 @@ class VenueApiService {
       );
 
       final data = jsonDecode(response.body);
-      print(data);
       if (response.statusCode == 200) {
         return data;
       } else {
@@ -99,7 +98,6 @@ class VenueApiService {
       );
 
       final data = jsonDecode(response.body);
-      print(data);
       if (response.statusCode == 200) {
         return data;
       } else {

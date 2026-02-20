@@ -63,8 +63,9 @@ class ClubApiService {
         Uri.parse(
           '${ApiConfig.baseUrl}/wp-json/app/v1/club/$clubPostId/events?page=$page&per_page=$perPage',
         ),
-        headers: {'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
         },
       );
 
@@ -75,6 +76,105 @@ class ClubApiService {
       return null;
     } catch (e) {
       print('❌ Error fetching club events: $e');
+      return null;
+    }
+  }
+
+  // In club_api_service.dart
+
+  /// Approve membership request
+  static Future<bool> approveMembershipRequest({
+    required String clubId,
+    required int userId,
+  }) async {
+    try {
+      final authService = AuthService();
+      final token = await authService.getParentUserToken();
+
+      if (token == null) return false;
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/club-accept-request'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'club_id': clubId, 'user_id': userId}),
+      );
+
+      print('📡 Approve request: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Error approving request: $e');
+      return false;
+    }
+  }
+
+  /// Deny membership request
+  static Future<bool> denyMembershipRequest({
+    required String clubId,
+    required int userId,
+  }) async {
+    try {
+      final authService = AuthService();
+      final token = await authService.getParentUserToken();
+
+      if (token == null) return false;
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/club-decline-request'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'club_id': clubId, 'user_id': userId}),
+      );
+
+      print('📡 Deny request: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Error denying request: $e');
+      return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getClubPendingRequests({
+    required int clubPostId,
+  }) async {
+    try {
+      final authService = AuthService();
+      final token = await authService.getParentUserToken();
+
+      if (token == null) return null;
+
+      final response = await http.get(
+        Uri.parse(
+          '${ApiConfig.baseUrl}/wp-json/app/v1/club/$clubPostId/pending-requests',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return data;
+      }
+      return null;
+    } catch (e) {
+      print('❌ Error fetching pending requests: $e');
       return null;
     }
   }
@@ -131,12 +231,7 @@ class ClubApiService {
         }),
       );
 
-      print(
-        'Submitting join request for club $clubId with answers: $questionsAndAnswers',
-      );
-
       final data = json.decode(response.body);
-      print(data);
 
       if (response.statusCode == 200) {
         return data['success'] == true;

@@ -156,7 +156,103 @@ class AccountManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  // In account_manager.dart, update the fetch method:
+  /// Refresh managed entities for a specific user
+  Future<void> refreshManagedEntities(int userId, String token) async {
+    print('🔄 Refreshing entities for user $userId');
+
+    try {
+      final response = await http.get(
+        Uri.parse(
+          'https://www.carevents.com/uk/wp-json/app/v1/managed-entities',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['success'] == true) {
+          final entities = data['entities'] as List;
+
+          // ✅ Check if active account is an entity being removed
+          final currentAccount = activeAccount;
+          final isActiveEntityBeingRemoved =
+              currentAccount != null &&
+              currentAccount.isEntityAccount &&
+              currentAccount.parentUserId == userId;
+
+          // ✅ If removing active entity, switch to parent user first
+          if (isActiveEntityBeingRemoved) {
+            final parentIndex = _accounts.indexWhere(
+              (acc) => acc.isUserAccount && acc.user.id == userId,
+            );
+            if (parentIndex != -1) {
+              await switchAccount(parentIndex);
+            }
+          }
+
+          // Remove old entities for this user
+          _accounts.removeWhere(
+            (acc) => acc.isEntityAccount && acc.parentUserId == userId,
+          );
+
+          // ✅ Reset index after removal to stay safe
+          if (_activeAccountIndex >= _accounts.length) {
+            _activeAccountIndex = _accounts.length - 1;
+          }
+
+          // Add refreshed entities
+          for (var entity in entities) {
+            final entityType = entity['type'] == 'club'
+                ? AccountType.club
+                : AccountType.venue;
+
+            final token = entity['token'];
+            final userData = entity['user'];
+            final meta = entity['meta'];
+
+            final user = User.fromJson(userData);
+
+            final account = Account(
+              token: token,
+              user: user,
+              lastUsed: DateTime.now(),
+              accountType: entityType,
+              parentUserId: userId,
+              entityMeta: meta,
+            );
+
+            _accounts.add(account);
+            print(
+              '✅ Refreshed ${entityType.toString().split('.').last}: ${user.username}',
+            );
+          }
+
+          // ✅ If we were on an entity, try to switch back to the refreshed one
+          if (isActiveEntityBeingRemoved && entities.isNotEmpty) {
+            final refreshedEntityIndex = _accounts.indexWhere(
+              (acc) =>
+                  acc.isEntityAccount &&
+                  acc.entityMeta?['club_post_id'] ==
+                      currentAccount.entityMeta?['club_post_id'],
+            );
+            if (refreshedEntityIndex != -1) {
+              await switchAccount(refreshedEntityIndex);
+            }
+          }
+
+          await _saveAccounts();
+          notifyListeners();
+          print('✅ Entities refreshed successfully');
+        }
+      }
+    } catch (e) {
+      print('❌ Error refreshing entities: $e');
+    }
+  }
 
   Future<List<Map<String, dynamic>>> _fetchManagedEntities(
     int userId,
@@ -176,7 +272,6 @@ class AccountManager extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print(data);
         print('✅ Fetched ${data['total']} entities');
         return List<Map<String, dynamic>>.from(data['entities'] ?? []);
       } else {

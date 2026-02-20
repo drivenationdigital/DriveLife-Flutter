@@ -37,7 +37,6 @@ class InteractionsAPI {
       );
 
       final data = jsonDecode(response.body);
-      print(data);
       return data;
     } catch (e) {
       print('Error fetching comments: $e');

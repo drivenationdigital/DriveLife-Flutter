@@ -111,7 +111,6 @@ class GarageAPI {
 
       // JS returns parsed json no matter what
       final responseData = jsonDecode(response.body);
-      print(responseData);
       return responseData;
     } on TimeoutException {
       // match JS TimeOutError shape
@@ -197,7 +196,6 @@ class GarageAPI {
       );
 
       final responseData = jsonDecode(response.body);
-      print(responseData);
       return responseData;
     } on TimeoutException {
       throw {
@@ -351,7 +349,6 @@ class GarageAPI {
       );
 
       final data = json.decode(response.body);
-      print(data);
       if (response.statusCode == 200) {
         return data;
       }
@@ -495,7 +492,6 @@ class GarageAPI {
       );
 
       final data = json.decode(response.body);
-      print(data);
       if (response.statusCode == 200) {
         return data;
       }

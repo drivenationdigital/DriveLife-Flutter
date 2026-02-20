@@ -6,6 +6,7 @@ import 'package:drivelife/screens/auth/register/step_one.dart';
 import 'package:drivelife/screens/auth/register/step_three.dart';
 import 'package:drivelife/screens/auth/register/step_two.dart';
 import 'package:drivelife/screens/clubs/add_club_screen.dart';
+import 'package:drivelife/screens/clubs/club_pending_requests.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/event_admin_view_screen.dart';
 import 'package:drivelife/screens/events/event_detail_screen.dart';
@@ -151,6 +152,15 @@ class AppRoutes {
             clubPostId: args['clubId'],
             showAppBar: true, // Show app bar when viewing from search
             isOwnClub: false, // Visitor view
+          ),
+        );
+      // In routes.dart
+      case '/club-pending-requests':
+        final args = settings.arguments as Map<String, dynamic>;
+        return _slide(
+          ClubPendingRequestsScreen(
+            clubId: args['clubId'],
+            clubName: args['clubName'],
           ),
         );
       case addClub:
