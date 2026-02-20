@@ -132,7 +132,7 @@ class _HomeTabsState extends State<HomeTabs> {
       print(
         '✅ Already have ${existingEntities.length} entities for user ${user.id}',
       );
-      return;
+      // return;
     }
 
     print('🔄 Loading managed entities for user ${user.id}');
