@@ -1231,7 +1231,10 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
 
     if (questions.isEmpty) {
-      return;
+
+      questions.add(
+        'This club requires no additional information. Do you want to submit your request to join?',
+      );
     }
 
     showClubJoinModal(
