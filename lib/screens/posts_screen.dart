@@ -193,17 +193,22 @@ class _PostsTabState extends State<_PostsTab>
 
     // Determine the followingOnly parameter based on tab type
     int followingOnly;
+    int newsOnly;
+    
     switch (widget.tabType) {
       case PostTabType.following:
         followingOnly = 1;
+        newsOnly = 0;
         break;
       case PostTabType.news:
         // For news tab, you might want to add a specific API parameter
         // For now, using latest posts - modify as needed
         followingOnly = 0;
+        newsOnly = 1; // You would need to handle this in your API call
         break;
       default:
         followingOnly = 0;
+        newsOnly = 0;
     }
 
     try {
@@ -213,6 +218,7 @@ class _PostsTabState extends State<_PostsTab>
         page: _page,
         limit: 10,
         followingOnly: followingOnly,
+        newsOnly: newsOnly,
       );
 
       if (!mounted) return;

@@ -14,22 +14,6 @@ import 'package:video_player/video_player.dart';
 import 'package:fluttertagger/fluttertagger.dart';
 import 'package:video_compress/video_compress.dart';
 
-class CreatePostScreen extends StatefulWidget {
-  final String? associationId;
-  final String? associationType;
-  final String? associationLabel;
-
-  const CreatePostScreen({
-    super.key,
-    this.associationId,
-    this.associationType,
-    this.associationLabel,
-  });
-
-  @override
-  State<CreatePostScreen> createState() => _CreatePostScreenState();
-}
-
 class MediaItem {
   final File file;
   final bool isVideo;
@@ -48,6 +32,22 @@ class MediaItem {
   void dispose() {
     videoController?.dispose();
   }
+}
+
+class CreatePostScreen extends StatefulWidget {
+  final String? associationId;
+  final String? associationType;
+  final String? associationLabel;
+
+  const CreatePostScreen({
+    super.key,
+    this.associationId,
+    this.associationType,
+    this.associationLabel,
+  });
+
+  @override
+  State<CreatePostScreen> createState() => _CreatePostScreenState();
 }
 
 class _CreatePostScreenState extends State<CreatePostScreen> {

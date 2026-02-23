@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/posts_api.dart';
+import 'package:drivelife/components/news_blog.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/create-post/edit_post_screen.dart';
 import 'package:drivelife/widgets/formatted_text.dart';
@@ -301,13 +302,17 @@ class _PostCardState extends State<PostCard>
   }
 
   void _preloadMedia(List media, int index) {
+    if (!mounted) return;
+
     // ✅ Only preload next image (not previous to reduce memory)
     if (index + 1 < media.length) {
       final next = media[index + 1];
       if (next['media_type'] == 'image') {
         final nextUrl = next['media_url'];
         if (nextUrl != null && nextUrl.isNotEmpty) {
-          precacheImage(CachedNetworkImageProvider(nextUrl), context);
+
+          precacheImage(CachedNetworkImageProvider(nextUrl), context, onError: (e, stack) {},
+          );
         }
       }
     }
@@ -527,6 +532,15 @@ class _PostCardState extends State<PostCard>
               },
               onCommentTap: () => _openComments(context),
               onShareTap: _sharePost,
+              newsTitle: widget.post['is_news'] == true ? widget.post['caption'] ?? 'News' : null,
+              isNews: widget.post['is_news'] == true,
+              newsContent: widget.post['news_content'], // HTML from ACF
+              newsDate: widget.post['post_date'],
+              newsImageUrls: _media.map((m) => m['media_url']).whereType<String>().toList(),
+              creatorProfileImage: widget.post['user_profile_image'],
+              username: widget.post['username'] ?? '',
+              isVerified: widget.post['user_verified'] == true,
+              postUserId: widget.post['user_id'],
             ),
           ),
 
@@ -907,12 +921,30 @@ class _PostActions extends StatelessWidget {
   final VoidCallback onLikeTap;
   final VoidCallback onCommentTap;
   final VoidCallback onShareTap;
+  final bool isNews;
+  final String? newsTitle;
+  final String? newsContent;
+  final String? newsDate;
+  final List<String> newsImageUrls; // pass your media urls
+  final String? creatorProfileImage;
+  final String? username;
+  final bool? isVerified;
+  final dynamic postUserId;
 
   const _PostActions({
     required this.liked,
     required this.onLikeTap,
     required this.onCommentTap,
     required this.onShareTap,
+    this.isNews = false,
+    this.newsTitle,
+    this.newsContent,
+    this.newsDate,
+    this.newsImageUrls = const [],
+    this.creatorProfileImage,
+    this.username,
+    this.isVerified,
+    this.postUserId,
   });
 
   @override
@@ -951,6 +983,57 @@ class _PostActions extends StatelessWidget {
               size: 22,
             ),
           ),
+
+          // ↓ News Read More button
+          if (isNews) ...[
+            const Spacer(),
+            GestureDetector(
+              onTap: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true, // full height
+                  backgroundColor: Colors.transparent,
+                  useSafeArea: true,
+                  builder: (_) => NewsReaderSheet(
+                    title: newsTitle ?? '',
+                    htmlContent: newsContent ?? '',
+                    date: newsDate ?? '',
+                    imageUrls: newsImageUrls,
+                    creatorProfileImage: creatorProfileImage,
+                    username: username,
+                    isVerified: isVerified,
+                    postUserId: postUserId,
+                  ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFAE9159),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFAE9159).withOpacity(0.35),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: const Text(
+                  'Read More',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

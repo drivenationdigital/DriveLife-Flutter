@@ -50,7 +50,6 @@ class DriveLifeApiService {
       );
 
       final json = jsonDecode(response.body);
-      print(json);
 
       if (response.statusCode == 200) {
         if (json['success'] == false) {
@@ -62,7 +61,6 @@ class DriveLifeApiService {
         throw Exception('Failed to load products: ${response.statusCode}');
       }
     } catch (e) {
-      print(e);
       throw Exception('Error fetching products by category: $e');
     }
   }

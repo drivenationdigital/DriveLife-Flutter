@@ -255,8 +255,6 @@ class EventsAPI {
       final token = await _authService.getToken();
       final user = await _authService.getUser();
 
-      print(user);
-
       if (token == null || user == null) {
         print('❌ [TicketsAPI] No token or user found');
         return null;

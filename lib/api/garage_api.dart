@@ -101,7 +101,6 @@ class GarageAPI {
 
     try {
       final body = <String, dynamic>{...data, 'user_id': userId};
-      print(body);
 
       final response = await http.post(
         uri,

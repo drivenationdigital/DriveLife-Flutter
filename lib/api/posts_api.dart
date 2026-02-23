@@ -17,10 +17,11 @@ class PostsAPI {
     int page = 1,
     int limit = 10,
     int followingOnly = 0,
+    int newsOnly = 0,
   }) async {
     try {
       final uri = Uri.parse(
-        '$_baseUrl/wp-json/app/v2/get-posts?user_id=$userId&following_only=$followingOnly&page=$page&limit=$limit',
+        '$_baseUrl/wp-json/app/v2/get-posts?user_id=$userId&following_only=$followingOnly&news_only=$newsOnly&page=$page&limit=$limit',
       );
 
       final response = await http.get(
@@ -203,6 +204,7 @@ class PostsAPI {
     String? associationType,
     List<Map<String, dynamic>>? mentionedUsers,
     List<Map<String, dynamic>>? mentionedHashtags,
+    String? newsContent, // Add news content parameter
   }) async {
     try {
       final body = {
@@ -215,6 +217,10 @@ class PostsAPI {
       if (linkType != null && linkUrl != null) {
         body['asc_link_type'] = linkType;
         body['asc_link'] = linkUrl;
+      }
+
+      if (newsContent != null) {
+        body['news_content'] = newsContent;
       }
 
       if (associationId != null && associationType != null) {

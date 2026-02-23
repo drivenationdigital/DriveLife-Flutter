@@ -24,6 +24,7 @@ class UploadPostData {
   final List<Map<String, dynamic>> mentionedHashtags;
   final String? location;
   final Map<String, dynamic>? association;
+  final String? newsContent; // Add newsId field
 
   UploadPostData({
     required this.id,
@@ -40,6 +41,7 @@ class UploadPostData {
     this.mentionedHashtags = const [],
     this.location,
     this.association,
+    this.newsContent,
   });
 }
 
@@ -324,6 +326,7 @@ class UploadPostProvider with ChangeNotifier {
             : null,
         mentionedUsers: data.mentionedUsers,
         mentionedHashtags: data.mentionedHashtags,
+        newsContent: data.newsContent, // Pass news content if available
       );
 
       // Add tags if any

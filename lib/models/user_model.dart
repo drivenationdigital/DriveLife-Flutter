@@ -16,6 +16,7 @@ class User {
   final LastLocation? lastLocation;
   final ProfileLinks? profileLinks;
   final BillingInfo? billingInfo;
+  final bool isAdmin;
 
   User({
     required this.id,
@@ -35,6 +36,7 @@ class User {
     this.lastLocation,
     this.profileLinks,
     this.billingInfo,
+    this.isAdmin = false,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -66,6 +68,7 @@ class User {
       billingInfo: json['billing_info'] != null
           ? BillingInfo.fromJson(json['billing_info'])
           : null,
+      isAdmin: json['is_admin'] ?? false,
     );
   }
 
@@ -88,6 +91,7 @@ class User {
       'last_location': lastLocation?.toJson(),
       'profile_links': profileLinks?.toJson(),
       'billing_info': billingInfo?.toJson(),
+      'is_admin': isAdmin,
     };
   }
 
@@ -117,6 +121,7 @@ class User {
     LastLocation? lastLocation,
     ProfileLinks? profileLinks,
     BillingInfo? billingInfo,
+    bool? isAdmin,
   }) {
     return User(
       id: id ?? this.id,
@@ -136,6 +141,7 @@ class User {
       lastLocation: lastLocation ?? this.lastLocation,
       profileLinks: profileLinks ?? this.profileLinks,
       billingInfo: billingInfo ?? this.billingInfo,
+      isAdmin: isAdmin ?? this.isAdmin,
     );
   }
 }

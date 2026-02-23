@@ -16,6 +16,7 @@ import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/profile/my_club_profile_view.dart';
 import 'package:drivelife/screens/store/shop_screen.dart';
+import 'package:drivelife/screens/news/create_news_post_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
@@ -150,6 +151,7 @@ class _HomeTabsState extends State<HomeTabs> {
     final accountManager = Provider.of<AccountManager>(context, listen: false);
 
     final isUser = accountManager.activeAccount?.isUserAccount ?? false;
+    final isAdmin = accountManager.activeAccount?.user.isAdmin ?? false;
 
     showModalBottomSheet(
       context: context,
@@ -176,6 +178,19 @@ class _HomeTabsState extends State<HomeTabs> {
                       );
                     },
                   ),
+                  if (isAdmin) ...[
+                    ListTile(
+                      leading: Icon(Icons.photo, color: theme.primaryColor),
+                      title: const Text('Add News Blog'),
+                      onTap: () {
+                        Navigator.pop(context); // Close bottom sheet
+                        NavigationHelper.navigateTo(
+                          context,
+                          const CreateNewsScreen(),
+                        );
+                      },
+                    ),
+                  ],
                   ListTile(
                     leading: Icon(
                       Icons.place_outlined,
