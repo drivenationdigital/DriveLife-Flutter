@@ -103,9 +103,9 @@ class _MyAppState extends State<MyApp> {
           debugShowCheckedModeBanner: false,
           theme: themeProvider.themeData.copyWith(
             scaffoldBackgroundColor: Colors.white,
-            textTheme: GoogleFonts.leagueSpartanTextTheme(
-              Theme.of(context).textTheme,
-            ),
+            // textTheme: GoogleFonts.leagueSpartanTextTheme(
+            //   Theme.of(context).textTheme,
+            // ),
             pageTransitionsTheme: const PageTransitionsTheme(
               builders: {
                 TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
