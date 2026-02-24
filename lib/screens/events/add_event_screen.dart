@@ -1250,6 +1250,7 @@ class _AddEventScreenState extends State<AddEventScreen>
                     showSearchButton: false,
                     showSmallButton: false,
                     showStrikeThrough: false,
+                    showClearFormat: false,
                     showSubscript: false,
                     showSuperscript: false,
                     showUndo: false,
@@ -1516,7 +1517,7 @@ class _AddEventScreenState extends State<AddEventScreen>
             child: QuillSimpleToolbar(
               controller: controller,
               config: const QuillSimpleToolbarConfig(
-                showAlignmentButtons: false,
+                       showAlignmentButtons: false,
                 showBackgroundColorButton: false,
                 showCenterAlignment: false,
                 showCodeBlock: false,
@@ -1537,8 +1538,11 @@ class _AddEventScreenState extends State<AddEventScreen>
                 showSearchButton: false,
                 showSmallButton: false,
                 showStrikeThrough: false,
+                showClearFormat: false,
                 showSubscript: false,
                 showSuperscript: false,
+                showUndo: false,
+                showRedo: false,
               ),
             ),
           ),

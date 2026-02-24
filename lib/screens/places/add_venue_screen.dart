@@ -1145,7 +1145,7 @@ class _DescriptionTab extends StatelessWidget {
                         child: QuillSimpleToolbar(
                           controller: controller,
                           config: const QuillSimpleToolbarConfig(
-                            showAlignmentButtons: false,
+                                  showAlignmentButtons: false,
                             showBackgroundColorButton: false,
                             showCenterAlignment: false,
                             showCodeBlock: false,
@@ -1166,8 +1166,11 @@ class _DescriptionTab extends StatelessWidget {
                             showSearchButton: false,
                             showSmallButton: false,
                             showStrikeThrough: false,
+                            showClearFormat: false,
                             showSubscript: false,
                             showSuperscript: false,
+                            showUndo: false,
+                            showRedo: false,
                           ),
                         ),
                       ),
@@ -1178,7 +1181,7 @@ class _DescriptionTab extends StatelessWidget {
                         child: QuillEditor.basic(
                           controller: controller,
                           config: const QuillEditorConfig(
-                            placeholder: 'Enter event description...',
+                            placeholder: 'Enter venue description...',
                           ),
                         ),
                       ),
