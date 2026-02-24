@@ -53,7 +53,7 @@ class _HomeTabsState extends State<HomeTabs> {
 
     _buildScreens();
     _reloadUserData();
-    _loadManagedEntities();
+    // _loadManagedEntities();
   }
 
   // In home_tabs.dart
@@ -89,7 +89,7 @@ class _HomeTabsState extends State<HomeTabs> {
         PostsScreen(key: _postsScreenKey),
         EventsScreen(),
         VenuesScreen(),
-        MyClubsScreen(),
+        // MyClubsScreen(),
         ShopScreen(),
         ClubProfileScreen(),
       ];
@@ -100,7 +100,7 @@ class _HomeTabsState extends State<HomeTabs> {
         PostsScreen(key: _postsScreenKey),
         EventsScreen(),
         VenuesScreen(),
-        MyClubsScreen(),
+        // MyClubsScreen(),
         ShopScreen(),
         ProfileScreen(),
       ];
@@ -205,38 +205,38 @@ class _HomeTabsState extends State<HomeTabs> {
                       );
                     },
                   ),
-                  ListTile(
-                    leading: Icon(
-                      Icons.place_outlined,
-                      color: theme.primaryColor,
-                    ),
-                    title: const Text('Add Club'),
-                    onTap: () async {
-                      Navigator.pop(context);
+                  // ListTile(
+                  //   leading: Icon(
+                  //     Icons.place_outlined,
+                  //     color: theme.primaryColor,
+                  //   ),
+                  //   title: const Text('Add Club'),
+                  //   onTap: () async {
+                  //     Navigator.pop(context);
 
-                      // Show bottom sheet first
-                      final result =
-                          await showModalBottomSheet<Map<String, dynamic>>(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (context) =>
-                                const ClubTypeSelectionSheet(),
-                          );
+                  //     // Show bottom sheet first
+                  //     final result =
+                  //         await showModalBottomSheet<Map<String, dynamic>>(
+                  //           context: context,
+                  //           isScrollControlled: true,
+                  //           backgroundColor: Colors.transparent,
+                  //           builder: (context) =>
+                  //               const ClubTypeSelectionSheet(),
+                  //         );
 
-                      // If club was created, navigate to edit screen
-                      if (result != null && result['clubId'] != null) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => CreateClubScreen(
-                              existingClubId: result['clubId'],
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                  ),
+                  //     // If club was created, navigate to edit screen
+                  //     if (result != null && result['clubId'] != null) {
+                  //       Navigator.push(
+                  //         context,
+                  //         MaterialPageRoute(
+                  //           builder: (context) => CreateClubScreen(
+                  //             existingClubId: result['clubId'],
+                  //           ),
+                  //         ),
+                  //       );
+                  //     }
+                  //   },
+                  // ),
                   ListTile(
                     leading: Icon(
                       Icons.directions_car,
@@ -353,7 +353,7 @@ class _HomeTabsState extends State<HomeTabs> {
   }
 
   void _showAccountSwitcher() {
-    _loadManagedEntities();
+    // _loadManagedEntities();
 
     showModalBottomSheet(
       context: context,
@@ -372,8 +372,8 @@ class _HomeTabsState extends State<HomeTabs> {
       iconSize: 28,
       currentIndex: _currentIndex,
       onTap: (index) {
-        // Special handling for profile tab (index 5)
-        if (index == 5 && _currentIndex == 5) {
+        // Special handling for profile tab (index 4)
+        if (index == 4 && _currentIndex == 4) {
           _showAccountSwitcher();
           HapticFeedback.lightImpact();
           return;
@@ -395,15 +395,15 @@ class _HomeTabsState extends State<HomeTabs> {
           icon: Icon(Icons.place_outlined),
           label: 'Places',
         ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.car_repair_outlined),
-          label: 'Clubs',
-        ),
+        // BottomNavigationBarItem(
+        //   icon: Icon(Icons.car_repair_outlined),
+        //   label: 'Clubs',
+        // ),
         BottomNavigationBarItem(
           icon: Consumer<CartProvider>(
             builder: (context, cart, child) {
               final count = cart.itemCount;
-              if (_currentIndex != 4 && count > 0) {
+              if (_currentIndex != 3 && count > 0) {
                 return Badge(
                   backgroundColor: theme.primaryColor,
                   label: Text('$count'),

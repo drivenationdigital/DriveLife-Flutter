@@ -37,10 +37,13 @@ class AccountManager extends ChangeNotifier {
     );
   }
 
-  // providers/account_manager.dart
-
   // ✅ Fix loadManagedEntities to properly handle entity accounts
   Future<void> loadManagedEntities(int userId, String token) async {
+    // NEW: TEMPORARILY DISABLE ENTITY LOADING AND REMOVE ALL ENTITY ACCOUNTS FOR THIS USER
+    _accounts.removeWhere((a) => a.isEntityAccount && a.parentUserId == userId);
+    notifyListeners();
+    return;
+
     try {
       print('🔄 Loading managed entities for user $userId...');
 
@@ -357,7 +360,6 @@ class AccountManager extends ChangeNotifier {
 
   // Switch to account
   // In account_manager.dart - FIXED:
-
   Future<void> switchAccount(int index) async {
     if (index < 0 || index >= _accounts.length) return;
 

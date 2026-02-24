@@ -136,7 +136,7 @@ class EntitySwitcherSheet extends StatelessWidget {
 
                 if (confirmed == true && context.mounted) {
                   await accountManager.clearAll();
-                  Navigator.pushNamedAndRemoveUntil(
+                   Navigator.pushNamedAndRemoveUntil(
                     context,
                     AppRoutes.login,
                     (route) => false,
@@ -186,35 +186,35 @@ class EntitySwitcherSheet extends StatelessWidget {
         ),
 
         // User's clubs/venues
-        if (entities.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Text(
-              'YOUR PAGES',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-          ...entities.map((entity) {
-            print(
-              '🏢 Entity: ${entity.user.username}, Type: ${entity.accountType}, ID: ${entity.user.id}',
-            );
+        // if (entities.isNotEmpty) ...[
+        //   Padding(
+        //     padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        //     child: Text(
+        //       'YOUR PAGES',
+        //       style: TextStyle(
+        //         fontSize: 11,
+        //         fontWeight: FontWeight.w600,
+        //         color: Colors.grey,
+        //         letterSpacing: 0.5,
+        //       ),
+        //     ),
+        //   ),
+        //   ...entities.map((entity) {
+        //     print(
+        //       '🏢 Entity: ${entity.user.username}, Type: ${entity.accountType}, ID: ${entity.user.id}',
+        //     );
 
-            return _buildAccountTile(
-              context,
-              account: entity,
-              isActive:
-                  entity.user.id == activeAccount.user.id &&
-                  entity.accountType == activeAccount.accountType,
-              icon: entity.isClubAccount ? Icons.car_repair : Icons.place,
-              isEntity: true,
-            );
-          }).toList(),
-        ],
+        //     return _buildAccountTile(
+        //       context,
+        //       account: entity,
+        //       isActive:
+        //           entity.user.id == activeAccount.user.id &&
+        //           entity.accountType == activeAccount.accountType,
+        //       icon: entity.isClubAccount ? Icons.car_repair : Icons.place,
+        //       isEntity: true,
+        //     );
+        //   }).toList(),
+        // ],
       ],
     );
   }
