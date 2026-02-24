@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import '../api/notifications_api.dart';
 import '../widgets/profile/profile_avatar.dart';
+import 'package:drivelife/screens/clubs/invite_modal.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -461,6 +462,20 @@ class _NotificationTile extends StatelessWidget {
     }
   }
 
+  Future<void> _showInviteModal(
+    BuildContext context,
+    String clubName,
+    String inviteId,
+    String notificationId,
+  ) async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => ClubInviteModal(clubName: clubName, inviteId: inviteId, notificationId: notificationId),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final entity = notification['entity'] ?? {};
@@ -488,6 +503,9 @@ class _NotificationTile extends StatelessWidget {
         : int.tryParse(initiatorData['id']?.toString() ?? '') ?? 0;
 
     final following = _isFollowing(userId);
+
+    final isInvite = notification['type'] == 'invite';
+    final clubName = entityData['club_name']?.toString() ?? 'a club';
 
     return InkWell(
       onTap: onTap,
@@ -530,6 +548,15 @@ class _NotificationTile extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             _buildRightWidget(isFollow, following, userId, postMedia),
+            if (isInvite) ...[
+              const SizedBox(width: 8),
+              _buildInviteAcceptButton(
+                clubName,
+                entityData['invite_id'],
+                context,
+                notification['_id'],
+              ),
+            ],
           ],
         ),
       ),
@@ -545,13 +572,36 @@ class _NotificationTile extends StatelessWidget {
     });
   }
 
+  Widget _buildInviteAcceptButton(
+    String clubName,
+    String inviteId,
+    BuildContext context,
+      String notificationId,
+  ) {
+    return ElevatedButton(
+      onPressed: () =>
+          _showInviteModal(context, clubName, inviteId, notificationId), // ← was empty
+      style: ElevatedButton.styleFrom(
+        backgroundColor: theme.primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      ),
+      child: const Text(
+        'View Invite',
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
   Widget _buildMessageContent(
     BuildContext context,
     String displayName,
     bool isVerified,
     String message,
   ) {
-      final initiatorData = notification['entity']?['initiator_data'] ?? {};
+    final initiatorData = notification['entity']?['initiator_data'] ?? {};
     final entityType = initiatorData['entity_type'] ?? 'user';
     final isEntity = entityType == 'club' || entityType == 'venue';
 
@@ -610,7 +660,6 @@ class _NotificationTile extends StatelessWidget {
                       ),
                     ),
                   ),
-
 
                 if (isVerified) ...[
                   const WidgetSpan(child: SizedBox(width: 4)),
@@ -759,7 +808,9 @@ class _NotificationTile extends StatelessWidget {
         return entityType == 'car'
             ? '$name tagged your car in a post'
             : '$name tagged you in a post';
-
+      case 'invite':
+        final clubName = entityData['club_name']?.toString() ?? 'a club';
+        return '$name invited you to join $clubName';
       default:
         return '$name interacted with your content';
     }

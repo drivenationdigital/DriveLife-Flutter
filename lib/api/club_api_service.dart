@@ -69,8 +69,9 @@ class ClubApiService {
         },
       );
 
-      if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        print(data);
+      if (response.statusCode == 200) {
         return data;
       }
       return null;
@@ -368,6 +369,39 @@ class ClubApiService {
       return _handleError(response);
     } catch (e) {
       return _handleError<ClubAdministrator>(e);
+    }
+  }
+
+  /// Accept a club administrator invitation
+  /// 
+  /// [invitationId] - Encrypted invitation ID from the server
+  /// [notificationId] - Encrypted notification ID from the server
+  static Future<ApiResponse<void>> acceptClubAdminInvitation(
+    String invitationId,
+    String notificationId,
+  ) async {
+    try {
+      final url = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v1/club/accept-invitation/$invitationId?notification_id=$notificationId',
+      );
+
+      final response = await http.post(
+        url,
+        headers: await _getHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+
+        return ApiResponse<void>(
+          success: json['success'] as bool? ?? false,
+          message: json['message'] as String?,
+        );
+      }
+
+      return _handleError(response);
+    } catch (e) {
+      return _handleError<void>(e);
     }
   }
 
