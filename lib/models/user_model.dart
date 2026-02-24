@@ -59,15 +59,20 @@ class User {
           : [],
       postsCount: json['posts_count']?.toString() ?? '0',
       emailVerified: json['email_verified'] ?? false,
-      lastLocation: json['last_location'] != null
+
+      // ✅ Check if it's actually a Map before parsing
+      lastLocation:
+          json['last_location'] != null && json['last_location'] is Map
           ? LastLocation.fromJson(json['last_location'])
           : null,
-      profileLinks: json['profile_links'] != null
+      profileLinks:
+          json['profile_links'] != null && json['profile_links'] is Map
           ? ProfileLinks.fromJson(json['profile_links'])
           : null,
-      billingInfo: json['billing_info'] != null
+      billingInfo: json['billing_info'] != null && json['billing_info'] is Map
           ? BillingInfo.fromJson(json['billing_info'])
           : null,
+
       isAdmin: json['is_admin'] ?? false,
     );
   }

@@ -177,6 +177,7 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
             },
           );
 
+      print('✅ Login process completed with success: $success');
       if (!mounted) return;
 
       if (!success) {

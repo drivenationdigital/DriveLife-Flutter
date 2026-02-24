@@ -39,10 +39,12 @@ class AuthService {
         print('✅ [AuthService] Login response: $data');
 
         final token = data['token'];
+        print('✅ [AuthService] Token: $data');
         if (token == null || token.isEmpty) return false;
 
         // Fetch user profile
         final userProfile = await _getUserProfileWithToken(token);
+        print('✅ [AuthService] User profile: $userProfile');
         if (userProfile == null) return false;
 
         if (_accountManager != null) {
