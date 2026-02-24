@@ -176,6 +176,9 @@ class FormattedText extends StatelessWidget {
               fontSize: _fontSize,
               color: textColor ?? Colors.black.withOpacity(.8),
             ),
+            recognizer: onSuffixPressed != null
+                ? (TapGestureRecognizer()..onTap = onSuffixPressed)
+                : null,
           ),
         );
       }

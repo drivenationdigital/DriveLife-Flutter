@@ -1096,7 +1096,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
-                                icon: const Icon(Icons.share),
+                                icon: const Icon(Icons.laptop),
                                 label: const Text(
                                   'Event Website',
                                   style: TextStyle(

@@ -877,11 +877,16 @@ class _EventsScreenState extends State<EventsScreen>
     );
   }
 
+  Future<void> _refreshEvents() async {
+    await _fetchEvents(refresh: true);
+    await _fetchFeaturedEvents();
+  }
+
   // Upcoming Events Tab
   Widget _buildUpcomingEventsTab(ThemeProvider theme) {
     return RefreshIndicator(
       color: theme.primaryColor,
-      onRefresh: () => _fetchEvents(refresh: true),
+      onRefresh: () => _refreshEvents(),
       child: ListView(
         controller: _scrollController,
         padding: EdgeInsets.zero,
@@ -889,23 +894,24 @@ class _EventsScreenState extends State<EventsScreen>
           // Featured Banner Carousel
           const SizedBox(height: 16),
 
-          FeaturedEventsCarousel(
-            featuredEvents: _featuredEvents,
-            pageController: _bannerController,
-            currentPage: _currentBannerIndex,
-            onPageChanged: (index) {
-              setState(() => _currentBannerIndex = index);
-            },
-            onEventTap: (event) {
-              Navigator.pushNamed(
-                context,
-                '/event-detail',
-                arguments: {'event': event},
-              );
-            },
-            primaryColor: theme.primaryColor,
-            formatEventDate: (date) => DateHelpers.formatEventDate(date),
-          ),
+          if (_featuredEvents.isNotEmpty) 
+            FeaturedEventsCarousel(
+              featuredEvents: _featuredEvents,
+              pageController: _bannerController,
+              currentPage: _currentBannerIndex,
+              onPageChanged: (index) {
+                setState(() => _currentBannerIndex = index);
+              },
+              onEventTap: (event) {
+                Navigator.pushNamed(
+                  context,
+                  '/event-detail',
+                  arguments: {'event': event},
+                );
+              },
+              primaryColor: theme.primaryColor,
+              formatEventDate: (date) => DateHelpers.formatEventDate(date),
+            ),
 
           const SizedBox(height: 16),
 
@@ -1056,11 +1062,14 @@ class _EventsScreenState extends State<EventsScreen>
     final eventId = event['id'].toString();
 
     return Container(
-      // margin: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+      margin: const EdgeInsets.only(left: 10, right: 10, bottom: 7),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        // bottom only
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+        ),
       ),
       child: InkWell(
         onTap: () {

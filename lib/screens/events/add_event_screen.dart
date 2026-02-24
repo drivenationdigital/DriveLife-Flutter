@@ -1252,6 +1252,8 @@ class _AddEventScreenState extends State<AddEventScreen>
                     showStrikeThrough: false,
                     showSubscript: false,
                     showSuperscript: false,
+                    showUndo: false,
+                    showRedo: false,
                   ),
                 ),
               ),

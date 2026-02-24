@@ -6,6 +6,7 @@ import 'package:drivelife/services/qr_scanner.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:drivelife/widgets/profile/profile_avatar.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -45,6 +46,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   Map<String, dynamic>? _userProfile;
   bool _isLoading = true;
   bool _isFollowing = false;
+  bool updatingFollowStatus = false;
   bool _isOwnProfile = false;
 
   // Posts data
@@ -426,46 +428,51 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   Future<void> _toggleFollow() async {
     if (_userProfile == null || !mounted) return;
 
+    HapticFeedback.heavyImpact();
+
     final userId = _userProfile!['id'];
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final currentUserId = userProvider.user?.id;
 
     if (userId == null || currentUserId == null) return;
 
+    // ↓ Capture BEFORE toggling so logic below is unambiguous
+    final willFollow = !_isFollowing;
+
+    setState(() => updatingFollowStatus = true);
+
     bool success = await _userService.followUser(userId, currentUserId);
 
     if (!mounted) return;
 
     if (success) {
-      setState(() {
-        _isFollowing = !_isFollowing;
+      final followers = _userProfile!['followers'] as List<dynamic>? ?? [];
 
-        // Update follower count and list
-        final followers = _userProfile!['followers'] as List<dynamic>? ?? [];
-        if (_isFollowing) {
-          // Add current user to followers list
+      setState(() {
+        updatingFollowStatus = false;
+        _isFollowing = willFollow; // ← set directly, not toggled again
+
+        if (willFollow) {
           _userProfile!['followers'] = [...followers, currentUserId];
+          userProvider.addFollowing(userId.toString()); // ← was inverted before
         } else {
-          // Remove current user from followers list
           _userProfile!['followers'] = followers.where((id) {
             if (id is int) return id != currentUserId;
             if (id is String) return int.tryParse(id) != currentUserId;
             return true;
           }).toList();
+          userProvider.removeFollowing(
+            userId.toString(),
+          ); // ← was inverted before
         }
 
-        // Update cache
         if (widget.userId != null) {
           ProfileCache.put(widget.userId!, _userProfile!);
         }
       });
-
-      if (!_isFollowing) {
-        // Optimistic update
-        userProvider.addFollowing(userId.toString());
-      } else {
-        userProvider.removeFollowing(userId.toString());
-      }
+    } else {
+      // Failed — just clear the spinner, don't change follow state
+      setState(() => updatingFollowStatus = false);
     }
   }
 
@@ -1420,11 +1427,11 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     );
   }
 
-  Widget _buildOtherProfileButtons(ThemeProvider theme) {
+Widget _buildOtherProfileButtons(ThemeProvider theme) {
     return SizedBox(
-      width: double.infinity, // ✅ Full width
+      width: double.infinity,
       child: ElevatedButton(
-        onPressed: _toggleFollow,
+        onPressed: updatingFollowStatus ? null : _toggleFollow,
         style: ElevatedButton.styleFrom(
           backgroundColor: _isFollowing
               ? theme.primaryColor
@@ -1433,10 +1440,19 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           padding: const EdgeInsets.symmetric(vertical: 10),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
-        child: Text(
-          _isFollowing ? 'Following' : 'Follow',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        child: updatingFollowStatus
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Text(
+                _isFollowing ? 'Following' : 'Follow',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
       ),
     );
   }
