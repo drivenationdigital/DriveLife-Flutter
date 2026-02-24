@@ -807,7 +807,8 @@ class _CreateClubScreenState extends State<CreateClubScreen>
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFAE9159),
+                    ),
                   )
                 : Text(
                     widget.existingClubId != null ? 'Update' : 'Create',

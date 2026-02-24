@@ -229,7 +229,7 @@ class RegisterStepFourScreen extends StatelessWidget {
                                 width: 24,
                                 height: 24,
                                 child: CircularProgressIndicator(
-                                  color: Colors.white,
+                                  color: Color(0xFFAE9159),
                                   strokeWidth: 2,
                                 ),
                               )

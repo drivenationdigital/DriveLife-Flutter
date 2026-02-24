@@ -455,7 +455,7 @@ class _ManageSocialLinksScreenState extends State<ManageSocialLinksScreen> {
           centerTitle: true,
           title: Image.asset('assets/logo-dark.png', height: 18),
         ),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
       );
     }
 
@@ -479,7 +479,7 @@ class _ManageSocialLinksScreenState extends State<ManageSocialLinksScreen> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.black,
+                        color: Color(0xFFAE9159),
                     ),
                   )
                 : const Text(

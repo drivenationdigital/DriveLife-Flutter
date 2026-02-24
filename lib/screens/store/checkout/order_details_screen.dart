@@ -1,5 +1,7 @@
 import 'package:drivelife/api/orders_api_services.dart';
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
@@ -57,6 +59,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
+      final theme = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -78,13 +82,14 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           ? _buildShimmerLoading()
           : _errorMessage != null
           ? _buildErrorState()
-          : _buildOrderDetails(),
+          : _buildOrderDetails(theme),
     );
   }
 
-  Widget _buildOrderDetails() {
+  Widget _buildOrderDetails(ThemeProvider theme) {
     return RefreshIndicator(
       onRefresh: _loadOrder,
+      color: theme.primaryColor,
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(

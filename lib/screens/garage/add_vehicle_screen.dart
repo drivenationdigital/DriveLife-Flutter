@@ -770,7 +770,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(strokeWidth: 2,
+                      color: Color(0xFFAE9159),
+                    ),
                   )
                 : Text(
                     _isEditMode ? 'Update' : 'Save',

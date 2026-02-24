@@ -139,7 +139,7 @@ class _UsernameScreenState extends State<UsernameScreen> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.black,
+                      color: Color(0xFFAE9159),
                     ),
                   )
                 : const Text(

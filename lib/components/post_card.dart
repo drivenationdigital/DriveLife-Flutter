@@ -286,6 +286,7 @@ class _PostCardState extends State<PostCard>
   }
 
   Future<void> _handleDoubleTap() async {
+    HapticFeedback.heavyImpact();
     if (!_liked) {
       await _optimisticLike();
     }
@@ -310,8 +311,10 @@ class _PostCardState extends State<PostCard>
       if (next['media_type'] == 'image') {
         final nextUrl = next['media_url'];
         if (nextUrl != null && nextUrl.isNotEmpty) {
-
-          precacheImage(CachedNetworkImageProvider(nextUrl), context, onError: (e, stack) {},
+          precacheImage(
+            CachedNetworkImageProvider(nextUrl),
+            context,
+            onError: (e, stack) {},
           );
         }
       }
@@ -527,16 +530,21 @@ class _PostCardState extends State<PostCard>
             child: _PostActions(
               liked: _liked,
               onLikeTap: () {
-                HapticFeedback.selectionClick();
+                HapticFeedback.heavyImpact();
                 _liked ? _toggleUnlike() : _optimisticLike();
               },
               onCommentTap: () => _openComments(context),
               onShareTap: _sharePost,
-              newsTitle: widget.post['is_news'] == true ? widget.post['caption'] ?? 'News' : null,
+              newsTitle: widget.post['is_news'] == true
+                  ? widget.post['caption'] ?? 'News'
+                  : null,
               isNews: widget.post['is_news'] == true,
               newsContent: widget.post['news_content'], // HTML from ACF
               newsDate: widget.post['post_date'],
-              newsImageUrls: _media.map((m) => m['media_url']).whereType<String>().toList(),
+              newsImageUrls: _media
+                  .map((m) => m['media_url'])
+                  .whereType<String>()
+                  .toList(),
               creatorProfileImage: widget.post['user_profile_image'],
               username: widget.post['username'] ?? '',
               isVerified: widget.post['user_verified'] == true,

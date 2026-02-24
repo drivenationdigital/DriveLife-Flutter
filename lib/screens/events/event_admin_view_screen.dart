@@ -92,7 +92,7 @@ class _EventAdminPageState extends State<EventAdminPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Center(child: CircularProgressIndicator()),
+      builder: (context) => Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
     );
 
     try {
@@ -169,7 +169,7 @@ class _EventAdminPageState extends State<EventAdminPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Center(child: CircularProgressIndicator()),
+      builder: (context) => Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
     );
 
     try {

@@ -313,7 +313,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
+        builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
       );
 
       final res = await GarageAPI.deleteVehicleMod(
@@ -511,7 +511,8 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFAE9159),
+                    ),
                   )
                 : Text(
                     _isEditMode ? 'Update' : 'Save',

@@ -250,12 +250,12 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
           TextButton(
             onPressed: _isSaving ? null : _saveImages,
             child: _isSaving
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.black,
+                      color: theme.primaryColor,
                     ),
                   )
                 : const Text(
@@ -390,6 +390,7 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
                     if (loadingProgress == null) return child;
                     return Center(
                       child: CircularProgressIndicator(
+                        color: theme.primaryColor,
                         value: loadingProgress.expectedTotalBytes != null
                             ? loadingProgress.cumulativeBytesLoaded /
                                   loadingProgress.expectedTotalBytes!

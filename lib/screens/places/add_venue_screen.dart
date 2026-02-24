@@ -658,7 +658,7 @@ class _CreateVenueScreenState extends State<CreateVenueScreen>
                         onBack: () => _tabController.animateTo(0),
                         onNext: () => _tabController.animateTo(2),
                       )
-                    : const Center(child: CircularProgressIndicator()),
+                    : const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159),)),
 
                 // Lazy load third tab
                 _loadedTabs.contains(2)
@@ -667,7 +667,7 @@ class _CreateVenueScreenState extends State<CreateVenueScreen>
                         onBack: () => _tabController.animateTo(1),
                         onNext: _validateAndCreate,
                       )
-                    : const Center(child: CircularProgressIndicator()),
+                    : const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159),)),
               ],
             ),
           ),

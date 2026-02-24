@@ -773,7 +773,7 @@ class _AddEventScreenState extends State<AddEventScreen>
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(strokeWidth: 2,color: Color(0xFFAE9159),),
                   )
                 : Text(
                     'Save',
@@ -860,7 +860,7 @@ class _AddEventScreenState extends State<AddEventScreen>
     if (_visitedTabs.contains(index)) {
       return builder();
     }
-    return const Center(child: CircularProgressIndicator());
+    return const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159)));
   }
 
   Widget _buildCoverImagePreview() {
@@ -887,7 +887,7 @@ class _AddEventScreenState extends State<AddEventScreen>
                   memCacheWidth: 800, // Downscale for memory efficiency
                   memCacheHeight: 600,
                   placeholder: (context, url) =>
-                      Center(child: CircularProgressIndicator()),
+                      Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
                   errorWidget: (context, url, error) => Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -1338,6 +1338,7 @@ class _AddEventScreenState extends State<AddEventScreen>
                                   width: 20,
                                   height: 20,
                                   child: CircularProgressIndicator(
+                                    color: Color(0xFFAE9159),
                                     strokeWidth: 2,
                                   ),
                                 ),

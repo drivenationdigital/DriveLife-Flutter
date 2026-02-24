@@ -475,7 +475,7 @@ class _HomeTabsState extends State<HomeTabs> {
 
     // Safety check
     if (_screens.isEmpty) {
-      return Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(body: Center(child: CircularProgressIndicator(color: theme.primaryColor)));
     }
 
     return PopScope(

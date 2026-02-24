@@ -262,7 +262,7 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.black,
+                      color: Color(0xFFAE9159),
                     ),
                   )
                 : const Text(
@@ -468,7 +468,7 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
                                       width: 20,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        color: Colors.white,
+                                        color: Color(0xFFAE9159),
                                       ),
                                     )
                                   : const Text(

@@ -581,7 +581,7 @@ class _VenuesScreenState extends State<VenuesScreen>
     if (_banners.isEmpty) {
       return const SizedBox(
         height: 150,
-        child: Center(child: CircularProgressIndicator()),
+        child: Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
       );
     }
 

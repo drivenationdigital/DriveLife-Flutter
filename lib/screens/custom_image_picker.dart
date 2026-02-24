@@ -392,7 +392,7 @@ class _CustomImagePickerState extends State<CustomImagePicker> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159)))
           : Column(
               children: [
                 // Preview Section - Always visible, 1:1 aspect ratio for post mode
@@ -501,7 +501,9 @@ class _CustomImagePickerState extends State<CustomImagePicker> {
                         return const Center(
                           child: Padding(
                             padding: EdgeInsets.all(8.0),
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              color: Color(0xFFAE9159),
+                              strokeWidth: 2),
                           ),
                         );
                       }
@@ -671,7 +673,7 @@ class _AdjustableImagePreviewState extends State<AdjustableImagePreview> {
       height: widget.width, // 1:1 aspect ratio
       color: Colors.black,
       child: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159)))
           : ClipRect(
               child: GestureDetector(
                 onScaleStart: (details) {
@@ -723,7 +725,7 @@ class _AdjustableImagePreviewState extends State<AdjustableImagePreview> {
             height: 250,
             color: Colors.grey.shade900,
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159)))
                 : GestureDetector(
                     onScaleStart: (details) {},
                     onScaleUpdate: (details) {
@@ -775,7 +777,7 @@ class _AdjustableImagePreviewState extends State<AdjustableImagePreview> {
             height: 200,
             color: Colors.grey.shade900,
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159)))
                 : GestureDetector(
                     onScaleStart: (details) {},
                     onScaleUpdate: (details) {

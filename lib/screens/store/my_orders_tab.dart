@@ -1,4 +1,5 @@
 import 'package:drivelife/api/orders_api_services.dart';
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:flutter/material.dart';
@@ -152,7 +153,10 @@ class _MyOrdersTabState extends State<MyOrdersTab> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return RefreshIndicator(
+      color: theme.primaryColor,
       onRefresh: () => _loadOrders(forceRefresh: true),
       child: Column(
         children: [

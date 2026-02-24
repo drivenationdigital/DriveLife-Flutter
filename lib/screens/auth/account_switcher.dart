@@ -91,7 +91,9 @@ class AccountSwitcherSheet extends StatelessWidget {
                             context: context,
                             barrierDismissible: false,
                             builder: (context) =>
-                                Center(child: CircularProgressIndicator()),
+                                Center(child: CircularProgressIndicator(
+                                color: Color(0xFFAE9159),
+                              )),
                           );
 
                           await accountManager.switchAccount(index);
