@@ -121,6 +121,14 @@ flutter:
     - assets/video01.mp4
     - assets/svgs/heart.svg
     - assets/svgs/heart_full.svg
+    - assets/app-icons/01-Home.svg
+    - assets/app-icons/02-Events.svg
+    - assets/app-icons/03-Venues.svg
+    - assets/app-icons/04-Basket.svg
+    - assets/app-icons/header-notification.svg
+    - assets/app-icons/header-plus.svg
+    - assets/app-icons/header-qr.svg
+    - assets/app-icons/header-search.svg
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

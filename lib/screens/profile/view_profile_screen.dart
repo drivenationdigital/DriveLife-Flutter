@@ -7,6 +7,7 @@ import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:drivelife/widgets/profile/profile_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/user_service.dart';
 import '../../providers/user_provider.dart';
@@ -537,41 +538,64 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF2A2A2A),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // padding for drag indicator
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
               ListTile(
-                leading: const Icon(Icons.share, color: Colors.white),
+                leading: const Icon(Icons.share, color: Colors.black),
                 title: const Text(
                   'Share Profile',
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(color: Colors.black),
                 ),
-                onTap: () => Navigator.pop(context),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final shareText =
+                      'Check out ${_userProfile?['name'] ?? 'this profile'} on DriveLife! https://app.mydrivelife.com?dl-profile=${_userProfile?['username'] ?? ''}';
+
+                  try {
+                    await Share.share(
+                      shareText,
+                      subject:
+                          '${_userProfile?['name'] ?? 'DriveLife Profile'}',
+                    );
+                  } catch (e) {
+                    print('Error sharing post: $e');
+                  }
+                },
               ),
-              if (!_isOwnProfile) ...[
-                ListTile(
-                  leading: const Icon(Icons.report, color: Colors.white),
-                  title: const Text(
-                    'Report',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  onTap: () => Navigator.pop(context),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.block, color: Colors.white),
-                  title: const Text(
-                    'Block',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  onTap: () => Navigator.pop(context),
-                ),
-              ],
+              // if (!_isOwnProfile) ...[
+              //   ListTile(
+              //     leading: const Icon(Icons.report, color: Colors.black),
+              //     title: const Text(
+              //       'Report',
+              //       style: TextStyle(color: Colors.black),
+              //     ),
+              //     onTap: () => Navigator.pop(context),
+              //   ),
+              //   ListTile(
+              //     leading: const Icon(Icons.block, color: Colors.black),
+              //     title: const Text(
+              //       'Block',
+              //       style: TextStyle(color: Colors.black),
+              //     ),
+              //     onTap: () => Navigator.pop(context),
+              //   ),
+              // ],
             ],
           ),
         );

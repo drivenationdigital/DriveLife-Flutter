@@ -1,4 +1,6 @@
+import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -1350,12 +1352,18 @@ class _EventDetailScreenState extends State<EventDetailScreen>
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.search, color: Colors.black),
+            icon: SvgPicture.asset(
+              'assets/app-icons/header-search.svg',
+              width: 20,
+              height: 20,
+              colorFilter: const ColorFilter.mode(Colors.black, BlendMode.srcIn),
+            ),
             onPressed: () {},
           ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.black),
-            onPressed: () {},
+          ...SharedHeaderIcons.actionIcons(
+            iconColor: Colors.black,
+            showQr: false, // Already shown in leading
+            showNotifications: true,
           ),
         ],
       ),

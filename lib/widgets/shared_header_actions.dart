@@ -3,6 +3,7 @@ import 'package:drivelife/screens/notifications_screen.dart';
 import 'package:drivelife/services/qr_scanner.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 // Import your existing services and helpers
 // import 'package:your_app/services/notifications_api.dart';
@@ -36,7 +37,7 @@ class SharedHeaderIcons {
   /// Returns the scanned data containing entity_type and entity_id
   static Widget qrCodeIcon({
     Color iconColor = Colors.black,
-    double iconSize = 24,
+    double iconSize = 20,
     EdgeInsets? padding,
     Function(Map<String, dynamic>)? onSuccess,
   }) {
@@ -45,7 +46,12 @@ class SharedHeaderIcons {
         padding: padding ?? EdgeInsets.zero,
         iconSize: iconSize,
         onPressed: () => _handleQrScan(context, onSuccess),
-        icon: Icon(Icons.qr_code, color: iconColor),
+        icon: SvgPicture.asset(
+          'assets/app-icons/header-qr.svg',
+          width: iconSize,
+          height: iconSize,
+          colorFilter: ColorFilter.mode(Colors.black, BlendMode.srcIn),
+        ),
       ),
     );
   }
@@ -109,7 +115,7 @@ class NotificationIconButton extends StatefulWidget {
     Key? key,
     this.iconColor = Colors.black,
     this.badgeColor = Colors.red,
-    this.iconSize = 24,
+    this.iconSize = 20,
     this.padding = const EdgeInsets.only(right: 12),
   }) : super(key: key);
 
@@ -155,7 +161,12 @@ class _NotificationIconButtonState extends State<NotificationIconButton> {
       icon: Stack(
         clipBehavior: Clip.none,
         children: [
-          Icon(Icons.notifications_none, color: widget.iconColor),
+          SvgPicture.asset(
+            'assets/app-icons/header-notification.svg',
+            width: widget.iconSize,
+            height: widget.iconSize,
+            colorFilter: ColorFilter.mode(widget.iconColor, BlendMode.srcIn),
+          ),
           if (_notifCount > 0)
             Positioned(
               right: -5,

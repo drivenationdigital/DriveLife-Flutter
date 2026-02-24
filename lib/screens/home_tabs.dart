@@ -5,9 +5,9 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/auth/entity_switcher.dart';
-import 'package:drivelife/screens/clubs/add_club_screen.dart';
-import 'package:drivelife/screens/clubs/club_creation_screen.dart';
-import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
+// import 'package:drivelife/screens/clubs/add_club_screen.dart';
+// import 'package:drivelife/screens/clubs/club_creation_screen.dart';
+// import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
 import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
@@ -22,6 +22,7 @@ import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'posts_screen.dart';
 import 'profile/profile_screen.dart';
@@ -282,7 +283,7 @@ class _HomeTabsState extends State<HomeTabs> {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: const Icon(Icons.add, color: Colors.black),
+            icon: iconSvg('assets/app-icons/header-plus.svg', theme, size: 20, alwaysActive: true),
             onPressed: () => _showAddMenu(theme),
           ),
           SharedHeaderIcons.qrCodeIcon(),
@@ -291,7 +292,7 @@ class _HomeTabsState extends State<HomeTabs> {
       title: Image.asset('assets/logo-dark.png', height: 18),
       actions: [
         IconButton(
-          icon: const Icon(Icons.search, color: Colors.black),
+          icon: iconSvg('assets/app-icons/header-search.svg', theme, size: 20, alwaysActive: true),
           onPressed: () {
             Navigator.pushNamed(context, AppRoutes.search);
           },
@@ -363,6 +364,27 @@ class _HomeTabsState extends State<HomeTabs> {
     );
   }
 
+  Widget iconSvg(
+    String assetName,
+    ThemeProvider? themeProvider, {
+    double size = 24,
+    bool isActive = false, 
+    bool alwaysActive = false, // NEW: Force active color even if not selected
+  }) {
+    return SvgPicture.asset(
+      assetName,
+      width: size,
+      height: size,
+      colorFilter: ColorFilter.mode(
+        isActive
+            ? (themeProvider?.primaryColor ??
+                  Colors.black)
+            : alwaysActive ? Colors.black : Colors.grey,
+        BlendMode.srcIn,
+      ),
+    );
+  }
+
   Widget _buildBottomNav(ThemeProvider theme) {
     return BottomNavigationBar(
       type: BottomNavigationBarType.fixed,
@@ -389,28 +411,47 @@ class _HomeTabsState extends State<HomeTabs> {
         setState(() => _currentIndex = index);
       },
       items: [
-        BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Events'),
         BottomNavigationBarItem(
-          icon: Icon(Icons.place_outlined),
+          icon: iconSvg(
+            'assets/app-icons/01-Home.svg',
+            theme,
+            isActive: _currentIndex == 0,
+          ),
+          label: 'Home',
+        ),
+        BottomNavigationBarItem(
+          icon: iconSvg(
+            'assets/app-icons/02-Events.svg',
+            theme,
+            isActive: _currentIndex == 1,
+          ),
+          label: 'Events',
+        ),
+        BottomNavigationBarItem(
+          icon: iconSvg(
+            'assets/app-icons/03-Venues.svg',
+            theme,
+            isActive: _currentIndex == 2,
+          ),
           label: 'Places',
         ),
-        // BottomNavigationBarItem(
-        //   icon: Icon(Icons.car_repair_outlined),
-        //   label: 'Clubs',
-        // ),
         BottomNavigationBarItem(
           icon: Consumer<CartProvider>(
             builder: (context, cart, child) {
               final count = cart.itemCount;
+              final icon = iconSvg(
+                'assets/app-icons/04-Basket.svg',
+                theme,
+                isActive: _currentIndex == 3,
+              );
               if (_currentIndex != 3 && count > 0) {
                 return Badge(
                   backgroundColor: theme.primaryColor,
                   label: Text('$count'),
-                  child: Icon(Icons.store_outlined),
+                  child: icon,
                 );
               }
-              return Icon(Icons.store_outlined);
+              return icon;
             },
           ),
           label: 'Store',

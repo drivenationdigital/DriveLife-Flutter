@@ -6,6 +6,7 @@ import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_html/flutter_html.dart';
@@ -498,7 +499,12 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
           Image.asset('assets/logo-dark.png', height: 18),
           const Spacer(),
           IconButton(
-            icon: const Icon(Icons.search, color: Colors.black),
+            icon:SvgPicture.asset(
+              'assets/app-icons/header-search.svg',
+              width: 20,
+              height: 20,
+              colorFilter: const ColorFilter.mode(Colors.black, BlendMode.srcIn),
+            ),
             onPressed: () {
               Navigator.pushNamed(context, AppRoutes.search);
             },

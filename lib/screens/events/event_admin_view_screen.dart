@@ -6,6 +6,7 @@ import 'package:drivelife/screens/events/order_ticket_view.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
@@ -257,7 +258,15 @@ class _EventAdminPageState extends State<EventAdminPage> {
         title: Image.asset('assets/logo-dark.png', height: 18),
         actions: [
           IconButton(
-            icon: const Icon(Icons.search, color: Colors.black),
+            icon: SvgPicture.asset(
+              'assets/app-icons/header-search.svg',
+              width: 20,
+              height: 20,
+              colorFilter: const ColorFilter.mode(
+                Colors.black,
+                BlendMode.srcIn,
+              ),
+            ),
             onPressed: () {
               Navigator.pushNamed(context, AppRoutes.search);
             },
