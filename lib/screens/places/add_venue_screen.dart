@@ -1144,16 +1144,20 @@ class _DescriptionTab extends StatelessWidget {
                     children: [
                       // Toolbar
                       Container(
+                        width: double.infinity,
                         decoration: BoxDecoration(
+                          
                           color: Colors.grey.shade50,
                           border: Border(
                             bottom: BorderSide(color: Colors.grey.shade300),
                           ),
+                        
                         ),
                         child: QuillSimpleToolbar(
                           controller: controller,
                           config: const QuillSimpleToolbarConfig(
-                            toolbarSectionSpacing: 30,
+                            // toolbarSectionSpacing: 22,
+                            // full width toolbar with only essential buttons
                             showAlignmentButtons: false,
                             showBackgroundColorButton: false,
                             showCenterAlignment: false,

@@ -1221,6 +1221,7 @@ class _AddEventScreenState extends State<AddEventScreen>
             children: [
               // Toolbar
               Container(
+                width: double.infinity,
                 decoration: BoxDecoration(
                   color: Colors.grey.shade50,
                   border: Border(
@@ -1256,7 +1257,6 @@ class _AddEventScreenState extends State<AddEventScreen>
                     showSuperscript: false,
                     showUndo: false,
                     showRedo: false,
-                    toolbarSectionSpacing: 32,
                   ),
                 ),
               ),
@@ -1512,6 +1512,7 @@ class _AddEventScreenState extends State<AddEventScreen>
       child: Column(
         children: [
           Container(
+            width: double.infinity,
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
               border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
@@ -1545,7 +1546,6 @@ class _AddEventScreenState extends State<AddEventScreen>
                 showSuperscript: false,
                 showUndo: false,
                 showRedo: false,
-                toolbarSectionSpacing: 32,
               ),
             ),
           ),
