@@ -468,9 +468,11 @@ class TicketDetailsCard extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+Widget _buildDetailRow(String label, String value) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment:
+          CrossAxisAlignment.start, // ← align tops if value wraps
       children: [
         Text(
           label,
@@ -480,12 +482,16 @@ class TicketDetailsCard extends StatelessWidget {
             fontWeight: FontWeight.w500,
           ),
         ),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: Colors.black87,
+        const SizedBox(width: 16), // ← breathing room between label and value
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end, // ← right-align multi-line values
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Colors.black87,
+            ),
           ),
         ),
       ],

@@ -658,7 +658,11 @@ class _CreateVenueScreenState extends State<CreateVenueScreen>
                         onBack: () => _tabController.animateTo(0),
                         onNext: () => _tabController.animateTo(2),
                       )
-                    : const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159),)),
+                    : const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFAE9159),
+                        ),
+                      ),
 
                 // Lazy load third tab
                 _loadedTabs.contains(2)
@@ -667,7 +671,11 @@ class _CreateVenueScreenState extends State<CreateVenueScreen>
                         onBack: () => _tabController.animateTo(1),
                         onNext: _validateAndCreate,
                       )
-                    : const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159),)),
+                    : const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFAE9159),
+                        ),
+                      ),
               ],
             ),
           ),
@@ -1145,7 +1153,8 @@ class _DescriptionTab extends StatelessWidget {
                         child: QuillSimpleToolbar(
                           controller: controller,
                           config: const QuillSimpleToolbarConfig(
-                                  showAlignmentButtons: false,
+                            toolbarSectionSpacing: 30,
+                            showAlignmentButtons: false,
                             showBackgroundColorButton: false,
                             showCenterAlignment: false,
                             showCodeBlock: false,

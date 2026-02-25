@@ -20,6 +20,7 @@ import 'package:drivelife/screens/search_screen.dart';
 import 'package:drivelife/screens/store/checkout/order_details_screen.dart';
 import 'package:drivelife/screens/store/checkout/order_success_screen.dart';
 import 'package:drivelife/utils/deeplinks_helper.dart';
+import 'package:drivelife/widgets/auth/email_verification.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
@@ -73,6 +74,7 @@ class AppRoutes {
 
   static const String addClub = '/add-club';
   static const String clubDetail = '/club-detail';
+  static const String verifyEmail = '/verify-email';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     final routeName = settings.name ?? '';
@@ -137,6 +139,10 @@ class AppRoutes {
         return _slide(const RegisterStepFiveScreen());
       case home:
         return _slide(const HomeTabs());
+      case verifyEmail:
+        final args = settings.arguments as Map<String, dynamic>;
+        final token = args['token'] as String;
+        return _slide(EmailVerificationModal(token: token));
       case posts:
         return _slide(const PostsScreen());
       case createPost:

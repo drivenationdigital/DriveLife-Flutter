@@ -19,6 +19,7 @@ import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/screens/news/create_news_post_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
+import 'package:drivelife/widgets/auth/email_verification.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -192,20 +193,7 @@ class _HomeTabsState extends State<HomeTabs> {
                       },
                     ),
                   ],
-                  ListTile(
-                    leading: Icon(
-                      Icons.place_outlined,
-                      color: theme.primaryColor,
-                    ),
-                    title: const Text('Add Venue'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      NavigationHelper.navigateTo(
-                        context,
-                        const CreateVenueScreen(),
-                      );
-                    },
-                  ),
+                 
                   // ListTile(
                   //   leading: Icon(
                   //     Icons.place_outlined,
@@ -261,6 +249,20 @@ class _HomeTabsState extends State<HomeTabs> {
                     NavigationHelper.navigateTo(
                       context,
                       const AddEventScreen(),
+                    );
+                  },
+                ),
+                 ListTile(
+                  leading: Icon(
+                    Icons.place_outlined,
+                    color: theme.primaryColor,
+                  ),
+                  title: const Text('Add Venue'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    NavigationHelper.navigateTo(
+                      context,
+                      const CreateVenueScreen(),
                     );
                   },
                 ),
@@ -330,7 +332,7 @@ class _HomeTabsState extends State<HomeTabs> {
                     backgroundImage: NetworkImage(url!),
                     onBackgroundImageError: (_, __) {},
                   )
-                : const Icon(Icons.car_repair),
+                : iconSvg('assets/app-icons/05-User.svg', null, size: 24, alwaysActive: true),
           );
         }
 
@@ -347,7 +349,7 @@ class _HomeTabsState extends State<HomeTabs> {
                   backgroundImage: NetworkImage(url!),
                   onBackgroundImageError: (_, __) {},
                 )
-              : const Icon(Icons.person_outline),
+              : iconSvg('assets/app-icons/05-User.svg', null, size: 24, alwaysActive: true),
         );
       },
     );
@@ -391,6 +393,7 @@ class _HomeTabsState extends State<HomeTabs> {
       backgroundColor: Colors.white,
       selectedItemColor: theme.primaryColor,
       unselectedItemColor: Colors.grey,
+      selectedFontSize: 12,
       iconSize: 28,
       currentIndex: _currentIndex,
       onTap: (index) {

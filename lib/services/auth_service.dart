@@ -231,6 +231,31 @@ class AuthService {
     }
   }
 
+  // verify email token
+  Future<Map<String, dynamic>> verifyEmailToken(String token) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v1/verify-email'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'token': token}),
+      );
+
+        final data = jsonDecode(response.body);
+        print('✅ Email verification response: $data');
+      if (response.statusCode == 200) {
+        return {
+          'success': data['success'] ?? false,
+          'message': data['message'] ?? 'Unknown error',
+        };
+      }
+
+      return {'success': false, 'message': 'Failed to verify email'};
+    } catch (e) {
+      print('❌ Email verification error: $e');
+      return {'success': false, 'message': 'Network error. Please try again.'};
+    }
+  }
+
   Future<Map<String, dynamic>> sendPasswordReset(String email) async {
     try {
       final response = await http.post(

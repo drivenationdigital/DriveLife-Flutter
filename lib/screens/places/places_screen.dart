@@ -944,7 +944,7 @@ class _VenuesScreenState extends State<VenuesScreen>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Text(
-            'Hosting your own event?',
+            'Own a venue?',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,

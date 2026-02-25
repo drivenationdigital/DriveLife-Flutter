@@ -59,6 +59,12 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
 
   void _loadUserData() {
     final userProvider = context.read<UserProvider>();
+    const countryNameToCode = {
+      'United Kingdom': 'GB',
+      'United States': 'US',
+      'Canada': 'CA',
+      'Australia': 'AU',
+    };
 
     // Pre-fill form with user data
     if (userProvider.user != null) {
@@ -74,7 +80,15 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
         _address2Controller.text = address.address2;
         _cityController.text = address.city;
         _postcodeController.text = address.postcode;
-        _selectedCountry = address.country.isNotEmpty ? address.country : 'GB';
+        if (address.country.isNotEmpty) {
+          // check if country is in our list, otherwise default to GB
+          if (address.country.length == 2) {
+            _selectedCountry = address.country;
+          } else {
+            _selectedCountry =
+                countryNameToCode[address.country] ?? 'GB';
+          }
+        }
       }
     }
   }
@@ -529,7 +543,14 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
                           children: [
                             Expanded(
                               child: DropdownButtonFormField<String>(
-                                value: _selectedCountry,
+                                value:
+                                    [
+                                      'GB',
+                                      'US',
+                                      'CA',
+                                    ].contains(_selectedCountry)
+                                    ? _selectedCountry
+                                    : null,
                                 decoration: InputDecoration(
                                   labelText: 'Country',
                                   border: OutlineInputBorder(

@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/api/posts_api.dart';
@@ -968,6 +970,14 @@ class _MediaCarousel extends StatelessWidget {
     );
   }
 
+  bool _isCfBlurredUrl(String? url) {
+    if (url == null || url.isEmpty) return false;
+    // Cloudflare image variants contain these patterns
+    return url.contains('/blur') ||
+        url.contains('variant=blur') ||
+        url.contains('blurred');
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -990,6 +1000,8 @@ class _MediaCarousel extends StatelessWidget {
                 final mediaUrl = item['media_url'];
                 final blurredUrl = item['blurred_url'];
 
+                // if blurred url is not cloudflare image, then its not blurred, so blur it
+
                 if (mediaUrl == null || mediaUrl.isEmpty) {
                   return _buildErrorPlaceholder();
                 }
@@ -1006,7 +1018,11 @@ class _MediaCarousel extends StatelessWidget {
                   children: [
                     Container(color: Colors.grey.shade200),
 
-                    if (blurredUrl != null && blurredUrl.isNotEmpty)
+                 // ── Blurred background ───────────────────────────────────────
+                    if (blurredUrl != null &&
+                        blurredUrl.isNotEmpty &&
+                        _isCfBlurredUrl(blurredUrl))
+                      // Real CF blur variant — use as-is
                       Positioned.fill(
                         child: CachedNetworkImage(
                           imageUrl: blurredUrl,
@@ -1015,7 +1031,26 @@ class _MediaCarousel extends StatelessWidget {
                           fadeOutDuration: Duration.zero,
                           errorWidget: (_, __, ___) => const SizedBox.shrink(),
                         ),
+                      )
+                    else
+                      // Not a CF blur (event image, AWS, etc.) — blur the main image manually
+                      Positioned.fill(
+                        child: ImageFiltered(
+                          imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                          child: CachedNetworkImage(
+                            imageUrl: mediaUrl,
+                            fit: BoxFit.cover,
+                            fadeInDuration: Duration.zero,
+                            errorWidget: (_, __, ___) =>
+                                const SizedBox.shrink(),
+                          ),
+                        ),
                       ),
+
+                    // // ── Dim overlay on top of either blur type ───────────────────
+                    // Positioned.fill(
+                    //   child: Container(color: Colors.black.withOpacity(0.15)),
+                    // ),
 
                     Center(
                       child: SizedBox(

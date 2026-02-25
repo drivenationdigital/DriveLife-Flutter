@@ -356,6 +356,7 @@ class _EventsScreenState extends State<EventsScreen>
 
     try {
       final response = await EventsAPI.getMyEventTickets();
+      print(response);
       if (!mounted) return;
 
       if (response != null && response['success'] == true) {

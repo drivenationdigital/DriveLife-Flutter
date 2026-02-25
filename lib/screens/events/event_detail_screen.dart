@@ -1350,22 +1350,22 @@ class _EventDetailScreenState extends State<EventDetailScreen>
         ),
         title: Image.asset('assets/logo-dark.png', height: 18),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: SvgPicture.asset(
-              'assets/app-icons/header-search.svg',
-              width: 20,
-              height: 20,
-              colorFilter: const ColorFilter.mode(Colors.black, BlendMode.srcIn),
-            ),
-            onPressed: () {},
-          ),
-          ...SharedHeaderIcons.actionIcons(
-            iconColor: Colors.black,
-            showQr: false, // Already shown in leading
-            showNotifications: true,
-          ),
-        ],
+        // actions: [
+        //   IconButton(
+        //     icon: SvgPicture.asset(
+        //       'assets/app-icons/header-search.svg',
+        //       width: 20,
+        //       height: 20,
+        //       colorFilter: const ColorFilter.mode(Colors.black, BlendMode.srcIn),
+        //     ),
+        //     onPressed: () {},
+        //   ),
+        //   ...SharedHeaderIcons.actionIcons(
+        //     iconColor: Colors.black,
+        //     showQr: false, // Already shown in leading
+        //     showNotifications: true,
+        //   ),
+        // ],
       ),
       body: _isLoadingEvent
           ? _buildSkeleton()

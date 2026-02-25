@@ -245,7 +245,7 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
         ),
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             child: Consumer<RegistrationProvider>(
               builder: (context, registrationProvider, child) {
                 return Column(
@@ -277,12 +277,12 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
                             Text(
                               'Profile Image',
                               style: TextStyle(
-                                fontSize: 18,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w600,
                                 color: isDark ? Colors.white : Colors.black,
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 10),
                             GestureDetector(
                               onTap: () => _pickImage(true),
                               child: Container(
@@ -340,12 +340,12 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
                             Text(
                               'Cover Image',
                               style: TextStyle(
-                                fontSize: 18,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w600,
                                 color: isDark ? Colors.white : Colors.black,
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 10),
                             GestureDetector(
                               onTap: () => _pickImage(false),
                               child: Container(

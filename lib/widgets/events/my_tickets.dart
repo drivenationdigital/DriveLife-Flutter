@@ -126,25 +126,25 @@ class TicketCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: onAddToWallet,
-                      icon: const Icon(
-                        Icons.account_balance_wallet_outlined,
-                        size: 18,
-                      ),
-                      label: const Text('Add to Wallet'),
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: Colors.black87,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ),
+                  // SizedBox(
+                  //   width: double.infinity,
+                  //   child: OutlinedButton.icon(
+                  //     onPressed: onAddToWallet,
+                  //     icon: const Icon(
+                  //       Icons.account_balance_wallet_outlined,
+                  //       size: 18,
+                  //     ),
+                  //     label: const Text('Add to Wallet'),
+                  //     style: OutlinedButton.styleFrom(
+                  //       backgroundColor: Colors.black87,
+                  //       foregroundColor: Colors.white,
+                  //       padding: const EdgeInsets.symmetric(vertical: 10),
+                  //       shape: RoundedRectangleBorder(
+                  //         borderRadius: BorderRadius.circular(8),
+                  //       ),
+                  //     ),
+                  //   ),
+                  // ),
                 ],
               ),
             ),

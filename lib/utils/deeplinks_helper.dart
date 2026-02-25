@@ -1,6 +1,7 @@
 import 'package:app_links/app_links.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/services/qr_scanner.dart';
+import 'package:drivelife/widgets/auth/email_verification.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
@@ -150,6 +151,24 @@ class DeepLinkHandler {
         return;
       }
 
+      // email verification link: https://app.mydrivelife.com/?verifyToken=token_here
+      if (params.containsKey('verifyToken')) {
+        final token = params['verifyToken']!;
+        debugPrint('🔗 [DeepLink] Email verification token: $token');
+
+        if (currentUser == null) {
+          debugPrint('⚠️ [DeepLink] User not logged in');
+          navigatorKey.currentState?.pushNamed(AppRoutes.login);
+          return;
+        }
+
+        // ✅ Pass the token as an argument to verify email screen
+        navigatorKey.currentState?.pushNamed(
+          AppRoutes.verifyEmail,
+          arguments: {'token': token},
+        );
+        return;
+      }
       debugPrint('⚠️ [DeepLink] No handler for URL: $uri');
     } catch (e) {
       debugPrint('❌ [DeepLink] Error: $e');

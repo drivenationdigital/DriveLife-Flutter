@@ -20,7 +20,7 @@ class AddEventBanner extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Text(
-            'Hosting your own event?',
+            'Hosting an event?',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
