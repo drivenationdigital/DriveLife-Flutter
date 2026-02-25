@@ -1455,14 +1455,14 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
             ),
 
           // Description
-          if (widget.eventDescription != null &&
-              widget.eventDescription!.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            _HtmlDescription(
-              html: widget.eventDescription!,
-              maxLines: 3, // ← adjust to taste
-            ),
-          ],
+          // if (widget.eventDescription != null &&
+          //     widget.eventDescription!.isNotEmpty) ...[
+          //   const SizedBox(height: 6),
+          //   _HtmlDescription(
+          //     html: widget.eventDescription!,
+          //     maxLines: 3, // ← adjust to taste
+          //   ),
+          // ],
         ],
 
         const SizedBox(height: 6),
@@ -1512,22 +1512,21 @@ class _HtmlDescriptionState extends State<_HtmlDescription> {
 
   static const Color _gold = Color(0xFFAE9159);
 
-  @override
+ @override
   Widget build(BuildContext context) {
+    final showToggle = _isLongContent();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AnimatedCrossFade(
+        AnimatedSize(
           duration: const Duration(milliseconds: 200),
-          alignment: Alignment.topLeft, // ← add this
-          crossFadeState: _expanded
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          firstChild: ClipRect(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: 1.6 * 15 * widget.maxLines + 8,
-              ),
+          alignment: Alignment.topLeft,
+          child: ConstrainedBox(
+            constraints: _expanded
+                ? const BoxConstraints() // ← unconstrained when expanded
+                : BoxConstraints(maxHeight: 1.6 * 15 * widget.maxLines + 8),
+            child: ClipRect(
               child: Html(
                 data: widget.html,
                 style: {
@@ -1566,45 +1565,10 @@ class _HtmlDescriptionState extends State<_HtmlDescription> {
               ),
             ),
           ),
-
-          // ── Expanded: full content ────────────────────────
-          secondChild: Html(
-            data: widget.html,
-            style: {
-              "body": Style(
-                margin: Margins.zero,
-                padding: HtmlPaddings.zero,
-                fontSize: FontSize(15),
-                lineHeight: const LineHeight(1.6),
-                color: Colors.grey.shade700,
-              ),
-              "p": Style(margin: Margins.only(bottom: 12)),
-              "h1, h2, h3, h4, h5, h6": Style(
-                margin: Margins.only(top: 16, bottom: 8),
-                fontWeight: FontWeight.bold,
-              ),
-              "ul, ol": Style(margin: Margins.only(left: 16, bottom: 12)),
-              "li": Style(margin: Margins.only(bottom: 4)),
-              "a": Style(
-                color: const Color(0xFFAE9159),
-                textDecoration: TextDecoration.underline,
-              ),
-              "strong, b": Style(fontWeight: FontWeight.bold),
-              "em, i": Style(fontStyle: FontStyle.italic),
-            },
-            onLinkTap: (url, attributes, element) async {
-              if (url != null) {
-                final uri = Uri.parse(url);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              }
-            },
-          ),
         ),
 
-        // ── Only show toggle if content is likely long ────────
-        if (_isLongContent()) ...[
+        // Toggle button
+        if (showToggle) ...[
           const SizedBox(height: 4),
           GestureDetector(
             onTap: () => setState(() => _expanded = !_expanded),
@@ -1630,28 +1594,6 @@ class _HtmlDescriptionState extends State<_HtmlDescription> {
         .trim();
     // ~50 chars per line × maxLines
     return plain.length > 50 * widget.maxLines;
-  }
-
-  Map<String, String>? _styleBuilder(element) {
-    switch (element.localName) {
-      case 'h1':
-        return {'font-size': '16px', 'font-weight': '700', 'margin': '4px 0'};
-      case 'h2':
-        return {'font-size': '14px', 'font-weight': '700', 'margin': '4px 0'};
-      case 'p':
-        return {'margin': '0 0 4px 0'};
-      case 'a':
-        return {'color': '#AE9159'};
-      case 'blockquote':
-        return {
-          'border-left': '3px solid #AE9159',
-          'padding-left': '8px',
-          'color': '#666666',
-          'font-style': 'italic',
-        };
-      default:
-        return null;
-    }
   }
 }
 

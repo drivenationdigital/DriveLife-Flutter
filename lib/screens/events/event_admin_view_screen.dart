@@ -591,7 +591,7 @@ class _EventAdminPageState extends State<EventAdminPage> {
             value,
             style: TextStyle(
               color: theme.primaryColor,
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
