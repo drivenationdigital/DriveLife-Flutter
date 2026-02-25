@@ -56,9 +56,10 @@ class _RegisterStepOneScreenState extends State<RegisterStepOneScreen> {
                   return Form(
                     key: _formKey,
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 20),
+                        // const SizedBox(height: 20),
                         Text(
                           'Register',
                           style: TextStyle(
@@ -302,7 +303,7 @@ class _RegisterStepOneScreenState extends State<RegisterStepOneScreen> {
                                     width: 24,
                                     height: 24,
                                     child: CircularProgressIndicator(
-                                      color: Color(0xFFAE9159),
+                                      color: Colors.white,
                                       strokeWidth: 2,
                                     ),
                                   )

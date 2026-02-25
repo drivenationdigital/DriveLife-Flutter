@@ -219,7 +219,7 @@ class RegisterStepThreeScreen extends StatelessWidget {
                                 width: 24,
                                 height: 24,
                                 child: CircularProgressIndicator(
-                                  color: Color(0xFFAE9159),
+                                  color: Colors.white,
                                   strokeWidth: 2,
                                 ),
                               )

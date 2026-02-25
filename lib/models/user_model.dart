@@ -47,8 +47,21 @@ class User {
       firstName: json['first_name'] ?? '',
       lastName: json['last_name'] ?? '',
       email: json['email'] ?? '',
-      profileImage: json['profile_image'],
-      coverImage: json['cover_image'],
+
+      // ✅ Handle profile_image - check if it's actually a string
+      profileImage:
+          json['profile_image'] is String &&
+              json['profile_image'].toString().isNotEmpty
+          ? json['profile_image']
+          : null,
+
+      // ✅ Handle cover_image - check if it's actually a string (not array)
+      coverImage:
+          json['cover_image'] is String &&
+              json['cover_image'].toString().isNotEmpty
+          ? json['cover_image']
+          : null,
+
       canUpdateUsername: json['can_update_username'] ?? false,
       nextUpdateUsername: json['next_update_username'] ?? 0,
       followers: json['followers'] != null
@@ -59,8 +72,6 @@ class User {
           : [],
       postsCount: json['posts_count']?.toString() ?? '0',
       emailVerified: json['email_verified'] ?? false,
-
-      // ✅ Check if it's actually a Map before parsing
       lastLocation:
           json['last_location'] != null && json['last_location'] is Map
           ? LastLocation.fromJson(json['last_location'])
@@ -72,7 +83,6 @@ class User {
       billingInfo: json['billing_info'] != null && json['billing_info'] is Map
           ? BillingInfo.fromJson(json['billing_info'])
           : null,
-
       isAdmin: json['is_admin'] ?? false,
     );
   }

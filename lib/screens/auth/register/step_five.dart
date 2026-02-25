@@ -254,7 +254,7 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
                       child: SingleChildScrollView(
                         child: Column(
                           children: [
-                            const SizedBox(height: 20),
+                            // const SizedBox(height: 20),
                             Text(
                               'Your Profile',
                               style: TextStyle(
@@ -401,7 +401,7 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    // const SizedBox(height: 20),
 
                     // Next Button
                     SizedBox(
@@ -424,7 +424,7 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
                                 width: 24,
                                 height: 24,
                                 child: CircularProgressIndicator(
-                                  color: Color(0xFFAE9159),
+                                  color: Colors.white,
                                   strokeWidth: 2,
                                 ),
                               )

@@ -570,13 +570,13 @@ class _EventAdminPageState extends State<EventAdminPage> {
 
   Widget _buildSummaryCard(String title, String value, ThemeProvider theme) {
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: theme.secondaryColor,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             title,
@@ -591,7 +591,7 @@ class _EventAdminPageState extends State<EventAdminPage> {
             value,
             style: TextStyle(
               color: theme.primaryColor,
-              fontSize: 24,
+              fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
           ),

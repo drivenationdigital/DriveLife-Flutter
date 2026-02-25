@@ -304,7 +304,7 @@ class _AddEventScreenState extends State<AddEventScreen>
               data['cover_photo']['url'] != null) {
             _coverImage = ImageData.fromRemote(
               url: data['cover_photo']['url'],
-              id: data['cover_photo']['id'],
+              id: data['cover_photo']['id'].toString(),
             );
             _isCoverImageUploaded = true;
           }
@@ -312,7 +312,7 @@ class _AddEventScreenState extends State<AddEventScreen>
           // Load gallery images
           if (data['gallery'] != null && data['gallery'] is List) {
             _galleryImages = (data['gallery'] as List).map((img) {
-              return ImageData.fromRemote(url: img['url'], id: img['id']);
+              return ImageData.fromRemote(url: img['url'], id: img['id'].toString());
             }).toList();
           }
         });
