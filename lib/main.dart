@@ -18,8 +18,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 
+// const String stripePublishableKey =
+//     'pk_test_51KPRpjHPxUaL4Jbz1Kn3SK5I4T5mL539JGCSyuM81qvXeExgBhxxngXg5FZyb0iqxLjK4FwpyFbG21lXLcinbynl008v1d9eo1';
 const String stripePublishableKey =
-    'pk_test_51KPRpjHPxUaL4Jbz1Kn3SK5I4T5mL539JGCSyuM81qvXeExgBhxxngXg5FZyb0iqxLjK4FwpyFbG21lXLcinbynl008v1d9eo1';
+    'pk_live_51KPRpjHPxUaL4Jbz8h65yzP0a0RRORzQbmOv9qdXZbRs8Scsb9lV9UlaDSIqI1QIIFi93JYwRBU76zl3RFsTjQK3001yEe0JHT';
 
 // Create a global navigator key
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();

@@ -1,4 +1,5 @@
 import 'package:drivelife/main.dart';
+import 'package:drivelife/screens/auth/forgot_password_screen.dart';
 import 'package:drivelife/screens/auth/onboarding_screen.dart';
 import 'package:drivelife/screens/auth/register/step_five.dart';
 import 'package:drivelife/screens/auth/register/step_four.dart';
@@ -37,6 +38,7 @@ import 'screens/store/shop_screen.dart';
 class AppRoutes {
   static const String splash = '/';
   static const String welcome = '/welcome';
+  static const String forgotPassword = '/forgot-password';
   static const String auth = '/auth';
   static const String login = '/login';
   static const String register = '/register';
@@ -120,6 +122,8 @@ class AppRoutes {
         return _slide(const WelcomeScreen());
       case login:
         return _slide(const LoginScreen());
+      case forgotPassword:
+        return _slide(const ForgotPasswordScreen());
       case register:
       case registerStepOne:
         return _slide(const RegisterStepOneScreen());

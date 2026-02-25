@@ -101,11 +101,7 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
 
       // Calculate total
       final subtotal = cartProvider.subtotal;
-      final shipping =
-          _shippingOptions.firstWhere(
-                (option) => option['id'] == _selectedShipping,
-              )['price']
-              as double;
+      final shipping = _calculateShipping(subtotal);
       final total = subtotal + shipping;
 
       // Quietly update user billing data in the background
@@ -129,7 +125,7 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
         customerEmail: _emailController.text,
         customerName:
             '${_firstNameController.text} ${_lastNameController.text}',
-        shippingMethod: _selectedShipping,
+        shippingMethod: 'standard',
         items: cartProvider.cart
             .map(
               (item) => {
@@ -246,7 +242,7 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
       final orderData = await OrderApiService.createOrderV2(
         userId: userId,
         paymentIntentId: paymentIntentId,
-        shippingMethod: _selectedShipping,
+        shippingMethod: 'standard',
         billingDetails: {
           'email': _emailController.text,
           'first_name': _firstNameController.text,
@@ -283,6 +279,10 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
         duration: Duration(seconds: isError ? 5 : 2),
       ),
     );
+  }
+
+  double _calculateShipping(double subtotal) {
+    return subtotal >= 95.0 ? 0.0 : 5.40;
   }
 
   @override
@@ -322,11 +322,8 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
       body: Consumer<CartProvider>(
         builder: (context, cartProvider, child) {
           final subtotal = cartProvider.subtotal;
-          final shipping =
-              _shippingOptions.firstWhere(
-                    (option) => option['id'] == _selectedShipping,
-                  )['price']
-                  as double;
+          final shipping = _calculateShipping(subtotal);
+
           final total = subtotal + shipping;
 
           return SingleChildScrollView(
@@ -609,45 +606,114 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
                         const SizedBox(height: 24),
 
                         // Shipping Options
+                        // const Text(
+                        //   'Shipping Options',
+                        //   style: TextStyle(
+                        //     fontSize: 16,
+                        //     fontWeight: FontWeight.bold,
+                        //   ),
+                        // ),
+                        const SizedBox(height: 16),
+                        // ..._shippingOptions.map((option) {
+                        //   return Container(
+                        //     margin: const EdgeInsets.only(bottom: 12),
+                        //     decoration: BoxDecoration(
+                        //       border: Border.all(
+                        //         color: _selectedShipping == option['id']
+                        //             ? const Color(0xFFAE9159)
+                        //             : Colors.grey.shade300,
+                        //         width: 2,
+                        //       ),
+                        //       borderRadius: BorderRadius.circular(8),
+                        //     ),
+                        //     child: RadioListTile<String>(
+                        //       value: option['id'],
+                        //       groupValue: _selectedShipping,
+                        //       onChanged: (value) {
+                        //         setState(() => _selectedShipping = value!);
+                        //       },
+                        //       title: Text(
+                        //         option['name'],
+                        //         style: const TextStyle(
+                        //           fontWeight: FontWeight.w600,
+                        //         ),
+                        //       ),
+                        //       subtitle: Text(
+                        //         '£${option['price'].toStringAsFixed(2)}',
+                        //       ),
+                        //       activeColor: const Color(0xFFAE9159),
+                        //     ),
+                        //   );
+                        // }),
                         const Text(
-                          'Shipping Options',
+                          'Shipping',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(height: 16),
-                        ..._shippingOptions.map((option) {
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: _selectedShipping == option['id']
-                                    ? const Color(0xFFAE9159)
-                                    : Colors.grey.shade300,
-                                width: 2,
-                              ),
-                              borderRadius: BorderRadius.circular(8),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: shipping == 0.0
+                                ? Colors.green.shade50
+                                : Colors.grey.shade50,
+                            border: Border.all(
+                              color: shipping == 0.0
+                                  ? Colors.green.shade300
+                                  : Colors.grey.shade300,
                             ),
-                            child: RadioListTile<String>(
-                              value: option['id'],
-                              groupValue: _selectedShipping,
-                              onChanged: (value) {
-                                setState(() => _selectedShipping = value!);
-                              },
-                              title: Text(
-                                option['name'],
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.local_shipping_outlined,
+                                color: shipping == 0.0
+                                    ? Colors.green.shade700
+                                    : Colors.grey.shade700,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'UK Delivery (5-7 days)',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      shipping == 0.0
+                                          ? 'Free shipping on orders over £95'
+                                          : 'Free on orders over £95',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              subtitle: Text(
-                                '£${option['price'].toStringAsFixed(2)}',
+                              Text(
+                                shipping == 0.0
+                                    ? 'FREE'
+                                    : '£${shipping.toStringAsFixed(2)}',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: shipping == 0.0
+                                      ? Colors.green.shade700
+                                      : Colors.black,
+                                ),
                               ),
-                              activeColor: const Color(0xFFAE9159),
-                            ),
-                          );
-                        }),
+                            ],
+                          ),
+                        ),
 
                         const SizedBox(height: 24),
 

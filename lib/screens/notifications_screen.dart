@@ -142,6 +142,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _handleFollowBack(int userId, bool wasFollowing) async {
+    if (wasFollowing) return;
     if (!mounted) return;
 
     final userProvider = Provider.of<UserProvider>(context, listen: false);
@@ -704,7 +705,7 @@ class _NotificationTile extends StatelessWidget {
     int userId,
     dynamic postMedia,
   ) {
-    if (isFollow) {
+    if (isFollow && !following) {
       return ElevatedButton(
         onPressed: () => onFollowBack(userId, following),
         style: ElevatedButton.styleFrom(

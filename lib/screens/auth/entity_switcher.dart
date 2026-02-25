@@ -135,12 +135,22 @@ class EntitySwitcherSheet extends StatelessWidget {
                 );
 
                 if (confirmed == true && context.mounted) {
-                  await accountManager.clearAll();
-                   Navigator.pushNamedAndRemoveUntil(
+                  Navigator.pop(
                     context,
-                    AppRoutes.login,
-                    (route) => false,
-                  );
+                  ); // ✅ Close the entity switcher sheet first
+
+                  await accountManager.clearAll();
+
+                  if (context.mounted) {
+                    // ✅ Use pushNamedAndRemoveUntil to clear all navigation stack
+                    Navigator.of(
+                      context,
+                      rootNavigator: true,
+                    ).pushNamedAndRemoveUntil(
+                      AppRoutes.login,
+                      (route) => false,
+                    );
+                  }
                 }
               },
             ),

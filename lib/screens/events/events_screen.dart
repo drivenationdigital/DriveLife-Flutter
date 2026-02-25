@@ -700,7 +700,7 @@ class _EventsScreenState extends State<EventsScreen>
               controller: _searchController,
               onChanged: _onSearchChanged,
               decoration: InputDecoration(
-                hintText: 'Search events...',
+                hintText: 'Search events',
                 hintStyle: TextStyle(color: Colors.grey.shade400),
                 prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
                 suffixIcon: _searchController.text.isNotEmpty

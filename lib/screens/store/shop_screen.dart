@@ -5,6 +5,7 @@ import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/store/checkout/stripe_checkout_screen.dart';
 import 'package:drivelife/screens/store/my_orders_tab.dart';
 import 'package:drivelife/screens/store/product_view_screen.dart';
+import 'package:drivelife/services/location_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/models/banner_model.dart';
@@ -25,6 +26,8 @@ class _ShopScreenState extends State<ShopScreen>
   // Loading states
   bool _isLoadingBanners = true;
   bool _isLoadingProducts = true;
+  bool _isUKRegion = true;
+  bool _isCheckingRegion = true;
 
   // Data
   List<ProductsBanner> _banners = [];
@@ -54,6 +57,7 @@ class _ShopScreenState extends State<ShopScreen>
   void initState() {
     super.initState();
     _mainTabController = TabController(length: 3, vsync: this);
+    _checkUserRegion();
 
     // Load initial data
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -67,6 +71,51 @@ class _ShopScreenState extends State<ShopScreen>
   void dispose() {
     _mainTabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkUserRegion() async {
+    setState(() => _isCheckingRegion = true);
+
+    try {
+      // ✅ Check 1: Try to get device's current location
+      final deviceCountry = await LocationService.getDeviceCountry();
+
+      if (deviceCountry != null) {
+        print('📍 Device country: $deviceCountry');
+        setState(() {
+          _isUKRegion = deviceCountry == 'GB' || deviceCountry == 'UK';
+          _isCheckingRegion = false;
+        });
+        return;
+      }
+
+      // ✅ Check 2: Fall back to user's last known location
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final user = userProvider.user;
+
+      if (user?.lastLocation != null) {
+        final country = user!.lastLocation!.country?.toUpperCase() ?? '';
+        print('📍 User last location country: $country');
+        setState(() {
+          _isUKRegion = country == 'GB' || country == 'UK';
+          _isCheckingRegion = false;
+        });
+        return;
+      }
+
+      // ✅ Default: Allow access if we can't determine
+      print('📍 Could not determine location, allowing access');
+      setState(() {
+        _isUKRegion = true;
+        _isCheckingRegion = false;
+      });
+    } catch (e) {
+      print('❌ Error checking region: $e');
+      setState(() {
+        _isUKRegion = true; // Default to allowing access
+        _isCheckingRegion = false;
+      });
+    }
   }
 
   // Load banners
@@ -409,28 +458,77 @@ class _ShopScreenState extends State<ShopScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
+
+    // ✅ Show loading while checking region
+    if (_isCheckingRegion) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: CircularProgressIndicator(color: theme.primaryColor),
+        ),
+      );
+    }
+
+    // ✅ Show region restriction message
+    if (!_isUKRegion) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.location_off_rounded,
+                  size: 80,
+                  color: Colors.grey.shade300,
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'USA Store coming soon',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'The DriveLife Shop is currently only available in the UK.',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Colors.grey.shade600,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: Column(
         children: [
           // Search bar
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search...',
-                hintStyle: TextStyle(color: Colors.grey.shade400),
-                prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
+          // Padding(
+          //   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          //   child: TextField(
+          //     decoration: InputDecoration(
+          //       hintText: 'Search...',
+          //       hintStyle: TextStyle(color: Colors.grey.shade400),
+          //       prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
+          //       filled: true,
+          //       fillColor: Colors.grey.shade100,
+          //       border: OutlineInputBorder(
+          //         borderRadius: BorderRadius.circular(8),
+          //         borderSide: BorderSide.none,
+          //       ),
+          //       contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          //     ),
+          //   ),
+          // ),
 
           // Main tabs
           Consumer<CartProvider>(
@@ -499,6 +597,10 @@ class _ShopScreenState extends State<ShopScreen>
   Widget _buildBasketTab() {
     return Consumer<CartProvider>(
       builder: (context, cartProvider, child) {
+        final subtotal = cartProvider.subtotal;
+        final shippingCost = subtotal >= 95.0 ? 0.0 : 5.40;
+        final total = subtotal + shippingCost;
+
         if (cartProvider.cart.isEmpty) {
           return Center(
             child: Column(
@@ -776,60 +878,59 @@ class _ShopScreenState extends State<ShopScreen>
                     const SizedBox(height: 20),
 
                     // Add Coupon
-                    Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: ExpansionTile(
-                        title: const Text(
-                          'Add Coupon',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              children: [
-                                TextField(
-                                  decoration: InputDecoration(
-                                    hintText: 'Enter coupon code',
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 12,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: () {
-                                      // Apply coupon
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.black,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 12,
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'Apply',
-                                      style: TextStyle(color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
+                    // Container(
+                    //   decoration: BoxDecoration(
+                    //     border: Border.all(color: Colors.grey.shade300),
+                    //     borderRadius: BorderRadius.circular(4),
+                    //   ),
+                    //   child: ExpansionTile(
+                    //     title: const Text(
+                    //       'Add Coupon',
+                    //       style: TextStyle(fontSize: 14),
+                    //     ),
+                    //     tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                    //     children: [
+                    //       Padding(
+                    //         padding: const EdgeInsets.all(16),
+                    //         child: Column(
+                    //           children: [
+                    //             TextField(
+                    //               decoration: InputDecoration(
+                    //                 hintText: 'Enter coupon code',
+                    //                 border: OutlineInputBorder(
+                    //                   borderRadius: BorderRadius.circular(4),
+                    //                 ),
+                    //                 contentPadding: const EdgeInsets.symmetric(
+                    //                   horizontal: 12,
+                    //                   vertical: 12,
+                    //                 ),
+                    //               ),
+                    //             ),
+                    //             const SizedBox(height: 12),
+                    //             SizedBox(
+                    //               width: double.infinity,
+                    //               child: ElevatedButton(
+                    //                 onPressed: () {
+                    //                   // Apply coupon
+                    //                 },
+                    //                 style: ElevatedButton.styleFrom(
+                    //                   backgroundColor: Colors.black,
+                    //                   padding: const EdgeInsets.symmetric(
+                    //                     vertical: 12,
+                    //                   ),
+                    //                 ),
+                    //                 child: const Text(
+                    //                   'Apply',
+                    //                   style: TextStyle(color: Colors.white),
+                    //                 ),
+                    //               ),
+                    //             ),
+                    //           ],
+                    //         ),
+                    //       ),
+                    //     ],
+                    //   ),
+                    // ),
                     const SizedBox(height: 20),
 
                     // Sub Total
@@ -841,7 +942,7 @@ class _ShopScreenState extends State<ShopScreen>
                           style: TextStyle(fontSize: 14),
                         ),
                         Text(
-                          '£${cartProvider.subtotal.toStringAsFixed(2)}',
+                          '£${subtotal.toStringAsFixed(2)}',
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -856,15 +957,34 @@ class _ShopScreenState extends State<ShopScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Shipping: 5-10 days',
-                          style: TextStyle(fontSize: 14),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'UK Delivery (5-7 days)',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                            if (shippingCost == 0.0)
+                              Text(
+                                'Free over £95',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.green.shade700,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                          ],
                         ),
                         Text(
-                          '£${(cartProvider.subtotal * 0.12).toStringAsFixed(2)}',
-                          style: const TextStyle(
+                          shippingCost == 0.0
+                              ? 'FREE'
+                              : '£${shippingCost.toStringAsFixed(2)}',
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
+                            color: shippingCost == 0.0
+                                ? Colors.green.shade700
+                                : Colors.black,
                           ),
                         ),
                       ],
@@ -884,7 +1004,7 @@ class _ShopScreenState extends State<ShopScreen>
                           ),
                         ),
                         Text(
-                          '£${(cartProvider.subtotal * 1.12).toStringAsFixed(2)}',
+                          '£${total.toStringAsFixed(2)}',
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,

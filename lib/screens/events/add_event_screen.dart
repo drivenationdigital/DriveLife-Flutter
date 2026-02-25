@@ -789,6 +789,7 @@ class _AddEventScreenState extends State<AddEventScreen>
           controller: _tabController,
           indicatorColor: theme.primaryColor,
           labelColor: theme.primaryColor,
+          isScrollable: true,
           unselectedLabelColor: Colors.grey,
           labelStyle: const TextStyle(fontWeight: FontWeight.w600),
           tabs: const [

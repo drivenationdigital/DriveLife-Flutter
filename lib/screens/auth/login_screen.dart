@@ -284,11 +284,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       alignment: Alignment.centerRight,
                       child: TextButton(
                         onPressed: () {
-                          // TODO: Navigate to forgot password screen
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Forgot password coming soon'),
-                            ),
+                          
+                          Navigator.pushNamed(
+                            context,
+                            AppRoutes.forgotPassword,
                           );
                         },
                         child: Text(
@@ -323,6 +322,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 height: 24,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
+                                  color: Colors.white,
                                   // color: Color(0xFFAE9159),
                                 ),
                               )

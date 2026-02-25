@@ -230,4 +230,27 @@ class AuthService {
       await _storage.delete(key: _userKey);
     }
   }
+
+  Future<Map<String, dynamic>> sendPasswordReset(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v1/forgot-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'success': data['success'] ?? false,
+          'message': data['message'] ?? 'Unknown error',
+        };
+      }
+
+      return {'success': false, 'message': 'Failed to send reset email'};
+    } catch (e) {
+      print('❌ Password reset error: $e');
+      return {'success': false, 'message': 'Network error. Please try again.'};
+    }
+  }
 }

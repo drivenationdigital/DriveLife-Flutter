@@ -133,6 +133,23 @@ class DeepLinkHandler {
         return;
       }
 
+      if (params.containsKey('dl-event')) {
+        final eventId = params['dl-event']!;
+        debugPrint('🔗 [DeepLink] Event ID: $eventId');
+
+        if (currentUser == null) {
+          debugPrint('⚠️ [DeepLink] User not logged in');
+          navigatorKey.currentState?.pushNamed(AppRoutes.login);
+          return;
+        }
+
+        navigatorKey.currentState?.pushNamed(
+          AppRoutes.eventDetail,
+          arguments: {'event': {'id': eventId}},
+        );
+        return;
+      }
+
       debugPrint('⚠️ [DeepLink] No handler for URL: $uri');
     } catch (e) {
       debugPrint('❌ [DeepLink] Error: $e');

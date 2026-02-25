@@ -216,7 +216,7 @@ class EventsAPI {
       final queryParams = {
         'event_id': eventId,
         'user_id': userId.toString(),
-        'site': country ?? userCountry,
+        'site': userCountry,
       };
 
       final uri = Uri.parse(

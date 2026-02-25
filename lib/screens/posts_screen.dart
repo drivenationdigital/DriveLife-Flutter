@@ -376,6 +376,8 @@ class _PostsTabState extends State<_PostsTab>
                         post: post,
                         onTapProfile: () {
                           if (!mounted) return;
+                          if (post['is_event'] == true) return; // Don't navigate for events
+                          
                           Navigator.pushNamed(
                             context,
                             '/view-profile',

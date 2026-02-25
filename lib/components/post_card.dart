@@ -1,9 +1,12 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/components/news_blog.dart';
 import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/create-post/edit_post_screen.dart';
 import 'package:drivelife/widgets/formatted_text.dart';
+import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:pinch_zoom_release_unzoom/pinch_zoom_release_unzoom.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../api/interactions_api.dart';
 import '../screens/comments_bottom_sheet.dart';
 import '../widgets/feed/feed_video_player.dart';
@@ -63,8 +67,13 @@ class _PostCardState extends State<PostCard>
     _liked = widget.post['is_liked'] ?? false;
     _likesCount = (widget.post['likes_count'] ?? 0) as int;
 
-    // ✅ Cache values that don't change
-    _formattedDate = _formatPostDate(widget.post['post_date']);
+    if (widget.post['is_event'] == true) {
+      _formattedDate = 'Featured';
+    } else {
+      // ✅ Cache values that don't change
+      _formattedDate = _formatPostDate(widget.post['post_date']);
+    }
+
     _media = (widget.post['media'] ?? []) as List<dynamic>;
     _hasMedia = _media.isNotEmpty;
 
@@ -215,6 +224,23 @@ class _PostCardState extends State<PostCard>
     });
     widget.onLikeChanged?.call(true);
 
+    if (widget.post['is_event'] == true) {
+      final success = await EventsAPI.toggleEventLike(
+        eventId: widget.post['id'].toString(),
+      );
+
+      if (!mounted) return;
+
+      if (!success) {
+        setState(() {
+          _liked = false;
+          _likesCount = (_likesCount - 1).clamp(0, 9999999);
+        });
+        widget.onLikeChanged?.call(true);
+      }
+      return; // Skip post like API for events
+    }
+
     final res = await InteractionsAPI.maybeLikePost(widget.post['id']);
 
     if (!mounted) return;
@@ -237,6 +263,23 @@ class _PostCardState extends State<PostCard>
     });
     widget.onLikeChanged?.call(false);
 
+    if (widget.post['is_event'] == true) {
+      final success = await EventsAPI.toggleEventLike(
+        eventId: widget.post['id'].toString(),
+      );
+
+      if (!mounted) return;
+
+      if (!success) {
+        setState(() {
+          _liked = true;
+          _likesCount += 1;
+        });
+        widget.onLikeChanged?.call(true);
+      }
+      return; // Skip post like API for events
+    }
+
     final res = await InteractionsAPI.maybeLikePost(widget.post['id']);
 
     if (!mounted) return;
@@ -255,9 +298,23 @@ class _PostCardState extends State<PostCard>
     final postUser = widget.post['username'] ?? 'DriveLifeUser';
     final postDescription = widget.post['caption'] ?? 'DriveLife post';
     final postUrl = 'https://app.mydrivelife.com?dl-postv=$postId&ref=share';
-
     final shareText =
         'Check out this post on DriveLife by @$postUser.\n\n$postDescription\n\n$postUrl';
+
+    if (widget.post['is_event'] == true) {
+      final eventId = widget.post['id'];
+      final eventUrl =
+          'https://app.mydrivelife.com?dl-event=$eventId&ref=share';
+      final eventText =
+          'Check out this event on DriveLife by @$postUser.\n\n$postDescription\n\n$eventUrl';
+
+      try {
+        await Share.share(eventText, subject: postDescription);
+      } catch (e) {
+        debugPrint('Error sharing event: $e');
+      }
+      return;
+    }
 
     try {
       await Share.share(shareText, subject: postDescription);
@@ -492,6 +549,10 @@ class _PostCardState extends State<PostCard>
             child: _PostHeader(
               profileImage: widget.post['user_profile_image'],
               username: widget.post['username'] ?? '',
+              isEvent: widget.post['is_event'] == true,
+              eventOrganisers: widget.post['is_event'] == true
+                  ? (widget.post['event_organisers'] as List<dynamic>? ?? [])
+                  : null,
               isVerified: widget.post['user_verified'] == true,
               date: _formattedDate,
               currentUserId: user?.id,
@@ -539,6 +600,10 @@ class _PostCardState extends State<PostCard>
                   ? widget.post['caption'] ?? 'News'
                   : null,
               isNews: widget.post['is_news'] == true,
+              isEvent: widget.post['is_event'] == true,
+              eventId: widget.post['is_event'] == true
+                  ? widget.post['id']
+                  : null,
               newsContent: widget.post['news_content'], // HTML from ACF
               newsDate: widget.post['post_date'],
               newsImageUrls: _media
@@ -569,10 +634,19 @@ class _PostCardState extends State<PostCard>
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: _PostCaptionSection(
+                // if not news or event, show caption as normal
+                commentsEnabled:
+                    widget.post['is_news'] != true &&
+                    widget.post['is_event'] != true,
                 username: widget.post['username'] ?? '',
                 caption: widget.post['caption'] ?? '',
                 commentsCount: widget.post['comments_count'] ?? 0,
                 onViewComments: () => _openComments(context),
+                isEvent: widget.post['is_event'] == true,
+                eventEndDate: widget.post['event_end_date'],
+                eventLocation: widget.post['event_location'],
+                eventStartDate: widget.post['event_start_date'],
+                eventDescription: widget.post['event_description'] ?? '',
               ),
             ),
           ),
@@ -595,6 +669,8 @@ class _PostHeader extends StatelessWidget {
   final VoidCallback? onTapProfile;
   final VoidCallback onSettings;
   final Color primaryColor;
+  final List<dynamic>? eventOrganisers; // ← change type from Map to List
+  final bool isEvent;
 
   const _PostHeader({
     required this.profileImage,
@@ -606,12 +682,155 @@ class _PostHeader extends StatelessWidget {
     required this.onTapProfile,
     required this.onSettings,
     required this.primaryColor,
+    this.eventOrganisers,
+    this.isEvent = false,
   });
+
+  // ── Overlapping avatar stack ─────────────────────────────────
+  Widget _buildCollabAvatars() {
+    final orgs = eventOrganisers ?? [];
+    final displayCount = orgs.length.clamp(1, 3);
+
+    // ↓ Last avatar offset + full diameter (32) + border (2 each side)
+    final stackWidth = (displayCount - 1) * 20.0 + 36.0;
+
+    return SizedBox(
+      width: stackWidth,
+      height: 36, // ← match avatar diameter exactly
+      child: Stack(
+        clipBehavior: Clip.none, // ← allow overflow just in case
+        children: List.generate(displayCount, (i) {
+          final org = orgs[i] as Map<String, dynamic>;
+          return Positioned(
+            left: i * 20.0,
+            top: 0, // ← was 6, caused vertical clipping
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: ProfileAvatar(
+                imageUrl: org['profile_image'],
+                radius: 16,
+                onTap: onTapProfile,
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildCollabTitle() {
+    final orgs = eventOrganisers ?? [];
+    if (orgs.isEmpty) {
+      return Text(
+        username,
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+          color: Colors.black,
+        ),
+      );
+    }
+
+    const int maxDisplay = 3;
+    final displayOrgs = orgs.take(maxDisplay).toList();
+    final extraCount = orgs.length - maxDisplay;
+
+    final spans = <TextSpan>[];
+
+    for (int i = 0; i < displayOrgs.length; i++) {
+      final org = displayOrgs[i] as Map<String, dynamic>;
+      final name = org['name'] ?? '';
+
+      spans.add(
+        TextSpan(
+          text: name,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            color: Colors.black,
+          ),
+        ),
+      );
+
+      final isLast = i == displayOrgs.length - 1;
+      final isSecondLast = i == displayOrgs.length - 2;
+
+      if (!isLast) {
+        spans.add(
+          TextSpan(
+            // Oxford-style: comma between all except last pair which gets " and "
+            text: isSecondLast && extraCount == 0 ? ' and ' : ', ',
+            style: const TextStyle(
+              fontWeight: FontWeight.w400,
+              color: Colors.black87,
+            ),
+          ),
+        );
+      }
+    }
+
+    // ↓ Append "and X more" if capped
+    if (extraCount > 0) {
+      spans.add(
+        TextSpan(
+          text: ' and $extraCount more',
+          style: TextStyle(
+            fontWeight: FontWeight.w400,
+            color: Colors.grey.shade600,
+            fontSize: 13,
+          ),
+        ),
+      );
+    }
+
+    return RichText(
+      text: TextSpan(style: const TextStyle(fontSize: 13.5), children: spans),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final isOwnPost = postUserId.toString() == currentUserId.toString();
 
+    // ── Event collab layout ──────────────────────────────────────
+    if (isEvent && eventOrganisers != null && eventOrganisers!.isNotEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 3, 8),
+        child: Row(
+          children: [
+            _buildCollabAvatars(),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: onTapProfile,
+                    child: _buildCollabTitle(),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Text(
+                        'Featured',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ── Standard post layout (unchanged) ────────────────────────
     return ListTile(
       leading: ProfileAvatar(imageUrl: profileImage, onTap: onTapProfile),
       title: GestureDetector(
@@ -930,6 +1149,7 @@ class _PostActions extends StatelessWidget {
   final VoidCallback onCommentTap;
   final VoidCallback onShareTap;
   final bool isNews;
+  final bool isEvent;
   final String? newsTitle;
   final String? newsContent;
   final String? newsDate;
@@ -938,6 +1158,7 @@ class _PostActions extends StatelessWidget {
   final String? username;
   final bool? isVerified;
   final dynamic postUserId;
+  final dynamic eventId;
 
   const _PostActions({
     required this.liked,
@@ -945,6 +1166,7 @@ class _PostActions extends StatelessWidget {
     required this.onCommentTap,
     required this.onShareTap,
     this.isNews = false,
+    this.isEvent = false,
     this.newsTitle,
     this.newsContent,
     this.newsDate,
@@ -953,6 +1175,7 @@ class _PostActions extends StatelessWidget {
     this.username,
     this.isVerified,
     this.postUserId,
+    this.eventId,
   });
 
   @override
@@ -973,15 +1196,17 @@ class _PostActions extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 16),
-          GestureDetector(
-            onTap: onCommentTap,
-            child: const Icon(
-              Icons.mode_comment_outlined,
-              color: Colors.black,
-              size: 22,
+          if (!isNews && !isEvent) ...[
+            const SizedBox(width: 16),
+            GestureDetector(
+              onTap: onCommentTap,
+              child: const Icon(
+                Icons.mode_comment_outlined,
+                color: Colors.black,
+                size: 22,
+              ),
             ),
-          ),
+          ],
           const SizedBox(width: 16),
           GestureDetector(
             onTap: onShareTap,
@@ -993,6 +1218,46 @@ class _PostActions extends StatelessWidget {
           ),
 
           // ↓ News Read More button
+          if (isEvent) ...[
+            const Spacer(),
+            GestureDetector(
+              onTap: () {
+                Navigator.pushNamed(
+                  context,
+                  AppRoutes.eventDetail,
+                  arguments: {
+                    'event': {'id': eventId},
+                  },
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFAE9159),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFAE9159).withOpacity(0.35),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: const Text(
+                  'View Event',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+            ),
+          ],
           if (isNews) ...[
             const Spacer(),
             GestureDetector(
@@ -1054,12 +1319,24 @@ class _PostCaptionSection extends StatefulWidget {
   final String caption;
   final int commentsCount;
   final VoidCallback onViewComments;
+  final bool commentsEnabled;
+  final bool isEvent;
+  final String? eventStartDate;
+  final String? eventEndDate;
+  final String? eventLocation;
+  final String? eventDescription;
 
   const _PostCaptionSection({
     required this.username,
     required this.caption,
     required this.commentsCount,
     required this.onViewComments,
+    this.commentsEnabled = true,
+    this.isEvent = false,
+    this.eventStartDate,
+    this.eventEndDate,
+    this.eventLocation,
+    this.eventDescription,
   });
 
   @override
@@ -1069,6 +1346,31 @@ class _PostCaptionSection extends StatefulWidget {
 class _PostCaptionSectionState extends State<_PostCaptionSection> {
   bool _showFullCaption = false;
 
+  static const Color _gold = Color(0xFFAE9159);
+
+  Widget _buildEventDetailRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 15, color: _gold),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Colors.black87,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final username = widget.username;
@@ -1077,35 +1379,94 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          username,
-          style: const TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
+        // ── Username + caption (non-event) ───────────────────────
+        if (!widget.isEvent) ...[
+          Text(
+            username,
+            style: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
           ),
-        ),
-        if (caption.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          FormattedText(
-            text: caption,
-            showAllText: _showFullCaption,
-            maxTextLength: 100,
-            onSuffixPressed: () {
-              setState(() => _showFullCaption = !_showFullCaption);
-            },
-            suffix: _showFullCaption ? 'Show less' : 'Show more',
-            onUserTagPressed: (userId) {
-              Navigator.pushNamed(
-                context,
-                '/view-profile',
-                arguments: {'userId': userId},
-              );
-            },
-          ),
+          if (caption.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            FormattedText(
+              text: caption,
+              showAllText: _showFullCaption,
+              maxTextLength: 100,
+              onSuffixPressed: () =>
+                  setState(() => _showFullCaption = !_showFullCaption),
+              suffix: _showFullCaption ? 'Show less' : 'Show more',
+              onUserTagPressed: (userId) {
+                Navigator.pushNamed(
+                  context,
+                  '/view-profile',
+                  arguments: {'userId': userId},
+                );
+              },
+            ),
+          ],
         ],
+
+        // ── Event layout ─────────────────────────────────────────
+        if (widget.isEvent) ...[
+          // Organiser name
+          Text(
+            username,
+            style: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 3),
+
+          // Event name (caption = title)
+          Text(
+            caption,
+            style: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Date
+          if (widget.eventStartDate != null)
+            _buildEventDetailRow(
+              Icons.calendar_today_rounded,
+              widget.eventStartDate!,
+            ),
+
+          // Time range — parse from start/end dates
+          if (widget.eventStartDate != null && widget.eventEndDate != null)
+            _buildEventDetailRow(
+              Icons.access_time_rounded,
+              _formatTimeRange(widget.eventStartDate!, widget.eventEndDate!),
+            ),
+
+          // Location
+          if (widget.eventLocation != null && widget.eventLocation!.isNotEmpty)
+            _buildEventDetailRow(
+              Icons.location_on_rounded,
+              widget.eventLocation!,
+            ),
+
+          // Description
+          if (widget.eventDescription != null &&
+              widget.eventDescription!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _HtmlDescription(
+              html: widget.eventDescription!,
+              maxLines: 3, // ← adjust to taste
+            ),
+          ],
+        ],
+
         const SizedBox(height: 6),
-        if (widget.commentsCount > 0)
+        if (widget.commentsCount > 0 && widget.commentsEnabled)
           GestureDetector(
             onTap: widget.onViewComments,
             child: Text(
@@ -1119,6 +1480,178 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
           ),
       ],
     );
+  }
+
+  /// Extracts just the time portion from "MM/dd/yyyy HH:mm" formatted strings
+  String _formatTimeRange(String start, String end) {
+    try {
+      final startTime = start.contains(' ') ? start.split(' ').last : '';
+      final endTime = end.contains(' ') ? end.split(' ').last : '';
+      if (startTime.isNotEmpty && endTime.isNotEmpty) {
+        return '$startTime – $endTime';
+      }
+      return startTime;
+    } catch (_) {
+      return start;
+    }
+  }
+}
+
+class _HtmlDescription extends StatefulWidget {
+  final String html;
+  final int maxLines;
+
+  const _HtmlDescription({required this.html, this.maxLines = 3});
+
+  @override
+  State<_HtmlDescription> createState() => _HtmlDescriptionState();
+}
+
+class _HtmlDescriptionState extends State<_HtmlDescription> {
+  bool _expanded = false;
+
+  static const Color _gold = Color(0xFFAE9159);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 200),
+          alignment: Alignment.topLeft, // ← add this
+          crossFadeState: _expanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          firstChild: ClipRect(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: 1.6 * 15 * widget.maxLines + 8,
+              ),
+              child: Html(
+                data: widget.html,
+                style: {
+                  "body": Style(
+                    margin: Margins.zero,
+                    padding: HtmlPaddings.zero,
+                    fontSize: FontSize(15),
+                    lineHeight: const LineHeight(1.6),
+                    color: Colors.grey.shade700,
+                  ),
+                  "p": Style(margin: Margins.only(bottom: 12)),
+                  "h1, h2, h3, h4, h5, h6": Style(
+                    margin: Margins.only(top: 16, bottom: 8),
+                    fontWeight: FontWeight.bold,
+                  ),
+                  "ul, ol": Style(margin: Margins.only(left: 16, bottom: 12)),
+                  "li": Style(margin: Margins.only(bottom: 4)),
+                  "a": Style(
+                    color: const Color(0xFFAE9159),
+                    textDecoration: TextDecoration.underline,
+                  ),
+                  "strong, b": Style(fontWeight: FontWeight.bold),
+                  "em, i": Style(fontStyle: FontStyle.italic),
+                },
+                onLinkTap: (url, attributes, element) async {
+                  if (url != null) {
+                    final uri = Uri.parse(url);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  }
+                },
+              ),
+            ),
+          ),
+
+          // ── Expanded: full content ────────────────────────
+          secondChild: Html(
+            data: widget.html,
+            style: {
+              "body": Style(
+                margin: Margins.zero,
+                padding: HtmlPaddings.zero,
+                fontSize: FontSize(15),
+                lineHeight: const LineHeight(1.6),
+                color: Colors.grey.shade700,
+              ),
+              "p": Style(margin: Margins.only(bottom: 12)),
+              "h1, h2, h3, h4, h5, h6": Style(
+                margin: Margins.only(top: 16, bottom: 8),
+                fontWeight: FontWeight.bold,
+              ),
+              "ul, ol": Style(margin: Margins.only(left: 16, bottom: 12)),
+              "li": Style(margin: Margins.only(bottom: 4)),
+              "a": Style(
+                color: const Color(0xFFAE9159),
+                textDecoration: TextDecoration.underline,
+              ),
+              "strong, b": Style(fontWeight: FontWeight.bold),
+              "em, i": Style(fontStyle: FontStyle.italic),
+            },
+            onLinkTap: (url, attributes, element) async {
+              if (url != null) {
+                final uri = Uri.parse(url);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              }
+            },
+          ),
+        ),
+
+        // ── Only show toggle if content is likely long ────────
+        if (_isLongContent()) ...[
+          const SizedBox(height: 4),
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Text(
+              _expanded ? 'Show less' : 'Show more',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _gold,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // Rough check — strip tags and see if plain text is long enough to truncate
+  bool _isLongContent() {
+    final plain = widget.html
+        .replaceAll(RegExp(r'<[^>]*>'), '')
+        .replaceAll('&nbsp;', ' ')
+        .trim();
+    // ~50 chars per line × maxLines
+    return plain.length > 50 * widget.maxLines;
+  }
+
+  Map<String, String>? _styleBuilder(element) {
+    switch (element.localName) {
+      case 'h1':
+        return {'font-size': '16px', 'font-weight': '700', 'margin': '4px 0'};
+      case 'h2':
+        return {'font-size': '14px', 'font-weight': '700', 'margin': '4px 0'};
+      case 'p':
+        return {'margin': '0 0 4px 0'};
+      case 'a':
+        return {'color': '#AE9159'};
+      case 'blockquote':
+        return {
+          'border-left': '3px solid #AE9159',
+          'padding-left': '8px',
+          'color': '#666666',
+          'font-style': 'italic',
+        };
+      default:
+        return null;
+    }
   }
 }
 

@@ -415,7 +415,7 @@ class _TagEntitiesScreenState extends State<TagEntitiesScreen> {
         controller: _searchController,
         onChanged: _onSearchChanged,
         decoration: InputDecoration(
-          hintText: 'Search events...',
+          hintText: 'Search events',
           prefixIcon: const Icon(Icons.search, color: Colors.grey),
           filled: true,
           fillColor: Colors.grey.shade50,
