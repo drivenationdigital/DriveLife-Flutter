@@ -108,11 +108,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final initiatorId = initiatorData['id'];
     final entityPostId = initiatorData['entity_post_id'];
 
-    if (entityType == 'post' && entityId != null) {
+    print(entity);
+
+    if ((entityType == 'post' || entityType == 'comment') && entityId != null) {
+      final postId = entityType == 'post' ? entityId : entity?['entity_data']?['post_id'];
       Navigator.pushNamed(
         context,
         '/post-detail',
-        arguments: {'postId': entityId.toString()},
+        arguments: {'postId': postId.toString(), 'highlightCommentId': entityType == 'comment' ? entityId.toString() : null},
       );
     } else if (notification['type'] == 'follow' || entityType == 'user') {
       // ✅ Route to club or user profile based on who initiated

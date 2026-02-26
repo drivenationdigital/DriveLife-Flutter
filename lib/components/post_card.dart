@@ -28,6 +28,7 @@ class PostCard extends StatefulWidget {
   final ValueChanged<bool>? onLikeChanged;
   final VoidCallback? onDelete;
   final VoidCallback? onEdit;
+  final bool? openCommentsOnLoad; // New parameter to open comments immediately
 
   const PostCard({
     super.key,
@@ -36,6 +37,7 @@ class PostCard extends StatefulWidget {
     this.onLikeChanged,
     this.onDelete,
     this.onEdit,
+    this.openCommentsOnLoad = false,
   });
 
   @override
@@ -112,6 +114,13 @@ class _PostCardState extends State<PostCard>
     if (_hasMedia) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _preloadMedia(_media, 0);
+      });
+    }
+
+    // ✅ Open comments if flag is set
+    if (widget.openCommentsOnLoad == true) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openComments(context);
       });
     }
   }

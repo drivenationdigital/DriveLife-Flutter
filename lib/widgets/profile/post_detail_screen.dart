@@ -6,8 +6,9 @@ import '../../components/post_card.dart';
 
 class PostDetailScreen extends StatefulWidget {
   final String postId;
+  final String? highlightCommentId; // Optional comment ID to highlight
 
-  const PostDetailScreen({super.key, required this.postId});
+  const PostDetailScreen({super.key, required this.postId, this.highlightCommentId});
 
   @override
   State<PostDetailScreen> createState() => _PostDetailScreenState();
@@ -138,6 +139,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           child: Padding(
             padding: const EdgeInsets.only(bottom: 40), // Bottom spacing
             child: PostCard(
+              openCommentsOnLoad: widget.highlightCommentId != null, // Open comments if we have a comment to highlight
               onEdit: () {
                 // Refresh post
                 _refreshPost();

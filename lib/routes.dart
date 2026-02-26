@@ -236,7 +236,7 @@ class AppRoutes {
         );
       case postDetail:
         final args = settings.arguments as Map<String, dynamic>;
-        return _slide(PostDetailScreen(postId: args['postId']));
+        return _slide(PostDetailScreen(postId: args['postId'], highlightCommentId: args['highlightCommentId'])); 
       case vehicleDetail:
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(VehicleDetailScreen(garageId: args['garageId']));
