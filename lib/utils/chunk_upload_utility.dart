@@ -102,13 +102,13 @@ class ChunkUploadUtility {
           final data = jsonDecode(response.body);
 
           if (data['success'] != true) {
-            throw Exception(data['message'] ?? 'Chunk upload failed');
+            throw Exception(data['message'] ?? 'Upload failed');
           }
 
           lastResponse = data;
         } else {
           throw Exception(
-            'Failed to upload chunk $i: ${response.statusCode} - ${response.body}',
+            'Failed to upload image $i: ${response.statusCode} - ${response.body}',
           );
         }
       }

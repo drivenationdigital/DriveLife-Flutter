@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
@@ -320,7 +321,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     );
   }
 
-  // UPDATE: vehicle_detail_screen.dart - Fix tab structure
+  String formatDate(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      return '${date.day}/${date.month}/${date.year}';
+    } catch (e) {
+      return dateStr; // Return original if parsing fails
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -575,7 +583,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                                 _vehicle!['owned_since'].isNotEmpty)
                               _buildInfoChip(
                                 Icons.calendar_today,
-                                'Since ${_vehicle!['owned_since']}',
+                                'Since ${formatDate(_vehicle!['owned_since'])}',
                               ),
                           ],
                         ),
@@ -859,6 +867,14 @@ class _GarageModsListState extends State<GarageModsList> {
     );
   }
 
+  void _preloadModImages(List<Map<String, dynamic>> mods) {
+    for (final mod in mods) {
+      if (mod['image'] != null && mod['image'].isNotEmpty) {
+        precacheImage(CachedNetworkImageProvider(mod['image']), context);
+      }
+    }
+  }
+
   Widget _buildModCard(Map<String, dynamic> mod, bool isOwner) {
     final hasImage = mod['image'] != null && mod['image'].isNotEmpty;
 
@@ -907,12 +923,23 @@ class _GarageModsListState extends State<GarageModsList> {
               const SizedBox(height: 8),
               ClipRRect(
                 borderRadius: BorderRadius.circular(6),
-                child: Image.network(
-                  mod['image'],
+                child: CachedNetworkImage(
+                  imageUrl: mod['image'],
                   height: 120,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  placeholder: (context, url) => Container(
+                    height: 120,
+                    color: Colors.grey.shade100,
+                    child: const Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
+                  errorWidget: (context, url, error) => const SizedBox.shrink(),
                 ),
               ),
             ],

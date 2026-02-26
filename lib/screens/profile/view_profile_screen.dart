@@ -1,3 +1,4 @@
+import 'package:drivelife/main.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/profile/edit_profile_settings_screen.dart';
@@ -36,7 +37,7 @@ class ViewProfileScreen extends StatefulWidget {
 }
 
 class _ViewProfileScreenState extends State<ViewProfileScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, RouteAware  {
   late TabController _tabController;
   final UserService _userService = UserService();
   final PostsService _postsService = PostsService();
@@ -89,7 +90,26 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     _pastVehicles.clear();
     _dreamVehicles.clear();
 
+    routeObserver.unsubscribe(this);
     super.dispose();
+  }
+
+    @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
+  }
+
+  @override
+  void didPopNext() {
+    // Called when user pops back TO this screen from any screen
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        if (_isOwnProfile) {
+          _loadGarage(); // Refresh garage for own profile when coming back
+        }
+      }
+    });
   }
 
   void _onTabChanged() {
@@ -345,6 +365,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
 
   /// This is what you should call after updating user details
   Future<void> _refreshProfile() async {
+    if (!mounted) return; // 👈 guard
     print('🔄 Refreshing profile...');
 
     if (_isOwnProfile) {
@@ -1032,9 +1053,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
 
   Widget _buildProfileHeader(ThemeProvider theme) {
     return Consumer<UserProvider>(
-      // ✅ ADD THIS
       builder: (context, userProvider, child) {
-        // ✅ ADD: Sync local state with UserProvider for own profile
         if (_isOwnProfile && userProvider.userMap != null) {
           _userProfile = Map<String, dynamic>.from(userProvider.userMap!);
         }

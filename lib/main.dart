@@ -25,6 +25,8 @@ const String stripePublishableKey =
 
 // Create a global navigator key
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
+
 
 void main() async {
   // Ensure Flutter is initialized
@@ -98,9 +100,12 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
+
+
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         return MaterialApp(
+          navigatorObservers: [routeObserver],
           navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           theme: themeProvider.themeData.copyWith(
