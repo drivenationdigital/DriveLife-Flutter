@@ -122,7 +122,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                         height: 50,
                         child: ElevatedButton(
                           onPressed: () {
-                            Navigator.pushNamed(context, AppRoutes.register);
+                            Navigator.pushNamedAndRemoveUntil(
+                              context,
+                              AppRoutes.register,
+                              (route) => false,
+                            );
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: theme.primaryColor,
@@ -151,7 +155,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                         height: 50,
                         child: ElevatedButton(
                           onPressed: () {
-                            Navigator.pushNamed(context, AppRoutes.login);
+                            Navigator.pushNamedAndRemoveUntil(
+                              context,
+                              AppRoutes.login,
+                              (route) => false,
+                            );
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.white,
