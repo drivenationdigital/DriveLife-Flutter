@@ -184,7 +184,6 @@ class GarageAPI {
       }
 
       print('Adding vehicle to garage...');
-      print(body);
 
       final uri = Uri.parse('$_apiUrl/wp-json/app/v2/add-vehicle-to-garage');
 
@@ -273,7 +272,6 @@ class GarageAPI {
       }
 
       print('Updating vehicle...');
-      print(body);
 
       final response = await http.put(
         Uri.parse('$_apiUrl/wp-json/app/v2/garage/$vehicleId'),
@@ -402,7 +400,6 @@ class GarageAPI {
       }
 
       print('Adding vehicle mod...');
-      print(body);
 
       final response = await http.post(
         Uri.parse('$_apiUrl/wp-json/app/v3/add-vehicle-mod'),
@@ -482,7 +479,6 @@ class GarageAPI {
       }
 
       print('Updating vehicle mod...');
-      print(body);
 
       final response = await http.post(
         Uri.parse('$_apiUrl/wp-json/app/v3/update-vehicle-mod'),

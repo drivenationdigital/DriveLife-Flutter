@@ -151,7 +151,6 @@ class ProductsResponse {
   });
 
   factory ProductsResponse.fromJson(Map<String, dynamic> json) {
-    print(json);
     return ProductsResponse(
       success: json['success'] as bool,
       products: (json['data'] as List<dynamic>)

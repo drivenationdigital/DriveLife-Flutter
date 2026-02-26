@@ -51,7 +51,6 @@ class AccountSwitcherSheet extends StatelessWidget {
               itemCount: accountManager.accounts.length,
               itemBuilder: (context, index) {
                 final account = accountManager.accounts[index];
-                print(account.user.id);
                 final isActive =
                     index ==
                     accountManager.accounts.indexOf(

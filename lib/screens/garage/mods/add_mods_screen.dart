@@ -663,21 +663,21 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          '${(_uploadProgress * 100).toInt()}%',
+                          'Uploading ${(_uploadProgress * 100).toInt()}%',
                           style: const TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          _uploadStatus,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
-                          ),
-                        ),
+                        // Text(
+                        //   _uploadStatus,
+                        //   textAlign: TextAlign.center,
+                        //   style: const TextStyle(
+                        //     fontSize: 14,
+                        //     color: Colors.grey,
+                        //   ),
+                        // ),
                         const SizedBox(height: 16),
                         LinearProgressIndicator(
                           value: _uploadProgress,

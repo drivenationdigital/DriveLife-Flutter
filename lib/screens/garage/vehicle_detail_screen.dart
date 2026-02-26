@@ -82,7 +82,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 
     print(vehicle);
     final mods = await GarageAPI.getVehicleMods(widget.garageId);
-
+    print(mods);
+    if (mods != null) {
+    _preloadModImages(mods);
+    }
     if (!mounted) return;
 
     if (vehicle != null) {
@@ -95,6 +98,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
       _loading = false;
       _isFromCache = false;
     });
+  }
+
+    void _preloadModImages(List<dynamic> mods) {
+    for (final mod in mods) {
+      if (mod['image'] != null && mod['image'].isNotEmpty) {
+        precacheImage(CachedNetworkImageProvider(mod['image']), context);
+      }
+    }
   }
 
   Widget _buildSkeleton() {
@@ -867,13 +878,7 @@ class _GarageModsListState extends State<GarageModsList> {
     );
   }
 
-  void _preloadModImages(List<Map<String, dynamic>> mods) {
-    for (final mod in mods) {
-      if (mod['image'] != null && mod['image'].isNotEmpty) {
-        precacheImage(CachedNetworkImageProvider(mod['image']), context);
-      }
-    }
-  }
+
 
   Widget _buildModCard(Map<String, dynamic> mod, bool isOwner) {
     final hasImage = mod['image'] != null && mod['image'].isNotEmpty;

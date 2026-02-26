@@ -14,8 +14,6 @@ import 'providers/video_mute_provider.dart';
 
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-// import League Spartan font from google fonts
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 
 // const String stripePublishableKey =

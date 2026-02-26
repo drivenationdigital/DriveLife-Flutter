@@ -37,7 +37,6 @@ class Venue {
       );
     } catch (e) {
       print('❌ Error parsing venue: $e');
-      print('JSON: $json');
       rethrow;
     }
   }
