@@ -57,7 +57,17 @@ class _ShopScreenState extends State<ShopScreen>
   void initState() {
     super.initState();
     _mainTabController = TabController(length: 3, vsync: this);
-    _checkUserRegion();
+    // _checkUserRegion();
+    if (context.read<UserProvider>().notificationSetupDone) {
+      _checkUserRegion();
+    } else {
+      // If notifications aren't set up yet, wait a bit and check again
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          _checkUserRegion();
+        }
+      });
+    }
 
     // Load initial data
     WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -3,6 +3,7 @@ import 'package:drivelife/models/user_model.dart';
 import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:drivelife/services/location_service.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/auth_service.dart';
 
 class UserProvider extends ChangeNotifier {
@@ -15,6 +16,9 @@ class UserProvider extends ChangeNotifier {
   bool get isLoading => _loading;
   bool get isRefreshing => _refreshing;
   bool get isLoggedIn => _user != null;
+
+  bool _notificationSetupDone = false;
+  bool get notificationSetupDone => _notificationSetupDone;
 
   // Convert to Map for backward compatibility
   Map<String, dynamic>? get userMap => _user?.toJson();
@@ -37,7 +41,7 @@ class UserProvider extends ChangeNotifier {
 
           // Request and associate FCM token (notifications)
           _setupNotifications(userId);
-
+          
           // Request and update location
           _setupLocation(userId);
         }
@@ -195,7 +199,23 @@ class UserProvider extends ChangeNotifier {
   Future<void> _setupNotifications(int userId) async {
     try {
       // Initialize Firebase Messaging (if not already)
-      await FirebaseMessagingService.initialize();
+      // await FirebaseMessagingService.initialize();
+      final status = await Permission.notification.request();
+
+      _notificationSetupDone = true;
+      notifyListeners();
+
+      if (status.isDenied || status.isPermanentlyDenied) {
+        print('❌ Notification permission denied');
+        return;
+      }
+
+
+
+      print('✅ Notification permission granted');
+
+      // Small delay to let the OS register the permission
+      await Future.delayed(const Duration(milliseconds: 500));
 
       // Get FCM token
       final token = await FirebaseMessagingService.getToken();
