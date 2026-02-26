@@ -40,10 +40,10 @@ class UserProvider extends ChangeNotifier {
           final userId = _user!.id;
 
           // Request and associate FCM token (notifications)
-          _setupNotifications(userId);
+          await _setupNotifications(userId);
           
           // Request and update location
-          _setupLocation(userId);
+          await _setupLocation(userId);
         }
       } else {
         _loading = false;

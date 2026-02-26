@@ -790,6 +790,8 @@ class _AddEventScreenState extends State<AddEventScreen>
           indicatorColor: theme.primaryColor,
           labelColor: theme.primaryColor,
           isScrollable: true,
+          tabAlignment: TabAlignment.start, // ✅ Aligns tabs to the left
+          // padding: EdgeInsets.zero,   
           unselectedLabelColor: Colors.grey,
           labelStyle: const TextStyle(fontWeight: FontWeight.w600),
           tabs: const [

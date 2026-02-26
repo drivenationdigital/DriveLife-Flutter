@@ -62,7 +62,7 @@ class _ShopScreenState extends State<ShopScreen>
       _checkUserRegion();
     } else {
       // If notifications aren't set up yet, wait a bit and check again
-      Future.delayed(const Duration(seconds: 2), () {
+      Future.delayed(const Duration(seconds: 5), () {
         if (mounted) {
           _checkUserRegion();
         }
