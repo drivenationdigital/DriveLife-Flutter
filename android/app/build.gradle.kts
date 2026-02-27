@@ -9,7 +9,8 @@ plugins {
 android {
     namespace = "com.app.carcalendar"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"  // ← Replace flutter.ndkVersion with this
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true

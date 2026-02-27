@@ -15,7 +15,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
   final Map<String, bool> _expandedStates = {
     'camera': false,
     'location': false,
-    'photos': false,
+    // 'photos': false,
     'notifications': false,
   };
 
@@ -30,7 +30,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
   Future<void> _checkPermissions() async {
     final cameraStatus = await Permission.camera.status;
     final locationStatus = await Permission.location.status;
-    final photosStatus = await Permission.photos.status;
+    // final photosStatus = await Permission.photos.status;
     final notificationsStatus = await Permission.notification.status;
 
     if (!mounted) return;
@@ -38,7 +38,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
     setState(() {
       _permissionStatus['camera'] = cameraStatus;
       _permissionStatus['location'] = locationStatus;
-      _permissionStatus['photos'] = photosStatus;
+      // _permissionStatus['photos'] = photosStatus;
       _permissionStatus['notifications'] = notificationsStatus;
     });
   }
@@ -272,14 +272,14 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
                   theme: theme,
                 ),
                 const SizedBox(height: 12),
-                _buildPermissionTile(
-                  icon: Icons.photo_library,
-                  title: 'Photos & Videos Permissions',
-                  description:
-                      'This app needs access to your photos to upload media to posts.',
-                  key: 'photos',
-                  theme: theme,
-                ),
+                // _buildPermissionTile(
+                //   icon: Icons.photo_library,
+                //   title: 'Photos & Videos Permissions',
+                //   description:
+                //       'This app needs access to your photos to upload media to posts.',
+                //   key: 'photos',
+                //   theme: theme,
+                // ),
                 const SizedBox(height: 12),
                 _buildPermissionTile(
                   icon: Icons.notifications,
