@@ -391,6 +391,9 @@ class _PostsTabState extends State<_PostsTab>
                           post['is_liked'] = isLiked;
                           post['likes_count'] += isLiked ? 1 : -1;
                         },
+                        onDelete: () {
+                          scrollToTopAndRefresh();
+                        },
                       ),
                     );
                   },

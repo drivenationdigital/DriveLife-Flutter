@@ -58,8 +58,6 @@ class _HomeTabsState extends State<HomeTabs> {
     // _loadManagedEntities();
   }
 
-  // In home_tabs.dart
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();

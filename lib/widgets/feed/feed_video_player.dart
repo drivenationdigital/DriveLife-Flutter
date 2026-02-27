@@ -26,8 +26,12 @@ class FeedVideoPlayer extends StatefulWidget {
 
 class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
   VideoPlayerController? _controller;
-  String? _currentUrl;
   bool _isDisposed = false;
+  bool _hasError = false;
+  int _retryCount = 0;
+
+  static const int _maxRetries = 5;
+  static const Duration _retryDelay = Duration(seconds: 3);
 
   @override
   void initState() {
@@ -35,21 +39,59 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
     _setupController(widget.url);
   }
 
-  void _setupController(String url) {
-    _currentUrl = url;
+  Future<void> _setupController(String url) async {
+    if (_isDisposed) return;
 
-    _controller?.dispose();
+    // Clean up existing controller
+    final old = _controller;
+    _controller = null;
+    old?.dispose();
+
+    if (mounted) {
+      setState(() {
+        _hasError = false;
+      });
+    }
 
     final controller = VideoPlayerController.networkUrl(Uri.parse(url));
     _controller = controller;
 
-    controller
-      ..setLooping(true)
-      ..setVolume(0)
-      ..initialize().then((_) {
-        if (!mounted || _isDisposed) return;
-        setState(() {});
-      });
+    try {
+      await controller.initialize();
+
+      if (_isDisposed || !mounted) {
+        controller.dispose();
+        return;
+      }
+
+      await controller.setLooping(true);
+      await controller.setVolume(0);
+
+      _retryCount = 0;
+      setState(() {});
+    } catch (e) {
+      // Cloudflare returns 404 while the video is still processing.
+      // Retry a few times with increasing delay before showing error UI.
+      if (_isDisposed || !mounted) return;
+
+      debugPrint('Video load failed (attempt ${_retryCount + 1}): $e');
+
+      if (_retryCount < _maxRetries) {
+        _retryCount++;
+        final delay = _retryDelay * _retryCount; // 3s, 6s, 9s, 12s, 15s
+        debugPrint('Retrying in ${delay.inSeconds}s...');
+
+        await Future.delayed(delay);
+
+        if (_isDisposed || !mounted) return;
+        _setupController(url);
+      } else {
+        // Exhausted retries — show error state, don't crash
+        if (mounted) {
+          setState(() => _hasError = true);
+        }
+      }
+    }
   }
 
   @override
@@ -57,6 +99,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
     super.didUpdateWidget(oldWidget);
 
     if (widget.url != oldWidget.url) {
+      _retryCount = 0;
       _setupController(widget.url);
       return;
     }
@@ -70,7 +113,6 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    // Listen for mute changes and apply immediately
     final muted = context.watch<VideoMuteProvider>().muted;
 
     if (_controller != null &&
@@ -97,24 +139,80 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
     final theme = Provider.of<ThemeProvider>(context);
     final muted = context.watch<VideoMuteProvider>().muted;
 
-    if (_controller == null || !_controller!.value.isInitialized) {
-      return Center(
-        child: CircularProgressIndicator(color: theme.primaryColor),
+    // ── Error state — video still processing or permanently unavailable ──
+    if (_hasError) {
+      return SizedBox(
+        width: MediaQuery.of(context).size.width,
+        height: MediaQuery.of(context).size.height * 0.65,
+        child: Container(
+          color: Colors.black12,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.videocam_off_outlined,
+                color: Colors.white38,
+                size: 36,
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Video unavailable',
+                style: TextStyle(color: Colors.white38, fontSize: 13),
+              ),
+              const SizedBox(height: 14),
+              GestureDetector(
+                onTap: () {
+                  _retryCount = 0;
+                  _setupController(widget.url);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.white24),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'Tap to retry',
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
-    // Video’s natural size
-    final size = _controller!.value.size;
-    final videoWidth = size.width;
-    final videoHeight = size.height;
+    // ── Loading state ────────────────────────────────────────────────────
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return SizedBox(
+        width: MediaQuery.of(context).size.width,
+        height: MediaQuery.of(context).size.height * 0.65,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                color: theme.primaryColor,
+                strokeWidth: 2,
+              ),
+              if (_retryCount > 0) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Processing video… ($_retryCount/$_maxRetries)',
+                  style: const TextStyle(color: Colors.black, fontSize: 12),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
 
-    final screenWidth = MediaQuery.of(context).size.width;
-
-    // 👉 Dynamic height preserving aspect ratio
-    final dynamicHeight = videoHeight == 0
-        ? 500
-        : (screenWidth * videoHeight / videoWidth);
-
+    // ── Playback ─────────────────────────────────────────────────────────
     return VisibilityDetector(
       key: Key(widget.url),
       onVisibilityChanged: (info) {
@@ -136,13 +234,12 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
       child: Stack(
         alignment: Alignment.bottomRight,
         children: [
-          // ✅ FIXED FULL-WIDTH CROPPING VIEWPORT
           SizedBox(
             width: MediaQuery.of(context).size.width,
-            height: MediaQuery.of(context).size.height * 0.65, // feed height
+            height: MediaQuery.of(context).size.height * 0.65,
             child: ClipRect(
               child: FittedBox(
-                fit: BoxFit.cover, // ✅ CROPS instead of squeezing
+                fit: BoxFit.cover,
                 alignment: Alignment.center,
                 child: SizedBox(
                   width: _controller!.value.size.width,
@@ -153,7 +250,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
             ),
           ),
 
-          // ✅ Mute Button
+          // Mute button
           GestureDetector(
             onTap: () => context.read<VideoMuteProvider>().toggle(),
             child: Container(
