@@ -128,6 +128,11 @@ class UploadPostProvider with ChangeNotifier {
     int progress,
     String message,
   ) async {
+    // if platform is ios, DONT show progress
+    if (Platform.isIOS) {
+      return;
+    }
+
     final androidDetails = AndroidNotificationDetails(
       'upload_channel',
       'Upload Progress',
