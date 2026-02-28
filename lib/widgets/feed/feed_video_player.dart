@@ -202,7 +202,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
               if (_retryCount > 0) ...[
                 const SizedBox(height: 10),
                 Text(
-                  'Processing video… ($_retryCount/$_maxRetries)',
+                  'Processing video…',
                   style: const TextStyle(color: Colors.black, fontSize: 12),
                 ),
               ],

@@ -40,6 +40,7 @@ void main() async {
 
   try {
     Stripe.publishableKey = stripePublishableKey;
+    Stripe.merchantIdentifier = 'merchant.com.app.carcalendar';
     // await Stripe.instance.applySettings();
   } catch (e) {
     print('[Stripe Err] $e');

@@ -1274,6 +1274,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.10.2"
+  speed_test_dart:
+    dependency: transitive
+    description:
+      name: speed_test_dart
+      sha256: "4131faa68d5c9259766626450a10e552bc11ff6e651bb6377cc56476443e1cfa"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.5+0"
   sqflite:
     dependency: transitive
     description:
@@ -1362,6 +1370,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "10.2.0"
+  sync:
+    dependency: transitive
+    description:
+      name: sync
+      sha256: f2ebb89eac969abb02b498562a35c4da63d6843396c4fe81948cd06a76845fce
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.0"
   synchronized:
     dependency: transitive
     description:
@@ -1394,6 +1410,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.9.4"
+  tus_client_dart:
+    dependency: "direct main"
+    description:
+      name: tus_client_dart
+      sha256: dd6bb9f53b0c330480bbd91b7e4f46663b879f836e3b450c17a988e9dd959170
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.5.0"
   typed_data:
     dependency: transitive
     description:

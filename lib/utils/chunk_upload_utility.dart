@@ -8,7 +8,17 @@ typedef ProgressCallback =
 class ChunkUploadUtility {
   static const String _baseUrl =
       'https://www.carevents.com/uk'; // Replace with your actual base URL
-  static const int chunkSize = 500000; // 500KB chunks
+  // static const int chunkSize = 500000; // 500KB chunks
+
+  static int _getChunkSize(int base64Length) {
+    final mb = base64Length / (1024 * 1024);
+
+    // if (mb < 1) return 150000; // <1MB  → 150KB
+    // if (mb < 3) return 200000; // <3MB  → 200KB
+    // if (mb < 6) return 250000; // <6MB  → 250KB
+    if (mb < 10) return 500000; // <10MB → 300KB
+    return 700000; // >10MB → 350KB
+  }
 
   /// Parameters:
   /// - [current]: Current chunk number (0-indexed)
@@ -60,6 +70,7 @@ class ChunkUploadUtility {
           '${type}_${DateTime.now().millisecondsSinceEpoch}.$extension';
 
       // Calculate total chunks needed
+      final chunkSize = _getChunkSize(base64Data.length);
       final totalChunks = (base64Data.length / chunkSize).ceil();
 
       Map<String, dynamic>? lastResponse;
@@ -83,7 +94,7 @@ class ChunkUploadUtility {
         onProgress?.call(i, totalChunks, percentage);
 
         print(
-          'Uploading chunk ${i + 1}/$totalChunks (${(percentage * 100).toStringAsFixed(1)}%)',
+          'Uploading chunk ($chunkSize) ${i + 1}/$totalChunks (${(percentage * 100).toStringAsFixed(1)}%)',
         );
 
         final response = await http.post(
