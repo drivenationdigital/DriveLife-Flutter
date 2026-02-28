@@ -74,6 +74,7 @@ dependencies:
   flutter_quill_delta_from_html: ^1.4.1
   # google_maps_flutter: ^2.5.0
   app_links: ^6.3.2
+  tus_client_dart: ^2.0.0
 
 dev_dependencies:
   flutter_test:
