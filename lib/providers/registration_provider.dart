@@ -207,7 +207,9 @@ class RegistrationProvider extends ChangeNotifier {
   }
 
   bool validateStep2() {
-    return _username.isNotEmpty && _username.length >= 3;
+    // username can only have letters, numbers, and underscores
+    final usernameRegex = RegExp(r'^[a-zA-Z0-9_]+$');
+    return _username.isNotEmpty && _username.length >= 3 && usernameRegex.hasMatch(_username);
   }
 
   bool validateStep3() {

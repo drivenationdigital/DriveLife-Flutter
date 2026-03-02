@@ -56,6 +56,13 @@ class _UsernameScreenState extends State<UsernameScreen> {
       return;
     }
 
+    // username can only have letters, numbers, and underscores
+    final usernameRegex = RegExp(r'^[a-zA-Z0-9_]+$');
+    if (!usernameRegex.hasMatch(_usernameController.text)) {
+      _showError('Username can only contain letters, numbers, and underscores');
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     final userProvider = Provider.of<UserProvider>(context, listen: false);
