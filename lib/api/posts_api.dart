@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:drivelife/models/tagged_entity.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/services/auth_service.dart';

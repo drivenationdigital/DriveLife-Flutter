@@ -135,7 +135,7 @@ class _CommentItemState extends State<CommentItem> {
 
     final c = widget.comment;
     final username = c['display_name'] ?? c['user_login'] ?? 'user';
-    final timeAgo = _getTimeAgo(c['date']);
+    final timeAgo = _getTimeAgo(c['comment_date']);
     final commentText = c['comment'] ?? "";
     final entityType = c['entity_type'] ?? 'user';
     final isEntity = entityType == 'club' || entityType == 'venue';
@@ -182,7 +182,7 @@ class _CommentItemState extends State<CommentItem> {
                   // ✅ Owner liked indicator (floating circle)
                   if (likedByOwner)
                     Positioned(
-                      right:-10,
+                      right: -10,
                       bottom: 20,
                       child: Container(
                         decoration: BoxDecoration(
@@ -200,11 +200,7 @@ class _CommentItemState extends State<CommentItem> {
                           child:
                               (ownerProfileImage == null ||
                                   ownerProfileImage.toString().isEmpty)
-                              ? Icon(
-                                  Icons.favorite,
-                                  size: 7,
-                                  color: Colors.red,
-                                )
+                              ? Icon(Icons.favorite, size: 7, color: Colors.red)
                               : null,
                         ),
                       ),
@@ -267,6 +263,17 @@ class _CommentItemState extends State<CommentItem> {
                           ),
                         ),
                       ],
+
+                      // if (widget.isOwner) ...[
+                      //  Text(
+                      //     ' • Author',
+                      //     style: const TextStyle(
+                      //       fontWeight: FontWeight.w500,
+                      //       color: Colors.grey,
+                      //       fontSize: 12,
+                      //     ),
+                      //   ),
+                      // ],
                     ],
                   ),
 
@@ -305,7 +312,7 @@ class _CommentItemState extends State<CommentItem> {
                             color: Colors.grey.shade600,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 6),
                       ],
 
                       // Like count

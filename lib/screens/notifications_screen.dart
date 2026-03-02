@@ -108,8 +108,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final initiatorId = initiatorData['id'];
     final entityPostId = initiatorData['entity_post_id'];
 
-    print(entity);
-
     if ((entityType == 'post' || entityType == 'comment') && entityId != null) {
       final postId = entityType == 'post' ? entityId : entity?['entity_data']?['post_id'];
       Navigator.pushNamed(
@@ -708,6 +706,7 @@ class _NotificationTile extends StatelessWidget {
     int userId,
     dynamic postMedia,
   ) {
+
     if (isFollow && !following) {
       return ElevatedButton(
         onPressed: () => onFollowBack(userId, following),
