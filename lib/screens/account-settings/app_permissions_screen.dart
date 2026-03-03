@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -29,8 +31,9 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
 
   Future<void> _checkPermissions() async {
     final cameraStatus = await Permission.camera.status;
-    final locationStatus = await Permission.location.status;
-    // final photosStatus = await Permission.photos.status;
+    final locationStatus = Platform.isIOS
+        ? await Permission.locationWhenInUse.status
+        : await Permission.location.status;
     final notificationsStatus = await Permission.notification.status;
 
     if (!mounted) return;
@@ -38,35 +41,38 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
     setState(() {
       _permissionStatus['camera'] = cameraStatus;
       _permissionStatus['location'] = locationStatus;
-      // _permissionStatus['photos'] = photosStatus;
       _permissionStatus['notifications'] = notificationsStatus;
     });
   }
 
   // Add individual request methods
   Future<void> _requestPermission(String key) async {
-    PermissionStatus? status;
+    PermissionStatus status;
 
     switch (key) {
       case 'camera':
         status = await Permission.camera.request();
         break;
       case 'location':
-        status = await Permission.location.request();
-        break;
-      case 'photos':
-        status = await Permission.photos.request();
+        status = Platform.isIOS
+            ? await Permission.locationWhenInUse.request()
+            : await Permission.location.request();
         break;
       case 'notifications':
         status = await Permission.notification.request();
         break;
+      default:
+        return;
     }
 
     if (!mounted) return;
 
-    setState(() {
-      _permissionStatus[key] = status!;
-    });
+    // On iOS, if still denied after requesting, it's permanently denied
+    if (Platform.isIOS && status == PermissionStatus.denied) {
+      status = PermissionStatus.permanentlyDenied;
+    }
+
+    setState(() => _permissionStatus[key] = status);
   }
 
   String _getStatusText(PermissionStatus? status) {
@@ -188,7 +194,13 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: () async {
-                          if (status == PermissionStatus.permanentlyDenied) {
+                          final isPermanent =
+                              status == PermissionStatus.permanentlyDenied;
+                          final forceSettings =
+                              Platform.isIOS &&
+                              status == PermissionStatus.denied;
+
+                          if (isPermanent || forceSettings) {
                             _openAppSettings();
                           } else {
                             await _requestPermission(key);
@@ -203,7 +215,9 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
                           ),
                         ),
                         child: Text(
-                          status == PermissionStatus.permanentlyDenied
+                          (status == PermissionStatus.permanentlyDenied ||
+                                  (Platform.isIOS &&
+                                      status == PermissionStatus.denied))
                               ? 'Open Settings'
                               : 'Request Permission',
                           style: const TextStyle(
@@ -271,7 +285,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
                   key: 'location',
                   theme: theme,
                 ),
-                const SizedBox(height: 12),
+                // const SizedBox(height: 12),
                 // _buildPermissionTile(
                 //   icon: Icons.photo_library,
                 //   title: 'Photos & Videos Permissions',
