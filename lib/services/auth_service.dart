@@ -240,8 +240,8 @@ class AuthService {
         body: jsonEncode({'token': token}),
       );
 
-        final data = jsonDecode(response.body);
-        print('✅ Email verification response: $data');
+      final data = jsonDecode(response.body);
+      print('✅ Email verification response: $data');
       if (response.statusCode == 200) {
         return {
           'success': data['success'] ?? false,
@@ -273,6 +273,32 @@ class AuthService {
       }
 
       return {'success': false, 'message': 'Failed to send reset email'};
+    } catch (e) {
+      print('❌ Password reset error: $e');
+      return {'success': false, 'message': 'Network error. Please try again.'};
+    }
+  }
+
+  Future<Map<String, dynamic>> resetPassword({
+    required String key,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v1/reset-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'key': key, 'new_password': newPassword}),
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {
+          'success': data['success'] ?? false,
+          'message': data['message'] ?? 'Unknown error',
+        };
+      }
+
+      return {'success': false, 'message': 'Failed to reset password'};
     } catch (e) {
       print('❌ Password reset error: $e');
       return {'success': false, 'message': 'Network error. Please try again.'};

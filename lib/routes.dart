@@ -6,6 +6,7 @@ import 'package:drivelife/screens/auth/register/step_four.dart';
 import 'package:drivelife/screens/auth/register/step_one.dart';
 import 'package:drivelife/screens/auth/register/step_three.dart';
 import 'package:drivelife/screens/auth/register/step_two.dart';
+import 'package:drivelife/screens/auth/reset_password_screen.dart';
 import 'package:drivelife/screens/clubs/add_club_screen.dart';
 import 'package:drivelife/screens/clubs/club_pending_requests.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
@@ -48,6 +49,7 @@ class AppRoutes {
   static const String registerStepThree = '/register-step-3';
   static const String registerStepFour = '/register-step-4';
   static const String registerStepFive = '/register-step-5';
+  static const String resetPassword = '/reset-password';
 
   static const String home = '/home';
   static const String posts = '/posts';
@@ -126,6 +128,10 @@ class AppRoutes {
         return _slide(const LoginScreen());
       case forgotPassword:
         return _slide(const ForgotPasswordScreen());
+      case resetPassword:
+        final args = settings.arguments as Map<String, dynamic>;
+        final resetKey = args['resetKey'] as String;
+        return _slide(ResetPasswordScreen(resetKey: resetKey));
       case register:
       case registerStepOne:
         return _slide(const RegisterStepOneScreen());
