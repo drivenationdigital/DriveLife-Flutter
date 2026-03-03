@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:app_settings/app_settings.dart';
@@ -280,13 +281,10 @@ Future<void> _checkPermissions() async {
         centerTitle: true,
         title: Image.asset('assets/logo-dark.png', height: 18),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.qr_code, color: Colors.black),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.black),
-            onPressed: () {},
+          ...SharedHeaderIcons.actionIcons(
+            iconColor: Colors.black,
+            showQr: true, 
+            showNotifications: true,
           ),
         ],
       ),

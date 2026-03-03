@@ -2,6 +2,7 @@ import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/services/auth_service.dart';
+import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../utils/navigation_helper.dart';
@@ -109,13 +110,10 @@ class EditProfileSettingsScreen extends StatelessWidget {
         centerTitle: true,
         title: Image.asset('assets/logo-dark.png', height: 18),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.qr_code, color: Colors.black),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.black),
-            onPressed: () {},
+           ...SharedHeaderIcons.actionIcons(
+            iconColor: Colors.black,
+            showQr: true,
+            showNotifications: true,
           ),
         ],
       ),
