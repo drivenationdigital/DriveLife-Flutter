@@ -463,10 +463,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                                 }
                               });
                             },
-                            child: AspectRatio(
-                              aspectRatio:
-                                  media.videoController!.value.aspectRatio,
-                              child: VideoPlayer(media.videoController!),
+                            child: FittedBox(
+                              fit: BoxFit.cover,
+                              clipBehavior: Clip.hardEdge,
+                              child: SizedBox(
+                                width: media.videoController!.value.size.width,
+                                height:
+                                    media.videoController!.value.size.height,
+                                child: VideoPlayer(media.videoController!),
+                              ),
                             ),
                           )
                         : Container(
