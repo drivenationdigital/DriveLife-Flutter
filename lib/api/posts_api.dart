@@ -71,6 +71,33 @@ class PostsAPI {
     }
   }
 
+static Future<List<Map<String, dynamic>>> loadLikes({
+    required String postId,
+  }) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/wp-json/app/v1/post-likes/$postId');
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+        final data = jsonDecode(response.body);
+        print(data);
+
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(data);
+      } else {
+        print('Failed to fetch likes: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching likes: $e');
+    }
+
+    return [];
+  }
+
   static Future<List<Map<String, dynamic>>> fetchTaggableEntities({
     required String search,
     required String entityType,

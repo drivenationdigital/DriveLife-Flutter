@@ -7,6 +7,7 @@ import 'package:drivelife/components/news_blog.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/create-post/edit_post_screen.dart';
+import 'package:drivelife/widgets/feed/likes_modal.dart';
 import 'package:drivelife/widgets/formatted_text.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -628,18 +629,28 @@ class _PostCardState extends State<PostCard>
             ),
           ),
 
-          // ✅ Likes count
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              '$_likesCount likes',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Colors.black,
+          GestureDetector(
+            onTap: _likesCount > 0
+                ? () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => LikesModal(postId: widget.post['id']),
+                    );
+                  }
+                : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '$_likesCount likes',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
               ),
             ),
           ),
-
           // ✅ Caption - Wrapped in RepaintBoundary
           RepaintBoundary(
             child: Padding(
