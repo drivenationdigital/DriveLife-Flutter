@@ -1,5 +1,7 @@
 import 'package:drivelife/api/posts_api.dart';
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class LikesModal extends StatefulWidget {
   final String postId;
@@ -13,46 +15,6 @@ class LikesModal extends StatefulWidget {
 class _LikesModalState extends State<LikesModal> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _users = [];
-
-  // 🔁 Replace with real API call later
-  static const _dummyUsers = [
-    {
-      'id': 1,
-      'display_name': 'James Whitmore',
-      'username': 'jwhitmore',
-      'profile_image': 'https://i.pravatar.cc/150?img=1',
-    },
-    {
-      'id': 2,
-      'display_name': 'Sofia Reyes',
-      'username': 'sofiareyes',
-      'profile_image': 'https://i.pravatar.cc/150?img=2',
-    },
-    {
-      'id': 3,
-      'display_name': 'Marcus Lane',
-      'username': 'marcuslane',
-      'profile_image': 'https://i.pravatar.cc/150?img=3',
-    },
-    {
-      'id': 4,
-      'display_name': 'Priya Nair',
-      'username': 'priyanair',
-      'profile_image': 'https://i.pravatar.cc/150?img=4',
-    },
-    {
-      'id': 5,
-      'display_name': 'Tom Bridges',
-      'username': 'tombridges',
-      'profile_image': 'https://i.pravatar.cc/150?img=5',
-    },
-    {
-      'id': 6,
-      'display_name': 'Elena Voss',
-      'username': 'elenavoss',
-      'profile_image': 'https://i.pravatar.cc/150?img=6',
-    },
-  ];
 
   @override
   void initState() {
@@ -71,9 +33,10 @@ class _LikesModalState extends State<LikesModal> {
     });
   }
 
-
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+    
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.6,
@@ -120,9 +83,9 @@ class _LikesModalState extends State<LikesModal> {
 
           // Content
           if (_isLoading)
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(vertical: 48),
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(strokeWidth: 2, color: theme.primaryColor),
             )
           else if (_users.isEmpty)
             Padding(
