@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:drivelife/providers/account_provider.dart';
+import 'package:drivelife/routes.dart';
+import 'package:drivelife/screens/account-settings/app_permissions_screen.dart';
 import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/events/order_ticket_view.dart';
 import 'package:drivelife/utils/date.dart';
@@ -8,6 +12,7 @@ import 'package:drivelife/widgets/events/featured_events.dart';
 import 'package:drivelife/widgets/events/my_events.dart';
 import 'package:drivelife/widgets/events/my_tickets.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/api/events_api.dart';
@@ -71,6 +76,7 @@ class _EventsScreenState extends State<EventsScreen>
   int _totalPages = 1;
   bool _isLoading = false;
   bool _hasMore = true;
+  bool _showLocationBanner = false;
 
   // Debounce timer
   Timer? _scrollDebounce;
@@ -90,6 +96,8 @@ class _EventsScreenState extends State<EventsScreen>
         listen: false,
       );
       _currentUserId = accountManager.activeUser?.id;
+
+      _checkLocationBanner();
 
       _fetchFeaturedEvents();
       _fetchCategories();
@@ -175,6 +183,16 @@ class _EventsScreenState extends State<EventsScreen>
 
   void _onFilterChanged() {
     _fetchEvents(refresh: true);
+  }
+
+  Future<void> _checkLocationBanner() async {
+    final status = Platform.isIOS
+        ? await Permission.locationWhenInUse.status
+        : await Permission.location.status;
+
+    if (mounted && status != PermissionStatus.granted) {
+      setState(() => _showLocationBanner = true);
+    }
   }
 
   Future<void> _performSearch(String query) async {
@@ -895,7 +913,20 @@ class _EventsScreenState extends State<EventsScreen>
           // Featured Banner Carousel
           const SizedBox(height: 16),
 
-          if (_featuredEvents.isNotEmpty) 
+          if (_showLocationBanner) ...[
+            LocationBanner(
+              onUpdate: () {
+                setState(() => _showLocationBanner = false);
+                NavigationHelper.navigateTo(
+                  context,
+                  const AppPermissionsScreen(),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          if (_featuredEvents.isNotEmpty)
             FeaturedEventsCarousel(
               featuredEvents: _featuredEvents,
               pageController: _bannerController,
@@ -1270,6 +1301,112 @@ class _EventsScreenState extends State<EventsScreen>
         print('Add to wallet tapped for: ${ticket['event']['title']}');
         // Add your wallet logic here
       },
+    );
+  }
+}
+
+class LocationBanner extends StatefulWidget {
+  final VoidCallback onUpdate;
+
+  const LocationBanner({super.key, required this.onUpdate});
+
+  @override
+  State<LocationBanner> createState() => _LocationBannerState();
+}
+
+class _LocationBannerState extends State<LocationBanner>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    );
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _dismiss() => _controller.reverse();
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'For best experience, enable location access',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade800,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: () {
+                  _dismiss();
+                  widget.onUpdate();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFAE9159),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'Update',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

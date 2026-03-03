@@ -13,7 +13,7 @@ class AppPermissionsScreen extends StatefulWidget {
   State<AppPermissionsScreen> createState() => _AppPermissionsScreenState();
 }
 
-class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
+class _AppPermissionsScreenState extends State<AppPermissionsScreen> with WidgetsBindingObserver {
   final Map<String, bool> _expandedStates = {
     'camera': false,
     'location': false,
@@ -21,15 +21,40 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
     'notifications': false,
   };
 
-  final Map<String, PermissionStatus> _permissionStatus = {};
+  final Map<String, PermissionStatus?> _permissionStatus = {};
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // 👈
     _checkPermissions();
   }
+  
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // 👈
+    super.dispose();
+  }
 
-  Future<void> _checkPermissions() async {
+    // 👇 Re-check permissions when returning from Settings app
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPermissions();
+    }
+  }
+
+  PermissionStatus? _normalizeStatus(PermissionStatus status) {
+    if (Platform.isIOS && status == PermissionStatus.denied) {
+      // Can't distinguish notDetermined from denied without requesting,
+      // so treat denied as null (not yet requested) on iOS —
+      // permanentlyDenied is the real "user said no"
+      return null;
+    }
+    return status;
+  }
+
+Future<void> _checkPermissions() async {
     final cameraStatus = await Permission.camera.status;
     final locationStatus = Platform.isIOS
         ? await Permission.locationWhenInUse.status
@@ -39,12 +64,14 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
     if (!mounted) return;
 
     setState(() {
-      _permissionStatus['camera'] = cameraStatus;
-      _permissionStatus['location'] = locationStatus;
-      _permissionStatus['notifications'] = notificationsStatus;
+      // 👇 On iOS, map notDetermined (shows as denied) to null so we show "Not Requested"
+      _permissionStatus['camera'] = _normalizeStatus(cameraStatus);
+      _permissionStatus['location'] = _normalizeStatus(locationStatus);
+      _permissionStatus['notifications'] = _normalizeStatus(
+        notificationsStatus,
+      );
     });
   }
-
   // Add individual request methods
   Future<void> _requestPermission(String key) async {
     PermissionStatus status;
@@ -76,27 +103,28 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
   }
 
   String _getStatusText(PermissionStatus? status) {
-    if (status == null) return 'Checking...';
+    if (status == null) return 'Not Requested';
     switch (status) {
       case PermissionStatus.granted:
         return 'Granted';
-      case PermissionStatus.denied:
-        return 'Denied';
       case PermissionStatus.permanentlyDenied:
-        return 'Permanently Denied';
+        return 'Denied';
       case PermissionStatus.restricted:
         return 'Restricted';
       case PermissionStatus.limited:
         return 'Limited';
       default:
-        return 'Unknown';
+        return 'Not Requested';
     }
   }
 
   Color _getStatusColor(PermissionStatus? status, ThemeProvider theme) {
+    if (status == null) return Colors.grey;
     if (status == PermissionStatus.granted) return Colors.green;
-    if (status == PermissionStatus.denied) return theme.primaryColor;
-    return Colors.red;
+    if (status == PermissionStatus.permanentlyDenied ||
+        status == PermissionStatus.restricted)
+      return Colors.red;
+    return theme.primaryColor;
   }
 
   void _openAppSettings() {

@@ -630,7 +630,7 @@ class _PostCardState extends State<PostCard>
           ),
 
           GestureDetector(
-            onTap: _likesCount > 0
+            onTap: (_likesCount > 0 && widget.post['is_event'] != true)
                 ? () {
                     showModalBottomSheet(
                       context: context,

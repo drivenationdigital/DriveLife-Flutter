@@ -195,7 +195,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               _MediaTypeCard(
                 icon: Icons.videocam_rounded,
                 title: 'Videos',
-                subtitle: 'Will be compressed for faster upload',
+                subtitle: 'Select from gallery (max 1 min)',
                 onTap: () => Navigator.pop(context, 'videos'),
               ),
               const SizedBox(height: 12),

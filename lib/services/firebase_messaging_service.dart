@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Top-level function for background messages
@@ -108,8 +111,41 @@ class FirebaseMessagingService {
     }
   }
 
-  // Get FCM token
   static Future<String?> getToken() async {
+    try {
+      await _messaging.setAutoInitEnabled(true);
+
+      if (Platform.isIOS) {
+        String? apnsToken;
+        int retries = 0;
+        while (apnsToken == null && retries < 10) {
+          apnsToken = await _messaging.getAPNSToken();
+          if (apnsToken == null) {
+            retries++;
+            debugPrint('⏳ Waiting for APNS token... attempt $retries');
+            await Future.delayed(const Duration(seconds: 1));
+          }
+        }
+
+        if (apnsToken == null) {
+          debugPrint('⚠️ APNS token unavailable after $retries retries');
+          return null;
+        }
+
+        debugPrint('✅ APNS token: $apnsToken');
+      }
+
+      final token = await _messaging.getToken();
+      debugPrint('✅ FCM token: $token');
+      return token;
+    } catch (e) {
+      debugPrint('❌ Error getting FCM token: $e');
+      return null;
+    }
+  }
+
+  // Get FCM token
+  static Future<String?> _getToken() async {
     try {
       await _messaging.setAutoInitEnabled(true);
       String? token = await _messaging.getToken();
