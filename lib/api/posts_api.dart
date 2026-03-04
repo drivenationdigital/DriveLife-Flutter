@@ -4,6 +4,7 @@ import 'package:drivelife/models/tagged_entity.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/chunk_upload_utility.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:tus_client_dart/tus_client_dart.dart';
@@ -143,6 +144,14 @@ class PostsAPI {
     XFile videoFile, {
     Function(double progress)? onProgress,
   }) async {
+    // Tell iOS to keep running even if app is backgrounded
+    const _backgroundChannel = MethodChannel('com.drivelife/background_task');
+    String? taskId;
+
+    if (Platform.isIOS) {
+      taskId = await _backgroundChannel.invokeMethod('beginBackgroundTask');
+    }
+    
     try {
       final user = await _authService.getParentUser();
       if (user == null) {
@@ -158,7 +167,7 @@ class PostsAPI {
       final fileName =
           'video_${user['id']}_${DateTime.now().millisecondsSinceEpoch}.mp4';
       // Base64 encode the filename for TUS metadata
-      final fileNameB64 = base64Encode(utf8.encode(fileName));
+      // final fileNameB64 = base64Encode(utf8.encode(fileName));
 
       final urlResponse = await http.post(
         Uri.parse('$_baseUrl/wp-json/app/v2/create-stream-upload'),
@@ -185,29 +194,61 @@ class PostsAPI {
         maxChunkSize: 5 * 1024 * 1024, // 5MB chunks — TUS handles resuming
       );
 
-      await client.upload(
-        uri: Uri.parse(uploadUrl),
-        headers: {},
-        onProgress: (double progress, Duration eta) {
-          // ↓ TUS gives bytes uploaded, we convert to 0.0–1.0 for easier UI handling
-          final realProgress = progress / 100;
-          final clamped = realProgress.clamp(0.0, 1.0);
+      // await client.upload(
+      //   uri: Uri.parse(uploadUrl),
+      //   headers: {},
+      //   onProgress: (double progress, Duration eta) {
+      //     // ↓ TUS gives bytes uploaded, we convert to 0.0–1.0 for easier UI handling
+      //     final realProgress = progress / 100;
+      //     final clamped = realProgress.clamp(0.0, 1.0);
 
-          print(
-            'Video upload: ${(clamped * 100).toStringAsFixed(1)}% | ETA: ${eta.inSeconds}s',
+      //     print(
+      //       'Video upload: ${(clamped * 100).toStringAsFixed(1)}% | ETA: ${eta.inSeconds}s',
+      //     );
+      //     onProgress?.call(clamped);
+      //   },
+      //   onComplete: () {
+      //     onProgress?.call(100); // ← ensure 100% is always reported
+      //     print('Video upload complete: $streamId');
+      //   },
+      // );
+      int retryCount = 0;
+      const maxRetries = 3;
+
+      while (retryCount < maxRetries) {
+        try {
+          await client.upload(
+            uri: Uri.parse(uploadUrl),
+            headers: {},
+            onProgress: (double progress, Duration eta) {
+              final clamped = (progress / 100).clamp(0.0, 1.0);
+              onProgress?.call(clamped);
+            },
+            onComplete: () {
+              onProgress?.call(1.0);
+              print('Video upload complete: $streamId');
+            },
           );
-          onProgress?.call(clamped);
-        },
-        onComplete: () {
-          onProgress?.call(100); // ← ensure 100% is always reported
-          print('Video upload complete: $streamId');
-        },
-      );
+          break; // success — exit retry loop
+        } catch (e) {
+          retryCount++;
+          print('TUS upload attempt $retryCount failed: $e');
+          if (retryCount >= maxRetries) rethrow;
+          await Future.delayed(Duration(seconds: 2 * retryCount)); // backoff
+        }
+      }
 
       return streamId; // ← return CF stream ID, same as before
     } catch (e) {
       print('Error uploading video to Cloudflare: $e');
       rethrow;
+    } finally {
+      // Always end the background task
+      if (Platform.isIOS && taskId != null) {
+        await _backgroundChannel.invokeMethod('endBackgroundTask', {
+          'taskId': taskId,
+        });
+      }
     }
   }
 
