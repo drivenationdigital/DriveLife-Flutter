@@ -163,7 +163,6 @@ class _RegisterStepTwoScreenState extends State<RegisterStepTwoScreen> {
 
                                       // Stop loading
                                       registrationProvider.setLoading(false);
-                                      print('Registration Response: $response');
 
                                       // Check response
                                       if (response?['success'] != true) {

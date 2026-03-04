@@ -56,10 +56,14 @@ class _UsernameScreenState extends State<UsernameScreen> {
       return;
     }
 
-    // username can only have letters, numbers, and underscores
-    final usernameRegex = RegExp(r'^[a-zA-Z0-9_]+$');
-    if (!usernameRegex.hasMatch(_usernameController.text)) {
-      _showError('Username can only contain letters, numbers, and underscores');
+   final usernameRegex = RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9_.]*[a-zA-Z0-9]$');
+    final hasConsecutiveDots = _usernameController.text.contains('..');
+
+    if (!usernameRegex.hasMatch(_usernameController.text) ||
+        hasConsecutiveDots) {
+      _showError(
+        'Username can only contain letters, numbers, underscores, and dots. Cannot start/end with a dot or have consecutive dots.',
+      );
       return;
     }
 
