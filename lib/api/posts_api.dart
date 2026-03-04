@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:drivelife/models/tagged_entity.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
+import 'package:drivelife/services/app_error_logger.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/chunk_upload_utility.dart';
 import 'package:flutter/services.dart';
@@ -47,6 +48,36 @@ class PostsAPI {
     }
 
     return [];
+  }
+
+  static Future<bool> verifyPostCreated() async {
+    try {
+      final token = await _authService.getToken();
+      final user = await _authService.getParentUser();
+
+      if (token == null || user == null) {
+        print('User not authenticated');
+        return false;
+      }
+
+      // Wait a moment for server to finish processing
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Fetch the user's most recent post and check if it's within last 2 minutes
+      final posts = await getPosts(
+        token: token,
+        userId: user['id'],
+        limit: 1,
+      );
+
+      if (posts.isNotEmpty) {
+        final latest = posts.first;
+        final postDate = DateTime.parse(latest['post_date']);
+        final diff = DateTime.now().difference(postDate);
+        return diff.inMinutes < 2;
+      }
+    } catch (_) {}
+    return false;
   }
 
   static Future<Map<String, dynamic>?> getPostById(
@@ -194,24 +225,6 @@ class PostsAPI {
         maxChunkSize: 5 * 1024 * 1024, // 5MB chunks — TUS handles resuming
       );
 
-      // await client.upload(
-      //   uri: Uri.parse(uploadUrl),
-      //   headers: {},
-      //   onProgress: (double progress, Duration eta) {
-      //     // ↓ TUS gives bytes uploaded, we convert to 0.0–1.0 for easier UI handling
-      //     final realProgress = progress / 100;
-      //     final clamped = realProgress.clamp(0.0, 1.0);
-
-      //     print(
-      //       'Video upload: ${(clamped * 100).toStringAsFixed(1)}% | ETA: ${eta.inSeconds}s',
-      //     );
-      //     onProgress?.call(clamped);
-      //   },
-      //   onComplete: () {
-      //     onProgress?.call(100); // ← ensure 100% is always reported
-      //     print('Video upload complete: $streamId');
-      //   },
-      // );
       int retryCount = 0;
       const maxRetries = 3;
 
@@ -385,6 +398,29 @@ class PostsAPI {
         }
       } catch (e) {
         print('Error uploading media $i: $e');
+        await AppLogger.logError(
+          error: e.toString(),
+          context: 'PostsAPI.uploadMediaFiles - failed to upload media ${i + 1} of ${mediaList.length}',
+          meta: {
+            'media_index': i,
+            'total_media': mediaList.length,
+            'is_video': media.isVideo,
+            'file_size': await media.file.length(),
+          },
+        );
+        
+        final errorStr = e.toString();
+
+        // Bad file descriptor = app was backgrounded/killed mid-request
+        // The post may have actually succeeded — verify before showing error
+        if (errorStr.contains('Bad file descriptor') ||
+            errorStr.contains('ClientException')) {
+          final postExists = await verifyPostCreated();
+          if (postExists) {
+            return uploadedMedia;
+          }
+        }
+
         throw Exception('Failed to upload media ${i + 1}');
       }
     }
@@ -484,6 +520,19 @@ class PostsAPI {
       }
     } catch (e) {
       print('Error creating post: $e');
+      await AppLogger.logError(
+        error: e.toString(),
+        context: 'PostsAPI.createPost',
+        meta: {
+          'user_id': userId,
+          'media_count': media.length,
+          'has_location': location != null,
+          'has_link': linkType != null && linkUrl != null,
+          'association_type': associationType,
+          'mentioned_users_count': mentionedUsers?.length ?? 0,
+          'mentioned_hashtags_count': mentionedHashtags?.length ?? 0,
+        },
+      );
       rethrow;
     }
   }
