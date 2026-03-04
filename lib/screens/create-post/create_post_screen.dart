@@ -98,7 +98,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       if (mounted) {
         setState(() {
           _uploadProgress = progress / 100;
-          _uploadStatus = 'Compressing video: ${progress.toInt()}%';
+          _uploadStatus = 'Loading video: ${progress.toInt()}%';
         });
       }
     });
@@ -126,7 +126,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _isUploading = true;
         _uploadProgress = 0.0;
-        _uploadStatus = 'Compressing video...';
+        _uploadStatus = 'Loading video...';
       });
 
       final info = await VideoCompress.compressVideo(
@@ -878,14 +878,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                                 color: Colors.grey.shade600,
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Videos will be compressed automatically',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade500,
-                              ),
-                            ),
+                            // const SizedBox(height: 4),
+                            // Text(
+                            //   'Videos will be compressed automatically',
+                            //   style: TextStyle(
+                            //     fontSize: 12,
+                            //     color: Colors.grey.shade500,
+                            //   ),
+                            // ),
                           ],
                         ),
                       ),
