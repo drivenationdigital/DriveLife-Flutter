@@ -206,10 +206,12 @@ class RegistrationProvider extends ChangeNotifier {
         _agreePrivacy;
   }
 
-  bool validateStep2() {
-    // username can only have letters, numbers, and underscores
-    final usernameRegex = RegExp(r'^[a-zA-Z0-9_]+$');
-    return _username.isNotEmpty && _username.length >= 3 && usernameRegex.hasMatch(_username);
+bool validateStep2() {
+    final usernameRegex = RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9_.]*[a-zA-Z0-9]$');
+    final hasConsecutiveDots = _username.contains('..');
+    return _username.length >= 3 &&
+        usernameRegex.hasMatch(_username) &&
+        !hasConsecutiveDots;
   }
 
   bool validateStep3() {
@@ -256,15 +258,12 @@ class RegistrationProvider extends ChangeNotifier {
     return null;
   }
 
-  String? validateUsername(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Username is required';
-    }
-    if (value.length < 3) {
-      return 'Username must be at least 3 characters';
-    }
-    if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value)) {
-      return 'Username can only contain letters, numbers, and underscores';
+String? validateUsername(String? value) {
+    if (value == null || value.isEmpty) return 'Username is required';
+    if (value.length < 3) return 'Username must be at least 3 characters';
+    if (value.contains('..')) return 'Username cannot have consecutive dots';
+    if (!RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9_.]*[a-zA-Z0-9]$').hasMatch(value)) {
+      return 'Username can only contain letters, numbers, underscores, and dots';
     }
     return null;
   }

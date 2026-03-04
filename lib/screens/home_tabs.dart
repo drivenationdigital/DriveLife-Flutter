@@ -308,6 +308,8 @@ class _HomeTabsState extends State<HomeTabs> {
   }
 
   Widget _buildProfileIcon() {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return Consumer<AccountManager>(
       builder: (context, accountManager, child) {
         final account = accountManager.activeAccount;
@@ -347,7 +349,7 @@ class _HomeTabsState extends State<HomeTabs> {
                   backgroundImage: NetworkImage(url!),
                   onBackgroundImageError: (_, __) {},
                 )
-              : iconSvg('assets/app-icons/05-User.svg', null, size: 24, alwaysActive: true),
+              : iconSvg('assets/app-icons/05-User.svg', theme, size: 24, isActive: _currentIndex == 4),
         );
       },
     );

@@ -408,10 +408,10 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         }
       }
 
-      if (_ownership == 'past' && _ownedTo == null) {
-        _toast('Please enter the date you owned the vehicle to');
-        return;
-      }
+      // if (_ownership == 'past' && _ownedTo == null) {
+      //   _toast('Please enter the date you owned the vehicle to');
+      //   return;
+      // }
     }
 
     if (!_isEditMode &&
@@ -975,6 +975,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                         "Allow this vehicle to be discovered & tagged via it's registration",
                       ),
                       value: _taggingEnabled,
+                      activeThumbColor: theme.primaryColor,
                       onChanged: (v) => setState(() => _taggingEnabled = v),
                     ),
                   ),
