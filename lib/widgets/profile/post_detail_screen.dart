@@ -121,14 +121,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           height: 18,
           alignment: Alignment.center,
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_horiz, color: Colors.black),
-            onPressed: () {
-              // TODO: Show post options
-            },
-          ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: _refreshPost,
