@@ -14,6 +14,29 @@ import FirebaseMessaging
     FirebaseApp.configure()
     
     GeneratedPluginRegistrant.register(with: self)
+
+    // 👇 Background task channel for video uploads
+    let controller = window?.rootViewController as! FlutterViewController
+    let channel = FlutterMethodChannel(name: "com.drivelife/background_task",
+                                       binaryMessenger: controller.binaryMessenger)
+    var bgTaskId: UIBackgroundTaskIdentifier = .invalid
+
+    channel.setMethodCallHandler { call, result in
+      if call.method == "beginBackgroundTask" {
+        bgTaskId = application.beginBackgroundTask {
+          application.endBackgroundTask(bgTaskId)
+          bgTaskId = .invalid
+        }
+        result(String(bgTaskId.rawValue))
+      } else if call.method == "endBackgroundTask" {
+        if bgTaskId != .invalid {
+          application.endBackgroundTask(bgTaskId)
+          bgTaskId = .invalid
+        }
+        result(nil)
+      }
+    }
+    // 👆 End background task channel
     
     // Setup notifications
     if #available(iOS 10.0, *) {
