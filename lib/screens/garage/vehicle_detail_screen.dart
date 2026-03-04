@@ -620,15 +620,15 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             _buildStat(
-                              _vehicle!['vehicle_bhp']?.toString() ?? '-',
+                              _vehicle!['vehicle_bhp'] != 0 ? _vehicle!['vehicle_bhp'].toString() : '-',
                               'BHP',
                             ),
                             _buildStat(
-                              _vehicle!['vehicle_062']?.toString() ?? '-',
+                              _vehicle!['vehicle_062'] != 0 ? _vehicle!['vehicle_062'].toString() : '-',
                               '0-62',
                             ),
                             _buildStat(
-                              _vehicle!['vehicle_top_speed'] != null
+                              _vehicle!['vehicle_top_speed'] != 0
                                   ? '${_vehicle!['vehicle_top_speed']}mph'
                                   : '-',
                               'Top Speed',
