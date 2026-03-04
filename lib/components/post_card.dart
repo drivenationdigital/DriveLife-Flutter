@@ -499,7 +499,9 @@ class _PostCardState extends State<PostCard>
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (_) => Center(child: CircularProgressIndicator(color: theme.primaryColor,)),
+          builder: (_) => Center(
+            child: CircularProgressIndicator(color: theme.primaryColor),
+          ),
         );
       }
 
@@ -1039,7 +1041,7 @@ class _MediaCarousel extends StatelessWidget {
                   children: [
                     Container(color: Colors.grey.shade200),
 
-                 // ── Blurred background ───────────────────────────────────────
+                    // ── Blurred background ───────────────────────────────────────
                     if (blurredUrl != null &&
                         blurredUrl.isNotEmpty &&
                         _isCfBlurredUrl(blurredUrl))
@@ -1072,7 +1074,6 @@ class _MediaCarousel extends StatelessWidget {
                     // Positioned.fill(
                     //   child: Container(color: Colors.black.withOpacity(0.15)),
                     // ),
-
                     Center(
                       child: SizedBox(
                         width: screenW,
@@ -1427,6 +1428,18 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
     );
   }
 
+  String _formatStartDate(String start) {
+    try {
+      final parts = start.split(' ');
+      if (parts.length >= 2) {
+        return parts.first; // Return just the date portion
+      }
+      return start;
+    } catch (_) {
+      return start;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final username = widget.username;
@@ -1493,7 +1506,7 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
           if (widget.eventStartDate != null)
             _buildEventDetailRow(
               Icons.calendar_today_rounded,
-              widget.eventStartDate!,
+              _formatStartDate(widget.eventStartDate!),
             ),
 
           // Time range — parse from start/end dates
@@ -1568,7 +1581,7 @@ class _HtmlDescriptionState extends State<_HtmlDescription> {
 
   static const Color _gold = Color(0xFFAE9159);
 
- @override
+  @override
   Widget build(BuildContext context) {
     final showToggle = _isLongContent();
 
