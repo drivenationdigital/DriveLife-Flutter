@@ -207,7 +207,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       if (choice == null) return;
 
       if (choice == 'images') {
-        final List<XFile> images = await _picker.pickMultiImage();
+        final List<XFile> images = await _picker.pickMultiImage(
+          imageQuality: 88, // high quality, minimal visual difference
+          maxWidth: 2160, // cap at 4K width
+          maxHeight: 2160,
+          limit: 10 - _selectedMedia.length, // limit to remaining slots
+        );
 
         if (images.isNotEmpty) {
           final remaining = 10 - _selectedMedia.length;

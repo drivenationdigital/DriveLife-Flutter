@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:drivelife/models/tagged_entity.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
@@ -71,7 +72,7 @@ class PostsAPI {
     }
   }
 
-static Future<List<Map<String, dynamic>>> loadLikes({
+  static Future<List<Map<String, dynamic>>> loadLikes({
     required String postId,
   }) async {
     try {
@@ -79,12 +80,10 @@ static Future<List<Map<String, dynamic>>> loadLikes({
 
       final response = await http.get(
         uri,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: {'Content-Type': 'application/json'},
       );
-        final data = jsonDecode(response.body);
-        print(data);
+      final data = jsonDecode(response.body);
+      print(data);
 
       if (response.statusCode == 200) {
         return List<Map<String, dynamic>>.from(data);
@@ -162,9 +161,7 @@ static Future<List<Map<String, dynamic>>> loadLikes({
       final fileNameB64 = base64Encode(utf8.encode(fileName));
 
       final urlResponse = await http.post(
-        Uri.parse(
-          'https://www.carevents.com/uk/wp-json/app/v2/create-stream-upload',
-        ),
+        Uri.parse('$_baseUrl/wp-json/app/v2/create-stream-upload'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'file_size': fileSize,
@@ -199,7 +196,7 @@ static Future<List<Map<String, dynamic>>> loadLikes({
           print(
             'Video upload: ${(clamped * 100).toStringAsFixed(1)}% | ETA: ${eta.inSeconds}s',
           );
-          onProgress?.call(clamped); 
+          onProgress?.call(clamped);
         },
         onComplete: () {
           onProgress?.call(100); // ← ensure 100% is always reported
@@ -210,6 +207,59 @@ static Future<List<Map<String, dynamic>>> loadLikes({
       return streamId; // ← return CF stream ID, same as before
     } catch (e) {
       print('Error uploading video to Cloudflare: $e');
+      rethrow;
+    }
+  }
+
+  static Future<String?> _uploadImageToCloudflare(
+    File imageFile, {
+    Function(double progress)? onProgress,
+  }) async {
+    try {
+      // Step 1: Get direct upload URL from your server
+      final urlResponse = await http.post(
+        Uri.parse('$_baseUrl/wp-json/app/v2/create-image-upload'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      final urlData = jsonDecode(urlResponse.body);
+      print('Got CF image upload URL response: $urlData');
+
+      if (urlResponse.statusCode != 200) {
+        throw Exception('Failed to get image upload URL');
+      }
+
+      final uploadUrl = urlData['upload_url'] as String;
+      final imageId = urlData['image_id'] as String;
+
+      // Step 2: Upload directly to Cloudflare Images as multipart
+      final request = http.MultipartRequest('POST', Uri.parse(uploadUrl));
+      final stream = http.ByteStream(imageFile.openRead());
+      final length = await imageFile.length();
+
+      request.files.add(
+        http.MultipartFile(
+          'file',
+          stream,
+          length,
+          filename: imageFile.path.split('/').last,
+        ),
+      );
+
+      onProgress?.call(0.3); // CF uploads are fast, fake a progress tick
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+
+      if (response.statusCode != 200) {
+        throw Exception('CF image upload failed: ${response.statusCode}');
+      }
+
+      onProgress?.call(1.0);
+
+      // Returns the image ID — build your delivery URL from this
+      return imageId;
+    } catch (e) {
+      print('Error uploading image to Cloudflare: $e');
       rethrow;
     }
   }
@@ -238,22 +288,45 @@ static Future<List<Map<String, dynamic>>> loadLikes({
             },
           );
         } else {
-          // Images stay on existing chunk upload (already working fine)
-          final bytes = await media.file.readAsBytes();
-          final base64String = base64Encode(bytes);
-          final extension = media.file.path.split('.').last.toLowerCase();
-          final mimeType = _getMimeType(extension, false);
-          final base64Image = 'data:$mimeType;base64,$base64String';
-
-          mediaId = await ChunkUploadUtility.uploadAndGetUrl(
-            base64Image: base64Image,
-            userId: userId,
-            type: 'post',
-            onProgress: (current, total, percentage) {
-              final overall = (i + percentage) / mediaList.length;
+          mediaId = await _uploadImageToCloudflare(
+            media.file,
+            onProgress: (progress) {
+              final overall = (i + progress) / mediaList.length;
               onProgress?.call(i, mediaList.length, overall);
             },
           );
+
+          // // Images stay on existing chunk upload (already working fine)
+          // final bytes = await media.file.readAsBytes();
+          // final base64String = base64Encode(bytes);
+          // final extension = media.file.path.split('.').last.toLowerCase();
+          // final mimeType = _getMimeType(extension, false);
+          // final base64Image = 'data:$mimeType;base64,$base64String';
+
+          // mediaId = await ChunkUploadUtility.uploadAndGetUrl(
+          //   base64Image: base64Image,
+          //   userId: userId,
+          //   type: 'post',
+          //   onProgress: (current, total, percentage) {
+          //     final overall = (i + percentage) / mediaList.length;
+          //     onProgress?.call(i, mediaList.length, overall);
+          //   },
+          // );// Images stay on existing chunk upload (already working fine)
+          // final bytes = await media.file.readAsBytes();
+          // final base64String = base64Encode(bytes);
+          // final extension = media.file.path.split('.').last.toLowerCase();
+          // final mimeType = _getMimeType(extension, false);
+          // final base64Image = 'data:$mimeType;base64,$base64String';
+
+          // mediaId = await ChunkUploadUtility.uploadAndGetUrl(
+          //   base64Image: base64Image,
+          //   userId: userId,
+          //   type: 'post',
+          //   onProgress: (current, total, percentage) {
+          //     final overall = (i + percentage) / mediaList.length;
+          //     onProgress?.call(i, mediaList.length, overall);
+          //   },
+          // );
         }
 
         if (mediaId != null) {

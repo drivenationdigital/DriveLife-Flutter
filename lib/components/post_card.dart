@@ -480,6 +480,7 @@ class _PostCardState extends State<PostCard>
   Future<void> _deletePost() async {
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final theme = Provider.of<ThemeProvider>(context, listen: false);
       final user = userProvider.user;
 
       if (user == null) {
@@ -498,7 +499,7 @@ class _PostCardState extends State<PostCard>
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (_) => const Center(child: CircularProgressIndicator()),
+          builder: (_) => Center(child: CircularProgressIndicator(color: theme.primaryColor,)),
         );
       }
 
