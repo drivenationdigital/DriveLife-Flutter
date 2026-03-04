@@ -2,6 +2,7 @@ import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
+import 'package:drivelife/services/app_error_logger.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/deeplinks_helper.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -24,7 +25,6 @@ const String stripePublishableKey =
 // Create a global navigator key
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
-
 
 void main() async {
   // Ensure Flutter is initialized
@@ -89,6 +89,9 @@ class _MyAppState extends State<MyApp> {
       // Don't pass context here, let it handle internally
       _deepLinkHandler.initialize();
     });
+
+    // Flush any queued logs from previous offline sessions
+    AppLogger.flushQueue();
   }
 
   @override
@@ -99,8 +102,6 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-
-
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         return MaterialApp(

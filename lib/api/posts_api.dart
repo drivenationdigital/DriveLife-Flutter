@@ -514,6 +514,7 @@ class PostsAPI {
         if (data['error'] != null) {
           throw Exception(data['error']);
         }
+
         return data;
       } else {
         throw Exception('Failed to create post: ${response.statusCode}');
