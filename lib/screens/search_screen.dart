@@ -628,7 +628,7 @@ class _SearchScreenState extends State<SearchScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _searchController.text = '';
 
     // Perform initial search
@@ -734,7 +734,7 @@ class _SearchScreenState extends State<SearchScreen>
                   _buildEventsTab(theme),
                   _buildVenuesTab(theme),
                   _buildUsersTab(theme),
-                  _buildClubsTab(theme),
+                  // _buildClubsTab(theme),
                   _buildVehiclesTab(theme),
                 ],
               ),
@@ -815,7 +815,7 @@ class _SearchScreenState extends State<SearchScreen>
           Tab(text: 'Events'),
           Tab(text: 'Venues'),
           Tab(text: 'Users'),
-          Tab(text: 'Clubs'),
+          // Tab(text: 'Clubs'),
           Tab(text: 'Vehicles'),
         ],
       ),
@@ -885,16 +885,16 @@ class _SearchScreenState extends State<SearchScreen>
           const SizedBox(height: 24),
         ],
 
-        if (topResults['clubs'] != null &&
-            (topResults['clubs'] as List).isNotEmpty) ...[
-          _buildSectionHeader('Clubs', () {
-            _tabController.animateTo(4);
-          }, theme),
-          ...((topResults['clubs'] as List)
-              .take(3)
-              .map((club) => _buildClubCard(club, theme))),
-          const SizedBox(height: 24),
-        ],
+        // if (topResults['clubs'] != null &&
+        //     (topResults['clubs'] as List).isNotEmpty) ...[
+        //   _buildSectionHeader('Clubs', () {
+        //     _tabController.animateTo(4);
+        //   }, theme),
+        //   ...((topResults['clubs'] as List)
+        //       .take(3)
+        //       .map((club) => _buildClubCard(club, theme))),
+        //   const SizedBox(height: 24),
+        // ],
 
         // Venues section
         if (topResults['venues'] != null &&
