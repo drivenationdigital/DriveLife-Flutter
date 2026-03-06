@@ -148,10 +148,11 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
       if (_profileImage != null) {
         print('🖼️ Uploading profile image...');
 
-        final base64Image = await _fileToBase64(_profileImage!);
+        // final base64Image = await _fileToBase64(_profileImage!);
 
         final result = await ProfileAPI.updateProfileImage(
-          base64Image: base64Image,
+          // base64Image: base64Image,
+          imageFile: _profileImage!,
           userId: userId,
         );
 
@@ -168,10 +169,11 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
       if (_coverImage != null) {
         print('🖼️ Uploading cover image...');
 
-        final base64Image = await _fileToBase64(_coverImage!);
+        // final base64Image = await _fileToBase64(_coverImage!);
 
         final result = await ProfileAPI.updateCoverImage(
-          base64Image: base64Image,
+          // base64Image: base64Image,
+          imageFile: _coverImage!,
           userId: userId,
         );
 
@@ -183,7 +185,7 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
       }
 
       // Reload user data to get updated image URLs
-      await userProvider.loadUser();
+      userProvider.loadUser();
 
       if (!mounted) return;
 
@@ -269,89 +271,146 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Info text
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.blue.shade200),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Tap on an image to change it. Images will be uploaded when you press Save.',
-                    style: TextStyle(fontSize: 13, color: Colors.blue.shade700),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Profile Image
-          const Text(
-            'Profile Image',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildImagePicker(
-            isProfile: true,
-            currentImage: _profileImage,
-            currentUrl: _currentProfileImageUrl,
-            theme: theme,
-          ),
-          const SizedBox(height: 32),
-
-          // Cover Image
-          const Text(
-            'Cover Image',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildImagePicker(
-            isProfile: false,
-            currentImage: _coverImage,
-            currentUrl: _currentCoverImageUrl,
-            theme: theme,
-          ),
-
-          const SizedBox(height: 24),
-
-          // Upload progress indicator
-          if (_isSaving)
-            Container(
+      body: SizedBox(
+        height: MediaQuery.of(context).size.height,
+        child: Stack(
+          children: [
+            SingleChildScrollView(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-              ),
               child: Column(
                 children: [
-                  const LinearProgressIndicator(),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Uploading images...',
-                    style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+                  // Info text
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.blue.shade700,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Tap on an image to change it. Images will be uploaded when you press Save.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.blue.shade700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(height: 24),
+
+                  // Profile Image
+                  const Text(
+                    'Profile Image',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildImagePicker(
+                    isProfile: true,
+                    currentImage: _profileImage,
+                    currentUrl: _currentProfileImageUrl,
+                    theme: theme,
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Cover Image
+                  const Text(
+                    'Cover Image',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildImagePicker(
+                    isProfile: false,
+                    currentImage: _coverImage,
+                    currentUrl: _currentCoverImageUrl,
+                    theme: theme,
+                  ),
+
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
-        ],
+
+            // Upload progress indicator
+            if (_isSaving)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withOpacity(0.6),
+                  child: Center(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 40),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 24,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3.5,
+                              backgroundColor: const Color(
+                                0xFFAE9159,
+                              ).withOpacity(0.15),
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                Color(0xFFAE9159),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          const Text(
+                            'Saving profile...',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              minHeight: 4,
+                              backgroundColor: const Color(
+                                0xFFAE9159,
+                              ).withOpacity(0.15),
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                Color(0xFFAE9159),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

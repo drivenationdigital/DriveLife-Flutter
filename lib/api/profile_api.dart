@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:drivelife/models/user_model.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -323,7 +325,7 @@ class ProfileAPI {
   }
 
   /// Update profile image
-  static Future<Map<String, dynamic>?> updateProfileImage({
+  static Future<Map<String, dynamic>?> updateProfileImageChunk({
     required String base64Image,
     int? userId,
   }) async {
@@ -386,7 +388,7 @@ class ProfileAPI {
   }
 
   /// Update cover image
-  static Future<Map<String, dynamic>?> updateCoverImage({
+  static Future<Map<String, dynamic>?> updateCoverImageChunk({
     required String base64Image,
     int? userId,
   }) async {
@@ -444,6 +446,155 @@ class ProfileAPI {
       }
     } catch (e) {
       print('Error updating cover image: $e');
+      rethrow;
+    }
+  }
+
+/// Get a direct CF upload URL from your server
+  static Future<Map<String, dynamic>?> _getImageUploadUrl() async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/wp-json/app/v2/create-image-upload'),
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to get image upload URL: ${response.statusCode}');
+    }
+
+    return jsonDecode(response.body);
+  }
+
+  /// Upload image bytes directly to Cloudflare Images
+  static Future<String?> _uploadImageToCloudflare({
+    required Uint8List imageBytes,
+    required String uploadUrl,
+    required String fileName,
+    Function(double)? onProgress,
+  }) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse(uploadUrl));
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          imageBytes,
+          filename: fileName,
+        ),
+      );
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // Returns the CF image ID
+        return data['result']?['id']?.toString();
+      } else {
+        throw Exception(
+          'CF upload failed: ${response.statusCode} ${response.body}',
+        );
+      }
+    } catch (e) {
+      print('Error uploading image to Cloudflare: $e');
+      rethrow;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> updateCoverImage({
+    required File imageFile, // ← was String base64Image
+    int? userId,
+  }) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null && userId == null) return null;
+      if (userId == null) {
+        print('User ID required');
+        return null;
+      }
+
+      // ── Read bytes directly from file ────────────────────────
+      final imageBytes = await imageFile.readAsBytes();
+      final fileName =
+          'cover_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      // ── Get direct upload URL ────────────────────────────────
+      final uploadUrlData = await _getImageUploadUrl();
+      if (uploadUrlData == null) throw Exception('Failed to get upload URL');
+
+      // ── Upload directly to Cloudflare ────────────────────────
+      final imageId = await _uploadImageToCloudflare(
+        imageBytes: imageBytes,
+        uploadUrl: uploadUrlData['upload_url'],
+        fileName: fileName,
+      );
+
+      if (imageId == null) throw Exception('Failed to upload image');
+
+      // ── Save to profile (unchanged) ──────────────────────────
+      final response = await http.post(
+        Uri.parse('$_baseUrl/wp-json/app/v2/save-cover-media-id'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'user_id': userId,
+          'media_id': imageId,
+          'type': 'cover',
+        }),
+      );
+
+      return response.statusCode == 200 ? jsonDecode(response.body) : null;
+    } catch (e) {
+      print('Error updating cover image: $e');
+      rethrow;
+    }
+  }
+
+  // Same change for profile image:
+  static Future<Map<String, dynamic>?> updateProfileImage({
+    required File imageFile, // ← was String base64Image
+    int? userId,
+  }) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null && userId == null) return null;
+      if (userId == null) {
+        print('User ID required');
+        return null;
+      }
+
+      final imageBytes = await imageFile.readAsBytes();
+      final fileName =
+          'profile_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      final uploadUrlData = await _getImageUploadUrl();
+      if (uploadUrlData == null) throw Exception('Failed to get upload URL');
+
+      final imageId = await _uploadImageToCloudflare(
+        imageBytes: imageBytes,
+        uploadUrl: uploadUrlData['upload_url'],
+        fileName: fileName,
+      );
+
+      if (imageId == null) throw Exception('Failed to upload image');
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl/wp-json/app/v2/save-profile-media-id'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'user_id': userId,
+          'media_id': imageId,
+          'type': 'profile',
+        }),
+      );
+
+      return response.statusCode == 200 ? jsonDecode(response.body) : null;
+    } catch (e) {
+      print('Error updating profile image: $e');
       rethrow;
     }
   }
