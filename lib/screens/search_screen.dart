@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/utils/date.dart';
@@ -625,6 +627,15 @@ class _SearchScreenState extends State<SearchScreen>
   bool _isSearching = false;
   Map<String, dynamic> _searchResults = {};
 
+  Timer? _debounce;
+
+  void _onSearchChanged(String value) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      _performSearch(value);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -639,6 +650,7 @@ class _SearchScreenState extends State<SearchScreen>
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -771,7 +783,8 @@ class _SearchScreenState extends State<SearchScreen>
       ),
       child: TextField(
         controller: _searchController,
-        onSubmitted: (value) => _performSearch(value),
+        // onSubmitted: (value) => _performSearch(value),
+        onChanged: (value) => _onSearchChanged(value),
         decoration: InputDecoration(
           hintText: 'Search',
           prefixIcon: Icon(Icons.search, color: Colors.grey.shade500),
