@@ -1132,40 +1132,51 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            '${_userProfile!['first_name'] ?? ''} ${_userProfile!['last_name'] ?? ''}'
-                                .trim(),
-                            style: TextStyle(
-                              color: theme.textColor,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 140),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                '${_userProfile!['first_name'] ?? ''} ${_userProfile!['last_name'] ?? ''}'
+                                    .trim(),
+                                style: TextStyle(
+                                  color: theme.textColor,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                          if (_userProfile!['verified'] == true) ...[
-                            const SizedBox(width: 4),
-                            Icon(
-                              Icons.verified,
-                              size: 16,
-                              color: theme.primaryColor,
-                            ),
+                            if (_userProfile!['verified'] == true) ...[
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.verified,
+                                size: 16,
+                                color: theme.primaryColor,
+                              ),
+                            ],
                           ],
-                        ],
-                      ),
-                      Text(
-                        '@${_userProfile!['username']}',
-                        style: TextStyle(
-                          color: theme.subtextColor,
-                          fontSize: _userProfile!['username'].length > 15
-                              ? 12
-                              : 14,
                         ),
-                      ),
-                    ],
+                        Text(
+                          '@${_userProfile!['username']}',
+                          style: TextStyle(
+                            color: theme.subtextColor,
+                            fontSize: _userProfile!['username'].length > 15
+                                ? 12
+                                : 14,
+                          ),
+                          maxLines: 1,
+                          overflow:
+                              TextOverflow.ellipsis, // ← also protect username
+                        ),
+                      ],
+                    ),
                   ),
 
                   // ✅ Gap between username and stats

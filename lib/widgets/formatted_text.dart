@@ -18,6 +18,7 @@ class FormattedText extends StatelessWidget {
   final TextStyle? parentTextStyle;
   final VoidCallback? onParentPressed;
   final Function(String)? onUserTagPressed;
+  final Function(String)? onHashtagPressed;
 
   FormattedText({
     Key? key,
@@ -32,6 +33,7 @@ class FormattedText extends StatelessWidget {
     this.textColor,
     this.onParentPressed,
     this.onUserTagPressed,
+    this.onHashtagPressed,
   }) : _suffix = "...$suffix",
        _text = text.trim(),
        _fontSize = fontSize ?? 14,
@@ -46,8 +48,6 @@ class FormattedText extends StatelessWidget {
 
   late final List<TextSpan> _spans = [];
 
-  int _length = 0;
-
   TextSpan _copyWith(TextSpan span, {String? text}) {
     return TextSpan(
       style: span.style,
@@ -55,43 +55,6 @@ class FormattedText extends StatelessWidget {
       children: span.children,
       text: text ?? span.text,
     );
-  }
-
-  int get _maxTextLength {
-    if (showAllText) return _text.length;
-    return maxTextLength;
-  }
-
-  void _addText(TextSpan span) {
-    if (_length >= _maxTextLength && !showAllText) {
-      // ADD !showAllText check
-      if (_spans.isNotEmpty && _spans.last.text == _suffix) {
-        return;
-      }
-
-      if (span.text!.length > _maxTextLength) {
-        _spans.add(_copyWith(span, text: text.substring(0, _maxTextLength)));
-      } else {
-        _spans.add(span);
-      }
-
-      if (_length > maxTextLength) {
-        _spans.add(
-          TextSpan(
-            text: _suffix,
-            style: TextStyle(
-              color: _theme.primaryColor,
-              fontWeight: FontWeight.w600, // ADD: Make it more visible
-            ),
-            recognizer: TapGestureRecognizer()..onTap = onSuffixPressed,
-          ),
-        );
-      }
-
-      return;
-    }
-
-    _spans.add(span);
   }
 
   bool _isEmail(String? email) {
@@ -104,6 +67,10 @@ class FormattedText extends StatelessWidget {
   }
 
   TextSpan get _parsedTextSpan {
+    final List<TextSpan> spans = [];
+    int length = 0;
+    bool truncated = false;
+
     final elements = linkify(
       _text,
       options: const LinkifyOptions(removeWww: true, looseUrl: true),
@@ -114,10 +81,25 @@ class FormattedText extends StatelessWidget {
       ],
     );
 
+    void addSpan(TextSpan span, String spanText) {
+      if (truncated) return;
+
+      if (!showAllText && length + spanText.length > maxTextLength) {
+        final remaining = maxTextLength - length;
+        if (remaining > 0) {
+          spans.add(_copyWith(span, text: spanText.substring(0, remaining)));
+        }
+        truncated = true;
+        return;
+      }
+
+      spans.add(span);
+      length += spanText.length;
+    }
+
     for (var element in elements) {
-      _length += element.text.length;
       if (element is UrlElement) {
-        _addText(
+        addSpan(
           TextSpan(
             text: element.text,
             style: TextStyle(
@@ -128,7 +110,6 @@ class FormattedText extends StatelessWidget {
             recognizer: TapGestureRecognizer()
               ..onTap = () async {
                 final isEmail = _isEmail(element.text);
-
                 if (isEmail) {
                   await launchUrl(Uri.parse("mailto:${element.text}"));
                 } else {
@@ -136,9 +117,10 @@ class FormattedText extends StatelessWidget {
                 }
               },
           ),
+          element.text,
         );
       } else if (element is CustomUserTagElement) {
-        _addText(
+        addSpan(
           TextSpan(
             text: element.name,
             style: TextStyle(
@@ -147,13 +129,12 @@ class FormattedText extends StatelessWidget {
               color: _theme.primaryColor,
             ),
             recognizer: TapGestureRecognizer()
-              ..onTap = () {
-                onUserTagPressed?.call(element.userId);
-              },
+              ..onTap = () => onUserTagPressed?.call(element.userId),
           ),
+          element.name,
         );
       } else if (element is HashtagElement) {
-        _addText(
+        addSpan(
           TextSpan(
             text: element.title,
             style: TextStyle(
@@ -161,14 +142,13 @@ class FormattedText extends StatelessWidget {
               fontSize: _fontSize,
               color: _theme.primaryColor,
             ),
-            // recognizer: TapGestureRecognizer()
-            //   ..onTap = () {
-            //     onUserTagPressed?.call(element.title);
-            //   },
+            recognizer: TapGestureRecognizer()
+              ..onTap = () => onHashtagPressed?.call(element.title),
           ),
+          element.title,
         );
       } else {
-        _addText(
+        addSpan(
           TextSpan(
             text: element.text,
             style: TextStyle(
@@ -176,27 +156,27 @@ class FormattedText extends StatelessWidget {
               fontSize: _fontSize,
               color: textColor ?? Colors.black.withOpacity(.8),
             ),
-            recognizer: onSuffixPressed != null
-                ? (TapGestureRecognizer()..onTap = onSuffixPressed)
-                : null,
           ),
+          element.text,
         );
       }
     }
 
-    if (showAllText &&
-        _length > maxTextLength &&
-        _spans.isNotEmpty &&
-        _spans.last.text != _suffix) {
-      _spans.add(
+    // Append suffix if collapsed+truncated, or expanded and text exceeds limit
+    if (truncated || (showAllText && _text.length > maxTextLength)) {
+      spans.add(
         TextSpan(
           text: _suffix,
-          style: TextStyle(color: _theme.primaryColor),
+          style: TextStyle(
+            color: _theme.primaryColor,
+            fontWeight: FontWeight.w600,
+          ),
           recognizer: TapGestureRecognizer()..onTap = onSuffixPressed,
         ),
       );
     }
-    return TextSpan(children: _spans);
+
+    return TextSpan(children: spans);
   }
 
   @override
@@ -220,7 +200,7 @@ class FormattedText extends StatelessWidget {
 class CustomUserTagLinkifier extends Linkifier {
   ///This matches any string in this format
   ///"@{userId}#{userName}#"
-  final _userTagRegex = RegExp(r'^(.*?)(\@\w+\#..+?\#)');
+  final _userTagRegex = RegExp(r'^([\s\S]*?)(\@[^#]+\#[^#]+\#)', dotAll: true);
   @override
   List<LinkifyElement> parse(
     List<LinkifyElement> elements,
@@ -292,7 +272,7 @@ class CustomUserTagElement extends LinkableElement {
 class HashtagLinkifier extends Linkifier {
   ///This matches any string in this format
   ///"#{id}#{hashtagTitle}#"
-  final _userTagRegex = RegExp(r'^(.*?)(\#\w+\#..+?\#)');
+  final _userTagRegex = RegExp(r'^([\s\S]*?)(\#[^#]+\#[^#]+\#)', dotAll: true);
   @override
   List<LinkifyElement> parse(
     List<LinkifyElement> elements,
