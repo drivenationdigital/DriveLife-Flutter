@@ -246,11 +246,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       } else {
         final XFile? video = await _picker.pickVideo(
           source: ImageSource.gallery,
-          maxDuration: const Duration(minutes: 1),
+          maxDuration: const Duration(seconds: 60),
         );
 
         if (video != null && _selectedMedia.length < 10) {
           File file = File(video.path);
+
+          // check if video is longer than 1 min
+          final info = await VideoCompress.getMediaInfo(file.path);
+          if (info.duration != null && (info.duration! / 1000).round() > 60) {
+            _showMessage('Please select a video shorter than 1 minute (${(info.duration! / 1000).round()} seconds)');
+            return;
+          }
 
           // Compress video
           final compressedFile = await _compressVideo(file);

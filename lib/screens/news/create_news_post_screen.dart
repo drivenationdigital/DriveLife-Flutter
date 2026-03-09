@@ -1,10 +1,6 @@
 import 'dart:io';
-
-import 'package:drivelife/models/search_view_model.dart';
-import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
-import 'package:drivelife/screens/search_user.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_quill/quill_delta.dart';
