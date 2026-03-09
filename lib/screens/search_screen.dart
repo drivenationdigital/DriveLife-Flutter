@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/utils/date.dart';
@@ -625,10 +627,19 @@ class _SearchScreenState extends State<SearchScreen>
   bool _isSearching = false;
   Map<String, dynamic> _searchResults = {};
 
+  Timer? _debounce;
+
+  void _onSearchChanged(String value) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      _performSearch(value);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _searchController.text = '';
 
     // Perform initial search
@@ -639,6 +650,7 @@ class _SearchScreenState extends State<SearchScreen>
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -734,7 +746,7 @@ class _SearchScreenState extends State<SearchScreen>
                   _buildEventsTab(theme),
                   _buildVenuesTab(theme),
                   _buildUsersTab(theme),
-                  _buildClubsTab(theme),
+                  // _buildClubsTab(theme),
                   _buildVehiclesTab(theme),
                 ],
               ),
@@ -771,7 +783,8 @@ class _SearchScreenState extends State<SearchScreen>
       ),
       child: TextField(
         controller: _searchController,
-        onSubmitted: (value) => _performSearch(value),
+        // onSubmitted: (value) => _performSearch(value),
+        onChanged: (value) => _onSearchChanged(value),
         decoration: InputDecoration(
           hintText: 'Search',
           prefixIcon: Icon(Icons.search, color: Colors.grey.shade500),
@@ -815,7 +828,7 @@ class _SearchScreenState extends State<SearchScreen>
           Tab(text: 'Events'),
           Tab(text: 'Venues'),
           Tab(text: 'Users'),
-          Tab(text: 'Clubs'),
+          // Tab(text: 'Clubs'),
           Tab(text: 'Vehicles'),
         ],
       ),
@@ -885,16 +898,16 @@ class _SearchScreenState extends State<SearchScreen>
           const SizedBox(height: 24),
         ],
 
-        if (topResults['clubs'] != null &&
-            (topResults['clubs'] as List).isNotEmpty) ...[
-          _buildSectionHeader('Clubs', () {
-            _tabController.animateTo(4);
-          }, theme),
-          ...((topResults['clubs'] as List)
-              .take(3)
-              .map((club) => _buildClubCard(club, theme))),
-          const SizedBox(height: 24),
-        ],
+        // if (topResults['clubs'] != null &&
+        //     (topResults['clubs'] as List).isNotEmpty) ...[
+        //   _buildSectionHeader('Clubs', () {
+        //     _tabController.animateTo(4);
+        //   }, theme),
+        //   ...((topResults['clubs'] as List)
+        //       .take(3)
+        //       .map((club) => _buildClubCard(club, theme))),
+        //   const SizedBox(height: 24),
+        // ],
 
         // Venues section
         if (topResults['venues'] != null &&

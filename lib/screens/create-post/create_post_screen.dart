@@ -246,11 +246,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       } else {
         final XFile? video = await _picker.pickVideo(
           source: ImageSource.gallery,
-          maxDuration: const Duration(minutes: 1),
+          maxDuration: const Duration(seconds: 60),
         );
 
         if (video != null && _selectedMedia.length < 10) {
           File file = File(video.path);
+
+          // check if video is longer than 1 min
+          final info = await VideoCompress.getMediaInfo(file.path);
+          if (info.duration != null && (info.duration! / 1000).round() > 60) {
+            _showMessage('Please select a video shorter than 1 minute (${(info.duration! / 1000).round()} seconds)');
+            return;
+          }
 
           // Compress video
           final compressedFile = await _compressVideo(file);
@@ -913,65 +920,77 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      FlutterTagger(
-                        controller: _captionController,
-                        onSearch: (query, triggerCharacter) {
-                          if (triggerCharacter == "@") {
-                            captionSearchViewModel.searchUser(query);
-                          }
-                          if (triggerCharacter == "#") {
-                            captionSearchViewModel.searchHashtag(query);
-                          }
-                        },
-                        triggerCharacterAndStyles: {
-                          '@': TextStyle(
-                            color: theme.primaryColor,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          '#': TextStyle(
-                            color: theme.primaryColor,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        },
-                        triggerStrategy: TriggerStrategy.eager,
-                        tagTextFormatter: (id, tag, triggerCharacter) =>
-                            '$triggerCharacter$id#$tag#',
-                        overlayHeight: 200,
-                        overlay: SearchResultOverlay(
-                          tagController: _captionController,
-                          animation: const AlwaysStoppedAnimation(Offset.zero),
-                        ),
-                        builder: (context, textFieldKey) {
-                          return TextField(
-                            key: textFieldKey,
+                      ValueListenableBuilder<SearchResultView>(
+                        valueListenable: captionSearchViewModel.activeView,
+                        builder: (_, view, __) {
+                          return FlutterTagger(
                             controller: _captionController,
-                            maxLines: 5,
-                            maxLength: 2000,
-                            style: const TextStyle(fontSize: 15),
-                            decoration: InputDecoration(
-                              hintText: 'Write a caption...',
-                              hintStyle: TextStyle(color: Colors.grey.shade400),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide.none,
+                            onSearch: (query, triggerCharacter) {
+                              if (triggerCharacter == "@") {
+                                captionSearchViewModel.searchUser(query);
+                              }
+                              if (triggerCharacter == "#") {
+                                captionSearchViewModel.searchHashtag(query);
+                              }
+                            },
+                            triggerCharacterAndStyles: {
+                              '@': TextStyle(
+                                color: theme.primaryColor,
+                                fontWeight: FontWeight.w600,
                               ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide(
-                                  color: Colors.grey.shade200,
-                                ),
+                              '#': TextStyle(
+                                color: theme.primaryColor,
+                                fontWeight: FontWeight.w600,
                               ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFFAE9159),
-                                  width: 2,
-                                ),
+                            },
+                            triggerStrategy: TriggerStrategy.eager,
+                            tagTextFormatter: (id, tag, triggerCharacter) =>
+                                '$triggerCharacter$id#$tag#',
+                            // overlayHeight: 200,
+                            overlayHeight: view == SearchResultView.hashtag
+                                ? 52.0
+                                : 200.0, // 👈
+                            overlay: SearchResultOverlay(
+                              tagController: _captionController,
+                              animation: const AlwaysStoppedAnimation(
+                                Offset.zero,
                               ),
-                              contentPadding: const EdgeInsets.all(16),
                             ),
+                            builder: (context, textFieldKey) {
+                              return TextField(
+                                key: textFieldKey,
+                                controller: _captionController,
+                                maxLines: 5,
+                                maxLength: 2000,
+                                style: const TextStyle(fontSize: 15),
+                                decoration: InputDecoration(
+                                  hintText: 'Write a caption...',
+                                  hintStyle: TextStyle(
+                                    color: Colors.grey.shade400,
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.grey.shade50,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide(
+                                      color: Colors.grey.shade200,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFAE9159),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.all(16),
+                                ),
+                              );
+                            },
                           );
                         },
                       ),

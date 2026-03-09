@@ -1,6 +1,7 @@
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
+import 'package:drivelife/screens/stories_widget.dart';
 import 'package:drivelife/widgets/upload_progress_card.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -69,6 +70,7 @@ class PostsScreenState extends State<PostsScreen>
       backgroundColor: Colors.white,
       body: Column(
         children: [
+          
           // Custom Tab Bar
           _CustomTabBar(controller: _tabController, theme: theme),
 
@@ -300,6 +302,16 @@ class _PostsTabState extends State<_PostsTab>
           physics: const AlwaysScrollableScrollPhysics(),
           cacheExtent: 2000,
           slivers: [
+            // // ── Stories ─────────────────────────────────────────────
+            // const SliverToBoxAdapter(
+            //   child: Column(
+            //     children: [
+            //       StoriesRow(),
+            //       Divider(height: 1, thickness: 0.5, color: Color(0xFFEEEEEE)),
+            //     ],
+            //   ),
+            // ),
+            
             // Upload progress cards - only show on Latest tab
             if (widget.tabType == PostTabType.latest)
               Consumer<UploadPostProvider>(

@@ -7,6 +7,7 @@ import 'package:drivelife/components/news_blog.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/create-post/edit_post_screen.dart';
+import 'package:drivelife/screens/hashtag_posts_screen.dart';
 import 'package:drivelife/widgets/feed/likes_modal.dart';
 import 'package:drivelife/widgets/formatted_text.dart';
 import 'package:flutter_html/flutter_html.dart';
@@ -543,6 +544,40 @@ class _PostCardState extends State<PostCard>
     }
   }
 
+  // Add this helper wherever you build the post card:
+  List<Map<String, dynamic>> _getTaggedUsers() {
+    final media = widget.post['media'] as List<dynamic>? ?? [];
+    final seen = <String>{};
+    final users = <Map<String, dynamic>>[];
+
+    for (final item in media) {
+      final tags = item['tags'] as List<dynamic>? ?? [];
+      for (final tag in tags) {
+        if (tag['type'] == 'user') {
+          final entity = tag['entity'] as Map<String, dynamic>?;
+          if (entity == null) continue;
+          final id = entity['id'].toString();
+          if (seen.contains(id)) continue;
+          seen.add(id);
+
+          // ↓ Extract username from "Display Name (username)" format
+          final fullName = entity['name'] as String? ?? '';
+          final usernameMatch = RegExp(r'\(([^)]+)\)').firstMatch(fullName);
+          final username =
+              entity['username'] ?? usernameMatch?.group(1) ?? fullName;
+
+          users.add({
+            'id': entity['id'],
+            'name': username, // ← just the username
+            'profile_image': entity['image'],
+            'approved': tag['approved'],
+          });
+        }
+      }
+    }
+    return users;
+  }
+
   @override
   Widget build(BuildContext context) {
     // super.build(context); // ✅ Required for AutomaticKeepAliveClientMixin
@@ -569,6 +604,17 @@ class _PostCardState extends State<PostCard>
                   ? (widget.post['event_organisers'] as List<dynamic>? ?? [])
                   : null,
               isVerified: widget.post['user_verified'] == true,
+              // ↓ pass tagged users for regular posts
+              taggedUsers: widget.post['is_event'] != true
+                  ? _getTaggedUsers()
+                  : null,
+              onUserTap: (userId) {
+                Navigator.pushNamed(
+                  context,
+                  '/view-profile',
+                  arguments: {'userId': userId},
+                );
+              },
               date: _formattedDate,
               currentUserId: user?.id,
               postUserId: widget.post['user_id'],
@@ -696,6 +742,8 @@ class _PostHeader extends StatelessWidget {
   final Color primaryColor;
   final List<dynamic>? eventOrganisers; // ← change type from Map to List
   final bool isEvent;
+  final List<Map<String, dynamic>>? taggedUsers;
+  final void Function(dynamic userId)? onUserTap;
 
   const _PostHeader({
     required this.profileImage,
@@ -707,110 +755,199 @@ class _PostHeader extends StatelessWidget {
     required this.onTapProfile,
     required this.onSettings,
     required this.primaryColor,
+    this.onUserTap,
+    this.taggedUsers,
     this.eventOrganisers,
     this.isEvent = false,
   });
 
   // ── Overlapping avatar stack ─────────────────────────────────
-  Widget _buildCollabAvatars() {
-    final orgs = eventOrganisers ?? [];
-    final displayCount = orgs.length.clamp(1, 3);
+  Widget _buildCollabAvatars(List<dynamic> orgs) {
+    // ↓ Filter first, then work only with approved
+    final approved = orgs.where((o) {
+      final org = o as Map<String, dynamic>;
+      return org['approved'] != false;
+    }).toList();
 
-    // ↓ Last avatar offset + full diameter (32) + border (2 each side)
-    final stackWidth = (displayCount - 1) * 20.0 + 36.0;
+    final displayCount = approved.length.clamp(1, 3); // ← use approved count
+    final stackWidth = (displayCount - 1) * 14.0 + 36.0;
+
+    if (approved.isEmpty) return const SizedBox.shrink();
 
     return SizedBox(
       width: stackWidth,
-      height: 36, // ← match avatar diameter exactly
+      height: 36,
       child: Stack(
-        clipBehavior: Clip.none, // ← allow overflow just in case
+        clipBehavior: Clip.none,
         children: List.generate(displayCount, (i) {
-          final org = orgs[i] as Map<String, dynamic>;
+          final org =
+              approved[i] as Map<String, dynamic>; // ← use approved list
+          final isFirst = i == 0;
           return Positioned(
-            left: i * 20.0,
-            top: 0, // ← was 6, caused vertical clipping
-            child: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-              ),
-              child: ProfileAvatar(
-                imageUrl: org['profile_image'],
-                radius: 16,
-                onTap: onTapProfile,
+            left: i * 14.0,
+            top: 0,
+            child: GestureDetector(
+              onTap: isFirst ? onTapProfile : () => onUserTap?.call(org['id']),
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: ProfileAvatar(
+                  imageUrl: org['profile_image'],
+                  radius: 16,
+                ),
               ),
             ),
           );
-        }),
+        }).reversed.toList(),
       ),
     );
   }
 
-  Widget _buildCollabTitle() {
-    final orgs = eventOrganisers ?? [];
-    if (orgs.isEmpty) {
-      return Text(
-        username,
-        style: const TextStyle(
-          fontWeight: FontWeight.w600,
-          color: Colors.black,
-        ),
-      );
-    }
+  Widget _buildCollabTitle(BuildContext context, List<dynamic> orgs) {
+    // ↓ Filter upfront — no mid-loop skipping
+    final approved = orgs.where((o) {
+      final org = o as Map<String, dynamic>;
+      return org['approved'] != false;
+    }).toList();
 
-    const int maxDisplay = 3;
-    final displayOrgs = orgs.take(maxDisplay).toList();
-    final extraCount = orgs.length - maxDisplay;
-
-    final spans = <TextSpan>[];
-
-    for (int i = 0; i < displayOrgs.length; i++) {
-      final org = displayOrgs[i] as Map<String, dynamic>;
-      final name = org['name'] ?? '';
-
-      spans.add(
-        TextSpan(
-          text: name,
+    if (approved.isEmpty) {
+      return GestureDetector(
+        onTap: onTapProfile,
+        child: Text(
+          username,
           style: const TextStyle(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             color: Colors.black,
           ),
         ),
       );
+    }
 
+    const int maxDisplay = 2;
+    final displayOrgs = approved.take(maxDisplay).toList(); // ← from approved
+    final extraCount = approved.length - maxDisplay; // ← from approved
+    final nameWidgets = <Widget>[];
+
+    for (int i = 0; i < displayOrgs.length; i++) {
+      final org = displayOrgs[i] as Map<String, dynamic>;
+      final name = (org['name'] ?? '') as String;
+      final isFirst = i == 0;
       final isLast = i == displayOrgs.length - 1;
       final isSecondLast = i == displayOrgs.length - 2;
 
-      if (!isLast) {
-        spans.add(
-          TextSpan(
-            // Oxford-style: comma between all except last pair which gets " and "
-            text: isSecondLast && extraCount == 0 ? ' and ' : ', ',
+      nameWidgets.add(
+        GestureDetector(
+          onTap: isFirst ? onTapProfile : () => onUserTap?.call(org['id']),
+          child: Text(
+            name,
             style: const TextStyle(
-              fontWeight: FontWeight.w400,
-              color: Colors.black87,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+              fontSize: 14.5,
             ),
+          ),
+        ),
+      );
+
+      if (!isLast) {
+        nameWidgets.add(
+          Text(
+            isSecondLast && extraCount == 0 ? ' and ' : ', ',
+            style: const TextStyle(fontSize: 13.5, color: Colors.black87),
           ),
         );
       }
     }
 
-    // ↓ Append "and X more" if capped
     if (extraCount > 0) {
-      spans.add(
-        TextSpan(
-          text: ' and $extraCount more',
-          style: TextStyle(
-            fontWeight: FontWeight.w400,
-            color: Colors.grey.shade600,
-            fontSize: 13,
+      nameWidgets.add(
+        GestureDetector(
+          onTap: () =>
+              _showAllTagsModal(context, approved), // ← pass approved only
+          child: Text(
+            ' and $extraCount more',
+            style: const TextStyle(fontSize: 13.5, color: Colors.black87),
           ),
         ),
       );
     }
 
-    return RichText(
-      text: TextSpan(style: const TextStyle(fontSize: 13.5), children: spans),
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: nameWidgets,
+    );
+  }
+
+  void _showAllTagsModal(BuildContext context, List<dynamic> orgs) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.only(top: 12, bottom: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Drag handle
+            Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Tagged Users',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            // List all users
+            ...orgs.map((o) {
+              final org = o as Map<String, dynamic>;
+              final name = org['name'] ?? '';
+              final isFirst = orgs.indexOf(o) == 0;
+              return ListTile(
+                leading: ClipOval(
+                  child: ProfileAvatar(
+                    imageUrl: org['profile_image'],
+                    radius: 20,
+                  ),
+                ),
+                title: Text(
+                  name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (isFirst) {
+                    onTapProfile?.call();
+                  } else {
+                    onUserTap?.call(org['id']);
+                  }
+                },
+              );
+            }),
+          ],
+        ),
+      ),
     );
   }
 
@@ -824,7 +961,7 @@ class _PostHeader extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(10, 8, 3, 8),
         child: Row(
           children: [
-            _buildCollabAvatars(),
+            _buildCollabAvatars(eventOrganisers!),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -833,23 +970,61 @@ class _PostHeader extends StatelessWidget {
                 children: [
                   GestureDetector(
                     onTap: onTapProfile,
-                    child: _buildCollabTitle(),
+                    child: _buildCollabTitle(context, eventOrganisers!),
                   ),
                   const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      Text(
-                        'Featured',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade500,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    'Featured',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                   ),
                 ],
               ),
             ),
+          ],
+        ),
+      );
+    }
+
+    // ── Tagged users collab layout ───────────────────────────────
+    if (taggedUsers != null && taggedUsers!.isNotEmpty) {
+      // Merge post author + tagged users into one collab list
+      final collabList = <Map<String, dynamic>>[
+        {'name': username, 'profile_image': profileImage},
+        ...taggedUsers!,
+      ];
+
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 3, 8),
+        child: Row(
+          children: [
+            _buildCollabAvatars(collabList),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: onTapProfile,
+                    child: _buildCollabTitle(context, collabList),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    date,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+            ),
+            if (isOwnPost)
+              GestureDetector(
+                onTap: onSettings,
+                child: const Icon(
+                  Icons.more_vert,
+                  color: Colors.black,
+                  size: 24,
+                ),
+              ),
           ],
         ),
       );
@@ -1467,6 +1642,14 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
               onSuffixPressed: () =>
                   setState(() => _showFullCaption = !_showFullCaption),
               suffix: _showFullCaption ? 'Show less' : 'Show more',
+              onHashtagPressed: (hashtag) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => HashtagPostsPage(hashtag: hashtag),
+                  ),
+                );
+              },
               onUserTagPressed: (userId) {
                 Navigator.pushNamed(
                   context,

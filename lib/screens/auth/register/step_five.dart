@@ -130,10 +130,11 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
         // Upload profile image
         if (_profileImage != null) {
           print('🖼️ Uploading profile image...');
-          final base64Image = await _fileToBase64(_profileImage!);
+          // final base64Image = await _fileToBase64(_profileImage!);
 
           final result = await ProfileAPI.updateProfileImage(
-            base64Image: base64Image,
+            // base64Image: base64Image,
+            imageFile: _profileImage!,
             userId: registrationProvider.userId!,
           );
 
@@ -148,10 +149,11 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
         // Upload cover image
         if (_coverImage != null) {
           print('🖼️ Uploading cover image...');
-          final base64Image = await _fileToBase64(_coverImage!);
+          // final base64Image = await _fileToBase64(_coverImage!);
 
           final result = await ProfileAPI.updateCoverImage(
-            base64Image: base64Image,
+            // base64Image: base64Image,
+            imageFile: _coverImage!,
             userId: registrationProvider.userId!,
           );
 
