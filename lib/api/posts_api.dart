@@ -4,7 +4,6 @@ import 'package:drivelife/models/tagged_entity.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/services/app_error_logger.dart';
 import 'package:drivelife/services/auth_service.dart';
-import 'package:drivelife/utils/chunk_upload_utility.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -48,6 +47,48 @@ class PostsAPI {
     }
 
     return [];
+  }
+
+  static Future<Map<String, dynamic>> getPostsByHashtag({
+    required String hashtag,
+    int page = 1,
+    int limit = 10,
+  }) async {
+    final user = await _authService.getParentUser();
+    final userId = user != null ? user['id'] : 0;
+
+    try {
+      final uri = Uri.parse('$_baseUrl/wp-json/app/v2/get-posts-by-hashtag')
+          .replace(
+            queryParameters: {
+              'hashtag': hashtag,
+              'user_id': userId.toString(),
+              'page': page.toString(),
+              'limit': limit.toString(),
+            },
+          );
+
+      final response = await http.get(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+      );
+        final data = jsonDecode(response.body);
+        print("API response for hashtag '$hashtag': $data");
+
+      if (response.statusCode == 200) {
+        return {
+          'data': List<Map<String, dynamic>>.from(data['data'] ?? []),
+          'total_pages': data['total_pages'] ?? 0,
+          'page': data['page'] ?? page,
+        };
+      } else {
+        print('Failed to fetch posts by hashtag: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching posts by hashtag: $e');
+    }
+
+    return {'data': [], 'total_pages': 0, 'page': page};
   }
 
   static Future<bool> verifyPostCreated() async {

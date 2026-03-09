@@ -7,6 +7,7 @@ import 'package:drivelife/components/news_blog.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/create-post/edit_post_screen.dart';
+import 'package:drivelife/screens/hashtag_posts_screen.dart';
 import 'package:drivelife/widgets/feed/likes_modal.dart';
 import 'package:drivelife/widgets/formatted_text.dart';
 import 'package:flutter_html/flutter_html.dart';
@@ -1641,6 +1642,14 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
               onSuffixPressed: () =>
                   setState(() => _showFullCaption = !_showFullCaption),
               suffix: _showFullCaption ? 'Show less' : 'Show more',
+              onHashtagPressed: (hashtag) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => HashtagPostsPage(hashtag: hashtag),
+                  ),
+                );
+              },
               onUserTagPressed: (userId) {
                 Navigator.pushNamed(
                   context,
