@@ -581,7 +581,6 @@ class _PostCardState extends State<PostCard>
   @override
   Widget build(BuildContext context) {
     // super.build(context); // ✅ Required for AutomaticKeepAliveClientMixin
-
     // ✅ Get providers once, use listen: false
     final theme = Provider.of<ThemeProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
@@ -675,6 +674,8 @@ class _PostCardState extends State<PostCard>
               username: widget.post['username'] ?? '',
               isVerified: widget.post['user_verified'] == true,
               postUserId: widget.post['user_id'],
+              asc_link_type: widget.post['asc_link_type'],
+              asc_link_url: widget.post['asc_link'],
             ),
           ),
 
@@ -1134,6 +1135,7 @@ class _MediaCarousel extends StatelessWidget {
 
               return ListTile(
                 leading: CircleAvatar(
+                  backgroundColor: Colors.grey.shade300,
                   backgroundImage: image != null ? NetworkImage(image) : null,
                   child: image == null
                       ? Icon(
@@ -1391,6 +1393,8 @@ class _PostActions extends StatelessWidget {
   final bool? isVerified;
   final dynamic postUserId;
   final dynamic eventId;
+  final String? asc_link_type;
+  final String? asc_link_url;
 
   const _PostActions({
     required this.liked,
@@ -1408,6 +1412,8 @@ class _PostActions extends StatelessWidget {
     this.isVerified,
     this.postUserId,
     this.eventId,
+    this.asc_link_type,
+    this.asc_link_url,
   });
 
   @override
@@ -1481,6 +1487,56 @@ class _PostActions extends StatelessWidget {
                 child: const Text(
                   'View Event',
                   style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+            ),
+          ],
+          
+          if (asc_link_type != null && (asc_link_url != null && asc_link_url!.trim().isNotEmpty)) ...[
+            const Spacer(),
+            GestureDetector(
+              onTap: () {
+                if (asc_link_url != null && asc_link_url!.trim().isNotEmpty) {
+                  var raw = asc_link_url!.trim();
+                  // Ensure there's a scheme — default to https if missing
+                  if (!raw.startsWith('http://') &&
+                      !raw.startsWith('https://')) {
+                    raw = 'https://$raw';
+                  }
+
+                  final uri = Uri.tryParse(raw);
+
+                  if (uri != null && uri.hasScheme) {
+                    launchUrl(uri, mode: LaunchMode.platformDefault);
+                  } else {
+                    debugPrint('Invalid URL, skipping launch: $raw');
+                  }
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFAE9159),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFAE9159).withOpacity(0.35),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  asc_link_type == 'video' ? 'Watch Video' : 'See More',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
