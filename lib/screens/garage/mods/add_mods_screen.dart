@@ -44,9 +44,12 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
     'Brakes',
     'Interior',
     'Exterior',
-    'Wheels',
+    'Wheels & Tyres',
     'Electronics',
+    'Maintenance',
+    'Restoration',
     'Other',
+    'Sponsored Upgrade', // should appear as the final item
   ];
 
   bool get _isEditMode => widget.mod != null;
@@ -162,12 +165,12 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
     if (_saving) return;
 
     if (_modType == null || _modType!.isEmpty) {
-      _toast('Please select a modification type');
+      _toast('Please select a upgrade category');
       return;
     }
 
     if (_titleCtrl.text.trim().isEmpty) {
-      _toast('Please enter a modification title');
+      _toast('Please enter a upgrade title');
       return;
     }
 
@@ -241,16 +244,14 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
       final success = (res is Map) ? (res['success'] == true) : false;
       if (!success) {
         throw Exception(
-          _isEditMode
-              ? 'Failed to update modification'
-              : 'Failed to add modification',
+          _isEditMode ? 'Failed to update upgrade' : 'Failed to add upgrade',
         );
       }
 
       _toast(
         _isEditMode
-            ? 'Modification updated successfully'
-            : 'Modification added successfully',
+            ? 'Upgrade updated successfully'
+            : 'Upgrade added successfully',
       );
 
       Navigator.pop(context, _isEditMode ? 'updated' : 'added');
@@ -262,8 +263,8 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
           : (e is Exception
                 ? e.toString().replaceFirst('Exception: ', '')
                 : (_isEditMode
-                      ? 'Failed to update modification'
-                      : 'Failed to add modification'));
+                      ? 'Failed to update upgrade'
+                      : 'Failed to add upgrade'));
 
       _toast(msg);
     } finally {
@@ -282,10 +283,8 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Modification'),
-        content: const Text(
-          'Are you sure you want to delete this modification?',
-        ),
+        title: const Text('Delete Upgrade'),
+        content: const Text('Are you sure you want to delete this upgrade?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -313,7 +312,9 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
+        builder: (_) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFFAE9159)),
+        ),
       );
 
       final res = await GarageAPI.deleteVehicleMod(
@@ -326,10 +327,10 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
 
       final success = (res is Map) ? (res?['success'] == true) : false;
       if (!success) {
-        throw Exception('Failed to delete modification');
+        throw Exception('Failed to delete upgrade');
       }
 
-      _toast('Modification deleted successfully');
+      _toast('Upgrade deleted successfully');
       Navigator.pop(context, 'deleted');
     } catch (e) {
       if (!mounted) return;
@@ -339,7 +340,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
           ? e['message'].toString()
           : (e is Exception
                 ? e.toString().replaceFirst('Exception: ', '')
-                : 'Failed to delete modification');
+                : 'Failed to delete upgrade');
 
       _toast(msg);
     } finally {
@@ -497,7 +498,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
         ),
         centerTitle: true,
         title: Text(
-          _isEditMode ? 'Edit Modification' : 'Add Modification',
+          _isEditMode ? 'Edit Upgrade' : 'Add Upgrade',
           style: const TextStyle(
             color: Colors.black,
             fontSize: 18,
@@ -511,7 +512,9 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFAE9159),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFFAE9159),
                     ),
                   )
                 : Text(
@@ -532,10 +535,10 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 24),
                 children: [
-                  _sectionTitle('Modification Image'),
+                  _sectionTitle('Upgrade Image'),
                   _buildImageSection(),
 
-                  _sectionTitle('Modification Details'),
+                  _sectionTitle('Upgrade Details'),
                   _card(
                     child: Column(
                       children: [
@@ -547,7 +550,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
                           child: DropdownButtonFormField<String>(
                             value: _modType,
                             decoration: _dec(
-                              'Modification Type *',
+                              'Upgrade Category *',
                               hint: 'Please Select',
                             ),
                             items: _modTypes
@@ -571,7 +574,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
                         TextFormField(
                           controller: _titleCtrl,
                           decoration: _dec(
-                            'Modification Title *',
+                            'Upgrade Title *',
                             hint: 'e.g. K&N Air Filter',
                           ),
                           validator: (v) => (v == null || v.trim().isEmpty)
@@ -582,8 +585,8 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
                         TextFormField(
                           controller: _descCtrl,
                           decoration: _dec(
-                            'Description',
-                            hint: 'Add details about this modification',
+                            'Details',
+                            hint: 'Add details about this upgrade',
                           ),
                           maxLines: 3,
                           maxLength: 500,
@@ -592,7 +595,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
                         TextFormField(
                           controller: _linkCtrl,
                           decoration: _dec(
-                            'Link to buy product',
+                            'More Info',
                             hint: 'https://example.com/product',
                           ),
                           keyboardType: TextInputType.url,
@@ -628,7 +631,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
                                   ),
                                 )
                               : const Text(
-                                  'Delete Modification',
+                                  'Delete Upgrade',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,

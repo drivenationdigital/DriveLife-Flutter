@@ -79,10 +79,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   // UPDATE: _loadVehicle
   Future<void> _loadVehicle() async {
     final vehicle = await GarageAPI.getGarageById(widget.garageId);
-
-    print(vehicle);
     final mods = await GarageAPI.getVehicleMods(widget.garageId);
-    print(mods);
     if (mods != null) {
     _preloadModImages(mods);
     }
@@ -320,7 +317,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                   padding: const EdgeInsets.symmetric(vertical: 10),
                 ),
                 child: const Text(
-                  'Add Mod',
+                  'Add Upgrades',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -633,7 +630,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                                   : '-',
                               'Top Speed',
                             ),
-                            _buildStat(_mods.length.toString(), 'Mods'),
+                            _buildStat(_mods.length.toString(), 'Upgrades'),
                           ],
                         ),
                         const SizedBox(height: 24),
@@ -653,7 +650,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                       indicatorColor: const Color(0xFFD5B56B),
                       tabs: const [
                         Tab(text: 'Posts'),
-                        Tab(text: 'Mods'),
+                        Tab(text: 'Upgrades'),
                         Tab(text: 'Tags'),
                       ],
                     ),
@@ -827,7 +824,7 @@ class _GarageModsListState extends State<GarageModsList> {
     if (widget.mods.isEmpty) {
       return Center(
         child: Text(
-          'No modifications added yet',
+          'No upgrades added yet',
           style: TextStyle(color: Colors.grey.shade600),
         ),
       );
@@ -864,7 +861,7 @@ class _GarageModsListState extends State<GarageModsList> {
                     ),
                   ),
                   Text(
-                    '${typeMods.length} mod${typeMods.length > 1 ? 's' : ''}',
+                    '${typeMods.length} upgrade${typeMods.length > 1 ? 's' : ''}',
                     style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                   ),
                 ],
