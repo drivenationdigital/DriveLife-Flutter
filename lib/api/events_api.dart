@@ -322,8 +322,6 @@ class EventsAPI {
         '${ApiConfig.baseUrl}/wp-json/app/v1/view-order-tickets',
       ).replace(queryParameters: queryParams);
 
-      print('🌐 [TicketsAPI] Fetching order tickets: $uri');
-
       final response = await http.get(
         uri,
         headers: {
@@ -334,17 +332,6 @@ class EventsAPI {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final ok = data['success'] == true;
-
-        if (ok) {
-          final header = data['data']?['header'];
-          print(
-            '✅ [TicketsAPI] Tickets fetched for order: ${header?['order_id']}',
-          );
-        } else {
-          print('❌ [TicketsAPI] API success=false: ${data['message']}');
-        }
-
         return data;
       } else {
         print('❌ [TicketsAPI] Error ${response.statusCode}: ${response.body}');

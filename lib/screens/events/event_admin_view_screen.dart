@@ -3,6 +3,7 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/events/order_ticket_view.dart';
+import 'package:drivelife/screens/events/sales-widgets/order_table.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:drivelife/screens/events/sales-widgets/tickets_table.dart';
 
 class EventAdminPage extends StatefulWidget {
   final String eventId;
@@ -92,7 +94,8 @@ class _EventAdminPageState extends State<EventAdminPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
+      builder: (context) =>
+          Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
     );
 
     try {
@@ -169,7 +172,8 @@ class _EventAdminPageState extends State<EventAdminPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
+      builder: (context) =>
+          Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
     );
 
     try {
@@ -370,10 +374,9 @@ class _EventAdminPageState extends State<EventAdminPage> {
       return Center(child: Text('No event data available'));
     }
 
-    print(_eventData);
-
     final event = _eventData!['event'] as Map<String, dynamic>;
     final sales = _eventData!['sales'];
+    final tickets = _eventData!['tickets'] as List<dynamic>;
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(16),
@@ -387,7 +390,9 @@ class _EventAdminPageState extends State<EventAdminPage> {
           _buildTicketBreakdown(sales['tickets'], theme),
           SizedBox(height: 20),
           _buildOrders(sales['orders'], theme),
-          SizedBox(height: 100), // Bottom padding for navigation bar
+          SizedBox(height: 20),
+          _buildTickets(tickets, theme),
+          SizedBox(height: 100), 
         ],
       ),
     );
@@ -703,91 +708,11 @@ class _EventAdminPageState extends State<EventAdminPage> {
   }
 
   Widget _buildOrders(List<dynamic> orders, ThemeProvider theme) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Orders',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 16),
-            ...orders.map((order) {
-              return Container(
-                margin: EdgeInsets.only(bottom: 16),
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey[200]!),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                order['email'] ?? '-',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'Qty: ${order['quantity']} • £${order['total']}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => OrderTicketsPage(
-                                  orderId: order['order_id'].toString(),
-                                  admin: true,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Text(
-                            'View',
-                            style: TextStyle(color: theme.primaryColor),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ],
-        ),
-      ),
-    );
+    return OrdersSection(orders: orders, theme: theme);
+  }
+
+  Widget _buildTickets(List<dynamic> tickets, ThemeProvider theme) {
+    return TicketsSection(tickets: tickets, theme: theme);
   }
 }
+

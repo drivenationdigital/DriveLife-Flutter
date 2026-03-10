@@ -203,6 +203,7 @@ class _OrderTicketsPageState extends State<OrderTicketsPage> {
 
   Widget _buildTicketCard(Map<String, dynamic> t) {
     final label = (t['ticket_label'] ?? 'Ticket').toString();
+    print(t);
 
     final event = (t['event'] as Map?)?.cast<String, dynamic>();
     final dates = (event?['dates'] as Map?)?.cast<String, dynamic>();
@@ -226,6 +227,12 @@ class _OrderTicketsPageState extends State<OrderTicketsPage> {
     final urls = (t['urls'] as Map?)?.cast<String, dynamic>();
     final downloadSingle = (urls?['download_single_url'] ?? '').toString();
 
+    final meta = (t['meta'] as Map?)?.cast<String, dynamic>();
+    final carMake = (meta?['car_make'] ?? '').toString().trim();
+    final carModel = (meta?['car_model'] ?? '').toString().trim();
+    final carReg = (meta?['car_reg'] ?? '').toString().trim();
+    final carClub = (meta?['car_club'] ?? '').toString().trim();
+
     return TicketDetailsCard(
       ticketLabel: label,
       productTitle: productTitle,
@@ -238,6 +245,10 @@ class _OrderTicketsPageState extends State<OrderTicketsPage> {
       onDownload: downloadSingle.isEmpty
           ? null
           : () => _openUrl(downloadSingle),
+        carMake: carMake, 
+      carModel: carModel, 
+      carReg: carReg, 
+      carClub: carClub, 
     );
   }
 }

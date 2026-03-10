@@ -128,7 +128,7 @@ class TicketErrorState extends StatelessWidget {
   }
 }
 
-/// Download all tickets button
+
 class DownloadAllButton extends StatelessWidget {
   final VoidCallback onPressed;
 
@@ -179,7 +179,6 @@ class DownloadAllButton extends StatelessWidget {
   }
 }
 
-/// Individual ticket card with modern design
 class TicketDetailsCard extends StatelessWidget {
   final String ticketLabel;
   final String productTitle;
@@ -190,6 +189,10 @@ class TicketDetailsCard extends StatelessWidget {
   final String priceText;
   final Uint8List? qrCode;
   final VoidCallback? onDownload;
+  final String carMake;
+  final String carModel;
+  final String carReg;
+  final String carClub;
 
   const TicketDetailsCard({
     Key? key,
@@ -202,6 +205,10 @@ class TicketDetailsCard extends StatelessWidget {
     required this.priceText,
     this.qrCode,
     this.onDownload,
+    this.carMake = '',
+    this.carModel = '',
+    this.carReg = '',
+    this.carClub = '',
   }) : super(key: key);
 
   @override
@@ -325,6 +332,56 @@ class TicketDetailsCard extends StatelessWidget {
                   'Transaction',
                   transactionId.isNotEmpty ? '#$transactionId' : '—',
                 ),
+
+                if (carMake.isNotEmpty ||
+                    carModel.isNotEmpty ||
+                    carReg.isNotEmpty ||
+                    carClub.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Divider(color: Colors.grey.shade200, thickness: 1),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(7),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFB9965A).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.directions_car_rounded,
+                          size: 16,
+                          color: Color(0xFFB9965A),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Vehicle Details',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (carMake.isNotEmpty) _buildDetailRow('Car Make', carMake),
+                  if (carModel.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    _buildDetailRow('Car Model', carModel),
+                  ],
+                  if (carReg.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    _buildDetailRow('Car Registration', carReg),
+                  ],
+                  if (carClub.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    _buildDetailRow('Car Club', carClub),
+                  ],
+                  const SizedBox(height: 16),
+                ],
 
                 const SizedBox(height: 16),
 
@@ -468,7 +525,7 @@ class TicketDetailsCard extends StatelessWidget {
     );
   }
 
-Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(String label, String value) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment:
@@ -499,7 +556,6 @@ Widget _buildDetailRow(String label, String value) {
   }
 }
 
-/// Totals summary card
 class OrderTotalsCard extends StatelessWidget {
   final List<Map<String, dynamic>> totals;
 
