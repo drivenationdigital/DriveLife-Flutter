@@ -1,6 +1,7 @@
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
+import 'package:drivelife/widgets/feed/offers_banner.dart';
 import 'package:drivelife/widgets/upload_progress_card.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -301,6 +302,7 @@ class _PostsTabState extends State<_PostsTab>
         slivers: [
           // Upload progress cards — Latest tab only
           if (widget.tabType == PostTabType.latest)
+          const SliverToBoxAdapter(child: OffersBanner()),
             Consumer<UploadPostProvider>(
               builder: (context, uploadProvider, _) {
                 final uploads = uploadProvider.uploads;
@@ -425,7 +427,6 @@ class _PostsTabState extends State<_PostsTab>
   }
 }
 
-// Custom Tab Bar
 class _CustomTabBar extends StatelessWidget {
   final TabController controller;
   final ThemeProvider theme;
@@ -443,6 +444,7 @@ class _CustomTabBar extends StatelessWidget {
           Expanded(child: _buildTab(1, 'Following')),
           const SizedBox(width: 8),
           Expanded(child: _buildTab(2, 'News')),
+
         ],
       ),
     );
