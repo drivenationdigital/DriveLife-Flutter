@@ -1,3 +1,4 @@
+import 'package:drivelife/api/offers_api_service.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
@@ -108,6 +109,7 @@ class _PostsTabState extends State<_PostsTab>
   int? _currentUserId;
 
   List<dynamic> _posts = [];
+  List<EventOffer> _offers = [];
   int _page = 1;
   bool _isLoading = false;
   bool _hasMore = true;
@@ -133,6 +135,7 @@ class _PostsTabState extends State<_PostsTab>
       );
       _currentUserId = accountManager.activeUser?.id;
       _fetchPosts();
+      _fetchOffers();
     });
   }
 
@@ -182,6 +185,7 @@ class _PostsTabState extends State<_PostsTab>
     if (refresh) {
       _page = 1;
       _hasMore = true;
+      _fetchOffers();
     }
 
     int followingOnly;
@@ -234,6 +238,16 @@ class _PostsTabState extends State<_PostsTab>
         });
       }
     }
+  }
+
+   Future<void> _fetchOffers() async {
+    final result = await OffersApi.getPossibleEventOffers();
+
+    if (!mounted) return;
+
+    setState(() {
+      _offers = result?.hasError ?? true ? [] : result?.offers ?? [];
+    });
   }
 
   // FIX: No longer called from build — called via a Consumer listener callback.
@@ -302,7 +316,7 @@ class _PostsTabState extends State<_PostsTab>
         slivers: [
           // Upload progress cards — Latest tab only
           if (widget.tabType == PostTabType.latest)
-          const SliverToBoxAdapter(child: OffersBanner()),
+          SliverToBoxAdapter(child: OffersBanner(offers: _offers)),
             Consumer<UploadPostProvider>(
               builder: (context, uploadProvider, _) {
                 final uploads = uploadProvider.uploads;

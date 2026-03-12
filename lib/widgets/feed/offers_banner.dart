@@ -8,7 +8,8 @@ import 'package:provider/provider.dart';
 /// Fetches available offers and renders a banner (or auto-sliding carousel
 /// if multiple offers exist). Matches the dark/gold DriveLife aesthetic.
 class OffersBanner extends StatefulWidget {
-  const OffersBanner({super.key});
+  final List<EventOffer>? offers;
+  const OffersBanner({super.key, this.offers});
 
   @override
   State<OffersBanner> createState() => _OffersBannerState();
@@ -28,7 +29,24 @@ class _OffersBannerState extends State<OffersBanner> {
   @override
   void initState() {
     super.initState();
-    _fetchOffers();
+    if (widget.offers != null) {
+      _offers = widget.offers!;
+      _loading = false;
+      if (_offers.length > 1) _startAutoSlide();
+    } 
+  }
+
+  // on dependency change, if offers were passed via constructor, update local state
+  @override
+  void didUpdateWidget(covariant OffersBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.offers != null && widget.offers != oldWidget.offers) {
+      setState(() {
+        _offers = widget.offers!;
+        _loading = false;
+        if (_offers.length > 1) _startAutoSlide();
+      });
+    }
   }
 
   Future<void> _fetchOffers() async {
@@ -234,7 +252,7 @@ class _BannerCard extends StatelessWidget {
                           // "Are you at {location}?" or plain title
                           Text(
                             hasLocation
-                                ? 'Are you at ${offer.locationName}?'
+                                ? offer.locationName
                                 : offer.title,
                             style: const TextStyle(
                               color: Colors.white,
