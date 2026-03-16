@@ -49,7 +49,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
     'Maintenance',
     'Restoration',
     'Other',
-    'Sponsored Upgrade', // should appear as the final item
+    'Sponsored Upgrade',
   ];
 
   bool get _isEditMode => widget.mod != null;
@@ -68,13 +68,32 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
     super.dispose();
   }
 
+  String? _normalizeModType(dynamic raw) {
+    if (raw == null) return null;
+    final normalized = raw.toString().trim();
+
+    // Check for exact match first (already correct casing)
+    if (_modTypes.contains(normalized)) return normalized;
+
+    // Try case-insensitive match for old lowercase data
+    try {
+      return _modTypes.firstWhere(
+        (t) => t.toLowerCase() == normalized.toLowerCase(),
+      );
+    } catch (_) {
+      return 'Other'; // unknown type — let validator catch it
+    }
+  }
+
   void _loadModData() {
     if (!_isEditMode) return;
 
     final m = widget.mod!;
 
+    print('Loading mod data: $m');
+
     setState(() {
-      _modType = m['mod_type']?.toString();
+      _modType = _normalizeModType(m['mod_type']?.toString());
       _titleCtrl.text = m['title']?.toString() ?? '';
       _descCtrl.text = m['description']?.toString() ?? '';
       _linkCtrl.text = m['product_link']?.toString() ?? '';
