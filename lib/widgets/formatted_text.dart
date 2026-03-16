@@ -193,7 +193,13 @@ class FormattedText extends StatelessWidget {
         recognizer: TapGestureRecognizer()..onTap = onParentPressed,
       );
     }
-    return RichText(text: child);
+
+    final isCollapsed = !showAllText && _text.length > maxTextLength;
+
+    return GestureDetector(
+      onTap: isCollapsed ? onSuffixPressed : null,
+      child: RichText(text: child),
+    );
   }
 }
 
