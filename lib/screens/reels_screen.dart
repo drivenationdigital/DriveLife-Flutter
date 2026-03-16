@@ -99,8 +99,9 @@ class _ReelsScreenState extends State<ReelsScreen> {
             children: [
               // ✅ FULLSCREEN CROPPED VIDEO
               FeedVideoPlayer(
+                postId: post['id'].toString(),
                 url: video['media_url'],
-                isActive: i == currentIndex,
+                // isActive: i == currentIndex,
                 fit: BoxFit.fitWidth,
               ),
 

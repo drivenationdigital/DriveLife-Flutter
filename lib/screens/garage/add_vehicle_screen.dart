@@ -246,7 +246,12 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     required bool isFrom,
     required ThemeProvider theme,
   }) async {
-    final initial = (isFrom ? _ownedFrom : _ownedTo) ?? DateTime.now();
+    // final initial = (isFrom ? _ownedFrom : _ownedTo) ?? DateTime.now();
+    final initial = isFrom
+        ? (_ownedFrom ?? DateTime.now())
+        : (_ownedTo ??
+              _ownedFrom ??
+              DateTime.now()); // prefer _ownedFrom as fallback
     final picked = await showDatePicker(
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
@@ -292,7 +297,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     final y = d.year.toString().padLeft(4, '0');
     final m = d.month.toString().padLeft(2, '0');
     final day = d.day.toString().padLeft(2, '0');
-    return '$day-$m-$y';
+    return '$day/$m/$y';
   }
 
   bool get _showOwnedTo => _ownership == 'past';
@@ -770,7 +775,8 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
                       color: Color(0xFFAE9159),
                     ),
                   )

@@ -1264,8 +1264,9 @@ class _MediaCarousel extends StatelessWidget {
                           ),
                           child: isVideo
                               ? FeedVideoPlayer(
+                                  postId: item['id'].toString(),
                                   url: mediaUrl,
-                                  isActive: currentPage == i,
+                                  // isActive: currentPage == i,
                                   fit: BoxFit.cover,
                                 )
                               : CachedNetworkImage(
@@ -1496,8 +1497,9 @@ class _PostActions extends StatelessWidget {
               ),
             ),
           ],
-          
-          if (asc_link_type != null && (asc_link_url != null && asc_link_url!.trim().isNotEmpty)) ...[
+
+          if (asc_link_type != null &&
+              (asc_link_url != null && asc_link_url!.trim().isNotEmpty)) ...[
             const Spacer(),
             GestureDetector(
               onTap: () {
