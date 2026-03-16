@@ -75,6 +75,7 @@ dependencies:
   app_links: ^6.3.2
   tus_client_dart: ^2.0.0
   package_info_plus: ^8.0.0
+  flutter_volume_controller: ^1.0.0
 
 dev_dependencies:
   flutter_test:
