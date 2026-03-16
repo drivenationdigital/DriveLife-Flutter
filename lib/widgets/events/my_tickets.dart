@@ -157,7 +157,8 @@ class TicketCard extends StatelessWidget {
 
 /// Empty state widget for when there are no tickets
 class EmptyTicketsState extends StatelessWidget {
-  const EmptyTicketsState({Key? key}) : super(key: key);
+  final bool isPast;
+  const EmptyTicketsState({Key? key, this.isPast = false}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -172,7 +173,7 @@ class EmptyTicketsState extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'No tickets yet',
+            isPast ? 'No past tickets' : 'No tickets yet',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -181,7 +182,10 @@ class EmptyTicketsState extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Your purchased tickets will appear here',
+            isPast
+                ? 'Tickets for events that have passed will appear here'
+                : 'Your purchased tickets will appear here',
+            textAlign: TextAlign.center,
             style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
           ),
         ],
@@ -198,6 +202,7 @@ class MyTicketsTabContent extends StatelessWidget {
   final Function(String orderId) onViewTicket;
   final Function(Map<String, dynamic> ticket) onAddToWallet;
   final Future<void> Function() onRefresh;
+  final bool isPast;
 
   const MyTicketsTabContent({
     Key? key,
@@ -207,6 +212,7 @@ class MyTicketsTabContent extends StatelessWidget {
     required this.onViewTicket,
     required this.onAddToWallet,
     required this.onRefresh,
+    required this.isPast,
   }) : super(key: key);
 
   @override
@@ -251,7 +257,7 @@ class MyTicketsTabContent extends StatelessWidget {
         child: Stack(
           children: [
             ListView(), // Required for RefreshIndicator to work
-            const EmptyTicketsState(),
+            EmptyTicketsState(isPast: isPast),
           ],
         ),
       );
