@@ -71,9 +71,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   String? _linkType;
   Map<String, dynamic>? _associatedEntity;
 
+  String? _activeHashtagQuery;
+  bool _processingTag = false;
+
   @override
   void initState() {
     super.initState();
+    _captionController.addListener(_autoFormatHashtags);
 
     print(
       'CreatePostScreen initialized with association: '
@@ -106,6 +110,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   @override
   void dispose() {
+    _captionController.removeListener(_autoFormatHashtags);
     _captionController.dispose();
     _linkUrlController.dispose();
     _pageController.dispose();
@@ -119,6 +124,35 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       media.dispose();
     }
     super.dispose();
+  }
+
+  void _autoFormatHashtags() {
+    if (_processingTag) return; // block re-entry from addTag's own text update
+
+    final text = _captionController.text;
+    final cursor = _captionController.selection.baseOffset;
+    if (cursor <= 0) return;
+
+    // Only fire on space
+    if (text[cursor - 1] != ' ') return;
+
+    // Must have an active hashtag query tracked via onSearch
+    if (_activeHashtagQuery == null || _activeHashtagQuery!.isEmpty) return;
+
+    // Confirm the raw #query is actually right before the space
+    final beforeCursor = text.substring(0, cursor - 1);
+    if (!beforeCursor.endsWith('#$_activeHashtagQuery')) return;
+
+    final hashtag = _activeHashtagQuery!;
+    _activeHashtagQuery = null; // clear before addTag fires onSearch again
+
+    _processingTag = true;
+    _captionController.addTag(id: hashtag, name: hashtag);
+
+    // Release guard after this frame so normal typing resumes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _processingTag = false;
+    });
   }
 
   Future<File?> _compressVideo(File videoFile) async {
@@ -255,7 +289,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           // check if video is longer than 1 min
           final info = await VideoCompress.getMediaInfo(file.path);
           if (info.duration != null && (info.duration! / 1000).round() > 60) {
-            _showMessage('Please select a video shorter than 1 minute (${(info.duration! / 1000).round()} seconds)');
+            _showMessage(
+              'Please select a video shorter than 1 minute (${(info.duration! / 1000).round()} seconds)',
+            );
             return;
           }
 
@@ -925,11 +961,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                         builder: (_, view, __) {
                           return FlutterTagger(
                             controller: _captionController,
+                            searchRegex: RegExp(r'\w+'),
+                            triggerCharactersRegex: RegExp(r'[@#]'),
                             onSearch: (query, triggerCharacter) {
                               if (triggerCharacter == "@") {
                                 captionSearchViewModel.searchUser(query);
                               }
                               if (triggerCharacter == "#") {
+                                _activeHashtagQuery = query; // track it
                                 captionSearchViewModel.searchHashtag(query);
                               }
                             },
