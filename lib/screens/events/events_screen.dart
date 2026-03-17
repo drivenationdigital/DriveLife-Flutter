@@ -68,6 +68,7 @@ class _EventsScreenState extends State<EventsScreen>
 
   List<Map<String, dynamic>> _activeTickets = [];
   List<Map<String, dynamic>> _pastTickets = [];
+  bool _showPastTickets = false;
   bool _isLoadingTickets = false;
   String? _ticketsError;
 
@@ -374,7 +375,6 @@ class _EventsScreenState extends State<EventsScreen>
 
     try {
       final response = await EventsAPI.getMyEventTickets();
-      print(response);
       if (!mounted) return;
 
       if (response != null && response['success'] == true) {
@@ -384,6 +384,8 @@ class _EventsScreenState extends State<EventsScreen>
             .cast<Map<String, dynamic>>();
         final past = (data?['past'] as List<dynamic>? ?? [])
             .cast<Map<String, dynamic>>();
+
+            print(past);
 
         setState(() {
           _activeTickets = active;
@@ -1286,21 +1288,78 @@ class _EventsScreenState extends State<EventsScreen>
 
   // My Tickets Tab
   Widget _buildMyTicketsTab() {
-    return MyTicketsTabContent(
-      isLoading: _isLoadingTickets,
-      errorMessage: _ticketsError,
-      tickets: _activeTickets,
-      onRefresh: () => _fetchUserTickets(),
-      onViewTicket: (orderId) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => OrderTicketsPage(orderId: orderId)),
-        );
-      },
-      onAddToWallet: (ticket) {
-        print('Add to wallet tapped for: ${ticket['event']['title']}');
-        // Add your wallet logic here
-      },
+    return Column(
+      children: [
+        // Segmented control
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                _buildSegment('Upcoming', !_showPastTickets, () {
+                  setState(() => _showPastTickets = false);
+                }),
+                _buildSegment('Past', _showPastTickets, () {
+                  setState(() => _showPastTickets = true);
+                }),
+              ],
+            ),
+          ),
+        ),
+
+        // Content
+        Expanded(
+          child: MyTicketsTabContent(
+            isLoading: _isLoadingTickets,
+            errorMessage: _ticketsError,
+            tickets: _showPastTickets ? _pastTickets : _activeTickets,
+            isPast: _showPastTickets,
+            onRefresh: () => _fetchUserTickets(),
+            onViewTicket: (orderId) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => OrderTicketsPage(orderId: orderId),
+                ),
+              );
+            },
+            onAddToWallet: (ticket) {
+              print('Add to wallet: ${ticket['event']['title']}');
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSegment(String label, bool isActive, VoidCallback onTap) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.all(4),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isActive ? theme.primaryColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: isActive ? Colors.white : Colors.grey.shade500,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

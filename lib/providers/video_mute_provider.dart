@@ -9,4 +9,13 @@ class VideoMuteProvider extends ChangeNotifier {
     _muted = !_muted;
     notifyListeners();
   }
+
+  /// Called when the hardware volume button raises volume while muted.
+  /// Does NOT fire when the user explicitly tapped the in-app mute button.
+  void unmuteFromVolumeButton() {
+    if (_muted) {
+      _muted = false;
+      notifyListeners();
+    }
+  }
 }

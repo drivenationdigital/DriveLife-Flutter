@@ -1,21 +1,22 @@
-import 'package:drivelife/providers/theme_provider.dart';
-import 'package:drivelife/providers/video_playback_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../../providers/video_mute_provider.dart';
+import '../../providers/theme_provider.dart';
+import '../../providers/video_playback_manager.dart';
 
 class FeedVideoPlayer extends StatefulWidget {
   final String url;
-  final bool isActive;
+  final String
+  postId; // unique per post to avoid key collisions on duplicate URLs
   final BoxFit fit;
   final Alignment alignment;
 
   const FeedVideoPlayer({
     super.key,
     required this.url,
-    required this.isActive,
+    required this.postId,
     this.fit = BoxFit.cover,
     this.alignment = Alignment.center,
   });
@@ -32,6 +33,10 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
 
   static const int _maxRetries = 5;
   static const Duration _retryDelay = Duration(seconds: 3);
+
+  // Unique key per post+url combo — prevents VisibilityDetector collisions
+  // when two posts share the same video URL
+  String get _visibilityKey => '${widget.url}_${widget.postId}';
 
   @override
   void initState() {
@@ -69,6 +74,10 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
 
       _retryCount = 0;
       setState(() {});
+
+      // Do NOT manually register visibility here — PageView pre-builds
+      // adjacent slides, so registering with 1.0 would incorrectly
+      // start off-screen videos. Let VisibilityDetector handle it.
     } catch (e) {
       // Cloudflare returns 404 while the video is still processing.
       // Retry a few times with increasing delay before showing error UI.
@@ -98,21 +107,21 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
   void didUpdateWidget(covariant FeedVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    // Only re-setup if the URL itself changed
     if (widget.url != oldWidget.url) {
       _retryCount = 0;
       _setupController(widget.url);
-      return;
     }
 
-    if (!widget.isActive && _controller != null) {
-      VideoPlaybackManager.instance.pause(_controller!);
-    }
+    // isActive is gone — VisibilityDetector is the sole authority.
+    // No play/pause logic here.
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
 
+    // Keep volume in sync when the global mute state changes
     final muted = context.watch<VideoMuteProvider>().muted;
 
     if (_controller != null &&
@@ -125,6 +134,9 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
   @override
   void dispose() {
     _isDisposed = true;
+
+    // Remove from the visibility map so it can no longer win playback
+    VideoPlaybackManager.instance.removeFromVisibility(_visibilityKey);
 
     if (_controller != null) {
       VideoPlaybackManager.instance.pause(_controller!);
@@ -139,7 +151,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
     final theme = Provider.of<ThemeProvider>(context);
     final muted = context.watch<VideoMuteProvider>().muted;
 
-    // ── Error state — video still processing or permanently unavailable ──
+    // ── Error state ───────────────────────────────────────────────────────
     if (_hasError) {
       return SizedBox(
         width: MediaQuery.of(context).size.width,
@@ -149,7 +161,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
+              const Icon(
                 Icons.videocam_off_outlined,
                 color: Colors.white38,
                 size: 36,
@@ -186,7 +198,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
       );
     }
 
-    // ── Loading state ────────────────────────────────────────────────────
+    // ── Loading state ─────────────────────────────────────────────────────
     if (_controller == null || !_controller!.value.isInitialized) {
       return SizedBox(
         width: MediaQuery.of(context).size.width,
@@ -201,9 +213,9 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
               ),
               if (_retryCount > 0) ...[
                 const SizedBox(height: 10),
-                Text(
+                const Text(
                   'Processing video…',
-                  style: const TextStyle(color: Colors.black, fontSize: 12),
+                  style: TextStyle(color: Colors.black, fontSize: 12),
                 ),
               ],
             ],
@@ -212,24 +224,23 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
       );
     }
 
-    // ── Playback ─────────────────────────────────────────────────────────
+    // ── Playback ──────────────────────────────────────────────────────────
     return VisibilityDetector(
-      key: Key(widget.url),
+      // Keyed on url + postId so two posts with the same video URL
+      // are tracked independently in the visibility map
+      key: Key(_visibilityKey),
       onVisibilityChanged: (info) {
-        if (_isDisposed || _controller == null) return;
-
-        if (info.visibleFraction < 0.1) {
-          VideoPlaybackManager.instance.pause(_controller!);
+        if (_isDisposed ||
+            _controller == null ||
+            !_controller!.value.isInitialized)
           return;
-        }
 
-        if (!widget.isActive) {
-          VideoPlaybackManager.instance.pause(_controller!);
-          return;
-        }
-
-        VideoPlaybackManager.instance.register(_controller!, widget.url);
-        VideoPlaybackManager.instance.play(_controller!, muted);
+        VideoPlaybackManager.instance.updateVisibility(
+          _visibilityKey,
+          info.visibleFraction,
+          _controller!,
+          muted,
+        );
       },
       child: Stack(
         alignment: Alignment.bottomRight,

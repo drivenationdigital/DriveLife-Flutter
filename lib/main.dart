@@ -12,7 +12,7 @@ import 'routes.dart';
 import 'providers/user_provider.dart';
 import 'providers/account_provider.dart';
 import 'providers/video_mute_provider.dart';
-
+import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
@@ -79,15 +79,33 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final _deepLinkHandler = DeepLinkHandler();
+  double _previousVolume = 0;
+  late VideoMuteProvider _muteProvider;
 
   @override
   void initState() {
     super.initState();
 
     // Initialize deep link handler AFTER first frame
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       // Don't pass context here, let it handle internally
       _deepLinkHandler.initialize();
+
+      _muteProvider = context.read<VideoMuteProvider>();
+
+      // Android: listen to media stream specifically
+      await FlutterVolumeController.updateShowSystemUI(true);
+      FlutterVolumeController.setAndroidAudioStream(stream: AudioStream.music);
+
+      _previousVolume = await FlutterVolumeController.getVolume() ?? 0;
+      debugPrint('🔊 Initial volume: $_previousVolume');
+
+      FlutterVolumeController.addListener((newVolume) {
+        if (newVolume > _previousVolume) {
+          _muteProvider.unmuteFromVolumeButton();
+        }
+        _previousVolume = newVolume;
+      });
     });
 
     // Flush any queued logs from previous offline sessions
