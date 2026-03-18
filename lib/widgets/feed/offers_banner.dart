@@ -49,19 +49,6 @@ class _OffersBannerState extends State<OffersBanner> {
     }
   }
 
-  Future<void> _fetchOffers() async {
-    final result = await OffersApi.getPossibleEventOffers();
-
-    if (!mounted) return;
-
-    setState(() {
-      _offers = result?.hasError ?? true ? [] : result?.offers ?? [];
-      _loading = false;
-    });
-
-    if (_offers.length > 1) _startAutoSlide();
-  }
-
   void _startAutoSlide() {
     // _autoSlide = Timer.periodic(const Duration(seconds: 5), (_) {
     //   if (!mounted || !_pageController.hasClients) return;
