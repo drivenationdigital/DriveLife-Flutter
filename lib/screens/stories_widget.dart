@@ -602,7 +602,7 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
             }
           },
           child: Stack(
-            fit: StackFit.expand,
+            fit: StackFit.loose,
             children: [
               // ── Story image with blurred background ───────────────────────
               AnimatedSwitcher(
@@ -830,50 +830,50 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
 
                       // Add inside the Stack, after the gradient overlays
                       // Only visible for own stories
-                      if (_isOwnStory)
-                        Positioned(
-                          bottom: MediaQuery.of(context).padding.bottom + 16,
-                          left: 16,
-                          right: 16,
-                          child: AnimatedOpacity(
-                            opacity: _isPaused ? 0.0 : 1.0,
-                            duration: const Duration(milliseconds: 200),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 7,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.4),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        Icons.remove_red_eye_outlined,
-                                        color: Colors.white,
-                                        size: 15,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '${story.seenCount}',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
+                      // if (_isOwnStory) ...[
+                      //    Positioned(
+                      //       bottom: MediaQuery.of(context).padding.bottom + 16,
+                      //       left: 16,
+                      //       right: 16,
+                      //       child: AnimatedOpacity(
+                      //         opacity: _isPaused ? 0.0 : 1.0,
+                      //         duration: const Duration(milliseconds: 200),
+                      //         child: Row(
+                      //           children: [
+                      //             Container(
+                      //               padding: const EdgeInsets.symmetric(
+                      //                 horizontal: 12,
+                      //                 vertical: 7,
+                      //               ),
+                      //               decoration: BoxDecoration(
+                      //                 color: Colors.black.withOpacity(0.4),
+                      //                 borderRadius: BorderRadius.circular(20),
+                      //               ),
+                      //               child: Row(
+                      //                 mainAxisSize: MainAxisSize.min,
+                      //                 children: [
+                      //                   const Icon(
+                      //                     Icons.remove_red_eye_outlined,
+                      //                     color: Colors.white,
+                      //                     size: 15,
+                      //                   ),
+                      //                   const SizedBox(width: 6),
+                      //                   Text(
+                      //                     '${story.seenCount}',
+                      //                     style: const TextStyle(
+                      //                       color: Colors.white,
+                      //                       fontSize: 13,
+                      //                       fontWeight: FontWeight.w600,
+                      //                     ),
+                      //                   ),
+                      //                 ],
+                      //               ),
+                      //             ),
+                      //           ],
+                      //         ),
+                      //       ),
+                      //     ),
+                      // ],
                       // Close
                       GestureDetector(
                         onTap: _close,
