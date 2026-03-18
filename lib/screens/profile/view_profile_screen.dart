@@ -1135,18 +1135,72 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
 
                   // ✅ Floating avatar (only this element overlaps)
                   Positioned(
-                    bottom: -50, // Half of avatar size overlaps
-                    child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: theme.backgroundColor,
-                          width: 4,
+                    bottom: -50,
+                    child: GestureDetector(
+                      onTap: () {
+                        final imageUrl = _userProfile!['profile_image'];
+                        if (imageUrl == null || imageUrl.toString().isEmpty)
+                          return;
+                        showDialog(
+                          context: context,
+                          builder: (_) => Dialog(
+                            backgroundColor: Colors.transparent,
+                            insetPadding: const EdgeInsets.all(16),
+                            child: Stack(
+                              alignment: Alignment.topRight,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Image.network(
+                                    imageUrl,
+                                    fit: BoxFit.contain,
+                                    loadingBuilder: (_, child, progress) {
+                                      if (progress == null) return child;
+                                      return Container(
+                                        height: 300,
+                                        color: Colors.black,
+                                        child: const Center(
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: () => Navigator.pop(context),
+                                  child: Container(
+                                    margin: const EdgeInsets.all(8),
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.black54,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.close,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: theme.backgroundColor,
+                            width: 4,
+                          ),
                         ),
-                      ),
-                      child: ProfileAvatar(
-                        imageUrl: _userProfile!['profile_image'],
-                        radius: 60,
+                        child: ProfileAvatar(
+                          imageUrl: _userProfile!['profile_image'],
+                          radius: 60,
+                        ),
                       ),
                     ),
                   ),
