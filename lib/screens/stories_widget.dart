@@ -88,6 +88,8 @@ class _StoriesRowState extends State<StoriesRow> {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
+      maxWidth: 2160,
+      maxHeight: 2160,
       imageQuality: 85,
     );
     if (picked == null || !mounted) return;
