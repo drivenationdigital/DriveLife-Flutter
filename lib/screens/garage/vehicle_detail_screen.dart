@@ -1,8 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/screens/garage/add_reminders.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
 import 'package:drivelife/screens/garage/mods/add_mods_screen.dart';
+import 'package:drivelife/screens/garage/view_reminders.dart';
 import 'package:drivelife/services/qr_scanner.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
@@ -32,6 +34,52 @@ class _VehicleCache {
   static void invalidate(String id) {
     _cache.remove(id);
     _lruKeys.remove(id);
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
+    return Expanded(
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          backgroundColor: theme.primaryColor,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          // Prevents overflow on small screens
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 20),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -81,7 +129,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     final vehicle = await GarageAPI.getGarageById(widget.garageId);
     final mods = await GarageAPI.getVehicleMods(widget.garageId);
     if (mods != null) {
-    _preloadModImages(mods);
+      _preloadModImages(mods);
     }
     if (!mounted) return;
 
@@ -97,7 +145,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     });
   }
 
-    void _preloadModImages(List<dynamic> mods) {
+  void _preloadModImages(List<dynamic> mods) {
     for (final mod in mods) {
       if (mod['image'] != null && mod['image'].isNotEmpty) {
         precacheImage(CachedNetworkImageProvider(mod['image']), context);
@@ -259,68 +307,47 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(
-              // FULL WIDTH SPLIT
-              child: ElevatedButton(
-                onPressed: () async {
-                  final result = await NavigationHelper.navigateTo(
-                    context,
-                    AddVehicleScreen(vehicle: _vehicle),
-                  );
-
-                  if (result != null) {
-                    _VehicleCache.invalidate(widget.garageId);
-
-                    if (result == 'deleted') {
-                      // Vehicle was deleted, go back with 'deleted' result
-                      Navigator.pop(context, 'deleted');
-                    } else {
-                      // Vehicle was updated, reload this screen
-                      _loadVehicle();
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  backgroundColor: theme.primaryColor,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-                child: const Text(
-                  'Edit Vehicle',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: ElevatedButton(
-                onPressed: () async {
-                  final result = await NavigationHelper.navigateTo(
-                    context,
-                    AddModificationScreen(garageId: widget.garageId),
-                  );
-
-                  if (result != null) {
-                    // Reload vehicle to get updated mods
+            _ActionButton(
+              icon: Icons.edit_outlined,
+              label: 'Edit',
+              onPressed: () async {
+                final result = await NavigationHelper.navigateTo(
+                  context,
+                  AddVehicleScreen(vehicle: _vehicle),
+                );
+                if (result != null) {
+                  _VehicleCache.invalidate(widget.garageId);
+                  if (result == 'deleted') {
+                    Navigator.pop(context, 'deleted');
+                  } else {
                     _loadVehicle();
                   }
-                },
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  backgroundColor: theme.primaryColor,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-                child: const Text(
-                  'Add Upgrades',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-              ),
+                }
+              },
+            ),
+            const SizedBox(width: 8),
+            _ActionButton(
+              icon: Icons.build_outlined,
+              label: 'Upgrades',
+              onPressed: () async {
+                final result = await NavigationHelper.navigateTo(
+                  context,
+                  AddModificationScreen(garageId: widget.garageId),
+                );
+                if (result != null) _loadVehicle();
+              },
+            ),
+            const SizedBox(width: 8),
+            _ActionButton(
+              icon: Icons.notifications_outlined,
+              label: 'Reminders',
+              onPressed: () async {
+                final result = await NavigationHelper.navigateTo(
+                  context,
+                  AddReminderScreen(garageId: widget.garageId),
+                );
+                if (result != null) _loadVehicle();
+              },
             ),
           ],
         ),
@@ -355,33 +382,40 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
           centerTitle: true,
           title: Image.asset('assets/logo-dark.png', height: 18),
           actions: [
-            IconButton(
-              onPressed: () async {
-                final result = await QrScannerService.showScanner(context);
-                if (result != null && mounted) {
-                  QrScannerService.handleScanResult(
-                    context,
-                    result,
-                    onSuccess: (data) {
-                      if (data['entity_type'] == 'profile') {
-                        Navigator.pushNamed(
-                          context,
-                          '/view-profile',
-                          arguments: {'userId': data['entity_id']},
-                        );
-                      } else if (data['entity_type'] == 'vehicle') {
-                        Navigator.pushNamed(
-                          context,
-                          '/vehicle-detail',
-                          arguments: {'garageId': data['entity_id'].toString()},
-                        );
-                      }
-                    },
+            if (isVehiclePublisher())
+              IconButton(
+                icon: Icon(
+                  Icons.notifications_outlined,
+                  color: theme.primaryColor,
+                ),
+                onPressed: () async {
+                  final result = await Navigator.of(context).push(
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) =>
+                          RemindersScreen(garageId: widget.garageId),
+                      transitionsBuilder:
+                          (context, animation, secondaryAnimation, child) {
+                            return SlideTransition(
+                              position:
+                                  Tween<Offset>(
+                                    begin: const Offset(1.0, 0.0),
+                                    end: Offset.zero,
+                                  ).animate(
+                                    CurvedAnimation(
+                                      parent: animation,
+                                      curve: Curves.easeOutCubic,
+                                    ),
+                                  ),
+                              child: child,
+                            );
+                          },
+                      transitionDuration: const Duration(milliseconds: 300),
+                    ),
                   );
-                }
-              },
-              icon: const Icon(Icons.qr_code, color: Colors.black),
-            ),
+
+                  if (result != null) _loadVehicle();
+                },
+              ),
           ],
         ),
         body: _buildSkeleton(),
@@ -420,33 +454,40 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
         centerTitle: true,
         title: Image.asset('assets/logo-dark.png', height: 18),
         actions: [
-          IconButton(
-            onPressed: () async {
-              final result = await QrScannerService.showScanner(context);
-              if (result != null && mounted) {
-                QrScannerService.handleScanResult(
-                  context,
-                  result,
-                  onSuccess: (data) {
-                    if (data['entity_type'] == 'profile') {
-                      Navigator.pushNamed(
-                        context,
-                        '/view-profile',
-                        arguments: {'userId': data['entity_id']},
-                      );
-                    } else if (data['entity_type'] == 'vehicle') {
-                      Navigator.pushNamed(
-                        context,
-                        '/vehicle-detail',
-                        arguments: {'garageId': data['entity_id'].toString()},
-                      );
-                    }
-                  },
+          if (isVehiclePublisher())
+            IconButton(
+              icon: Icon(
+                Icons.notifications_outlined,
+                color: theme.primaryColor,
+              ),
+              onPressed: () async {
+                final result = await Navigator.of(context).push(
+                  PageRouteBuilder(
+                    pageBuilder: (context, animation, secondaryAnimation) =>
+                        RemindersScreen(garageId: widget.garageId),
+                    transitionsBuilder:
+                        (context, animation, secondaryAnimation, child) {
+                          return SlideTransition(
+                            position:
+                                Tween<Offset>(
+                                  begin: const Offset(1.0, 0.0),
+                                  end: Offset.zero,
+                                ).animate(
+                                  CurvedAnimation(
+                                    parent: animation,
+                                    curve: Curves.easeOutCubic,
+                                  ),
+                                ),
+                            child: child,
+                          );
+                        },
+                    transitionDuration: const Duration(milliseconds: 300),
+                  ),
                 );
-              }
-            },
-            icon: const Icon(Icons.qr_code, color: Colors.black),
-          ),
+
+                if (result != null) _loadVehicle();
+              },
+            ),
         ],
       ),
       body: NestedScrollView(
@@ -617,11 +658,15 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             _buildStat(
-                              _vehicle!['vehicle_bhp'] != 0 ? _vehicle!['vehicle_bhp'].toString() : '-',
+                              _vehicle!['vehicle_bhp'] != 0
+                                  ? _vehicle!['vehicle_bhp'].toString()
+                                  : '-',
                               'BHP',
                             ),
                             _buildStat(
-                              _vehicle!['vehicle_062'] != 0 ? _vehicle!['vehicle_062'].toString() : '-',
+                              _vehicle!['vehicle_062'] != 0
+                                  ? _vehicle!['vehicle_062'].toString()
+                                  : '-',
                               '0-62',
                             ),
                             _buildStat(
@@ -874,8 +919,6 @@ class _GarageModsListState extends State<GarageModsList> {
       },
     );
   }
-
-
 
   Widget _buildModCard(Map<String, dynamic> mod, bool isOwner) {
     final hasImage = mod['image'] != null && mod['image'].isNotEmpty;
