@@ -312,7 +312,10 @@ class _AddEventScreenState extends State<AddEventScreen>
           // Load gallery images
           if (data['gallery'] != null && data['gallery'] is List) {
             _galleryImages = (data['gallery'] as List).map((img) {
-              return ImageData.fromRemote(url: img['url'], id: img['id'].toString());
+              return ImageData.fromRemote(
+                url: img['url'],
+                id: img['id'].toString(),
+              );
             }).toList();
           }
         });
@@ -668,7 +671,7 @@ class _AddEventScreenState extends State<AddEventScreen>
       } else {
         clubId = null; // Default to null for non-club events
       }
-            
+
       final description = _getQuillContentAsHtml(_descriptionController);
       final entryDetails = _getQuillContentAsHtml(_entryDetailsController);
       final entryDetailsFree = _getQuillContentAsHtml(
@@ -705,7 +708,7 @@ class _AddEventScreenState extends State<AddEventScreen>
         ticketType: _ticketType,
         entryDetailsFree: _ticketType == '1' ? entryDetailsFree : null,
         entryDetails: _ticketType == '3' ? entryDetails : null,
-          clubId: clubId, // Pass club ID if available
+        clubId: clubId, // Pass club ID if available
       );
 
       if (response != null && response['success'] == true) {
@@ -773,7 +776,10 @@ class _AddEventScreenState extends State<AddEventScreen>
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2,color: Color(0xFFAE9159),),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFFAE9159),
+                    ),
                   )
                 : Text(
                     'Save',
@@ -791,7 +797,7 @@ class _AddEventScreenState extends State<AddEventScreen>
           labelColor: theme.primaryColor,
           isScrollable: true,
           tabAlignment: TabAlignment.start, // ✅ Aligns tabs to the left
-          // padding: EdgeInsets.zero,   
+          // padding: EdgeInsets.zero,
           unselectedLabelColor: Colors.grey,
           labelStyle: const TextStyle(fontWeight: FontWeight.w600),
           tabs: const [
@@ -863,7 +869,9 @@ class _AddEventScreenState extends State<AddEventScreen>
     if (_visitedTabs.contains(index)) {
       return builder();
     }
-    return const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159)));
+    return const Center(
+      child: CircularProgressIndicator(color: Color(0xFFAE9159)),
+    );
   }
 
   Widget _buildCoverImagePreview() {
@@ -889,8 +897,9 @@ class _AddEventScreenState extends State<AddEventScreen>
                   fit: BoxFit.cover,
                   memCacheWidth: 800, // Downscale for memory efficiency
                   memCacheHeight: 600,
-                  placeholder: (context, url) =>
-                      Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
+                  placeholder: (context, url) => Center(
+                    child: CircularProgressIndicator(color: Color(0xFFAE9159)),
+                  ),
                   errorWidget: (context, url, error) => Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -992,6 +1001,8 @@ class _AddEventScreenState extends State<AddEventScreen>
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
           value: _selectedCountry,
+          dropdownColor: Colors.white,
+
           decoration: const InputDecoration(border: OutlineInputBorder()),
           items: const [
             DropdownMenuItem(value: 'gb', child: Text('United Kingdom')),
@@ -1522,7 +1533,7 @@ class _AddEventScreenState extends State<AddEventScreen>
             child: QuillSimpleToolbar(
               controller: controller,
               config: const QuillSimpleToolbarConfig(
-                       showAlignmentButtons: false,
+                showAlignmentButtons: false,
                 showBackgroundColorButton: false,
                 showCenterAlignment: false,
                 showCodeBlock: false,
@@ -1606,6 +1617,8 @@ class _AddEventScreenState extends State<AddEventScreen>
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
           value: _visibility,
+          dropdownColor: Colors.white,
+
           decoration: const InputDecoration(border: OutlineInputBorder()),
           items: const [
             DropdownMenuItem(value: '1', child: Text('Public Event')),
@@ -1627,6 +1640,8 @@ class _AddEventScreenState extends State<AddEventScreen>
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
           value: _status,
+          dropdownColor: Colors.white,
+
           decoration: const InputDecoration(border: OutlineInputBorder()),
           items: const [
             DropdownMenuItem(value: 'publish', child: Text('Published')),

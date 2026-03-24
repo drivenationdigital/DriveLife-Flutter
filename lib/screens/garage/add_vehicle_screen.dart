@@ -809,6 +809,8 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 6),
                           child: DropdownButtonFormField<String>(
                             value: _ownership,
+                        dropdownColor: Colors.white,
+
                             padding: const EdgeInsets.symmetric(horizontal: 0),
                             decoration: _dec('Ownership *'),
                             items: const [

@@ -352,6 +352,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
                       ),
                       child: DropdownButtonFormField<String>(
                         value: _reminderType,
+                        dropdownColor: Colors.white,
                         decoration: _dec(
                           'Reminder Type *',
                           hint: 'Please Select',

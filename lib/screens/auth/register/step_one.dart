@@ -479,6 +479,7 @@ class _RegisterStepOneScreenState extends State<RegisterStepOneScreen> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
+          
           value: provider.country.isEmpty ? null : provider.country,
           dropdownColor: isDark ? Colors.grey[900] : Colors.white,
           style: TextStyle(color: isDark ? Colors.white : Colors.black),

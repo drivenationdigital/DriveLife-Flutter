@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/api/garage_reminders_service.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/garage/add_reminders.dart';
@@ -97,8 +98,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   Map<String, dynamic>? _vehicle;
   List<dynamic> _mods = [];
   bool _loading = true;
-  bool _isFromCache = false; // ADD THIS
+  bool _isFromCache = false;
   late TabController _tabController;
+  int _overdueOrDueCount = 0;
 
   @override
   void initState() {
@@ -116,6 +118,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     }
 
     _loadVehicle();
+    _loadReminderBadge();
   }
 
   @override
@@ -124,7 +127,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     super.dispose();
   }
 
-  // UPDATE: _loadVehicle
   Future<void> _loadVehicle() async {
     final vehicle = await GarageAPI.getGarageById(widget.garageId);
     final mods = await GarageAPI.getVehicleMods(widget.garageId);
@@ -332,7 +334,12 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
               onPressed: () async {
                 final result = await NavigationHelper.navigateTo(
                   context,
-                  AddModificationScreen(garageId: widget.garageId),
+                  GarageModsPage(
+                    garageId: widget.garageId,
+                    mods: _mods,
+                    onModsChanged: _loadVehicle,
+                    isOwner: isOwner,
+                  ),
                 );
                 if (result != null) _loadVehicle();
               },
@@ -344,7 +351,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
               onPressed: () async {
                 final result = await NavigationHelper.navigateTo(
                   context,
-                  AddReminderScreen(garageId: widget.garageId),
+                  RemindersScreen(garageId: widget.garageId),
                 );
                 if (result != null) _loadVehicle();
               },
@@ -362,6 +369,34 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
       return '${date.day}/${date.month}/${date.year}';
     } catch (e) {
       return dateStr; // Return original if parsing fails
+    }
+  }
+
+  // Call this inside _loadVehicle() after loading reminders,
+  // OR as a separate lightweight fetch
+  Future<void> _loadReminderBadge() async {
+    final user = Provider.of<UserProvider>(context, listen: false).user;
+    if (user == null) return;
+
+    try {
+      final reminders = await ReminderApiService.fetchReminders(
+        widget.garageId,
+      );
+
+      final today = DateTime.now();
+
+      final count = reminders.where((r) {
+        final date = DateTime.tryParse(r['reminder_date'] ?? '');
+        if (date == null) return false;
+        final daysUntil = date.difference(today).inDays;
+        // Badge if overdue OR due within 8 days and notif not yet sent
+        return daysUntil <= 8;
+      }).length;
+
+      if (!mounted) return;
+      setState(() => _overdueOrDueCount = count);
+    } catch (_) {
+      // Badge is non-critical — fail silently
     }
   }
 
@@ -455,38 +490,69 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
         title: Image.asset('assets/logo-dark.png', height: 18),
         actions: [
           if (isVehiclePublisher())
-            IconButton(
-              icon: Icon(
-                Icons.notifications_outlined,
-                color: theme.primaryColor,
-              ),
-              onPressed: () async {
-                final result = await Navigator.of(context).push(
-                  PageRouteBuilder(
-                    pageBuilder: (context, animation, secondaryAnimation) =>
-                        RemindersScreen(garageId: widget.garageId),
-                    transitionsBuilder:
-                        (context, animation, secondaryAnimation, child) {
-                          return SlideTransition(
-                            position:
-                                Tween<Offset>(
-                                  begin: const Offset(1.0, 0.0),
-                                  end: Offset.zero,
-                                ).animate(
-                                  CurvedAnimation(
-                                    parent: animation,
-                                    curve: Curves.easeOutCubic,
-                                  ),
-                                ),
-                            child: child,
-                          );
-                        },
-                    transitionDuration: const Duration(milliseconds: 300),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  icon: Icon(
+                    Icons.notifications_outlined,
+                    color: Colors.black,
                   ),
-                );
-
-                if (result != null) _loadVehicle();
-              },
+                  onPressed: () async {
+                    final result = await Navigator.of(context).push(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            RemindersScreen(garageId: widget.garageId),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) {
+                              return SlideTransition(
+                                position:
+                                    Tween<Offset>(
+                                      begin: const Offset(1.0, 0.0),
+                                      end: Offset.zero,
+                                    ).animate(
+                                      CurvedAnimation(
+                                        parent: animation,
+                                        curve: Curves.easeOutCubic,
+                                      ),
+                                    ),
+                                child: child,
+                              );
+                            },
+                        transitionDuration: const Duration(milliseconds: 300),
+                      ),
+                    );
+                    if (result != null) {
+                      _loadVehicle();
+                      _loadReminderBadge(); // refresh badge after returning
+                    }
+                  },
+                ),
+                if (_overdueOrDueCount > 0)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: IgnorePointer(
+                      child: Container(
+                        width: 18,
+                        height: 18,
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          _overdueOrDueCount > 9 ? '9+' : '$_overdueOrDueCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
         ],
       ),
@@ -767,8 +833,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     );
   }
 }
-
-// Posts grid widget
 class _GaragePostsGrid extends StatelessWidget {
   final String garageId;
   final bool tagged;
@@ -850,6 +914,7 @@ class GarageModsList extends StatefulWidget {
   final List<dynamic> mods;
   final VoidCallback onModsChanged;
   final bool isOwner;
+  final bool showEditActions;
 
   const GarageModsList({
     super.key,
@@ -857,6 +922,7 @@ class GarageModsList extends StatefulWidget {
     required this.mods,
     required this.onModsChanged,
     required this.isOwner,
+    this.showEditActions = false,
   });
 
   @override
@@ -912,7 +978,7 @@ class _GarageModsListState extends State<GarageModsList> {
                 ],
               ),
             ),
-            ...typeMods.map((mod) => _buildModCard(mod, widget.isOwner)),
+            ...typeMods.map((mod) => _buildModCard(mod, widget.isOwner && widget.showEditActions)),
             const SizedBox(height: 16),
           ],
         );
@@ -940,6 +1006,7 @@ class _GarageModsListState extends State<GarageModsList> {
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(12),
+        width: double.infinity,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(8),
@@ -1016,8 +1083,85 @@ class _GarageModsListState extends State<GarageModsList> {
                 ),
               ),
             ],
+          
+            if ( isOwner && widget.showEditActions ) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  'Tap to edit',
+                  style: TextStyle(fontSize: 12, color: Colors.black, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ]
           ],
         ),
+      ),
+    );
+  }
+}
+
+
+class GarageModsPage extends StatefulWidget {
+  final String garageId;
+  final List<dynamic> mods;
+  final Future<void> Function() onModsChanged;
+  final bool isOwner;
+
+  const GarageModsPage({
+    super.key,
+    required this.garageId,
+    required this.mods,
+    required this.onModsChanged,
+    required this.isOwner,
+  });
+
+  @override
+  State<GarageModsPage> createState() => _GarageModsPageState();
+}
+
+class _GarageModsPageState extends State<GarageModsPage> {
+  void _openAddScreen() async {
+    final result = await NavigationHelper.navigateTo(
+      context,
+      AddModificationScreen(garageId: widget.garageId),
+    );
+
+    if (result != null) {
+      await widget.onModsChanged();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+         leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+         title: const Text(
+          'Upgrades',
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        centerTitle: true,
+         actions: [
+          IconButton(
+            icon: Icon(Icons.add, color: Colors.black),
+            onPressed: _openAddScreen,
+          ),
+        ],
+      ),
+      body: GarageModsList(
+        garageId: widget.garageId,
+        mods: widget.mods,
+        onModsChanged: widget.onModsChanged,
+        isOwner: widget.isOwner,
+        showEditActions: true, // Hide edit actions in this full-page view
       ),
     );
   }

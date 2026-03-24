@@ -1075,6 +1075,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                         ),
                         child: DropdownButtonFormField<String>(
                           value: _linkType,
+                          dropdownColor: Colors.white,
+
                           decoration: const InputDecoration(
                             hintText: 'Select link type',
                             contentPadding: EdgeInsets.symmetric(

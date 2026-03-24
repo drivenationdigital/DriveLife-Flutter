@@ -3,6 +3,7 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/garage/add_reminders.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 class RemindersScreen extends StatefulWidget {
@@ -19,10 +20,14 @@ class _RemindersScreenState extends State<RemindersScreen> {
   bool _loading = true;
   String? _error;
 
+  // Add to state variables
+  PermissionStatus? _notificationStatus;
+
   @override
   void initState() {
     super.initState();
     _loadReminders();
+    _checkNotificationPermission();
   }
 
   Future<void> _loadReminders() async {
@@ -50,7 +55,89 @@ class _RemindersScreenState extends State<RemindersScreen> {
     }
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  Future<void> _checkNotificationPermission() async {
+    final status = await Permission.notification.status;
+    if (!mounted) return;
+    setState(() => _notificationStatus = status);
+  }
+
+  Future<void> _requestNotificationPermission() async {
+    final status = await Permission.notification.request();
+    if (!mounted) return;
+    setState(() => _notificationStatus = status);
+
+    // If permanently denied, send them to app settings
+    if (status.isPermanentlyDenied) {
+      await openAppSettings();
+    }
+  }
+
+  Widget _buildNotificationBanner() {
+    final isDenied =
+        _notificationStatus == PermissionStatus.denied ||
+        _notificationStatus == PermissionStatus.permanentlyDenied;
+    final isNotDetermined =
+        _notificationStatus == PermissionStatus.provisional ||
+        _notificationStatus == null;
+
+    if (_notificationStatus == PermissionStatus.granted)
+      return const SizedBox.shrink();
+
+    final isPermanent =
+        _notificationStatus == PermissionStatus.permanentlyDenied;
+
+    return GestureDetector(
+      onTap: _requestNotificationPermission,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: const BoxDecoration(
+          color: Color(0xFFFFF8EC),
+          border: Border(
+            bottom: BorderSide(color: Color(0xFFFFE0A0), width: 1),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.notifications_off_outlined,
+              size: 20,
+              color: Color(0xFFB86A00),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                isPermanent
+                    ? 'Notifications are blocked. Tap to open settings and enable them.'
+                    : 'Allow notifications to get reminded before important dates.',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFFB86A00),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFB86A00),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                isPermanent ? 'Settings' : 'Enable',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   /// How many days until (or since) the reminder date
   int _daysUntil(String dateStr) {
@@ -148,13 +235,22 @@ class _RemindersScreenState extends State<RemindersScreen> {
           ),
         ],
       ),
-      body: _loading
-          ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
-          : _error != null
-          ? _buildError()
-          : _reminders.isEmpty
-          ? _buildEmpty(theme)
-          : _buildList(theme),
+      body: Column(
+        children: [
+          _buildNotificationBanner(),
+          Expanded(
+            child: _loading
+                ? Center(
+                    child: CircularProgressIndicator(color: theme.primaryColor),
+                  )
+                : _error != null
+                ? _buildError()
+                : _reminders.isEmpty
+                ? _buildEmpty(theme)
+                : _buildList(theme),
+          ),
+        ],
+      ),
     );
   }
 

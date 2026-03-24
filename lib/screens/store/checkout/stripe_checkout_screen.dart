@@ -85,8 +85,7 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
           if (address.country.length == 2) {
             _selectedCountry = address.country;
           } else {
-            _selectedCountry =
-                countryNameToCode[address.country] ?? 'GB';
+            _selectedCountry = countryNameToCode[address.country] ?? 'GB';
           }
         }
       }
@@ -543,6 +542,8 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
                           children: [
                             Expanded(
                               child: DropdownButtonFormField<String>(
+                                dropdownColor: Colors.white,
+
                                 value:
                                     [
                                       'GB',
