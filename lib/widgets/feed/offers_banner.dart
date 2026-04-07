@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:drivelife/api/offers_api_service.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/widgets/feed/offers_redemption.dart';
+import 'package:drivelife/widgets/feed/speedwell_challenge_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -68,6 +69,31 @@ class _OffersBannerState extends State<OffersBanner> {
     super.dispose();
   }
 
+  void _onOfferTap(BuildContext context, EventOffer offer) {
+    print('Tapped offer ${offer.id} (speedwell: ${offer.speedwellChallenge})');
+    if (offer.speedwellChallenge) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SpeedwellChallengeScreen(
+            offerId: offer.id,
+            offerImage: offer.imageUrl,
+          ),
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OfferRedemptionScreen(
+            offerId: offer.id,
+            offerImage: offer.imageUrl,
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const SizedBox.shrink();
@@ -87,14 +113,17 @@ class _OffersBannerState extends State<OffersBanner> {
               itemCount: _offers.length,
               onPageChanged: (i) => setState(() => _currentPage = i),
               itemBuilder: (context, i) =>
-                  _BannerCard(offer: _offers[i], gold: theme.primaryColor, dark: theme.secondaryColor, onRedeem: () => {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => OfferRedemptionScreen(offerId: _offers[i].id, offerImage: _offers[i].imageUrl),
-                      ),
-                    )
-                  }),
+                  _BannerCard(offer: _offers[i], gold: theme.primaryColor, dark: theme.secondaryColor, 
+                  // onRedeem: () => {
+                  //   Navigator.push(
+                  //     context,
+                  //     MaterialPageRoute(
+                  //       builder: (_) => OfferRedemptionScreen(offerId: _offers[i].id, offerImage: _offers[i].imageUrl),
+                  //     ),
+                  //   )
+                  // }
+                  onRedeem: () => _onOfferTap(context, _offers[i])
+                  ),
             ),
           ),
 
