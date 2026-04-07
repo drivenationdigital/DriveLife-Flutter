@@ -404,18 +404,31 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
   );
 
   // ── Leaderboard ────────────────────────────────────────────────────────────
+  static const _pageSize = 10;
+  int _leaderboardPage = 0;
+
+  List<LeaderboardEntry> get _currentPageEntries {
+    final start = _leaderboardPage * _pageSize;
+    final end = (_leaderboardPage + 1) * _pageSize;
+    return _leaderboard.sublist(
+      start.clamp(0, _leaderboard.length),
+      end.clamp(0, _leaderboard.length),
+    );
+  }
+
+  int get _totalPages => (_leaderboard.length / _pageSize).ceil().clamp(1, 999);
 
   Widget _buildLeaderboardSection() {
-    // Determine if current user is outside the displayed list
     final bool userIsPinned =
-        _currentUserEntry != null && !_leaderboard.any((e) => e.isCurrentUser);
+        _currentUserEntry != null &&
+        !_currentPageEntries.any((e) => e.isCurrentUser);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Section header
+          // ── Header ──────────────────────────────────────────────────
           Row(
             children: [
               Icon(
@@ -432,6 +445,12 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
                   color: Colors.black87,
                 ),
               ),
+              // const Spacer(),
+              // if (_leaderboard.isNotEmpty)
+              //   Text(
+              //     '${_leaderboard.length} player${_leaderboard.length == 1 ? '' : 's'}',
+              //     style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+              //   ),
             ],
           ),
 
@@ -457,32 +476,140 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
                 ),
               ),
             )
-          else
-            ...List.generate(_leaderboard.length, (i) {
-              return _buildRow(_leaderboard[i]);
-            }),
-
-          // Current user pinned at bottom if they're not already visible
-          if (userIsPinned) ...[
+          else ...[
+            // ── Column headers ───────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
               child: Row(
                 children: [
-                  Expanded(child: Divider(color: Colors.grey.shade200)),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                  const SizedBox(width: 40), // rank column
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Text(
-                      'Your rank',
-                      style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                      'Player',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey[400],
+                        letterSpacing: 0.6,
+                      ),
                     ),
                   ),
-                  Expanded(child: Divider(color: Colors.grey.shade200)),
+                  Text(
+                    'Av. Hit Time',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey[400],
+                      letterSpacing: 0.6,
+                    ),
+                  ),
                 ],
               ),
             ),
-            _buildRow(_currentUserEntry!),
+
+            Divider(color: Colors.grey.shade200, height: 1),
+
+            // ── Rows ────────────────────────────────────────────────
+            ..._currentPageEntries.map(_buildRow),
+
+            // ── Current user pinned ──────────────────────────────────
+            if (userIsPinned) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(child: Divider(color: Colors.grey.shade200)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Text(
+                        'Your rank',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: Colors.grey.shade200)),
+                  ],
+                ),
+              ),
+              _buildRow(_currentUserEntry!),
+            ],
+
+            const SizedBox(height: 16),
+
+            // ── Pagination ───────────────────────────────────────────
+            if (_totalPages > 1)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _pageButton(
+                    icon: Icons.chevron_left_rounded,
+                    enabled: _leaderboardPage > 0,
+                    onTap: () => setState(() => _leaderboardPage--),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    'Page ${_leaderboardPage + 1} of $_totalPages',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  _pageButton(
+                    icon: Icons.chevron_right_rounded,
+                    enabled: _leaderboardPage < _totalPages - 1,
+                    onTap: () => setState(() => _leaderboardPage++),
+                  ),
+                ],
+              ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _pageButton({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: enabled
+              ? theme.primaryColor.withOpacity(0.1)
+              : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: enabled
+                ? theme.primaryColor.withOpacity(0.25)
+                : Colors.grey.shade200,
+          ),
+        ),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled ? theme.primaryColor : Colors.grey[400],
+        ),
+      ),
+    );
+  }
+
+  Widget _avatarFallback(LeaderboardEntry entry, Color? medalColor) {
+    return Center(
+      child: Text(
+        entry.displayName.isNotEmpty ? entry.displayName[0].toUpperCase() : '?',
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
+          color: medalColor != null
+              ? Color.lerp(medalColor, Colors.black, 0.4)
+              : theme.primaryColor,
+        ),
       ),
     );
   }
@@ -495,87 +622,112 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
       _ => null,
     };
 
-    final String? medalEmoji = switch (entry.rank) {
-      1 => '🥇',
-      2 => '🥈',
-      3 => '🥉',
-      _ => null,
+    final Widget rankWidget = switch (entry.rank) {
+      1 => const Text('👑', style: TextStyle(fontSize: 20)),
+      2 => const Text('🥈', style: TextStyle(fontSize: 20)),
+      3 => const Text('🥉', style: TextStyle(fontSize: 20)),
+      _ => Text(
+        '${entry.rank}',
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: Colors.grey[400],
+        ),
+      ),
     };
 
     final bool isHighlighted = entry.isCurrentUser;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
       decoration: BoxDecoration(
         color: isHighlighted
-            ? theme.primaryColor.withOpacity(0.07)
-            : medalColor != null
-            ? medalColor.withOpacity(0.06)
-            : Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isHighlighted
-              ? theme.primaryColor.withOpacity(0.25)
-              : medalColor != null
-              ? medalColor.withOpacity(0.35)
-              : Colors.grey.shade200,
-          width: isHighlighted ? 1.5 : 1,
-        ),
+            ? theme.primaryColor.withOpacity(0.05)
+            : Colors.transparent,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
       ),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
       child: Row(
         children: [
-          // Rank indicator
-          SizedBox(
+          // Rank
+          // SizedBox(width: 40, child: Center(child: rankWidget)),
+
+          // const SizedBox(width: 12),
+
+          Container(
             width: 36,
-            child: medalEmoji != null
-                ? Text(medalEmoji, style: const TextStyle(fontSize: 22))
-                : Text(
-                    '#${entry.rank}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.grey[500],
-                    ),
-                  ),
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: (medalColor ?? theme.primaryColor).withOpacity(0.12),
+              border: Border.all(
+                color: isHighlighted
+                    ? theme.primaryColor.withOpacity(0.3)
+                    : Colors.transparent,
+                width: 1.5,
+              ),
+            ),
+            child: ClipOval(
+              child:
+                  entry.profileImage != null && entry.profileImage!.isNotEmpty
+                  ? Image.network(
+                      entry.profileImage!,
+                      width: 36,
+                      height: 36,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          _avatarFallback(entry, medalColor),
+                    )
+                  : _avatarFallback(entry, medalColor),
+            ),
           ),
 
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
 
           // Name
           Expanded(
-            child: Text(
-              entry.isCurrentUser
-                  ? '${entry.displayName} · You'
-                  : entry.displayName,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: (isHighlighted || medalColor != null)
-                    ? FontWeight.w700
-                    : FontWeight.w500,
-                color: Colors.black87,
-              ),
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  entry.isCurrentUser
+                      ? '${entry.displayName} · You'
+                      : entry.displayName,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: isHighlighted
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                    color: Colors.black87,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  'Rank #${entry.rank}',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                ),
+              ],
             ),
           ),
 
           // Score
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: (medalColor ?? theme.primaryColor).withOpacity(0.12),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              '${entry.score} pts',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: medalColor != null
-                    ? Color.lerp(medalColor, Colors.black, 0.35)!
-                    : theme.primaryColor,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${entry.score}s',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: medalColor != null
+                      ? Color.lerp(medalColor, Colors.black, 0.35)!
+                      : Colors.black87,
+                ),
               ),
-            ),
+              Text(
+                'avg hit time',
+                style: TextStyle(fontSize: 10, color: Colors.grey[400]),
+              ),
+            ],
           ),
         ],
       ),
