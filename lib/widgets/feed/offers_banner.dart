@@ -94,6 +94,64 @@ class _OffersBannerState extends State<OffersBanner> {
     }
   }
 
+  // @override
+  // Widget build(BuildContext context) {
+  //   if (_loading) return const SizedBox.shrink();
+  //   if (_offers.isEmpty) return const SizedBox.shrink();
+
+  //   final theme = Provider.of<ThemeProvider>(context, listen: false);
+
+  //   return Padding(
+  //     padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+  //     child: Column(
+  //       mainAxisSize: MainAxisSize.min,
+  //       children: [
+  //         SizedBox(
+  //           height: 100,
+  //           child: PageView.builder(
+  //             controller: _pageController,
+  //             itemCount: _offers.length,
+  //             onPageChanged: (i) => setState(() => _currentPage = i),
+  //             itemBuilder: (context, i) =>
+  //                 _BannerCard(offer: _offers[i], gold: theme.primaryColor, dark: theme.secondaryColor, 
+  //                 // onRedeem: () => {
+  //                 //   Navigator.push(
+  //                 //     context,
+  //                 //     MaterialPageRoute(
+  //                 //       builder: (_) => OfferRedemptionScreen(offerId: _offers[i].id, offerImage: _offers[i].imageUrl),
+  //                 //     ),
+  //                 //   )
+  //                 // }
+  //                 onRedeem: () => _onOfferTap(context, _offers[i])
+  //                 ),
+  //           ),
+  //         ),
+
+  //         // Dot indicators — only shown when there are multiple offers
+  //         if (_offers.length > 1) ...[
+  //           const SizedBox(height: 8),
+  //           Row(
+  //             mainAxisAlignment: MainAxisAlignment.center,
+  //             children: List.generate(_offers.length, (i) {
+  //               final active = i == _currentPage;
+  //               return AnimatedContainer(
+  //                 duration: const Duration(milliseconds: 250),
+  //                 curve: Curves.easeInOut,
+  //                 margin: const EdgeInsets.symmetric(horizontal: 3),
+  //                 width: active ? 16 : 6,
+  //                 height: 6,
+  //                 decoration: BoxDecoration(
+  //                   color: active ? _gold : Colors.grey[300],
+  //                   borderRadius: BorderRadius.circular(3),
+  //                 ),
+  //               );
+  //             }),
+  //           ),
+  //         ],
+  //       ],
+  //     ),
+  //   );
+  // }
   @override
   Widget build(BuildContext context) {
     if (_loading) return const SizedBox.shrink();
@@ -105,50 +163,19 @@ class _OffersBannerState extends State<OffersBanner> {
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            height: 100,
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: _offers.length,
-              onPageChanged: (i) => setState(() => _currentPage = i),
-              itemBuilder: (context, i) =>
-                  _BannerCard(offer: _offers[i], gold: theme.primaryColor, dark: theme.secondaryColor, 
-                  // onRedeem: () => {
-                  //   Navigator.push(
-                  //     context,
-                  //     MaterialPageRoute(
-                  //       builder: (_) => OfferRedemptionScreen(offerId: _offers[i].id, offerImage: _offers[i].imageUrl),
-                  //     ),
-                  //   )
-                  // }
-                  onRedeem: () => _onOfferTap(context, _offers[i])
-                  ),
-            ),
-          ),
-
-          // Dot indicators — only shown when there are multiple offers
-          if (_offers.length > 1) ...[
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_offers.length, (i) {
-                final active = i == _currentPage;
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeInOut,
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  width: active ? 16 : 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: active ? _gold : Colors.grey[300],
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                );
-              }),
-            ),
-          ],
-        ],
+        children: _offers
+            .map(
+              (offer) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _BannerCard(
+                  offer: offer,
+                  gold: theme.primaryColor,
+                  dark: theme.secondaryColor,
+                  onRedeem: () => _onOfferTap(context, offer),
+                ),
+              ),
+            )
+            .toList(),
       ),
     );
   }
@@ -226,6 +253,23 @@ class _BannerCard extends StatelessWidget {
     required this.dark,
     this.onRedeem,
   });
+
+  String _getButtonTopText() {
+    if (offer.buttonTextOne != null && offer.buttonTextOne!.isNotEmpty) {
+      return offer.buttonTextOne!;
+    }
+    // return offer.speedwellChallenge ? 'GAME' : 'REDEEM';
+    return 'MORE';
+  }
+
+  String _getButtonBottomText() {
+    if (offer.buttonTextTwo != null && offer.buttonTextTwo!.isNotEmpty) {
+      return offer.buttonTextTwo!;
+    }
+
+    // return offer.speedwellChallenge ? 'ON' : 'OFFER';
+    return 'INFO';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -309,44 +353,44 @@ class _BannerCard extends StatelessWidget {
               const SizedBox(width: 12),
 
               // ── Right: Redeem button ──────────────────────────────────
-              GestureDetector(
-                onTap: onRedeem,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: gold,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'REDEEM',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 13,
-                              letterSpacing: 0.5,
-                            ),
+              SizedBox(
+                width: 100,
+                child: GestureDetector(
+                  onTap: onRedeem,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: gold,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _getButtonTopText(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13,
+                            letterSpacing: 0.5,
                           ),
-                          Text(
-                            'NOW',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 13,
-                              letterSpacing: 0.5,
-                            ),
+                        ),
+                        Text(
+                          _getButtonBottomText(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13,
+                            letterSpacing: 0.5,
                           ),
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

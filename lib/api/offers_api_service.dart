@@ -16,6 +16,8 @@ class EventOffer {
   final String validTo;
   final String? imageUrl;
   final bool speedwellChallenge; // ← NEW
+  final String? buttonTextOne;
+  final String? buttonTextTwo;
 
   const EventOffer({
     required this.id,
@@ -25,6 +27,8 @@ class EventOffer {
     required this.locationName,
     required this.validFrom,
     required this.validTo,
+    this.buttonTextOne,
+    this.buttonTextTwo,
     this.imageUrl,
     this.speedwellChallenge = false,
   });
@@ -40,6 +44,8 @@ class EventOffer {
       validTo: (json['valid_to'] ?? '').toString(),
       imageUrl: json['image_url'] as String?,
       speedwellChallenge: json['speedwell_challenge'] == true, // ← NEW
+      buttonTextOne: json['button_text_one'] as String?,
+      buttonTextTwo: json['button_text_two'] as String?,
     );
   }
 
