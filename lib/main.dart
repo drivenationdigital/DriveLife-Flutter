@@ -16,6 +16,8 @@ import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:drivelife/screens/chat/ChatScreen.dart';
+
 
 // const String stripePublishableKey =
 //     'pk_test_51KPRpjHPxUaL4Jbz1Kn3SK5I4T5mL539JGCSyuM81qvXeExgBhxxngXg5FZyb0iqxLjK4FwpyFbG21lXLcinbynl008v1d9eo1';
@@ -52,6 +54,8 @@ void main() async {
   } catch (e) {
     print('Error initializing Firebase: $e');
   }
+
+  await SupabaseConfig.initialize();
 
   runApp(
     MultiProvider(

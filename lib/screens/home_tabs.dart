@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drivelife/models/account_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/cart_provider.dart';
@@ -5,6 +7,8 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/auth/entity_switcher.dart';
+import 'package:drivelife/screens/chat/ChatList.dart';
+import 'package:drivelife/screens/chat/ChatScreen.dart';
 // import 'package:drivelife/screens/clubs/add_club_screen.dart';
 // import 'package:drivelife/screens/clubs/club_creation_screen.dart';
 // import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
@@ -19,7 +23,6 @@ import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/screens/news/create_news_post_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
-import 'package:drivelife/widgets/auth/email_verification.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -68,19 +71,59 @@ class _HomeTabsState extends State<HomeTabs> {
     // Rebuild screens if account type changed
     final currentAccountType = currentAccount?.accountType;
 
+    if (currentAccount != null && currentAccount.token != '') {
+      print(
+        '[HomeTabs] SupaBase Detected valid token for accoun, invoking onWordPressLoginSuccess',
+      );
+      onWordPressLoginSuccess(currentAccount.token);
+    }
+
     if (currentAccountType != _lastAccountType) {
       _lastAccountType = currentAccountType;
       _buildScreens();
     }
   }
 
+  // After your WordPress login succeeds and you have a WP JWT:
+  Future<void> onWordPressLoginSuccess(String wordpressJwt) async {
+    print(
+      '[HomeTabs] Supa onWordPressLoginSuccess called with JWT: $wordpressJwt',
+    );
+    // Exchange for a Supabase token
+    await SupabaseTokenManager.fetchAndStore(wordpressJwt);
+
+    // // Now Supabase is authenticated. Open a conversation:
+    // final repo = ChatRepository();
+    // final myUserId = await SupabaseTokenManager.currentUserId;
+    // final conversation = await repo.getOrCreateConversation(
+    //   myUserId: myUserId!,
+    //   otherUserId: '76332', // the other person's WP user ID
+    // );
+
+    // Navigate to chat
+    // Navigator.push(
+    //   context,
+    //   MaterialPageRoute(
+    //     builder: (_) => ChatScreen(
+    //       conversationId: conversation.id,
+    //       myUserId: myUserId,
+    //       otherUserName: 'Kesh test',
+    //     ),
+    //   ),
+    // );
+  }
+
+  // At app startup, restore session without re-fetching:
+  // Future<void> onAppStart() async {
+  //   final restored = await SupabaseTokenManager.restoreSession();
+  //   if (!restored) {
+  //     onWordPressLoginSuccess();
+  //   }
+  // }
+
   void _buildScreens() {
     final accountManager = Provider.of<AccountManager>(context, listen: false);
     final currentAccount = accountManager.activeAccount;
-
-    print('🏗️ Building screens...');
-    print('🏗️ Account type: ${currentAccount?.accountType}');
-    print('🏗️ Is club account: ${currentAccount?.isClubAccount}');
 
     if (currentAccount?.isClubAccount ?? false) {
       print('✅ Building CLUB screens');
@@ -92,6 +135,7 @@ class _HomeTabsState extends State<HomeTabs> {
         // MyClubsScreen(),
         ShopScreen(),
         ClubProfileScreen(),
+        InboxScreen(myUserId: currentAccount!.user.id.toString()),
       ];
     } else {
       print('✅ Building USER screens');
@@ -103,6 +147,7 @@ class _HomeTabsState extends State<HomeTabs> {
         // MyClubsScreen(),
         ShopScreen(),
         ProfileScreen(),
+        InboxScreen(myUserId: currentAccount!.user.id.toString()),
       ];
     }
 
@@ -191,7 +236,7 @@ class _HomeTabsState extends State<HomeTabs> {
                       },
                     ),
                   ],
-                 
+
                   // ListTile(
                   //   leading: Icon(
                   //     Icons.place_outlined,
@@ -250,7 +295,7 @@ class _HomeTabsState extends State<HomeTabs> {
                     );
                   },
                 ),
-                 ListTile(
+                ListTile(
                   leading: Icon(
                     Icons.place_outlined,
                     color: theme.primaryColor,
@@ -283,7 +328,12 @@ class _HomeTabsState extends State<HomeTabs> {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: iconSvg('assets/app-icons/header-plus.svg', theme, size: 20, alwaysActive: true),
+            icon: iconSvg(
+              'assets/app-icons/header-plus.svg',
+              theme,
+              size: 20,
+              alwaysActive: true,
+            ),
             onPressed: () => _showAddMenu(theme),
           ),
           SharedHeaderIcons.qrCodeIcon(),
@@ -292,7 +342,12 @@ class _HomeTabsState extends State<HomeTabs> {
       title: Image.asset('assets/logo-dark.png', height: 18),
       actions: [
         IconButton(
-          icon: iconSvg('assets/app-icons/header-search.svg', theme, size: 20, alwaysActive: true),
+          icon: iconSvg(
+            'assets/app-icons/header-search.svg',
+            theme,
+            size: 20,
+            alwaysActive: true,
+          ),
           onPressed: () {
             Navigator.pushNamed(context, AppRoutes.search);
           },
@@ -332,7 +387,12 @@ class _HomeTabsState extends State<HomeTabs> {
                     backgroundImage: NetworkImage(url!),
                     onBackgroundImageError: (_, __) {},
                   )
-                : iconSvg('assets/app-icons/05-User.svg', null, size: 24, alwaysActive: true),
+                : iconSvg(
+                    'assets/app-icons/05-User.svg',
+                    null,
+                    size: 24,
+                    alwaysActive: true,
+                  ),
           );
         }
 
@@ -349,7 +409,12 @@ class _HomeTabsState extends State<HomeTabs> {
                   backgroundImage: NetworkImage(url!),
                   onBackgroundImageError: (_, __) {},
                 )
-              : iconSvg('assets/app-icons/05-User.svg', theme, size: 24, isActive: _currentIndex == 4),
+              : iconSvg(
+                  'assets/app-icons/05-User.svg',
+                  theme,
+                  size: 24,
+                  isActive: _currentIndex == 4,
+                ),
         );
       },
     );
@@ -370,7 +435,7 @@ class _HomeTabsState extends State<HomeTabs> {
     String assetName,
     ThemeProvider? themeProvider, {
     double size = 24,
-    bool isActive = false, 
+    bool isActive = false,
     bool alwaysActive = false, // NEW: Force active color even if not selected
   }) {
     return SvgPicture.asset(
@@ -379,9 +444,10 @@ class _HomeTabsState extends State<HomeTabs> {
       height: size,
       colorFilter: ColorFilter.mode(
         isActive
-            ? (themeProvider?.primaryColor ??
-                  Colors.black)
-            : alwaysActive ? Colors.black : Colors.grey,
+            ? (themeProvider?.primaryColor ?? Colors.black)
+            : alwaysActive
+            ? Colors.black
+            : Colors.grey,
         BlendMode.srcIn,
       ),
     );
@@ -460,6 +526,7 @@ class _HomeTabsState extends State<HomeTabs> {
           label: 'Store',
         ),
         BottomNavigationBarItem(icon: _buildProfileIcon(), label: 'Profile'),
+        BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
       ],
     );
   }
@@ -478,7 +545,11 @@ class _HomeTabsState extends State<HomeTabs> {
 
     // Safety check
     if (_screens.isEmpty) {
-      return Scaffold(body: Center(child: CircularProgressIndicator(color: theme.primaryColor)));
+      return Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: theme.primaryColor),
+        ),
+      );
     }
 
     return PopScope(
