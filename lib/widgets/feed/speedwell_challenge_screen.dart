@@ -622,20 +622,6 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
       _ => null,
     };
 
-    final Widget rankWidget = switch (entry.rank) {
-      1 => const Text('👑', style: TextStyle(fontSize: 20)),
-      2 => const Text('🥈', style: TextStyle(fontSize: 20)),
-      3 => const Text('🥉', style: TextStyle(fontSize: 20)),
-      _ => Text(
-        '${entry.rank}',
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: Colors.grey[400],
-        ),
-      ),
-    };
-
     final bool isHighlighted = entry.isCurrentUser;
 
     return Container(
