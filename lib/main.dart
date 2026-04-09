@@ -2,6 +2,7 @@ import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
+import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:drivelife/services/app_error_logger.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/deeplinks_helper.dart';
@@ -56,6 +57,7 @@ void main() async {
   }
 
   await SupabaseConfig.initialize();
+  await UserProfileCache.instance.loadFromDisk();
 
   runApp(
     MultiProvider(

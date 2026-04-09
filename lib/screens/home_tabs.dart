@@ -71,13 +71,6 @@ class _HomeTabsState extends State<HomeTabs> {
     // Rebuild screens if account type changed
     final currentAccountType = currentAccount?.accountType;
 
-    if (currentAccount != null && currentAccount.token != '') {
-      print(
-        '[HomeTabs] SupaBase Detected valid token for accoun, invoking onWordPressLoginSuccess',
-      );
-      onWordPressLoginSuccess(currentAccount.token);
-    }
-
     if (currentAccountType != _lastAccountType) {
       _lastAccountType = currentAccountType;
       _buildScreens();
@@ -91,67 +84,46 @@ class _HomeTabsState extends State<HomeTabs> {
     );
     // Exchange for a Supabase token
     await SupabaseTokenManager.fetchAndStore(wordpressJwt);
-
-    // // Now Supabase is authenticated. Open a conversation:
-    // final repo = ChatRepository();
-    // final myUserId = await SupabaseTokenManager.currentUserId;
-    // final conversation = await repo.getOrCreateConversation(
-    //   myUserId: myUserId!,
-    //   otherUserId: '76332', // the other person's WP user ID
-    // );
-
-    // Navigate to chat
-    // Navigator.push(
-    //   context,
-    //   MaterialPageRoute(
-    //     builder: (_) => ChatScreen(
-    //       conversationId: conversation.id,
-    //       myUserId: myUserId,
-    //       otherUserName: 'Kesh test',
-    //     ),
-    //   ),
-    // );
   }
 
-  // At app startup, restore session without re-fetching:
-  // Future<void> onAppStart() async {
-  //   final restored = await SupabaseTokenManager.restoreSession();
-  //   if (!restored) {
-  //     onWordPressLoginSuccess();
-  //   }
-  // }
-
-  void _buildScreens() {
+  Future<void> _buildScreens() async {
     final accountManager = Provider.of<AccountManager>(context, listen: false);
     final currentAccount = accountManager.activeAccount;
 
+    // ✅ Await the token BEFORE building any screens
+    if (currentAccount != null && currentAccount.token != '') {
+      await onWordPressLoginSuccess(currentAccount.token);
+    }
+
+    final List<Widget> screens;
+
     if (currentAccount?.isClubAccount ?? false) {
-      print('✅ Building CLUB screens');
-      // Club view - limited screens
-      _screens = [
+      screens = [
         PostsScreen(key: _postsScreenKey),
         EventsScreen(),
         VenuesScreen(),
-        // MyClubsScreen(),
         ShopScreen(),
         ClubProfileScreen(),
         InboxScreen(myUserId: currentAccount!.user.id.toString()),
       ];
     } else {
-      print('✅ Building USER screens');
-      // User view - full screens
-      _screens = [
+      screens = [
         PostsScreen(key: _postsScreenKey),
         EventsScreen(),
         VenuesScreen(),
-        // MyClubsScreen(),
         ShopScreen(),
         ProfileScreen(),
         InboxScreen(myUserId: currentAccount!.user.id.toString()),
       ];
     }
 
-    if (mounted) setState(() {});
+    if (mounted) setState(() => _screens = screens);
+  }
+  
+  void _reloadUserData() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<UserProvider>().loadUser();      
+    });
   }
 
   void _loadManagedEntities() async {
@@ -183,12 +155,6 @@ class _HomeTabsState extends State<HomeTabs> {
 
     print('🔄 Loading managed entities for user ${user.id}');
     await accountManager.loadManagedEntities(user.id, token);
-  }
-
-  void _reloadUserData() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<UserProvider>().loadUser();
-    });
   }
 
   // Show add menu popup

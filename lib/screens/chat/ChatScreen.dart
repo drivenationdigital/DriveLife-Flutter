@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,7 +15,8 @@ class AppConfig {
   // Supabase project details
   // Found at: Supabase Dashboard → Settings → API
   static const supabaseUrl = 'https://hekpfyxiduypovcvwffm.supabase.co';
-  static const supabaseAnonKey = 'sb_publishable_HSLwe3eiV6K_DCfgCwfSLw_YUM5HQ9F'; // safe to expose
+  static const supabaseAnonKey =
+      'sb_publishable_HSLwe3eiV6K_DCfgCwfSLw_YUM5HQ9F'; // safe to expose
 }
 
 // ── 1. Supabase Initializer ───────────────────────────────────
@@ -178,7 +180,7 @@ class ChatRepository {
     final participants = [myUserId, otherUserId]..sort();
 
     // Check if conversation already exists
-   final existing = await _db
+    final existing = await _db
         .from('conversations')
         .select()
         .contains('participant_ids', participants)
@@ -303,6 +305,8 @@ class ChatRepository {
 
   /// Mark all messages in a conversation as read.
   Future<void> markAsRead(String conversationId, String myUserId) async {
+
+    print('[ChatRepository] Marking conversation $conversationId as read for user $myUserId');
     await _db
         .from('messages')
         .update({'read_at': DateTime.now().toIso8601String()})
@@ -341,7 +345,9 @@ class ChatNotifier extends ChangeNotifier {
   Future<void> initialize() async {
     try {
       _sub = _repo.messageStream(conversationId).listen((messages) {
-        print('[ChatNotifier] Received ${messages.length} messages from stream');
+        print(
+          '[ChatNotifier] Received ${messages.length} messages from stream',
+        );
         _messages = messages; // already sorted oldest→newest from the query
         _loading = false;
         notifyListeners();
@@ -389,14 +395,16 @@ class ChatNotifier extends ChangeNotifier {
 // ── 6. Chat Screen ───────────────────────────────────────────
 
 class ChatScreen extends StatefulWidget {
-  final String conversationId;
+  final String? conversationId; // nullable now
   final String myUserId;
+  final String? otherUserId; // used when conversationId is null
   final String otherUserName;
 
   const ChatScreen({
     super.key,
     required this.conversationId,
     required this.myUserId,
+    required this.otherUserId,
     required this.otherUserName,
   });
 
@@ -405,27 +413,48 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  late final ChatNotifier _notifier;
+  ChatNotifier? _notifier;
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
+  UserProfile? otherProfile;
 
   @override
   void initState() {
     super.initState();
-    _notifier =
-        ChatNotifier(
-            conversationId: widget.conversationId,
-            myUserId: widget.myUserId,
-          )
-          ..addListener(_onStateChange)
-          ..initialize();
+    _init();
+  }
+
+  Future<void> _init() async {
+    String convId = widget.conversationId ?? '';
+
+    if (convId.isEmpty && widget.otherUserId != null) {
+      final conv = await ChatRepository().getOrCreateConversation(
+        myUserId: widget.myUserId,
+        otherUserId: widget.otherUserId!,
+      );
+      convId = conv.id;
+    }
+
+    otherProfile = UserProfileCache.instance.getCached(widget.otherUserId ?? '');
+
+    // Mark as read
+    await ChatRepository().markAsRead(convId, widget.myUserId);
+
+    if (!mounted) return;
+
+    setState(() {
+      _notifier =
+          ChatNotifier(conversationId: convId, myUserId: widget.myUserId)
+            ..addListener(_onStateChange)
+            ..initialize();
+    });
   }
 
   void _onStateChange() {
-    if (mounted) {
+    if (mounted && _notifier != null) {
       setState(() {});
       if (_scrollController.hasClients) {
-        final nearBottom = _scrollController.position.pixels < 200; // ← flipped
+        final nearBottom = _scrollController.position.pixels < 200;
         if (nearBottom) _scrollToBottom();
       }
     }
@@ -446,12 +475,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _send() async {
     final text = _inputController.text;
     _inputController.clear();
-    await _notifier.sendMessage(text);
+    await _notifier?.sendMessage(text);
   }
 
   @override
   void dispose() {
-    _notifier.dispose();
+    _notifier?.dispose();
     _inputController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -461,156 +490,186 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: Row(
           children: [
             CircleAvatar(
               radius: 18,
-              child: Text(widget.otherUserName[0].toUpperCase()),
+              child: otherProfile != null
+                  ? otherProfile?.imageUrl != null
+                      ? ClipOval(
+                          child: Image.network(
+                            otherProfile!.imageUrl!,
+                            width: 34,
+                            height: 34,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      : Text(
+                          otherProfile!.displayName.isNotEmpty
+                              ? otherProfile!.displayName[0]
+                              : '?',
+                          style: const TextStyle(fontSize: 18),
+                        )
+                  : const Icon(Icons.person, size: 18),
             ),
             const SizedBox(width: 10),
-            Text(widget.otherUserName),
+            Text(otherProfile?.bestName ?? widget.otherUserName, style: const TextStyle(fontSize: 18),),
           ],
         ),
       ),
-      body: Column(
-        children: [
-          if (_notifier.error != null)
-            MaterialBanner(
-              content: Text(_notifier.error!),
-              actions: [
-                TextButton(
-                  onPressed: () => setState(() => _notifier._error = null),
-                  child: const Text('Dismiss'),
+      body: _notifier == null
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                if (_notifier?.error != null)
+                  MaterialBanner(
+                    content: Text(_notifier!.error!),
+                    actions: [
+                      TextButton(
+                        onPressed: () =>
+                            setState(() => _notifier!._error = null),
+                        child: const Text('Dismiss'),
+                      ),
+                    ],
+                  ),
+
+                // Message list
+                Expanded(
+                  child: _notifier!.loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _notifier!.messages.isEmpty
+                      ? const Center(
+                          child: Text('No messages yet. Say hello! 👋'),
+                        )
+                      : ListView.builder(
+                          controller: _scrollController,
+                          reverse: true, // ← add this
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 16,
+                          ),
+                          itemCount: _notifier!.messages.length,
+                          itemBuilder: (context, i) {
+                            final msg = _notifier!.messages[i];
+                            final isMe = msg.senderId == widget.myUserId;
+                            final scheme = Theme.of(context).colorScheme;
+
+                            return Align(
+                              alignment: isMe
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: Container(
+                                margin: EdgeInsets.only(
+                                  top: 3,
+                                  bottom: 3,
+                                  left: isMe ? 60 : 0,
+                                  right: isMe ? 0 : 60,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isMe
+                                      ? scheme.primary
+                                      : scheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: const Radius.circular(18),
+                                    topRight: const Radius.circular(18),
+                                    bottomLeft: Radius.circular(isMe ? 18 : 4),
+                                    bottomRight: Radius.circular(isMe ? 4 : 18),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: isMe
+                                      ? CrossAxisAlignment.end
+                                      : CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      msg.content,
+                                      style: TextStyle(
+                                        color: isMe
+                                            ? scheme.onPrimary
+                                            : scheme.onSurface,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      _formatTime(msg.createdAt),
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color:
+                                            (isMe
+                                                    ? scheme.onPrimary
+                                                    : scheme.onSurface)
+                                                .withOpacity(0.6),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+
+                // Input bar
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _inputController,
+                            textCapitalization: TextCapitalization.sentences,
+                            minLines: 1,
+                            maxLines: 4,
+                            decoration: InputDecoration(
+                              hintText: 'Message...',
+                              filled: true,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                            ),
+                            onSubmitted: (_) => _send(),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        _notifier!.sending
+                            ? const Padding(
+                                padding: EdgeInsets.all(8),
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              )
+                            : IconButton.filled(
+                                onPressed: _send,
+                                icon: const Icon(Icons.send_rounded),
+                              ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
-
-          // Message list
-          Expanded(
-            child: _notifier.loading
-                ? const Center(child: CircularProgressIndicator())
-                : _notifier.messages.isEmpty
-                ? const Center(child: Text('No messages yet. Say hello! 👋'))
-                : ListView.builder(
-                    controller: _scrollController,
-                    reverse: true, // ← add this
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 16,
-                    ),
-                    itemCount: _notifier.messages.length,
-                    itemBuilder: (context, i) {
-                      final msg = _notifier.messages[i];
-                      final isMe = msg.senderId == widget.myUserId;
-                      final scheme = Theme.of(context).colorScheme;
-
-                      return Align(
-                        alignment: isMe
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
-                        child: Container(
-                          margin: EdgeInsets.only(
-                            top: 3,
-                            bottom: 3,
-                            left: isMe ? 60 : 0,
-                            right: isMe ? 0 : 60,
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isMe
-                                ? scheme.primary
-                                : scheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.only(
-                              topLeft: const Radius.circular(18),
-                              topRight: const Radius.circular(18),
-                              bottomLeft: Radius.circular(isMe ? 18 : 4),
-                              bottomRight: Radius.circular(isMe ? 4 : 18),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: isMe
-                                ? CrossAxisAlignment.end
-                                : CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                msg.content,
-                                style: TextStyle(
-                                  color: isMe
-                                      ? scheme.onPrimary
-                                      : scheme.onSurface,
-                                  fontSize: 15,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                _formatTime(msg.createdAt),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color:
-                                      (isMe
-                                              ? scheme.onPrimary
-                                              : scheme.onSurface)
-                                          .withOpacity(0.6),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-
-          // Input bar
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _inputController,
-                      textCapitalization: TextCapitalization.sentences,
-                      minLines: 1,
-                      maxLines: 4,
-                      decoration: InputDecoration(
-                        hintText: 'Message...',
-                        filled: true,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                      ),
-                      onSubmitted: (_) => _send(),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  _notifier.sending
-                      ? const Padding(
-                          padding: EdgeInsets.all(8),
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        )
-                      : IconButton.filled(
-                          onPressed: _send,
-                          icon: const Icon(Icons.send_rounded),
-                        ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -619,4 +678,3 @@ class _ChatScreenState extends State<ChatScreen> {
         '${dt.minute.toString().padLeft(2, '0')}';
   }
 }
-

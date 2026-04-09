@@ -6,6 +6,7 @@
 
 import 'dart:async';
 import 'package:drivelife/api/posts_api.dart';
+import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:drivelife/screens/chat/ChatScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -39,25 +40,37 @@ class InboxRepository {
 
   /// Fetch all conversations with last message + unread count.
   Future<List<ConversationPreview>> getInbox(String myUserId) async {
-    // Fetch conversations
-    final convData = await _db
-        .from('conversations')
-        .select()
-        .contains('participant_ids', [myUserId])
-        .order('updated_at', ascending: false);
+    final data = await _db.rpc('get_inbox', params: {'p_user_id': myUserId});
 
-    final conversations = (convData as List)
-        .map((r) => Conversation.fromMap(r))
-        .toList();
+    return (data as List).map((row) {
+      final conv = Conversation(
+        id: row['conv_id'] as String,
+        participantIds: List<String>.from(row['participant_ids']),
+        updatedAt: DateTime.parse(row['updated_at']),
+      );
 
-    if (conversations.isEmpty) return [];
+      final otherUserId = conv.participantIds.firstWhere(
+        (id) => id != myUserId,
+      );
 
-    // For each conversation, fetch last message + unread count
-    final previews = await Future.wait(
-      conversations.map((conv) => _buildPreview(conv, myUserId)),
-    );
+      final hasLastMsg = row['last_message_content'] != null;
 
-    return previews;
+      return ConversationPreview(
+        conversation: conv,
+        otherUserId: otherUserId,
+        unreadCount: (row['unread_count'] as num).toInt(),
+        lastMessage: hasLastMsg
+            ? ChatMessage(
+                id: '',
+                conversationId: conv.id,
+                senderId: row['last_message_sender'] as String,
+                content: row['last_message_content'] as String,
+                createdAt: DateTime.parse(row['last_message_at']),
+                isRead: true,
+              )
+            : null,
+      );
+    }).toList();
   }
 
   Future<ConversationPreview> _buildPreview(
@@ -139,8 +152,6 @@ class InboxNotifier extends ChangeNotifier {
   Future<void> initialize() async {
     await _loadInbox();
 
-    print('supabase myUserId: $myUserId');
-
     // Refresh inbox whenever any message is sent or conversation updates
     _sub = _repo.conversationUpdates(myUserId).listen((_) {
       _loadInbox();
@@ -150,6 +161,10 @@ class InboxNotifier extends ChangeNotifier {
   Future<void> _loadInbox() async {
     try {
       _previews = await _repo.getInbox(myUserId);
+
+      final ids = _previews.map((p) => p.otherUserId).toList();
+      await UserProfileCache.instance.refresh(ids);
+
       _loading = false;
       _error = null;
     } catch (e) {
@@ -167,16 +182,6 @@ class InboxNotifier extends ChangeNotifier {
     super.dispose();
   }
 }
-
-// ============================================================
-// INBOX SCREEN — with new chat search bar
-// ============================================================
-
-// Add to your existing inbox_screen.dart, replacing InboxScreen
-// and adding the NewChatSearchBar widget below.
-// ============================================================
-
-// ── Inbox Screen (updated) ───────────────────────────────────
 
 class InboxScreen extends StatefulWidget {
   final String myUserId;
@@ -213,51 +218,41 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   void _openChat(String otherUserId, String otherUserName) async {
-    // Dismiss search
     setState(() {
       _searchActive = false;
     });
     _searchController.clear();
     _searchFocus.unfocus();
 
-    // Get or create conversation
-    final repo = ChatRepository();
-    final conv = await repo.getOrCreateConversation(
-      myUserId: widget.myUserId,
-      otherUserId: otherUserId,
-    );
-
+    // Navigate immediately with a loading state
     if (!mounted) return;
-
-    await Navigator.push(
+    Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ChatScreen(
-          conversationId: conv.id,
+          conversationId: null, // null = still loading
           myUserId: widget.myUserId,
+          otherUserId: otherUserId, // ← add this
           otherUserName: otherUserName,
         ),
       ),
-    );
-
-    _notifier.refresh();
+    ).then((_) => _notifier.refresh());
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Messages'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _notifier.refresh,
-          ),
-        ],
-      ),
+      // appBar: AppBar(
+      //   title: const Text('Messages'),
+      //   actions: [
+      //     IconButton(
+      //       icon: const Icon(Icons.refresh),
+      //       onPressed: _notifier.refresh,
+      //     ),
+      //   ],
+      // ),
       body: Column(
         children: [
-          // ── Search bar ──
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
             child: TextField(
@@ -267,8 +262,9 @@ class _InboxScreenState extends State<InboxScreen> {
                 hintText: 'Search users to message...',
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
+                fillColor: Colors.grey.shade200,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
                 ),
                 contentPadding: const EdgeInsets.symmetric(
@@ -341,14 +337,25 @@ class _InboxScreenState extends State<InboxScreen> {
         separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
         itemBuilder: (context, i) {
           final preview = _notifier.previews[i];
-          return _ConversationTile(
+          // return _ConversationTile(
+          //   preview: preview,
+          //   myUserId: widget.myUserId,
+          //   resolveUserName: widget.resolveUserName,
+          //   onTap: () async {
+          //     final name =
+          //         await widget.resolveUserName?.call(preview.otherUserId) ??
+          //         'User ${preview.otherUserId}';
+          //     _openChat(preview.otherUserId, name);
+          //   },
+          // );
+          return CachedConversationTile(
             preview: preview,
             myUserId: widget.myUserId,
-            resolveUserName: widget.resolveUserName,
             onTap: () async {
-              final name =
-                  await widget.resolveUserName?.call(preview.otherUserId) ??
-                  'User ${preview.otherUserId}';
+              final profile = UserProfileCache.instance.getCached(
+                preview.otherUserId,
+              );
+              final name = profile?.bestName ?? 'User ${preview.otherUserId}';
               _openChat(preview.otherUserId, name);
             },
           );
@@ -495,16 +502,13 @@ class _NewChatSearchResultsState extends State<_NewChatSearchResults> {
             name,
             style: const TextStyle(fontWeight: FontWeight.w500),
           ),
-          trailing: const Icon(Icons.send_rounded, size: 18),
+          trailing: const Icon(Icons.send_rounded, size: 22,),
           onTap: () => widget.onUserTap(userId, name),
         );
       },
     );
   }
 }
-
-// ── Updated _ConversationTile ────────────────────────────────
-// Add onTap parameter so InboxScreen controls navigation
 
 class _ConversationTile extends StatefulWidget {
   final ConversationPreview preview;
