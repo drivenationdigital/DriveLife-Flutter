@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -305,8 +307,9 @@ class ChatRepository {
 
   /// Mark all messages in a conversation as read.
   Future<void> markAsRead(String conversationId, String myUserId) async {
-
-    print('[ChatRepository] Marking conversation $conversationId as read for user $myUserId');
+    print(
+      '[ChatRepository] Marking conversation $conversationId as read for user $myUserId',
+    );
     await _db
         .from('messages')
         .update({'read_at': DateTime.now().toIso8601String()})
@@ -435,7 +438,9 @@ class _ChatScreenState extends State<ChatScreen> {
       convId = conv.id;
     }
 
-    otherProfile = UserProfileCache.instance.getCached(widget.otherUserId ?? '');
+    otherProfile = UserProfileCache.instance.getCached(
+      widget.otherUserId ?? '',
+    );
 
     // Mark as read
     await ChatRepository().markAsRead(convId, widget.myUserId);
@@ -488,8 +493,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
       appBar: AppBar(
+        titleSpacing: 0, 
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.of(context).pop(),
@@ -500,29 +508,32 @@ class _ChatScreenState extends State<ChatScreen> {
               radius: 18,
               child: otherProfile != null
                   ? otherProfile?.imageUrl != null
-                      ? ClipOval(
-                          child: Image.network(
-                            otherProfile!.imageUrl!,
-                            width: 34,
-                            height: 34,
-                            fit: BoxFit.cover,
-                          ),
-                        )
-                      : Text(
-                          otherProfile!.displayName.isNotEmpty
-                              ? otherProfile!.displayName[0]
-                              : '?',
-                          style: const TextStyle(fontSize: 18),
-                        )
+                        ? ClipOval(
+                            child: Image.network(
+                              otherProfile!.imageUrl!,
+                              width: 34,
+                              height: 34,
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                        : Text(
+                            otherProfile!.displayName.isNotEmpty
+                                ? otherProfile!.displayName[0]
+                                : '?',
+                            style: const TextStyle(fontSize: 18),
+                          )
                   : const Icon(Icons.person, size: 18),
             ),
             const SizedBox(width: 10),
-            Text(otherProfile?.bestName ?? widget.otherUserName, style: const TextStyle(fontSize: 18),),
+            Text(
+              otherProfile?.bestName ?? widget.otherUserName,
+              style: const TextStyle(fontSize: 18),
+            ),
           ],
         ),
       ),
       body: _notifier == null
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
           : Column(
               children: [
                 if (_notifier?.error != null)
@@ -540,7 +551,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 // Message list
                 Expanded(
                   child: _notifier!.loading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? Center(
+                          child: CircularProgressIndicator(
+                            color: theme.primaryColor,
+                          ),
+                        )
                       : _notifier!.messages.isEmpty
                       ? const Center(
                           child: Text('No messages yet. Say hello! 👋'),
@@ -575,7 +590,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ),
                                 decoration: BoxDecoration(
                                   color: isMe
-                                      ? scheme.primary
+                                      ? theme.primaryColor
                                       : scheme.surfaceContainerHighest,
                                   borderRadius: BorderRadius.only(
                                     topLeft: const Radius.circular(18),
@@ -636,8 +651,9 @@ class _ChatScreenState extends State<ChatScreen> {
                             decoration: InputDecoration(
                               hintText: 'Message...',
                               filled: true,
+                              fillColor: Colors.grey.shade200,
                               border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(24),
+                                borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide.none,
                               ),
                               contentPadding: const EdgeInsets.symmetric(
@@ -650,19 +666,28 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         const SizedBox(width: 6),
                         _notifier!.sending
-                            ? const Padding(
-                                padding: EdgeInsets.all(8),
+                            ? Padding(
+                                padding: const EdgeInsets.all(8),
                                 child: SizedBox(
                                   width: 24,
                                   height: 24,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
+                                    color: theme.primaryColor,
                                   ),
                                 ),
                               )
-                            : IconButton.filled(
+                            : ElevatedButton(
                                 onPressed: _send,
-                                icon: const Icon(Icons.send_rounded),
+                                style: ElevatedButton.styleFrom(
+                                  shape: const CircleBorder(),
+                                  padding: const EdgeInsets.all(12),
+                                  backgroundColor: theme.primaryColor,
+                                ),
+                                child: const Icon(
+                                  Icons.send_rounded,
+                                  color: Colors.white,
+                                ),
                               ),
                       ],
                     ),

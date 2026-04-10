@@ -126,6 +126,7 @@ class _HomeTabsState extends State<HomeTabs> {
     });
   }
 
+  // ignore: unused_element
   void _loadManagedEntities() async {
     final accountManager = Provider.of<AccountManager>(context, listen: false);
     final authService = AuthService();

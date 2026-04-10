@@ -9,10 +9,12 @@
 // ============================================================
 
 import 'dart:convert';
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatList.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ── Model ─────────────────────────────────────────────────────
@@ -289,6 +291,8 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     final preview = widget.preview;
     final lastMsg = preview.lastMessage;
     final hasUnread = preview.unreadCount > 0;
@@ -300,8 +304,8 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
 
       leading: CircleAvatar(
-        radius: 26,
-        backgroundColor: scheme.primaryContainer,
+        radius: 22,
+        backgroundColor: theme.primaryColor.withOpacity(0.1),
         backgroundImage: imageUrl != null && imageUrl.isNotEmpty
             ? NetworkImage(imageUrl)
             : null,
@@ -310,7 +314,7 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
                 name != '...' ? name[0].toUpperCase() : '?',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: scheme.onPrimaryContainer,
+                  color: theme.primaryColor,
                 ),
               )
             : null,
@@ -349,7 +353,7 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
               _formatTime(lastMsg.createdAt),
               style: TextStyle(
                 fontSize: 11,
-                color: hasUnread ? scheme.primary : scheme.onSurfaceVariant,
+                color: hasUnread ? theme.primaryColor : scheme.onSurfaceVariant,
               ),
             ),
           if (hasUnread) ...[
@@ -357,7 +361,7 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(
-                color: scheme.primary,
+                color: theme.primaryColor,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(

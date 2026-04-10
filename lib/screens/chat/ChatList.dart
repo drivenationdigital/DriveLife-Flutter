@@ -6,9 +6,11 @@
 
 import 'dart:async';
 import 'package:drivelife/api/posts_api.dart';
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:drivelife/screens/chat/ChatScreen.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ── Re-use your existing config + models ─────────────────────
@@ -199,6 +201,11 @@ class _InboxScreenState extends State<InboxScreen> {
   final _searchFocus = FocusNode();
   bool _searchActive = false;
 
+  final List<UserProfile> _selectedForGroup = [];
+
+  // Max group size excluding yourself = 3 others
+  static const _maxGroupMembers = 3;
+
   @override
   void initState() {
     super.initState();
@@ -239,20 +246,45 @@ class _InboxScreenState extends State<InboxScreen> {
     ).then((_) => _notifier.refresh());
   }
 
+  void _addToGroup(UserProfile profile) {
+    if (_selectedForGroup.any((p) => p.id == profile.id)) return;
+    if (_selectedForGroup.length >= _maxGroupMembers) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Max $_maxGroupMembers people in a group for now.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    setState(() => _selectedForGroup.add(profile));
+  }
+
+  void _startGroupChat() {
+    if (_selectedForGroup.length < 2) return;
+
+    // TODO next step: create group conversation with all selected IDs
+    final ids = _selectedForGroup.map((p) => p.id).toList();
+    final names = _selectedForGroup.map((p) => p.bestName).toList();
+
+    debugPrint('[Group] Starting group with: $ids');
+
+    setState(() {
+      _searchActive = false;
+      _selectedForGroup.clear();
+    });
+    _searchController.clear();
+    _searchFocus.unfocus();
+
+    // We'll wire this up in the next step
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // appBar: AppBar(
-      //   title: const Text('Messages'),
-      //   actions: [
-      //     IconButton(
-      //       icon: const Icon(Icons.refresh),
-      //       onPressed: _notifier.refresh,
-      //     ),
-      //   ],
-      // ),
       body: Column(
         children: [
+          // ── Search bar ──
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
             child: TextField(
@@ -262,9 +294,8 @@ class _InboxScreenState extends State<InboxScreen> {
                 hintText: 'Search users to message...',
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
-                fillColor: Colors.grey.shade200,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(24),
                   borderSide: BorderSide.none,
                 ),
                 contentPadding: const EdgeInsets.symmetric(
@@ -277,6 +308,7 @@ class _InboxScreenState extends State<InboxScreen> {
                         onPressed: () {
                           setState(() {
                             _searchActive = false;
+                            _selectedForGroup.clear();
                           });
                           _searchController.clear();
                           _searchFocus.unfocus();
@@ -292,13 +324,83 @@ class _InboxScreenState extends State<InboxScreen> {
             ),
           ),
 
+          // ── Selected users pills ──
+          if (_selectedForGroup.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+              child: Row(
+                children: [
+                  // Scrollable pills
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: _selectedForGroup.map((profile) {
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Chip(
+                              avatar: CircleAvatar(
+                                backgroundImage: profile.imageUrl != null
+                                    ? NetworkImage(profile.imageUrl!)
+                                    : null,
+                                child: profile.imageUrl == null
+                                    ? Text(
+                                        profile.bestName[0].toUpperCase(),
+                                        style: const TextStyle(fontSize: 11),
+                                      )
+                                    : null,
+                              ),
+                              label: Text(
+                                profile.username,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              deleteIcon: const Icon(Icons.close, size: 16),
+                              onDeleted: () {
+                                setState(
+                                  () => _selectedForGroup.remove(profile),
+                                );
+                              },
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+
+                  // Start group button — only shown when 2+ selected
+                  if (_selectedForGroup.length >= 2)
+                    TextButton.icon(
+                      onPressed: _startGroupChat,
+                      icon: const Icon(Icons.group, size: 18),
+                      label: const Text('Start'),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
           // ── Search results OR conversation list ──
           Expanded(
             child: _searchActive
                 ? _NewChatSearchResults(
                     query: _searchController.text.trim(),
                     myUserId: widget.myUserId,
-                    onUserTap: _openChat,
+                    onDirectMessage: _openChat,
+                    onAddToGroup: _addToGroup,
+                    selectedIds: _selectedForGroup.map((p) => p.id).toList(),
+                    maxReached: _selectedForGroup.length >= _maxGroupMembers
+                        ? 1
+                        : 0,
                   )
                 : _buildInbox(),
           ),
@@ -308,9 +410,12 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   Widget _buildInbox() {
+    final theme = Provider.of<ThemeProvider>(context);
+
     if (_notifier.loading) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(child: CircularProgressIndicator(color: theme.primaryColor,));
     }
+
     if (_notifier.error != null) {
       return Center(
         child: Column(
@@ -332,22 +437,12 @@ class _InboxScreenState extends State<InboxScreen> {
 
     return RefreshIndicator(
       onRefresh: _notifier.refresh,
+      color: theme.primaryColor,
       child: ListView.separated(
         itemCount: _notifier.previews.length,
         separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
         itemBuilder: (context, i) {
           final preview = _notifier.previews[i];
-          // return _ConversationTile(
-          //   preview: preview,
-          //   myUserId: widget.myUserId,
-          //   resolveUserName: widget.resolveUserName,
-          //   onTap: () async {
-          //     final name =
-          //         await widget.resolveUserName?.call(preview.otherUserId) ??
-          //         'User ${preview.otherUserId}';
-          //     _openChat(preview.otherUserId, name);
-          //   },
-          // );
           return CachedConversationTile(
             preview: preview,
             myUserId: widget.myUserId,
@@ -370,12 +465,18 @@ class _InboxScreenState extends State<InboxScreen> {
 class _NewChatSearchResults extends StatefulWidget {
   final String query;
   final String myUserId;
-  final void Function(String userId, String userName) onUserTap;
+  final void Function(String userId, String userName) onDirectMessage;
+  final void Function(UserProfile profile) onAddToGroup;
+  final List<String> selectedIds; // already picked
+  final int maxReached;
 
   const _NewChatSearchResults({
     required this.query,
     required this.myUserId,
-    required this.onUserTap,
+    required this.onDirectMessage,
+    required this.onAddToGroup,
+    required this.selectedIds,
+    required this.maxReached,
   });
 
   @override
@@ -458,8 +559,10 @@ class _NewChatSearchResultsState extends State<_NewChatSearchResults> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(child: CircularProgressIndicator(color: theme.primaryColor,));
     }
     if (_error != null) {
       return Center(child: Text('Error: $_error'));
@@ -482,6 +585,7 @@ class _NewChatSearchResultsState extends State<_NewChatSearchResults> {
         final profileImage = user['image'] as String?;
         final name = user['name'] as String? ?? 'Unknown';
         final userId = user['entity_id'].toString();
+        final alreadySelected = widget.selectedIds.contains(userId);
 
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(
@@ -502,8 +606,53 @@ class _NewChatSearchResultsState extends State<_NewChatSearchResults> {
             name,
             style: const TextStyle(fontWeight: FontWeight.w500),
           ),
-          trailing: const Icon(Icons.send_rounded, size: 22,),
-          onTap: () => widget.onUserTap(userId, name),
+          subtitle: Text(
+            '@${user['name'] ?? ''}',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+          ),
+
+          // ── Two action icons ──
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Direct message
+              IconButton(
+                tooltip: 'Send message',
+                icon: const Icon(Icons.send_rounded, size: 20),
+                onPressed: () => widget.onDirectMessage(userId, name),
+              ),
+
+              // Add to group
+              alreadySelected
+                  ? const Icon(
+                      Icons.check_circle,
+                      color: Colors.green,
+                      size: 22,
+                    )
+                  : IconButton(
+                      tooltip: widget.maxReached > 0
+                          ? 'Max members reached'
+                          : 'Add to group',
+                      icon: Icon(
+                        Icons.group_add_rounded,
+                        size: 22,
+                        color: widget.maxReached > 0 ? Colors.grey : null,
+                      ),
+                      onPressed: widget.maxReached > 0
+                          ? null
+                          : () => widget.onAddToGroup(
+                              UserProfile(
+                                id: userId,
+                                username: user['username'] ?? name,
+                                displayName: name,
+                                firstName: '',
+                                lastName: '',
+                                imageUrl: profileImage,
+                              ),
+                            ),
+                    ),
+            ],
+          ),
         );
       },
     );
