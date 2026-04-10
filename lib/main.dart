@@ -3,6 +3,7 @@ import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
+import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/services/app_error_logger.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/deeplinks_helper.dart';
@@ -17,7 +18,6 @@ import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
-import 'package:drivelife/screens/chat/ChatScreen.dart';
 
 
 // const String stripePublishableKey =

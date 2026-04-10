@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:drivelife/models/account_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/cart_provider.dart';
@@ -8,7 +7,7 @@ import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/auth/entity_switcher.dart';
 import 'package:drivelife/screens/chat/ChatList.dart';
-import 'package:drivelife/screens/chat/ChatScreen.dart';
+import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 // import 'package:drivelife/screens/clubs/add_club_screen.dart';
 // import 'package:drivelife/screens/clubs/club_creation_screen.dart';
 // import 'package:drivelife/screens/clubs/my_clubs_screen.dart';

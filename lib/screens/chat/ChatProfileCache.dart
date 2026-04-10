@@ -243,10 +243,6 @@ class UserAvatar extends StatelessWidget {
   }
 }
 
-// ── Updated _ConversationTile ─────────────────────────────────
-// Pass wordpressJwt in and use UserProfileCache instead of
-// resolveUserName callback.
-
 class CachedConversationTile extends StatefulWidget {
   final ConversationPreview preview;
   final String myUserId;
@@ -274,6 +270,7 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
 
   Future<void> _loadProfile() async {
     final otherId = widget.preview.otherUserId;
+    if (otherId == null) return; // ← guard for group chats
 
     // Serve from cache immediately if available
     final cached = UserProfileCache.instance.getCached(otherId);
@@ -297,28 +294,38 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
     final lastMsg = preview.lastMessage;
     final hasUnread = preview.unreadCount > 0;
     final scheme = Theme.of(context).colorScheme;
-    final name = _profile?.bestName ?? '...';
-    final imageUrl = _profile?.imageUrl;
+
+    final isGroup = preview.isGroup;
+    final name = isGroup
+        ? (preview.conversation.groupName ?? 'Group')
+        : (_profile?.bestName ?? '...');
+    final imageUrl = isGroup ? null : _profile?.imageUrl;
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
 
-      leading: CircleAvatar(
-        radius: 22,
-        backgroundColor: theme.primaryColor.withOpacity(0.1),
-        backgroundImage: imageUrl != null && imageUrl.isNotEmpty
-            ? NetworkImage(imageUrl)
-            : null,
-        child: imageUrl == null || imageUrl.isEmpty
-            ? Text(
-                name != '...' ? name[0].toUpperCase() : '?',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: theme.primaryColor,
-                ),
-              )
-            : null,
-      ),
+      leading: isGroup
+          ? CircleAvatar(
+              radius: 22,
+              backgroundColor: theme.primaryColor.withOpacity(0.1),
+              child: Icon(Icons.group, color: theme.primaryColor),
+            )
+          : CircleAvatar(
+              radius: 22,
+              backgroundColor: theme.primaryColor.withOpacity(0.1),
+              backgroundImage: imageUrl != null && imageUrl.isNotEmpty
+                  ? NetworkImage(imageUrl)
+                  : null,
+              child: imageUrl == null || imageUrl.isEmpty
+                  ? Text(
+                      name != '...' ? name[0].toUpperCase() : '?',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: theme.primaryColor,
+                      ),
+                    )
+                  : null,
+            ),
 
       title: Text(
         name,
@@ -390,23 +397,3 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
     return '${dt.day}/${dt.month}';
   }
 }
-
-// ── Usage ─────────────────────────────────────────────────────
-//
-// 1. In main(), before runApp():
-//    await UserProfileCache.instance.loadFromDisk();
-//
-// 2. Replace _ConversationTile with CachedConversationTile:
-//    CachedConversationTile(
-//      preview:      preview,
-//      myUserId:     widget.myUserId,
-//      wordpressJwt: widget.wordpressJwt,  // pass your WP JWT down
-//      onTap:        () => _openChat(...),
-//    )
-//
-// 3. On inbox refresh, pre-warm the cache for all visible users:
-//    final ids = _notifier.previews.map((p) => p.otherUserId).toList();
-//    await UserProfileCache.instance.refresh(ids, wordpressJwt);
-//
-// 4. On logout:
-//    await UserProfileCache.instance.clear();
