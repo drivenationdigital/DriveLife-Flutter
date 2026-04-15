@@ -182,6 +182,7 @@ class _ChatScreenState extends State<ChatScreen> {
           .toList();
       _resolvedParticipants = ids;
       final profiles = await UserProfileCache.instance.resolve(ids);
+      print('Resolved group profiles: ${profiles.length} for IDs: $ids');
       _groupProfiles = profiles;
     } else {
       otherProfile = UserProfileCache.instance.getCached(

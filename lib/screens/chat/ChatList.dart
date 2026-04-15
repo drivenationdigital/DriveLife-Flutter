@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:drivelife/screens/chat/ChatScreen.dart';
@@ -36,7 +38,7 @@ class InboxScreen extends StatefulWidget {
 }
 
 class _InboxScreenState extends State<InboxScreen> {
-  late final InboxNotifier _notifier;
+  InboxNotifier? _notifier;
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
   bool _searchActive = false;
@@ -44,27 +46,39 @@ class _InboxScreenState extends State<InboxScreen> {
   final List<UserProfile> _selectedForGroup = [];
 
   // Max group size excluding yourself = 3 others
-  static const _maxGroupMembers = 3;
+  static const _maxGroupMembers = 10;
 
   @override
   void initState() {
     super.initState();
-    _notifier = InboxNotifier(myUserId: widget.myUserId)
-      ..addListener(() {
-        if (mounted) setState(() {});
-      })
-      ..initialize();
+
+    final accountManager = Provider.of<AccountManager>(context, listen: false);
+    final currentAccount = accountManager.activeAccount;
+
+    if (currentAccount != null && currentAccount.token != '') {
+      SupabaseTokenManager.fetchAndStore(currentAccount.token).then((token) {
+        _notifier = InboxNotifier(myUserId: widget.myUserId)
+          ..addListener(() {
+            if (mounted) setState(() {});
+          })
+          ..initialize();
+      });
+    }
   }
 
   @override
   void dispose() {
-    _notifier.dispose();
+    _notifier?.dispose();
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
   }
 
-  void _openChat(String otherUserId, String otherUserName, String? conversationId) async {
+  void _openChat(
+    String otherUserId,
+    String otherUserName,
+    String? conversationId,
+  ) async {
     setState(() {
       _searchActive = false;
     });
@@ -83,7 +97,7 @@ class _InboxScreenState extends State<InboxScreen> {
           otherUserName: otherUserName,
         ),
       ),
-    ).then((_) => _notifier.refresh());
+    ).then((_) => _notifier?.refresh());
   }
 
   void _addToGroup(UserProfile profile) {
@@ -143,7 +157,7 @@ class _InboxScreenState extends State<InboxScreen> {
       ),
     );
 
-    _notifier.refresh();
+    _notifier?.refresh();
   }
 
   @override
@@ -209,7 +223,7 @@ class _InboxScreenState extends State<InboxScreen> {
                             child: Chip(
                               avatar: CircleAvatar(
                                 backgroundImage: profile.imageUrl != null
-                                    ? NetworkImage(profile.imageUrl!)
+                                    ? CachedNetworkImageProvider(profile.imageUrl!)
                                     : null,
                                 child: profile.imageUrl == null
                                     ? Text(
@@ -280,19 +294,21 @@ class _InboxScreenState extends State<InboxScreen> {
   Widget _buildInbox() {
     final theme = Provider.of<ThemeProvider>(context);
 
-    if (_notifier.loading) {
-      return Center(child: CircularProgressIndicator(color: theme.primaryColor,));
+    if (_notifier?.loading ?? true) {
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
+      );
     }
 
-    if (_notifier.error != null) {
+    if (_notifier?.error != null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Failed to load chats: ${_notifier.error}'),
+            Text('Failed to load chats: ${_notifier?.error}'),
             const SizedBox(height: 12),
             ElevatedButton(
-              onPressed: _notifier.refresh,
+              onPressed: _notifier?.refresh,
               child: const Text('Retry'),
             ),
           ],
@@ -300,52 +316,140 @@ class _InboxScreenState extends State<InboxScreen> {
       );
     }
 
-    if (_notifier.previews.isEmpty) {
+    if (_notifier?.previews.isEmpty ?? true) {
       return const Center(child: Text('No conversations yet.'));
     }
 
     return RefreshIndicator(
-      onRefresh: _notifier.refresh,
+      onRefresh: _notifier?.refresh ?? () async {},
       color: theme.primaryColor,
       child: ListView.separated(
-        itemCount: _notifier.previews.length,
+        itemCount: _notifier?.previews.length ?? 0,
         separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
         itemBuilder: (context, i) {
-          final preview = _notifier.previews[i];
+          final preview = _notifier?.previews[i];
+          if (preview == null) return const SizedBox.shrink();
           final isGroup = preview.isGroup;
+          final convId = preview.conversation.id;
 
-          return CachedConversationTile(
-            preview: preview,
-            myUserId: widget.myUserId,
-            onTap: () {
-              if (isGroup) {
-                // Group chat — navigate directly with conversation ID
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChatScreen(
-                      conversationId: preview.conversation.id,
-                      myUserId: widget.myUserId,
-                      otherUserName: preview.conversation.groupName ?? 'Group',
-                      isGroup: true,
-                      groupName: preview.conversation.groupName,
-                      participantIds: preview.conversation.participantIds,
+          return Dismissible(
+            key: ValueKey(convId),
+            direction: DismissDirection.endToStart, // swipe left
+            background: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 20),
+              color: Colors.red.shade400,
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.delete_outline, color: Colors.white, size: 26),
+                  SizedBox(height: 4),
+                  Text(
+                    'Delete',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ).then((_) => _notifier.refresh());
-              } else {
-                // 1-to-1 — resolve name from cache
-                final otherId = preview.otherUserId;
-                if (otherId == null) return;
-                final profile = UserProfileCache.instance.getCached(otherId);
-                final name = profile?.bestName ?? 'User $otherId';
-                _openChat(otherId, name, preview.conversation.id);
+                ],
+              ),
+            ),
+
+            // Confirm before completing the dismissal
+            confirmDismiss: (_) async {
+              return await showDialog<bool>(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: const Text('Delete conversation'),
+                  content: Text(
+                    isGroup
+                        ? 'You will leave this group and no longer receive messages.'
+                        : 'This will hide the conversation. You\'ll see it again if they message you.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.red.shade400,
+                      ),
+                      child: const Text('Delete'),
+                    ),
+                  ],
+                ),
+              );
+            },
+
+            onDismissed: (_) async {
+              // Optimistically remove from list
+              _notifier!.removePreview(convId);
+
+              try {
+                if (isGroup) {
+                  await SupabaseConfig.client.rpc(
+                    'leave_group',
+                    params: {
+                      'p_conversation_id': convId,
+                      'p_user_id': widget.myUserId,
+                    },
+                  );
+                } else {
+                  // Soft delete for 1-to-1
+                  await ChatRepository().deleteConversation(convId);
+                }
+
+                MessageCache.instance.clear(convId);
+              } catch (e) {
+                _notifier!.refresh();
+                if (mounted) {
+                  print('Failed to delete conversation: $e');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed: $e'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
               }
             },
+
+            child: CachedConversationTile(
+              preview: preview,
+              myUserId: widget.myUserId,
+              onTap: () {
+                if (isGroup) {
+                  // Group chat — navigate directly with conversation ID
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatScreen(
+                        conversationId: preview.conversation.id,
+                        myUserId: widget.myUserId,
+                        otherUserName:
+                            preview.conversation.groupName ?? 'Group',
+                        isGroup: true,
+                        groupName: preview.conversation.groupName,
+                        participantIds: preview.conversation.participantIds,
+                      ),
+                    ),
+                  ).then((_) => _notifier?.refresh());
+                } else {
+                  // 1-to-1 — resolve name from cache
+                  final otherId = preview.otherUserId;
+                  if (otherId == null) return;
+                  final profile = UserProfileCache.instance.getCached(otherId);
+                  final name = profile?.bestName ?? 'User $otherId';
+                  _openChat(otherId, name, preview.conversation.id);
+                }
+              },
+            ),
           );
         },
       ),
     );
   }
 }
-

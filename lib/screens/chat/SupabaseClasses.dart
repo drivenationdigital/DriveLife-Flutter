@@ -138,23 +138,45 @@ class ChatRepository {
     String conversationId, {
     DateTime? after,
   }) async {
-    print(
-      '[ChatRepository] Fetching messages for conversation $conversationId since $after',
-    );
+
+    final currentUserId = await SupabaseTokenManager.currentUserId;
+    if (currentUserId == null) {
+      throw Exception('No current user ID found');
+    }
+
+    // Check if this user previously deleted this conversation
+    DateTime? deletedAt;
+    try {
+      final deleteRecord = await _db
+          .from('conversation_deletes')
+          .select('deleted_at')
+          .eq('conversation_id', conversationId)
+          .eq('user_id', currentUserId)
+          .maybeSingle();
+
+      if (deleteRecord != null) {
+        deletedAt = DateTime.parse(deleteRecord['deleted_at']);
+      }
+    } catch (_) {}
+
+    // Use the later of: cache cutoff vs deletion cutoff
+    DateTime? since = after;
+    if (deletedAt != null) {
+      since = since == null
+          ? deletedAt
+          : (deletedAt.isAfter(since) ? deletedAt : since);
+    }
+
     var query = _db
         .from('messages')
         .select()
         .eq('conversation_id', conversationId);
 
-    if (after != null) {
-      query = query.gt('created_at', after.toIso8601String());
+    if (since != null) {
+      query = query.gt('created_at', since.toIso8601String());
     }
 
-    final data = await query.order(
-      'created_at',
-      ascending: true,
-    ); // ← order AFTER filters
-
+    final data = await query.order('created_at', ascending: true);
     return (data as List).map((r) => ChatMessage.fromMap(r)).toList();
   }
 
@@ -186,20 +208,26 @@ class ChatRepository {
   }) async {
     final participants = [myUserId, otherUserId]..sort();
 
-    // Check if conversation already exists
     final existing = await _db
         .from('conversations')
         .select()
         .contains('participant_ids', participants)
-        .limit(1) // ← add this
+        .eq('is_group', false) // ← add this
+        .eq(
+          'participant_ids',
+          '{${participants.join(',')}}',
+        ) // exact match, not just contains
+        .limit(1)
         .maybeSingle();
 
     if (existing != null) return Conversation.fromMap(existing);
 
-    // Create new
     final created = await _db
         .from('conversations')
-        .insert({'participant_ids': participants})
+        .insert({
+          'participant_ids': participants,
+          'is_group': false, // ← explicit
+        })
         .select()
         .single();
 
@@ -217,7 +245,18 @@ class ChatRepository {
     return (data as List).map((row) => Conversation.fromMap(row)).toList();
   }
 
-  // ── Messages ──
+  Future<void> deleteConversation(String conversationId) async {
+    final currentUserId = await SupabaseTokenManager.currentUserId;
+    if (currentUserId == null) throw Exception('No current user ID found');
+
+    await _db.from('conversation_deletes').upsert({
+      'conversation_id': conversationId,
+      'user_id': currentUserId,
+      'deleted_at': DateTime.now().toUtc().toIso8601String(), // ← toUtc()
+    });
+
+    MessageCache.instance.clear(conversationId);
+  }
 
   /// Fetch message history for a conversation (paginated).
   Future<List<ChatMessage>> getMessages(
@@ -558,7 +597,7 @@ class InboxRepository {
   }
 
   /// Real-time stream that fires whenever any conversation updates.
-  Stream<void> conversationUpdates(String myUserId) {
+Stream<void> conversationUpdates(String myUserId) {
     final controller = StreamController<void>.broadcast();
 
     final channel = _db.channel('inbox:$myUserId')
@@ -571,10 +610,16 @@ class InboxRepository {
       ..onPostgresChanges(
         event: PostgresChangeEvent.update,
         schema: 'public',
+        table: 'messages',
+        callback: (_) => controller.add(null),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
         table: 'conversations',
         callback: (_) => controller.add(null),
       )
-      ..subscribe();
+      ..subscribe(); // ← no status callback here — don't react to channel events
 
     controller.onCancel = () {
       _db.removeChannel(channel);
@@ -597,15 +642,20 @@ class InboxNotifier extends ChangeNotifier {
   List<ConversationPreview> get previews => _previews;
   bool get loading => _loading;
   String? get error => _error;
+  Timer? _debounceTimer;
 
   InboxNotifier({required this.myUserId});
 
   Future<void> initialize() async {
     await _loadInbox();
 
-    // Refresh inbox whenever any message is sent or conversation updates
     _sub = _repo.conversationUpdates(myUserId).listen((_) {
-      _loadInbox();
+      // Debounce — ignore events fired within 1 second of each other
+      // This prevents the chat screen closing from triggering a reload
+      _debounceTimer?.cancel();
+      _debounceTimer = Timer(const Duration(seconds: 1), () {
+        _loadInbox();
+      });
     });
   }
 
@@ -620,6 +670,7 @@ class InboxNotifier extends ChangeNotifier {
       if (ids.isNotEmpty) {
         await UserProfileCache.instance.refresh(ids);
       }
+      
       _loading = false;
       _error = null;
     } catch (e) {
@@ -631,8 +682,16 @@ class InboxNotifier extends ChangeNotifier {
 
   Future<void> refresh() => _loadInbox();
 
+  void removePreview(String conversationId) {
+    _previews = _previews
+        .where((p) => p.conversation.id != conversationId)
+        .toList();
+    notifyListeners();
+  }
+
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _sub?.cancel();
     super.dispose();
   }

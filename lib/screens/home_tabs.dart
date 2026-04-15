@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/models/account_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/cart_provider.dart';
@@ -90,9 +91,9 @@ class _HomeTabsState extends State<HomeTabs> {
     final currentAccount = accountManager.activeAccount;
 
     // ✅ Await the token BEFORE building any screens
-    if (currentAccount != null && currentAccount.token != '') {
-      await onWordPressLoginSuccess(currentAccount.token);
-    }
+    // if (currentAccount != null && currentAccount.token != '') {
+    //   await onWordPressLoginSuccess(currentAccount.token);
+    // }
 
     final List<Widget> screens;
 
@@ -350,7 +351,7 @@ class _HomeTabsState extends State<HomeTabs> {
                 ? CircleAvatar(
                     radius: 16,
                     backgroundColor: Colors.transparent,
-                    backgroundImage: NetworkImage(url!),
+                    backgroundImage: CachedNetworkImageProvider(url!),
                     onBackgroundImageError: (_, __) {},
                   )
                 : iconSvg(
@@ -372,7 +373,7 @@ class _HomeTabsState extends State<HomeTabs> {
               ? CircleAvatar(
                   radius: 16,
                   backgroundColor: Colors.transparent,
-                  backgroundImage: NetworkImage(url!),
+                  backgroundImage: CachedNetworkImageProvider(url!),
                   onBackgroundImageError: (_, __) {},
                 )
               : iconSvg(
