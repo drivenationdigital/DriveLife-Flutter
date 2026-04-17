@@ -57,11 +57,18 @@ class _InboxScreenState extends State<InboxScreen> {
 
     if (currentAccount != null && currentAccount.token != '') {
       SupabaseTokenManager.fetchAndStore(currentAccount.token).then((token) {
-        _notifier = InboxNotifier(myUserId: widget.myUserId)
-          ..addListener(() {
-            if (mounted) setState(() {});
-          })
-          ..initialize();
+        _notifier =
+            InboxNotifier(
+                myUserId: widget.myUserId,
+                unreadCountProvider: Provider.of<UnreadCountProvider>(
+                  context,
+                  listen: false,
+                ),
+              )
+              ..addListener(() {
+                if (mounted) setState(() {});
+              })
+              ..initialize();
       });
     }
   }
@@ -223,7 +230,9 @@ class _InboxScreenState extends State<InboxScreen> {
                             child: Chip(
                               avatar: CircleAvatar(
                                 backgroundImage: profile.imageUrl != null
-                                    ? CachedNetworkImageProvider(profile.imageUrl!)
+                                    ? CachedNetworkImageProvider(
+                                        profile.imageUrl!,
+                                      )
                                     : null,
                                 child: profile.imageUrl == null
                                     ? Text(

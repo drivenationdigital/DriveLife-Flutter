@@ -493,7 +493,23 @@ class _HomeTabsState extends State<HomeTabs> {
           label: 'Store',
         ),
         BottomNavigationBarItem(icon: _buildProfileIcon(), label: 'Profile'),
-        BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
+        BottomNavigationBarItem(
+          icon: Consumer<UnreadCountProvider>(
+            builder: (context, unread, child) {
+              final count = unread.count;
+              final icon = const Icon(Icons.chat_bubble_outline);
+              if (count > 0) {
+                return Badge(
+                  backgroundColor: theme.primaryColor,
+                  label: Text(count > 99 ? '99+' : '$count'),
+                  child: icon,
+                );
+              }
+              return icon;
+            },
+          ),
+          label: 'Chat',
+        ),
       ],
     );
   }

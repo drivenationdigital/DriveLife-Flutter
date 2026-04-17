@@ -363,78 +363,6 @@ class ChatRepository {
   }
 }
 
-// class ChatNotifier extends ChangeNotifier {
-//   final ChatRepository _repo;
-//   final String conversationId;
-//   final String myUserId;
-
-//   ChatNotifier({
-//     required this.conversationId,
-//     required this.myUserId,
-//     ChatRepository? repo,
-//   }) : _repo = repo ?? ChatRepository();
-
-//   List<ChatMessage> _messages = [];
-//   bool _loading = true;
-//   bool _sending = false;
-//   String? _error;
-//   StreamSubscription? _sub;
-
-//   List<ChatMessage> get messages => _messages.reversed.toList();
-
-//   bool get loading => _loading;
-//   bool get sending => _sending;
-//   String? get error => _error;
-
-//   Future<void> initialize() async {
-//     try {
-//       _sub = _repo.messageStream(conversationId).listen((messages) {
-//         print(
-//           '[ChatNotifier] Received ${messages.length} messages from stream',
-//         );
-//         _messages = messages; // already sorted oldest→newest from the query
-//         _loading = false;
-//         notifyListeners();
-//       });
-//     } catch (e) {
-//       _error = e.toString();
-//       _loading = false;
-//       notifyListeners();
-//     }
-//   }
-
-//   Future<void> sendMessage(String content) async {
-//     if (content.trim().isEmpty || _sending) return;
-
-//     _sending = true;
-//     notifyListeners();
-
-//     try {
-//       final sent = await _repo.sendMessage(
-//         conversationId: conversationId,
-//         senderId: myUserId,
-//         content: content.trim(),
-//       );
-
-//       // Optimistically add to list immediately
-//       if (!_messages.any((m) => m.id == sent.id)) {
-//         _messages = [..._messages, sent];
-//         notifyListeners();
-//       }
-//     } catch (e) {
-//       _error = e.toString();
-//     } finally {
-//       _sending = false;
-//       notifyListeners();
-//     }
-//   }
-
-//   @override
-//   void dispose() {
-//     _sub?.cancel();
-//     super.dispose();
-//   }
-// }
 class ChatNotifier extends ChangeNotifier {
   final ChatRepository _repo;
   final String conversationId;
@@ -633,6 +561,7 @@ Stream<void> conversationUpdates(String myUserId) {
 class InboxNotifier extends ChangeNotifier {
   final String myUserId;
   final _repo = InboxRepository();
+  final UnreadCountProvider? unreadCountProvider;
 
   List<ConversationPreview> _previews = [];
   bool _loading = true;
@@ -644,7 +573,7 @@ class InboxNotifier extends ChangeNotifier {
   String? get error => _error;
   Timer? _debounceTimer;
 
-  InboxNotifier({required this.myUserId});
+  InboxNotifier({required this.myUserId, this.unreadCountProvider});
 
   Future<void> initialize() async {
     await _loadInbox();
@@ -670,6 +599,10 @@ class InboxNotifier extends ChangeNotifier {
       if (ids.isNotEmpty) {
         await UserProfileCache.instance.refresh(ids);
       }
+
+            // Push total unread count up to provider
+      final total = _previews.fold<int>(0, (sum, p) => sum + p.unreadCount);
+      unreadCountProvider?.update(total);
       
       _loading = false;
       _error = null;
@@ -720,4 +653,16 @@ class MessageCache {
   }
 
   void clear(String conversationId) => _cache.remove(conversationId);
+}
+
+
+class UnreadCountProvider extends ChangeNotifier {
+  int _count = 0;
+  int get count => _count;
+
+  void update(int count) {
+    if (_count == count) return;
+    _count = count;
+    notifyListeners();
+  }
 }

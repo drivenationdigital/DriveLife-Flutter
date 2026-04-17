@@ -70,6 +70,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => UploadPostProvider()),
         ChangeNotifierProvider(create: (_) => RegistrationProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
+        ChangeNotifierProvider(create: (_) => UnreadCountProvider()),
       ],
       child: const MyApp(),
     ),

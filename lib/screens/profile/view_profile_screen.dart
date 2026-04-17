@@ -1,5 +1,8 @@
 import 'package:drivelife/main.dart';
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/screens/chat/ChatScreen.dart';
+import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/profile/edit_profile_settings_screen.dart';
 import 'package:drivelife/screens/profile/followers_screen.dart';
@@ -10,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/user_service.dart';
 import '../../providers/user_provider.dart';
@@ -561,6 +565,50 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     }
   }
 
+  void _openChat(
+    String otherUserId,
+    String otherUserName,
+    String? conversationId,
+  ) async {
+    if (!mounted) return;
+
+    // Ensure Supabase token is set before opening chat
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('supabase_token');
+    final expiresAt = prefs.getInt('supabase_token_expires_at') ?? 0;
+    final isExpired =
+        DateTime.now().millisecondsSinceEpoch / 1000 > expiresAt - 60;
+
+      // Re-fetch token
+      final accountManager = Provider.of<AccountManager>(
+        context,
+        listen: false,
+      );
+      final currentAccount = accountManager.activeAccount;
+
+    if (token == null || isExpired) {
+      if (currentAccount != null && currentAccount.token.isNotEmpty) {
+        await SupabaseTokenManager.fetchAndStore(currentAccount.token);
+      }
+    } else {
+      await SupabaseTokenManager.restoreSession();
+    }
+
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          conversationId: conversationId,
+          myUserId: currentAccount!.user.id.toString(),
+          otherUserId: otherUserId,
+          otherUserName: otherUserName,
+        ),
+      ),
+    );
+  }
+
   void _showMoreOptions() {
     if (!mounted) return;
 
@@ -606,24 +654,23 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                   }
                 },
               ),
-              // if (!_isOwnProfile) ...[
-              //   ListTile(
-              //     leading: const Icon(Icons.report, color: Colors.black),
-              //     title: const Text(
-              //       'Report',
-              //       style: TextStyle(color: Colors.black),
-              //     ),
-              //     onTap: () => Navigator.pop(context),
-              //   ),
-              //   ListTile(
-              //     leading: const Icon(Icons.block, color: Colors.black),
-              //     title: const Text(
-              //       'Block',
-              //       style: TextStyle(color: Colors.black),
-              //     ),
-              //     onTap: () => Navigator.pop(context),
-              //   ),
-              // ],
+              if (!_isOwnProfile) ...[
+                ListTile(
+                  leading: const Icon(Icons.message, color: Colors.black),
+                  title: const Text(
+                    'Send Message',
+                    style: TextStyle(color: Colors.black),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openChat(
+                      _userProfile?['id'].toString() ?? '',
+                      _userProfile?['username'] ?? '',
+                      null,
+                    );
+                  },
+                ),
+              ],
             ],
           ),
         );
