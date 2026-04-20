@@ -5,6 +5,7 @@ import 'package:drivelife/models/user_model.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:device_info_plus/device_info_plus.dart';
 
 class ProfileAPI {
   static const String _baseUrl = 'https://www.carevents.com/uk';
@@ -60,10 +61,30 @@ class ProfileAPI {
         '$_baseUrl/wp-json/expoapi/v1/associate-user-with-device',
       );
 
+      final deviceType = Platform.isAndroid
+          ? 'android'
+          : Platform.isIOS
+              ? 'ios'
+              : 'unknown';
+      
+      final deviceInfoPlugin = DeviceInfoPlugin();
+      String deviceName = 'Unknown Device';
+
+      if (Platform.isAndroid) {
+        final info = await deviceInfoPlugin.androidInfo;
+        // e.g. "Samsung Galaxy S21"
+        deviceName = '${info.manufacturer} ${info.model}';
+      } else if (Platform.isIOS) {
+        final info = await deviceInfoPlugin.iosInfo;
+        // e.g. "Mark's iPhone 12 Pro Max"
+        deviceName =
+            info.name; // this is the device name set by the user in Settings
+      }
+
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'user_id': userId, 'device_id': deviceToken}),
+        body: jsonEncode({'user_id': userId, 'device_id': deviceToken, 'device_type': deviceType, 'device_name': deviceName}),
       );
 
       if (response.statusCode == 200) {

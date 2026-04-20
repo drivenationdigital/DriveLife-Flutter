@@ -210,8 +210,6 @@ class UserProvider extends ChangeNotifier {
         return;
       }
 
-
-
       print('✅ Notification permission granted');
 
       // Small delay to let the OS register the permission
@@ -226,7 +224,7 @@ class UserProvider extends ChangeNotifier {
           deviceToken: token,
           userId: userId,
         );
-        print('✅ Device token associated');
+        print('✅ Device token associated with user $userId> token: $token');
       }
     } catch (e) {
       print('❌ Error setting up notifications: $e');

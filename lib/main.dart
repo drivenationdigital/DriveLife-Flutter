@@ -6,6 +6,7 @@ import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/services/app_error_logger.dart';
 import 'package:drivelife/services/auth_service.dart';
+import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:drivelife/utils/deeplinks_helper.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -52,6 +53,7 @@ void main() async {
   try {
     // Initialize Firebase
     await Firebase.initializeApp();
+    await FirebaseMessagingService.initialize();
   } catch (e) {
     print('Error initializing Firebase: $e');
   }

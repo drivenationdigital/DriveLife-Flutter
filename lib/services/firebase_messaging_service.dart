@@ -144,19 +144,6 @@ class FirebaseMessagingService {
     }
   }
 
-  // Get FCM token
-  static Future<String?> _getToken() async {
-    try {
-      await _messaging.setAutoInitEnabled(true);
-      String? token = await _messaging.getToken();
-      print('FCM Token: $token');
-      return token;
-    } catch (e) {
-      print('Error getting FCM token: $e');
-      return null;
-    }
-  }
-
   // Subscribe to token refresh
   static void onTokenRefresh(Function(String) callback) {
     _messaging.onTokenRefresh.listen(callback);
@@ -164,36 +151,37 @@ class FirebaseMessagingService {
 
   // Handle foreground messages
   static Future<void> _handleForegroundMessage(RemoteMessage message) async {
-    print('Got a message in foreground: ${message.messageId}');
-
+    print('Received foreground message: ${message.messageId}');
     RemoteNotification? notification = message.notification;
-    AndroidNotification? android = message.notification?.android;
+    if (notification == null) return;
 
-    // Show local notification when app is in foreground
-    if (notification != null) {
-      await _localNotifications.show(
-        notification.hashCode,
-        notification.title,
-        notification.body,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            'high_importance_channel',
-            'High Importance Notifications',
-            channelDescription:
-                'This channel is used for important notifications.',
-            importance: Importance.high,
-            priority: Priority.high,
-            icon: '@mipmap/ic_launcher',
-          ),
-          iOS: const DarwinNotificationDetails(
-            presentAlert: true,
-            presentBadge: true,
-            presentSound: true,
-          ),
+    await _localNotifications.show(
+      notification.hashCode,
+      notification.title,
+      notification.body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          'high_importance_channel', // ← must match the channel you created
+          'High Importance Notifications',
+          channelDescription:
+              'This channel is used for important notifications.',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          // ← add this to make it show as heads-up popup
+          fullScreenIntent: false,
+          playSound: true,
         ),
-        payload: message.data.toString(),
-      );
-    }
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true, // ← make sure these are true
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+      payload: message.data['conversation_id'] != null
+          ? 'chat:${message.data['conversation_id']}'
+          : message.data.toString(),
+    );
   }
 
   // Handle notification tap (Firebase messages)
@@ -224,6 +212,11 @@ class FirebaseMessagingService {
           String? postId = message.data['post_id'];
           print('Navigate to post comments: $postId');
           onNotificationTapped?.call(postId); // Add this line
+          break;
+        case 'chat_message':
+          final convId = message.data['conversation_id'];
+          print('Navigate to chat: $convId');
+          onNotificationTapped?.call('chat:$convId');
           break;
         default:
           print('Unknown notification type: $type');
