@@ -1,13 +1,80 @@
 import 'dart:io';
 
+import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:http/http.dart' as http;
 
 // Top-level function for background messages
+// @pragma('vm:entry-point')
+// Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+//   print("Handling background message: ${message.messageId}");
+// }
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print("Handling background message: ${message.messageId}");
+  final data = message.data;
+  print('📩 Background message received: ${message.data}');
+  final isGroup = data['is_group'] == 'true';
+  final senderId = data['sender_id'] ?? '';
+  final convId = data['conversation_id'] ?? '';
+  final groupName = data['group_name'] ?? '';
+  final title = message.data['title'] ?? 'New message';
+  final body = message.data['body'] ?? '';
+
+  // Init local notifications
+  final localNotifications = FlutterLocalNotificationsPlugin();
+  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  await localNotifications.initialize(
+    const InitializationSettings(android: androidSettings),
+  );
+
+  // Try to fetch sender avatar
+  ByteArrayAndroidBitmap? largeIcon;
+  final senderImageUrl = data['sender_image'] ?? '';
+  if (senderImageUrl.isNotEmpty) {
+    try {
+      final response = await http.get(Uri.parse(senderImageUrl));
+      largeIcon = ByteArrayAndroidBitmap(response.bodyBytes);
+    } catch (_) {}
+  }
+
+  final person = Person(
+    name: title,
+    icon: largeIcon != null ? ByteArrayAndroidIcon(largeIcon!.data) : null,
+    key: senderId,
+  );
+
+  final style = MessagingStyleInformation(
+    const Person(name: 'You'),
+    conversationTitle: isGroup ? groupName : null,
+    groupConversation: isGroup,
+    messages: [Message(body, DateTime.now(), person)],
+  );
+
+  await localNotifications.show(
+    convId.hashCode,
+    isGroup ? groupName : title,
+    body,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        'high_importance_channel',
+        'High Importance Notifications',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        largeIcon: largeIcon,
+        styleInformation: style,
+        playSound: true,
+         // ← add these for better grouped view
+        subText: isGroup ? groupName : null,
+        showWhen: true,
+        groupKey: 'chat_$convId', // groups same-convo notifications
+        setAsGroupSummary: false,
+      ),
+    ),
+    payload: 'chat:$convId',
+  );
 }
 
 class FirebaseMessagingService {
@@ -151,36 +218,72 @@ class FirebaseMessagingService {
 
   // Handle foreground messages
   static Future<void> _handleForegroundMessage(RemoteMessage message) async {
-    print('Received foreground message: ${message.messageId}');
-    RemoteNotification? notification = message.notification;
-    if (notification == null) return;
+    print('📩 Foreground message received: ${message.data}');
+    final data = message.data;
+    final isGroup = data['is_group'] == 'true';
+    final senderId = data['sender_id'] ?? '';
+    final convId = data['conversation_id'] ?? '';
+    final groupName = data['group_name'] ?? '';
+    final senderName = data['title'] ?? 'Someone';
+    final body = data['body'] ?? '';
+
+    // ── Fetch sender avatar for largeIcon ──
+    ByteArrayAndroidBitmap? largeIcon;
+    final profile = UserProfileCache.instance.getCached(senderId);
+    if (profile?.imageUrl != null) {
+      try {
+        final response = await http.get(Uri.parse(profile!.imageUrl!));
+        final imageData = response.bodyBytes;
+        largeIcon = ByteArrayAndroidBitmap(imageData);
+      } catch (_) {}
+    }
+
+    // ── Build messaging style ──
+    final person = Person(
+      name: senderName,
+      icon: largeIcon != null
+          ? ByteArrayAndroidIcon(largeIcon!.data) // ← wrong, use this instead:
+          : null,
+      key: senderId,
+    );
+
+    final style = MessagingStyleInformation(
+      // "you" — the recipient
+      Person(name: 'You'),
+      conversationTitle: isGroup ? groupName : null,
+      groupConversation: isGroup,
+      messages: [Message(body, DateTime.now(), person)],
+    );
 
     await _localNotifications.show(
-      notification.hashCode,
-      notification.title,
-      notification.body,
+      // Use convId as notification ID so messages in same chat stack
+      convId.hashCode,
+      isGroup ? groupName : senderName,
+      body,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          'high_importance_channel', // ← must match the channel you created
+          'high_importance_channel',
           'High Importance Notifications',
-          channelDescription:
-              'This channel is used for important notifications.',
+          channelDescription: 'Chat messages',
           importance: Importance.high,
           priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
-          // ← add this to make it show as heads-up popup
-          fullScreenIntent: false,
+          icon: '@mipmap/ic_launcher', // small icon in status bar
+          largeIcon: largeIcon, // profile pic in notification
+          styleInformation: style, // WhatsApp-style grouping
           playSound: true,
+           // ← add these for better grouped view
+          subText: isGroup ? groupName : null,
+          showWhen: true,
+          groupKey: 'chat_$convId', // groups same-convo notifications
+          setAsGroupSummary: false,
         ),
         iOS: const DarwinNotificationDetails(
-          presentAlert: true, // ← make sure these are true
+          presentAlert: true,
           presentBadge: true,
           presentSound: true,
         ),
       ),
-      payload: message.data['conversation_id'] != null
-          ? 'chat:${message.data['conversation_id']}'
-          : message.data.toString(),
+      payload: 'chat:$convId',
     );
   }
 
