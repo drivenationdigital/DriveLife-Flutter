@@ -184,6 +184,35 @@ class ClubApiService {
     }
   }
 
+  static Future<Map<String, dynamic>?> fetchClubPosts({
+    required String clubId,
+    int page = 1,
+    int perPage = 10,
+  }) async {
+    try {
+      final token = await AuthService().getParentUserToken();
+
+      final response = await http.get(
+        Uri.parse(
+          '${ApiConfig.baseUrl}/wp-json/app/v1/clubs/$clubId/posts?page=$page&per_page=$perPage',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return data;
+      }
+      return null;
+    } catch (e) {
+      print('❌ Error fetching club posts: $e');
+      return null;
+    }
+  }
+
   static Future<bool> removeMember({
     required String clubId,
     required String userId,
@@ -325,13 +354,13 @@ class ClubApiService {
         },
       );
 
-      print('Requesting club details $clubPostId');
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+
         if (data['success'] == true) {
           return data['club'];
         }
+
         print('❌ Failed to load club details: ${data['message']}');
         return null;
       }

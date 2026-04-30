@@ -1,4 +1,5 @@
 import 'package:drivelife/api/club_api_service.dart';
+import 'package:drivelife/components/post_card.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/clubs/join_club_modal.dart';
@@ -54,6 +55,10 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   bool _loadingMembers = false;
   bool _membersLoaded = false;
 
+  List<dynamic> _clubPosts = [];
+  bool _loadingClubPosts = false;
+  bool _clubPostsLoaded = false;
+
   @override
   void initState() {
     super.initState();
@@ -68,12 +73,49 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     super.dispose();
   }
 
-  void _onTabChanged() {
+ void _onTabChanged() {
+    if (_tabController.index == 0 &&
+        !_clubPostsLoaded &&
+        !_isLockedForPrivacy) {
+      _loadClubPosts();
+    }
     if (_tabController.index == 1 && !_eventsLoaded) {
       _loadClubEvents();
     }
     if (_tabController.index == 2 && !_membersLoaded) {
       _loadMembers();
+    }
+  }
+
+  Future<void> _loadClubPosts() async {
+    if (_loadingClubPosts || _clubData == null) return;
+
+    setState(() => _loadingClubPosts = true);
+
+    try {
+      final data = await ClubApiService.fetchClubPosts(
+        clubId: _clubData!['id'].toString(),
+        page: 1,
+        perPage: 10,
+      );
+
+      if (!mounted) return;
+
+      if (data != null && data['success'] == true) {
+        setState(() {
+          _clubPosts = (data['data'] as List?) ?? [];
+          _clubPostsLoaded = true;
+          _loadingClubPosts = false;
+        });
+      } else {
+        setState(() {
+          _clubPostsLoaded = true;
+          _loadingClubPosts = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading club posts: $e');
+      if (mounted) setState(() => _loadingClubPosts = false);
     }
   }
 
@@ -170,6 +212,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         });
 
         _loadClubEvents();
+        _loadClubPosts();
         _loadPendingRequestsCount();
       } else {
         final data = await ClubApiService.getClubDetails(
@@ -186,7 +229,8 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           });
 
           _loadClubEvents();
-        }
+          _loadClubPosts();
+          }
       }
     } catch (e) {
       print('❌ Error loading club: $e ${widget.clubPostId}');
@@ -214,6 +258,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     setState(() {
       _eventsLoaded = false;
       _membersLoaded = false;
+      _clubPostsLoaded = false;
     });
     await _loadClubData();
   }
@@ -511,7 +556,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   // ===========================================================================
   Widget _buildHeaderArea(ThemeProvider theme) {
     final coverImage = _clubData?['cover_image'];
-    print(_clubData);
     final logo = _clubData?['logo'];
     final title = (_clubData?['title'] ?? '') as String;
     final memberCount = _clubData?['member_count'] ?? 0;
@@ -649,7 +693,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                   if (_hasSocials())
                     Padding(
                       padding: const EdgeInsets.only(top: 14),
-                      child: Row(children: _buildSocialChips(theme)),
+                      child: Row(children: _buildSocialChips(theme), mainAxisAlignment: MainAxisAlignment.center,),
                     ),
                 ],
               ),
@@ -847,28 +891,62 @@ class _ClubViewScreenState extends State<ClubViewScreen>
 
   Widget _buildActionRow(ThemeProvider theme) {
     if (_isOwner) {
-      // Owner badge takes the place of the action buttons
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: _gold.withOpacity(0.10),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.shield_rounded, size: 18, color: _gold),
-            const SizedBox(width: 8),
-            const Text(
-              'Club Owner',
-              style: TextStyle(
-                color: _gold,
-                fontWeight: FontWeight.w700,
-                fontSize: 14,
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 10),
+          // Owner badge sits below the action row
+          Align(
+            alignment: Alignment.center,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: _gold.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.shield_rounded, size: 14, color: _gold),
+                  SizedBox(width: 6),
+                  Text(
+                    'Club Owner',
+                    style: TextStyle(
+                      color: _gold,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+          SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _PrimaryActionButton(
+                  icon: Icons.add,
+                  label: 'Create Post',
+                  onTap: _handleCreateClubPost,
+                ),
+              ),
+              const SizedBox(width: 8),
+              _ChipActionButton(
+                icon: Icons.share_outlined,
+                label: 'Share',
+                onTap: () async {
+                  final title = _clubData?['title'] ?? 'this club';
+                  final id = _clubData?['id'] ?? '';
+
+                  await Share.share(
+                    'Check out the "$title" club on Drivelife! https://app.drivelife.app/clubs/$id',
+                  );
+                },
+              ),
+            ],
+          ),
+        ],
       );
     }
 
@@ -907,6 +985,23 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         ),
       ],
     );
+  }
+
+  Future<void> _handleCreateClubPost() async {
+    final result = await Navigator.pushNamed(
+      context,
+      '/create-post',
+      arguments: {
+        'association_id': _clubData?['id'].toString(),
+        'association_type': 'club',
+        'association_label': _clubData?['title'] ?? '',
+      },
+    );
+
+    // Refresh the club so any new post/announcement shows up
+    if (result == true && mounted) {
+      _refreshClub();
+    }
   }
 
   // ===========================================================================
@@ -1062,43 +1157,112 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   Widget _buildPostsPanel(ThemeProvider theme) {
     if (_isLockedForPrivacy) return _buildPrivateLockedView();
 
-    final announcements = _clubData?['announcements'];
-    if (announcements is List && announcements.isNotEmpty) {
-      return ListView.separated(
-        padding: const EdgeInsets.only(top: 8, bottom: 32),
-        itemCount: announcements.length,
-        separatorBuilder: (_, __) =>
-            Container(height: 8, color: const Color(0xFFF5F5F5)),
-        itemBuilder: (context, i) {
-          final a = announcements[i] as Map<String, dynamic>;
-          return _AnnouncementCard(
-            authorName: _clubData?['title'] ?? 'Club',
-            posted: (a['date'] ?? '').toString(),
-            content: (a['content'] ?? '').toString(),
-            logoUrl: _clubData?['logo'] as String?,
-          );
-        },
+    // Initial load spinner
+    if (_loadingClubPosts && _clubPosts.isEmpty && !_clubPostsLoaded) {
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
       );
     }
 
-    // No announcements — show empty state instead of hardcoded posts
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.article_outlined, size: 56, color: Colors.grey.shade300),
-          const SizedBox(height: 14),
-          Text(
-            'No announcements yet',
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+    final announcements = (_clubData?['announcements'] is List)
+        ? (_clubData!['announcements'] as List)
+        : const [];
+
+    final hasPosts = _clubPosts.isNotEmpty;
+    final hasAnnouncements = announcements.isNotEmpty;
+
+    // Both empty
+    if (!hasPosts && !hasAnnouncements) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.article_outlined, size: 56, color: Colors.grey.shade300),
+            const SizedBox(height: 14),
+            Text(
+              'Nothing here yet',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Check back soon',
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 32),
+      children: [
+        // Real club posts
+        if (hasPosts)
+          for (int i = 0; i < _clubPosts.length; i++) ...[
+            PostCard(
+              key: ValueKey(_clubPosts[i]['id']),
+              post: _clubPosts[i] as Map<String, dynamic>,
+              onTapProfile: () {
+                if (!mounted) return;
+                final post = _clubPosts[i];
+                if (post['is_event'] == true) return;
+                Navigator.pushNamed(
+                  context,
+                  '/view-profile',
+                  arguments: {
+                    'userId': post['user_id'],
+                    'username': post['username'],
+                  },
+                );
+              },
+              onLikeChanged: (isLiked) {
+                setState(() {
+                  final post = _clubPosts[i] as Map<String, dynamic>;
+                  post['is_liked'] = isLiked;
+                  post['likes_count'] =
+                      (post['likes_count'] as int) + (isLiked ? 1 : -1);
+                });
+              },
+              onDelete: () {
+                _refreshClub();
+              },
+            ),
+            if (i < _clubPosts.length - 1)
+              Container(height: 8, color: const Color(0xFFF5F5F5)),
+          ],
+
+        // Divider between posts and announcements
+        if (hasPosts && hasAnnouncements)
+          Container(height: 8, color: const Color(0xFFF5F5F5)),
+
+        // Section header for announcements (only if both sections exist)
+        if (hasAnnouncements && hasPosts)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+            child: Text(
+              'Announcements',
+              style: TextStyle(
+                color: _ink,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.3,
+              ),
+            ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            'Check back soon',
-            style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-          ),
-        ],
-      ),
+
+        // Announcements
+        if (hasAnnouncements)
+          for (int i = 0; i < announcements.length; i++) ...[
+            _AnnouncementCard(
+              authorName: _clubData?['title'] ?? 'Club',
+              posted: (announcements[i]['date'] ?? '').toString(),
+              content: (announcements[i]['content'] ?? '').toString(),
+              logoUrl: _clubData?['logo'] as String?,
+            ),
+            if (i < announcements.length - 1)
+              Container(height: 8, color: const Color(0xFFF5F5F5)),
+          ],
+      ],
     );
   }
 
