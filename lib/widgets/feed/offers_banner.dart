@@ -160,7 +160,7 @@ class _OffersBannerState extends State<OffersBanner> {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: _offers

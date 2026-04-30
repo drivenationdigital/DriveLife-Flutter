@@ -1,9 +1,12 @@
 import 'package:drivelife/api/notifications_api.dart';
+import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/screens/notifications_screen.dart';
+import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/services/qr_scanner.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:provider/provider.dart';
 
 // Import your existing services and helpers
 // import 'package:your_app/services/notifications_api.dart';
@@ -31,6 +34,40 @@ class SharedHeaderIcons {
     );
   }
 
+  static Widget storeIcon(){
+    return Builder(
+      builder: (context) => Consumer<CartProvider>(
+        builder: (context, cart, child) {
+          final count = cart.itemCount;
+          final icon = SvgPicture.asset(
+            'assets/app-icons/04-Basket.svg',
+            width: 24,
+            height: 24,
+            colorFilter: ColorFilter.mode(
+             Colors.black,
+              BlendMode.srcIn,
+            ),
+          );
+          if (count > 0) {
+            return Badge(
+              backgroundColor: Colors.red,
+              label: Text('$count'),
+              child: icon,
+            );
+          }
+
+
+          return 
+          IconButton(
+            padding: EdgeInsets.zero,
+            onPressed: () => NavigationHelper.navigateTo(context, const ShopScreen()),
+            icon:icon
+            );
+        },
+      ),
+    );
+  }
+
   /// Creates a QR code scanner button
   ///
   /// [onSuccess] callback is called when a QR code is successfully scanned
@@ -50,8 +87,31 @@ class SharedHeaderIcons {
           'assets/app-icons/header-qr.svg',
           width: iconSize,
           height: iconSize,
-          colorFilter: ColorFilter.mode(Colors.black, BlendMode.srcIn),
+          colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
         ),
+      ),
+    );
+  }
+
+  static Widget qrCodeIconWLabel({
+    Color iconColor = Colors.black,
+    Function(Map<String, dynamic>)? onSuccess,
+  }){
+    return Builder(
+      builder: (context) =>  ListTile(
+        // PADDING
+        contentPadding: const EdgeInsets.symmetric(horizontal: 19, vertical: 0),
+        leading: SvgPicture.asset(
+          'assets/app-icons/header-qr.svg',
+          width: 17,
+          height: 17,
+          colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+        ),
+        title: const Text('Scan QR Code'),
+        onTap: () {
+          Navigator.pop(context);
+          _handleQrScan(context, onSuccess);
+        },
       ),
     );
   }

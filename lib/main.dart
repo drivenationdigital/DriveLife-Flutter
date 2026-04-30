@@ -30,6 +30,18 @@ const String stripePublishableKey =
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
+class BottomNavProvider extends ChangeNotifier {
+  int _currentIndex = 0;
+  int get currentIndex => _currentIndex;
+
+  void setIndex(int index) {
+    if (_currentIndex == index) return;
+    _currentIndex = index;
+    notifyListeners();
+  }
+}
+
+
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
@@ -73,6 +85,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => RegistrationProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => UnreadCountProvider()),
+        ChangeNotifierProvider(create: (_) => BottomNavProvider()),
       ],
       child: const MyApp(),
     ),

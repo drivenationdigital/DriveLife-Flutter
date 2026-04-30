@@ -1,10 +1,15 @@
 import 'package:drivelife/api/offers_api_service.dart';
+import 'package:drivelife/main.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
+import 'package:drivelife/screens/events/add_event_screen.dart';
+import 'package:drivelife/screens/garage/garage_list_screen.dart';
+import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/feed/offers_banner.dart';
 import 'package:drivelife/widgets/upload_progress_card.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 
@@ -26,6 +31,10 @@ class PostsScreenState extends State<PostsScreen>
 
   late TabController _tabController;
 
+  // NEW: shared visibility flag for the pills row. Tabs flip it on scroll;
+  // the parent rebuilds only the pills wrapper via ValueListenableBuilder.
+  final ValueNotifier<bool> _pillsVisible = ValueNotifier<bool>(true);
+
   final GlobalKey<_PostsTabState> _latestKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _followingKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _newsKey = GlobalKey<_PostsTabState>();
@@ -34,6 +43,11 @@ class PostsScreenState extends State<PostsScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    // When the user switches tabs, reveal the pills again so they're never
+    // stuck hidden on a tab that has nothing to scroll.
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) _pillsVisible.value = true;
+    });
   }
 
   Future<void> scrollToTopAndRefresh() async {
@@ -56,6 +70,7 @@ class PostsScreenState extends State<PostsScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _pillsVisible.dispose();
     super.dispose();
   }
 
@@ -68,15 +83,44 @@ class PostsScreenState extends State<PostsScreen>
       backgroundColor: Colors.white,
       body: Column(
         children: [
+          // Pills collapse on scroll-down, expand on scroll-up.
+          ValueListenableBuilder<bool>(
+            valueListenable: _pillsVisible,
+            builder: (context, visible, _) {
+              return ClipRect(
+                child: AnimatedSize(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeInOut,
+                  alignment: Alignment.bottomCenter,
+                  child: visible
+                      ? const _ActionPills()
+                      : const SizedBox(height: 0, width: double.infinity),
+                ),
+              );
+            },
+          ),
+          // Tab bar stays pinned.
           _CustomTabBar(controller: _tabController, theme: theme),
           Expanded(
             child: TabBarView(
               controller: _tabController,
               physics: const NeverScrollableScrollPhysics(),
               children: [
-                _PostsTab(key: _latestKey, tabType: PostTabType.latest),
-                _PostsTab(key: _followingKey, tabType: PostTabType.following),
-                _PostsTab(key: _newsKey, tabType: PostTabType.news),
+                _PostsTab(
+                  key: _latestKey,
+                  tabType: PostTabType.latest,
+                  pillsVisible: _pillsVisible,
+                ),
+                _PostsTab(
+                  key: _followingKey,
+                  tabType: PostTabType.following,
+                  pillsVisible: _pillsVisible,
+                ),
+                _PostsTab(
+                  key: _newsKey,
+                  tabType: PostTabType.news,
+                  pillsVisible: _pillsVisible,
+                ),
               ],
             ),
           ),
@@ -90,8 +134,13 @@ enum PostTabType { latest, following, news }
 
 class _PostsTab extends StatefulWidget {
   final PostTabType tabType;
+  final ValueNotifier<bool> pillsVisible; // NEW
 
-  const _PostsTab({super.key, required this.tabType});
+  const _PostsTab({
+    super.key,
+    required this.tabType,
+    required this.pillsVisible,
+  });
 
   @override
   State<_PostsTab> createState() => _PostsTabState();
@@ -142,6 +191,25 @@ class _PostsTabState extends State<_PostsTab>
   void _onScroll() {
     if (!mounted) return;
 
+    // Pill visibility — immediate (not debounced).
+    // Reverse = user dragging up (content scrolling down) → hide.
+    // Forward = user dragging down (content scrolling up) → show.
+    // Always show when at the very top.
+    if (_scrollController.hasClients) {
+      final pos = _scrollController.position;
+      if (pos.pixels <= 0) {
+        widget.pillsVisible.value = true;
+      } else {
+        final dir = pos.userScrollDirection;
+        if (dir == ScrollDirection.reverse) {
+          widget.pillsVisible.value = false;
+        } else if (dir == ScrollDirection.forward) {
+          widget.pillsVisible.value = true;
+        }
+      }
+    }
+
+    // Pagination — debounced (unchanged behaviour).
     if (_scrollDebounce?.isActive ?? false) _scrollDebounce!.cancel();
 
     _scrollDebounce = Timer(const Duration(milliseconds: 200), () {
@@ -240,7 +308,7 @@ class _PostsTabState extends State<_PostsTab>
     }
   }
 
-   Future<void> _fetchOffers() async {
+  Future<void> _fetchOffers() async {
     final result = await OffersApi.getPossibleEventOffers();
 
     if (!mounted) return;
@@ -317,37 +385,37 @@ class _PostsTabState extends State<_PostsTab>
           // SliverToBoxAdapter(child: StoriesRow()),
           // Upload progress cards — Latest tab only
           if (widget.tabType == PostTabType.latest)
-          SliverToBoxAdapter(child: OffersBanner(offers: _offers)),
-            Consumer<UploadPostProvider>(
-              builder: (context, uploadProvider, _) {
-                final uploads = uploadProvider.uploads;
+            SliverToBoxAdapter(child: OffersBanner(offers: _offers)),
+          Consumer<UploadPostProvider>(
+            builder: (context, uploadProvider, _) {
+              final uploads = uploadProvider.uploads;
 
-                // FIX: Side effects moved OUT of build. Use post-frame callback
-                // so we never mutate state or schedule work during paint.
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _checkUploadCompletions(uploads);
-                });
+              // FIX: Side effects moved OUT of build. Use post-frame callback
+              // so we never mutate state or schedule work during paint.
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _checkUploadCompletions(uploads);
+              });
 
-                if (uploads.isEmpty) {
-                  return const SliverToBoxAdapter(child: SizedBox.shrink());
-                }
+              if (uploads.isEmpty) {
+                return const SliverToBoxAdapter(child: SizedBox.shrink());
+              }
 
-                return SliverToBoxAdapter(
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 8),
-                      ...uploads.entries.map(
-                        (entry) => UploadProgressCard(
-                          key: ValueKey(entry.key),
-                          uploadId: entry.key,
-                          progress: entry.value,
-                        ),
+              return SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    ...uploads.entries.map(
+                      (entry) => UploadProgressCard(
+                        key: ValueKey(entry.key),
+                        uploadId: entry.key,
+                        progress: entry.value,
                       ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
 
           // Empty state
           if (_posts.isEmpty && !_isLoading && _isInitialized)
@@ -442,6 +510,129 @@ class _PostsTabState extends State<_PostsTab>
   }
 }
 
+class _ActionPills extends StatelessWidget {
+  const _ActionPills();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: [
+            _PillButton(
+              label: 'Find Events',
+              icon: Icons.search,
+              isPrimary: false,
+              onTap: () {
+                // Switch bottom nav to Events tab (index 1)
+                context.read<BottomNavProvider>().setIndex(1);
+              },
+            ),
+            const SizedBox(width: 8),
+            _PillButton(
+              label: 'Add Event',
+              icon: Icons.calendar_today_outlined,
+              isPrimary: false,
+              onTap: () {
+                NavigationHelper.navigateTo(context, const AddEventScreen());
+              },
+            ),
+            const SizedBox(width: 8),
+            _PillButton(
+              label: 'Find Venues',
+              icon: Icons.location_on_outlined,
+              isPrimary: false,
+              onTap: () {
+                // Switch bottom nav to Venues/Places tab (index 2)
+                context.read<BottomNavProvider>().setIndex(2);
+              },
+            ),
+            const SizedBox(width: 8),
+            _PillButton(
+              label: 'Find Clubs',
+              icon: Icons.groups_outlined,
+              isPrimary: false,
+              onTap: () {
+                // Switch bottom nav to Clubs tab (index 3)
+                context.read<BottomNavProvider>().setIndex(3);
+              },
+            ),
+            const SizedBox(width: 8),
+            _PillButton(
+              label: 'Manage Garage',
+              icon: Icons.build_outlined,
+              isPrimary: false,
+              onTap: () {
+                NavigationHelper.navigateTo(context, const GarageListScreen());
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PillButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isPrimary;
+  final VoidCallback onTap;
+
+  const _PillButton({
+    required this.label,
+    required this.icon,
+    required this.isPrimary,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+    final fg = isPrimary ? Colors.white : Colors.black;
+    final bg = isPrimary ? Colors.black : theme.subtextColor.withOpacity(0.1);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(30),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(30),
+            border: isPrimary
+                ? null
+                : Border.all(color: Colors.grey.shade300, width: 1),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: theme.primaryColor),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: fg,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================================
+// UPDATED: Underline-style tab bar (Latest / Following / News)
+// =====================================================================
 class _CustomTabBar extends StatelessWidget {
   final TabController controller;
   final ThemeProvider theme;
@@ -450,48 +641,59 @@ class _CustomTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      child: Row(
-        children: [
-          Expanded(child: _buildTab(0, 'Latest')),
-          const SizedBox(width: 8),
-          Expanded(child: _buildTab(1, 'Following')),
-          const SizedBox(width: 8),
-          Expanded(child: _buildTab(2, 'News')),
-
-        ],
-      ),
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        return Container(
+          padding: const EdgeInsets.only(top: 5),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(child: _buildTab(0, 'Latest')),
+              Expanded(child: _buildTab(1, 'Following')),
+              Expanded(child: _buildTab(2, 'News')),
+            ],
+          ),
+        );
+      },
     );
   }
 
   Widget _buildTab(int index, String label) {
+    final isActive = controller.index == index;
+
     return GestureDetector(
       onTap: () => controller.animateTo(index),
-      child: AnimatedBuilder(
-        animation: controller,
-        builder: (context, child) {
-          final isActive = controller.index == index;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
-            height: 38,
-            decoration: BoxDecoration(
-              color: isActive ? theme.primaryColor : Colors.grey[200],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Center(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: isActive ? Colors.white : Colors.black,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: isActive ? Colors.black : Colors.grey,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 15,
               ),
             ),
-          );
-        },
+            const SizedBox(height: 8),
+            // Full-width underline; colour fades in/out on active state.
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              height: 2.5,
+              width: double.infinity,
+              color: isActive ? theme.primaryColor : Colors.transparent,
+            ),
+          ],
+        ),
       ),
     );
   }

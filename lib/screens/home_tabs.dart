@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/main.dart';
 import 'package:drivelife/models/account_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/cart_provider.dart';
@@ -39,12 +40,13 @@ class HomeTabs extends StatefulWidget {
 }
 
 class _HomeTabsState extends State<HomeTabs> {
-  int _currentIndex = 0;
+  // int _currentIndex = 0;
   AccountType? _lastAccountType;
 
-  // ============================================================================
-  // GLOBAL KEY - Access posts screen state
-  // ============================================================================
+  // Provider-backed current tab. All existing _currentIndex references keep working.
+  int get _currentIndex => context.read<BottomNavProvider>().currentIndex;
+  void _setIndex(int index) =>
+      context.read<BottomNavProvider>().setIndex(index);
   final GlobalKey<PostsScreenState> _postsScreenKey =
       GlobalKey<PostsScreenState>();
 
@@ -119,10 +121,10 @@ class _HomeTabsState extends State<HomeTabs> {
 
     if (mounted) setState(() => _screens = screens);
   }
-  
+
   void _reloadUserData() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<UserProvider>().loadUser();      
+      context.read<UserProvider>().loadUser();
     });
   }
 
@@ -276,6 +278,12 @@ class _HomeTabsState extends State<HomeTabs> {
                     );
                   },
                 ),
+               SharedHeaderIcons.qrCodeIconWLabel(
+                iconColor: theme.primaryColor,
+                onSuccess: (data) {
+                  // Handle QR code scan result here
+                  print('QR Code scanned: $data');
+                }),
               ],
             ),
           ),
@@ -303,7 +311,7 @@ class _HomeTabsState extends State<HomeTabs> {
             ),
             onPressed: () => _showAddMenu(theme),
           ),
-          SharedHeaderIcons.qrCodeIcon(),
+          SharedHeaderIcons.storeIcon()
         ],
       ),
       title: Image.asset('assets/logo-dark.png', height: 18),
@@ -430,21 +438,21 @@ class _HomeTabsState extends State<HomeTabs> {
       iconSize: 28,
       currentIndex: _currentIndex,
       onTap: (index) {
-        // Special handling for profile tab (index 4)
-        if (index == 4 && _currentIndex == 4) {
+        final current = _currentIndex; // snapshot before mutating
+
+        if (index == 4 && current == 4) {
           _showAccountSwitcher();
           HapticFeedback.lightImpact();
           return;
         }
 
-        // Home tab double-tap refresh
-        if (index == 0 && _currentIndex == 0) {
+        if (index == 0 && current == 0) {
           _postsScreenKey.currentState?.scrollToTopAndRefresh();
           HapticFeedback.lightImpact();
           return;
         }
 
-        setState(() => _currentIndex = index);
+        _setIndex(index);
       },
       items: [
         BottomNavigationBarItem(
@@ -472,25 +480,8 @@ class _HomeTabsState extends State<HomeTabs> {
           label: 'Places',
         ),
         BottomNavigationBarItem(
-          icon: Consumer<CartProvider>(
-            builder: (context, cart, child) {
-              final count = cart.itemCount;
-              final icon = iconSvg(
-                'assets/app-icons/04-Basket.svg',
-                theme,
-                isActive: _currentIndex == 3,
-              );
-              if (_currentIndex != 3 && count > 0) {
-                return Badge(
-                  backgroundColor: theme.primaryColor,
-                  label: Text('$count'),
-                  child: icon,
-                );
-              }
-              return icon;
-            },
-          ),
-          label: 'Store',
+          icon: Icon(Icons.storefront_outlined),
+          label: 'Clubs',
         ),
         BottomNavigationBarItem(icon: _buildProfileIcon(), label: 'Profile'),
         BottomNavigationBarItem(
@@ -514,10 +505,14 @@ class _HomeTabsState extends State<HomeTabs> {
     );
   }
 
+
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
     final accountManager = Provider.of<AccountManager>(context);
+
+    // Subscribe so the scaffold rebuilds when the active tab changes.
+    context.watch<BottomNavProvider>();
 
     // ✅ Rebuild screens if account type changes
     final currentAccountType = accountManager.activeAccount?.accountType;
@@ -540,7 +535,7 @@ class _HomeTabsState extends State<HomeTabs> {
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop && _currentIndex != 0) {
           // If we didn't pop and we're not on home, go to home
-          setState(() => _currentIndex = 0);
+          _setIndex(0);
         }
       },
       child: Scaffold(

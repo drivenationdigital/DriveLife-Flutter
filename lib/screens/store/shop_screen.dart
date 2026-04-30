@@ -6,6 +6,7 @@ import 'package:drivelife/screens/store/checkout/stripe_checkout_screen.dart';
 import 'package:drivelife/screens/store/my_orders_tab.dart';
 import 'package:drivelife/screens/store/product_view_screen.dart';
 import 'package:drivelife/services/location_service.dart';
+import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/models/banner_model.dart';
@@ -115,12 +116,18 @@ class _ShopScreenState extends State<ShopScreen>
 
       // ✅ Default: Allow access if we can't determine
       print('📍 Could not determine location, allowing access');
+
+      if (!mounted) return;
+
       setState(() {
         _isUKRegion = true;
         _isCheckingRegion = false;
       });
     } catch (e) {
       print('❌ Error checking region: $e');
+
+      if (!mounted) return;
+
       setState(() {
         _isUKRegion = true; // Default to allowing access
         _isCheckingRegion = false;
@@ -139,6 +146,7 @@ class _ShopScreenState extends State<ShopScreen>
         _isLoadingBanners = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoadingBanners = false);
       _showError('Failed to load banners: $e');
     }
@@ -163,6 +171,8 @@ class _ShopScreenState extends State<ShopScreen>
             'featured'; // Set this so the Popular pill shows as active
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() => _isLoadingProducts = false);
       _showError('Failed to load products: $e');
     }
@@ -472,6 +482,28 @@ class _ShopScreenState extends State<ShopScreen>
     // ✅ Show loading while checking region
     if (_isCheckingRegion) {
       return Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          leadingWidth: 96,
+          leading: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+          title: Image.asset('assets/logo-dark.png', height: 18),
+          actions: [
+            SharedHeaderIcons.qrCodeIcon(),
+            SharedHeaderIcons.notificationIcon(),
+          ],
+        ),
         backgroundColor: Colors.white,
         body: Center(
           child: CircularProgressIndicator(color: theme.primaryColor),
@@ -482,6 +514,28 @@ class _ShopScreenState extends State<ShopScreen>
     // ✅ Show region restriction message
     if (!_isUKRegion) {
       return Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          leadingWidth: 96,
+          leading: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+          title: Image.asset('assets/logo-dark.png', height: 18),
+          actions: [
+            SharedHeaderIcons.qrCodeIcon(),
+            SharedHeaderIcons.notificationIcon(),
+          ],
+        ),
         backgroundColor: Colors.white,
         body: Center(
           child: Padding(
@@ -518,6 +572,28 @@ class _ShopScreenState extends State<ShopScreen>
     }
 
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        leadingWidth: 96,
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+              onPressed: () {
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
+        title: Image.asset('assets/logo-dark.png', height: 18),
+        actions: [
+          SharedHeaderIcons.qrCodeIcon(),
+          SharedHeaderIcons.notificationIcon(),
+        ],
+      ),
       backgroundColor: Colors.white,
       body: Column(
         children: [
