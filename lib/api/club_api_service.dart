@@ -29,6 +29,86 @@ class ClubApiService {
     return headers;
   }
 
+  static Future<List<dynamic>?> fetchClubs({
+    String? search,
+    String? clubType, // 'all' | 'national' | 'local'
+    String? category,
+    double? lat,
+    double? lng,
+    String? location, // For future use if we want to support location by name instead of coordinates
+    int page = 1,
+    int perPage = 15,
+  }) async {
+    try {
+      final token = await AuthService().getToken();
+
+      // Build the filters object the PHP endpoint expects
+      final filters = <String, dynamic>{};
+      if (search != null && search.isNotEmpty) filters['search'] = search;
+      if (clubType != null && clubType != 'all')
+        filters['club_type'] = [clubType];
+      if (category != null && category != 'all')
+        filters['category'] = [category];
+
+      if (lat != null && lng != null) {
+        filters['lat'] = lat;
+        filters['lng'] = lng;
+      }
+
+      if (location != null && location.isNotEmpty) {
+        filters['location'] = location;
+      }
+
+      final queryParameters = <String, String>{
+        'page': page.toString(),
+        'per_page': perPage.toString(),
+        if (filters.isNotEmpty) 'filters': json.encode(filters),
+      };
+
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v1/clubs',
+      ).replace(queryParameters: queryParameters);
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+
+        final data = json.decode(response.body);
+      if (response.statusCode == 200) {
+        return data['data'] as List<dynamic>?;
+      }
+      print(data);
+      throw Exception('Failed to load clubs');
+    } catch (e) {
+      print('Error fetching clubs: $e');
+      rethrow;
+    }
+  }
+
+  static Future<List<dynamic>?> fetchFeaturedClubs() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/featured-clubs'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          return data['clubs'] as List<dynamic>?;
+        }
+      }
+      throw Exception('Failed to load featured clubs');
+    } catch (e) {
+      print('Error fetching featured clubs: $e');
+      rethrow;
+    }
+  }
+
   static Future<Map<String, dynamic>?> fetchClubDetail(String clubId) async {
     try {
       final response = await http.get(
@@ -49,8 +129,6 @@ class ClubApiService {
     }
   }
 
-  // api/club_api_service.dart
-
   static Future<Map<String, dynamic>?> getClubEvents({
     required int clubPostId,
     int page = 1,
@@ -69,7 +147,7 @@ class ClubApiService {
         },
       );
 
-        final data = jsonDecode(response.body);
+      final data = jsonDecode(response.body);
       if (response.statusCode == 200) {
         return data;
       }
@@ -80,7 +158,60 @@ class ClubApiService {
     }
   }
 
-  // In club_api_service.dart
+  static Future<bool> leaveClub({required String clubId}) async {
+    try {
+      final token = await AuthService().getToken();
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/club-leave'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'club_id': clubId}),
+      );
+
+      print('📡 Leave club: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Error leaving club: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> removeMember({
+    required String clubId,
+    required String userId,
+  }) async {
+    try {
+      final token = await AuthService().getParentUserToken();
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/club-remove-member'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'club_id': clubId, 'user_id': userId}),
+      );
+
+      print('📡 Remove member: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Error removing member: $e');
+      return false;
+    }
+  }
 
   /// Approve membership request
   static Future<bool> approveMembershipRequest({
@@ -372,7 +503,7 @@ class ClubApiService {
   }
 
   /// Accept a club administrator invitation
-  /// 
+  ///
   /// [invitationId] - Encrypted invitation ID from the server
   /// [notificationId] - Encrypted notification ID from the server
   static Future<ApiResponse<void>> acceptClubAdminInvitation(
@@ -384,10 +515,7 @@ class ClubApiService {
         '${ApiConfig.baseUrl}/wp-json/app/v1/club/accept-invitation/$invitationId?notification_id=$notificationId',
       );
 
-      final response = await http.post(
-        url,
-        headers: await _getHeaders(),
-      );
+      final response = await http.post(url, headers: await _getHeaders());
 
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;

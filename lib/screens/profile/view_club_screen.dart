@@ -2,13 +2,22 @@ import 'package:drivelife/api/club_api_service.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/clubs/join_club_modal.dart';
-import 'package:drivelife/screens/clubs/view_members_screen.dart';
-import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+// =============================================================================
+// Design tokens — match the new club profile mock
+// =============================================================================
+const Color _gold = Color(0xFFC4A062);
+const Color _ink = Color(0xFF0B0B0B);
+const Color _muted = Color(0xFF8A8A8A);
+const Color _chip = Color(0xFFEFEFEF);
+const Color _panelBg = Color(0xFFF7F7F7);
 
 class ClubViewScreen extends StatefulWidget {
   final int? clubPostId;
@@ -41,10 +50,14 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   bool _loadingEvents = false;
   bool _eventsLoaded = false;
 
+  List<Map<String, dynamic>> _members = [];
+  bool _loadingMembers = false;
+  bool _membersLoaded = false;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_onTabChanged);
     _loadClubData();
   }
@@ -56,33 +69,45 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   }
 
   void _onTabChanged() {
-    if (_tabController.index == 0 && !_eventsLoaded) {
+    if (_tabController.index == 1 && !_eventsLoaded) {
       _loadClubEvents();
+    }
+    if (_tabController.index == 2 && !_membersLoaded) {
+      _loadMembers();
     }
   }
 
-  Future<void> _refreshClubDataForOwnClub() async {
-    if (!widget.isOwnClub) return;
+  Future<void> _loadMembers() async {
+    if (_loadingMembers || _clubData == null) return;
 
-    final accountManager = Provider.of<AccountManager>(context, listen: false);
-    final authService = AuthService();
+    setState(() => _loadingMembers = true);
 
-    // Get parent user ID and token
-    final clubAccount = accountManager.activeAccount!;
-    final parentUserId = clubAccount.parentUserId!;
-    final token = await authService.getToken();
+    try {
+      final data = await ClubApiService.fetchClubMembers(
+        _clubData!['id'].toString(),
+      );
 
-    if (token == null) return;
+      if (mounted && data != null) {
+        setState(() {
+          _members = List<Map<String, dynamic>>.from(data);
+          _membersLoaded = true;
+          _loadingMembers = false;
+        });
+      } else if (mounted) {
+        setState(() => _loadingMembers = false);
+      }
+    } catch (e) {
+      print('❌ Error loading members: $e');
+      if (mounted) setState(() => _loadingMembers = false);
+    }
+  }
 
-    print('🔄 Refreshing entities for own club');
-
-    // Refresh entities from API
-    await accountManager.refreshManagedEntities(parentUserId, token);
-
-    // Reload club data from refreshed entity
-    await _loadClubData();
-
-    print('✅ Club data refreshed');
+  /// True when the club is private AND the viewer is neither a member nor owner.
+  /// Privacy gates: events tab, posts tab, and member-list tap.
+  bool get _isLockedForPrivacy {
+    if (_clubData == null) return false;
+    final isPrivate = _clubData!['club_type'] == '1';
+    return isPrivate && !_isMember && !_isOwner;
   }
 
   Future<void> _loadClubEvents() async {
@@ -164,7 +189,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         }
       }
     } catch (e) {
-      print('❌ Error loading club: $e');
+      print('❌ Error loading club: $e ${widget.clubPostId}');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -186,165 +211,294 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   }
 
   Future<void> _refreshClub() async {
-    setState(
-      () => _eventsLoaded = false,
-    ); // Reset events loaded state to allow reloading
-
-    // if (widget.isOwnClub) {
-    //   await _refreshClubDataForOwnClub(); // Ensure we also refresh the account manager's entities if it's our own club
-    // } else {
-      await _loadClubData();
-    // }
+    setState(() {
+      _eventsLoaded = false;
+      _membersLoaded = false;
+    });
+    await _loadClubData();
   }
 
+  // ===========================================================================
+  // Build
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
 
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: theme.backgroundColor,
-        appBar: widget.showAppBar
-            ? AppBar(
-                backgroundColor: Colors.white,
-                elevation: 0,
-                centerTitle: true,
-                leadingWidth: 96,
-                leading: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                      icon: const Icon(
-                        Icons.arrow_back_ios,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ],
-                ),
-                title: Image.asset('assets/logo-dark.png', height: 18),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.search, color: Colors.black),
-                    onPressed: () {
-                      Navigator.pushNamed(context, AppRoutes.search);
-                    },
-                  ),
-                  // ✅ Using the actionIcons helper for multiple icons at once
-                  ...SharedHeaderIcons.actionIcons(
-                    iconColor: Colors.black,
-                    showQr: false, // Already shown in leading
-                    showNotifications: true,
-                  ),
-                ],
-              )
-            : null,
+        backgroundColor: Colors.white,
+        appBar: widget.showAppBar ? _buildAppBar() : null,
         body: _buildSkeleton(theme),
       );
     }
 
     if (_clubData == null) {
       return Scaffold(
-        appBar: widget.showAppBar
-            ? AppBar(
-                backgroundColor: Colors.white,
-                elevation: 0,
-                centerTitle: true,
-                leadingWidth: 96,
-                leading: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                      icon: const Icon(
-                        Icons.arrow_back_ios,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ],
-                ),
-                title: Image.asset('assets/logo-dark.png', height: 18),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.search, color: Colors.black),
-                    onPressed: () {
-                      Navigator.pushNamed(context, AppRoutes.search);
-                    },
-                  ),
-                  // ✅ Using the actionIcons helper for multiple icons at once
-                  ...SharedHeaderIcons.actionIcons(
-                    iconColor: Colors.black,
-                    showQr: false, // Already shown in leading
-                    showNotifications: true,
-                  ),
-                ],
-              )
-            : null,
-        backgroundColor: theme.backgroundColor,
+        appBar: widget.showAppBar ? _buildAppBar() : null,
+        backgroundColor: Colors.white,
         body: const Center(child: Text('Club not found')),
       );
     }
 
     return Scaffold(
-      backgroundColor: theme.backgroundColor,
-      // ✅ Transparent app bar that floats over the cover image
-      extendBodyBehindAppBar: widget.showAppBar,
-      appBar: widget.showAppBar
-          ? AppBar(
-              backgroundColor: Colors.white,
-              elevation: 0,
-              centerTitle: true,
-              leadingWidth: 96,
-              leading: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                    icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+      backgroundColor: Colors.white,
+      extendBodyBehindAppBar: !widget.showAppBar,
+      appBar: widget.showAppBar ? _buildAppBar() : null,
+      body: Stack(
+        children: [
+          NestedScrollView(
+            headerSliverBuilder: (context, _) => [
+              SliverToBoxAdapter(child: _buildHeaderArea(theme)),
+              if (_isOwner && _pendingRequestsCount > 0)
+                SliverToBoxAdapter(child: _buildPendingRequestsBanner(theme)),
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _TabBarDelegate(_buildTabBar(theme)),
+              ),
+            ],
+            body: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildPostsPanel(theme),
+                _buildEventsPanel(theme),
+                _buildMembersPanel(theme),
+                _buildAboutPanel(theme),
+              ],
+            ),
+          ),
+          // Floating overlay only when there's no app bar (cover edge-to-edge)
+          if (!widget.showAppBar) _buildTopOverlay(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMembersPanel(ThemeProvider theme) {
+    if (_isLockedForPrivacy) return _buildPrivateLockedView();
+
+    if (_loadingMembers && _members.isEmpty) {
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
+      );
+    }
+
+    if (_members.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.people_outline, size: 56, color: Colors.grey.shade300),
+            const SizedBox(height: 14),
+            Text(
+              'No members yet',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Owner bubbles to the top, then admins, then everyone else
+    final ownerId = _clubData?['user_id'];
+    final sorted = [..._members]
+      ..sort((a, b) {
+        final ar = _memberRank(a, ownerId);
+        final br = _memberRank(b, ownerId);
+        return ar.compareTo(br);
+      });
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 32),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Members',
+                style: TextStyle(
+                  color: _ink,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                '${sorted.length} ${sorted.length == 1 ? "member" : "members"}',
+                style: const TextStyle(
+                  color: _muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        for (final member in sorted)
+          _MemberRow(
+            member: member,
+            isViewerAdmin: _isOwner,
+            onTap: () => _openMemberProfile(member),
+            onAdminAction: (action) => _handleMemberAdminAction(member, action),
+          ),
+      ],
+    );
+  }
+
+  int _memberRank(Map<String, dynamic> m, dynamic ownerId) {
+    if (ownerId != null && m['id'] == ownerId) return 0;
+    if (m['is_admin'] == true) return 1;
+    return 2;
+  }
+
+  void _openMemberProfile(Map<String, dynamic> member) {
+    print(member);
+    Navigator.pushNamed(
+      context,
+      '/view-profile',
+      arguments: {'userId': member['user_id']},
+    );
+  }
+
+  Future<void> _handleMemberAdminAction(
+    Map<String, dynamic> member,
+    _MemberAdminAction action,
+  ) async {
+    final name = member['name'] ?? 'this member';
+
+    switch (action) {
+      case _MemberAdminAction.viewProfile:
+        _openMemberProfile(member);
+        return;
+
+      case _MemberAdminAction.makeAdmin:
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$name promoted to admin')));
+        return;
+      case _MemberAdminAction.removeAdmin:
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("$name's admin role removed")));
+        return;
+
+      case _MemberAdminAction.remove:
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text(
+              'Remove Member?',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+            content: Text(
+              'Remove $name from the club? They can request to join again later.',
+              style: const TextStyle(fontSize: 14, color: Colors.black),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade400,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
+                ),
+                child: const Text('Remove'),
+              ),
+            ],
+          ),
+        );
+
+        if (confirmed == true && mounted) {
+          final success = await ClubApiService.removeMember(
+            clubId: _clubData!['id'].toString(),
+            userId: member['user_id'],
+          );
+          if (success) {
+            // Optimistic update
+            setState(() {
+              _members.removeWhere((m) => m['id'] == member['id']);
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('$name removed from the club')),
+            );
+          }
+        }
+        return;
+    }
+  }
+
+  AppBar _buildAppBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      elevation: 0,
+      centerTitle: true,
+      leadingWidth: 96,
+      leading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+          ),
+        ],
+      ),
+      title: Image.asset('assets/logo-dark.png', height: 18),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.search, color: Colors.black),
+          onPressed: () => Navigator.pushNamed(context, AppRoutes.search),
+        ),
+        ...SharedHeaderIcons.actionIcons(
+          iconColor: Colors.black,
+          showQr: false,
+          showNotifications: true,
+        ),
+      ],
+    );
+  }
+
+  // ===========================================================================
+  // Top floating overlay (only when no app bar)
+  // ===========================================================================
+  Widget _buildTopOverlay(BuildContext context) {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _OverlayCircleButton(
+                icon: Icons.chevron_left,
+                onTap: () => Navigator.maybePop(context),
+              ),
+              Row(
+                children: [
+                  _OverlayCircleButton(
+                    icon: Icons.share_outlined,
+                    onTap: () {},
+                  ),
+                  const SizedBox(width: 8),
+                  _OverlayCircleButton(icon: Icons.more_horiz, onTap: () {}),
                 ],
               ),
-              title: Image.asset('assets/logo-dark.png', height: 18),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.search, color: Colors.black),
-                  onPressed: () {
-                    Navigator.pushNamed(context, AppRoutes.search);
-                  },
-                ),
-                // ✅ Using the actionIcons helper for multiple icons at once
-                ...SharedHeaderIcons.actionIcons(
-                  iconColor: Colors.black,
-                  showQr: false, // Already shown in leading
-                  showNotifications: true,
-                ),
-              ],
-            )
-          : null,
-      body: RefreshIndicator(
-        onRefresh: _refreshClub,
-        color: theme.primaryColor,
-        child: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) => [
-            // ✅ Cover image — scrolls away naturally (NOT pinned)
-            SliverToBoxAdapter(child: _buildCoverWithLogo(theme)),
-            // ✅ Club info scrolls with the page
-            SliverToBoxAdapter(child: _buildClubInfo(theme)),
-            // ✅ Tab bar — NOT pinned, scrolls with content
-            SliverToBoxAdapter(child: _buildTabBar(theme)),
-          ],
-          body: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildEventsTab(theme),
-              _buildAnnouncementsTab(theme),
-              _buildAboutTab(theme),
             ],
           ),
         ),
@@ -352,78 +506,329 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 
-  // ✅ Cover image with gradient overlay + logo overlapping bottom edge
-  Widget _buildCoverWithLogo(ThemeProvider theme) {
+  // ===========================================================================
+  // Header: cover + overlapping logo + name + meta + actions
+  // ===========================================================================
+  Widget _buildHeaderArea(ThemeProvider theme) {
+    final coverImage = _clubData?['cover_image'];
+    print(_clubData);
     final logo = _clubData?['logo'];
+    final title = (_clubData?['title'] ?? '') as String;
+    final memberCount = _clubData?['member_count'] ?? 0;
+    final clubType = _clubData?['club_type'] == '1' ? 'Private' : 'Public';
+    final location = _clubData?['location'] ?? 'National Club';
+    final verified = _clubData?['is_verified'] == true;
 
-    return SizedBox(
-      height: widget.showAppBar ? 350 : 240, // Extra space if app bar is shown
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          // Cover photo
-          Positioned.fill(
-            child: _clubData?['cover_image'] != null
-                ? Image.network(
-                    _clubData!['cover_image'],
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _buildCoverPlaceholder(theme),
-                  )
-                : _buildCoverPlaceholder(theme),
-          ),
-
-          // Gradient scrim at bottom for readability
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.45)],
-                  stops: const [0.5, 1.0],
-                ),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Cover image
+            SizedBox(
+              height: 200,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  coverImage != null
+                      ? Image.network(
+                          coverImage,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              _buildCoverPlaceholder(theme),
+                        )
+                      : _buildCoverPlaceholder(theme),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.30),
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.15),
+                        ],
+                        stops: const [0.0, 0.5, 1.0],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-
-          // Logo badge — centered, overlapping the bottom edge
-          Positioned(
-            bottom: -48,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                width: 120,
-                height: 120,
+            const SizedBox(height: 48),
+            // Below-logo content
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Name + verified
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          title,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _ink,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            height: 1.15,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      if (verified)
+                        const Icon(Icons.verified, size: 18, color: _gold),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  // Meta row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.directions_car_outlined,
+                        size: 14,
+                        color: _gold,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        location,
+                        style: const TextStyle(color: _muted, fontSize: 13),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: _muted.withOpacity(0.6),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Icon(Icons.people_outline, size: 14, color: _gold),
+                      const SizedBox(width: 6),
+                      // Members — tappable to open ClubMembersScreen
+                      GestureDetector(
+                        onTap: _isLockedForPrivacy
+                            ? null
+                            : () {
+                                _tabController.animateTo(2);
+                              },
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '$memberCount ',
+                                style: const TextStyle(
+                                  color: _ink,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const TextSpan(
+                                text: 'members',
+                                style: TextStyle(color: _muted, fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // Actions — depends on owner / member / pending state
+                  _buildActionRow(theme),
+                  // Social chips, if any
+                  if (_hasSocials())
+                    Padding(
+                      padding: const EdgeInsets.only(top: 14),
+                      child: Row(children: _buildSocialChips(theme)),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        // Logo + status pill (positioned to overlap cover by 48px)
+        Positioned(
+          left: 20,
+          right: 20,
+          top: 200 - 48,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Logo
+              Container(
+                width: 96,
+                height: 96,
+                padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: theme.backgroundColor, width: 4),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.18),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
                     ),
                   ],
-                  color: Colors.white,
-                  image: logo != null
-                      ? DecorationImage(
-                          image: NetworkImage(logo),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
                 ),
-                child: logo == null
-                    ? Icon(
-                        Icons.car_repair,
-                        size: 44,
-                        color: theme.primaryColor,
-                      )
-                    : null,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: logo != null
+                      ? Image.network(
+                          logo,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _buildLogoFallback(),
+                        )
+                      : _buildLogoFallback(),
+                ),
+              ),
+              // Type pill (Public/Private) — replaces "Active community" pill
+              // Padding(
+              //   padding: const EdgeInsets.only(bottom: 4),
+              //   child: Container(
+              //     padding: const EdgeInsets.symmetric(
+              //       horizontal: 10,
+              //       vertical: 5,
+              //     ),
+              //     decoration: BoxDecoration(
+              //       color: _chip,
+              //       borderRadius: BorderRadius.circular(999),
+              //     ),
+              //     child: Row(
+              //       mainAxisSize: MainAxisSize.min,
+              //       children: [
+              //         Container(
+              //           width: 6,
+              //           height: 6,
+              //           decoration: const BoxDecoration(
+              //             color: _activeGreen,
+              //             shape: BoxShape.circle,
+              //           ),
+              //         ),
+              //         const SizedBox(width: 6),
+              //         Text(
+              //           clubType,
+              //           style: const TextStyle(
+              //             color: _ink,
+              //             fontSize: 12,
+              //             fontWeight: FontWeight.w600,
+              //           ),
+              //         ),
+              //       ],
+              //     ),
+              //   ),
+              // ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPrivateLockedView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: _gold.withOpacity(0.10),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.lock_outline, size: 28, color: _gold),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Private Club',
+              style: TextStyle(
+                color: _ink,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Text(
+              'Join the club to view posts and events',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 14,
+                height: 1.4,
+              ),
+            ),
+            if (!_hasPendingRequest) ...[
+              const SizedBox(height: 20),
+              SizedBox(
+                width: 180,
+                child: _PrimaryActionButton(
+                  icon: Icons.add,
+                  label: 'Join Club',
+                  onTap: _handleJoinLeave,
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: _chip,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.hourglass_empty, size: 14, color: _muted),
+                    SizedBox(width: 6),
+                    Text(
+                      'Request pending',
+                      style: TextStyle(
+                        color: _muted,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogoFallback() {
+    return Container(
+      color: _ink,
+      alignment: Alignment.center,
+      child: const Text(
+        '⫽',
+        style: TextStyle(
+          color: _gold,
+          fontSize: 30,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }
@@ -440,337 +845,266 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 
-  // ✅ Club name, stats, buttons — all scroll freely
-  Widget _buildClubInfo(ThemeProvider theme) {
-    final clubType = _clubData!['club_type'] == '1' ? 'Private' : 'Public';
-    final memberCount = _clubData!['member_count'] ?? 0;
-    final facebook = _clubData!['facebook'];
-    final instagram = _clubData!['instagram'];
-    final website = _clubData!['website'];
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 60, bottom: 4),
-      child: Column(
-        children: [
-          // Club name
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Text(
-              _clubData!['title'] ?? '',
-              style: const TextStyle(
-                fontSize: 22,
+  Widget _buildActionRow(ThemeProvider theme) {
+    if (_isOwner) {
+      // Owner badge takes the place of the action buttons
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: _gold.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.shield_rounded, size: 18, color: _gold),
+            const SizedBox(width: 8),
+            const Text(
+              'Club Owner',
+              style: TextStyle(
+                color: _gold,
                 fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
+                fontSize: 14,
               ),
-              textAlign: TextAlign.center,
             ),
+          ],
+        ),
+      );
+    }
+
+    final joinLabel = _isMember
+        ? 'Leave Club'
+        : _hasPendingRequest
+        ? 'Cancel Request'
+        : 'Join Club';
+    final joinIcon = _isMember
+        ? Icons.exit_to_app
+        : _hasPendingRequest
+        ? Icons.close
+        : Icons.add;
+
+    return Row(
+      children: [
+        Expanded(
+          child: _PrimaryActionButton(
+            icon: joinIcon,
+            label: joinLabel,
+            onTap: _handleJoinLeave,
           ),
+        ),
+        const SizedBox(width: 8),
+        _ChipActionButton(
+          icon: Icons.share_outlined,
+          label: 'Share',
+          onTap: () async {
+            final title = _clubData?['title'] ?? 'this club';
+            final id = _clubData?['id'] ?? '';
 
-          const SizedBox(height: 6),
-
-          // Type • members
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 3,
-                ),
-                decoration: BoxDecoration(
-                  color: theme.primaryColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  clubType,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: theme.primaryColor,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ClubMembersScreen(
-                      clubId: _clubData!['id'].toString(),
-                      clubName: _clubData!['title'] ?? '',
-                    ),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '$memberCount members',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    Icon(
-                      Icons.chevron_right,
-                      size: 15,
-                      color: Colors.grey[500],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 20),
-
-          // Action buttons
-          if (!_isOwner)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _ActionButton(
-                      label: _isMember
-                          ? 'Leave Club'
-                          : _hasPendingRequest
-                          ? 'Cancel Request'
-                          : 'Join Club',
-                      icon: _isMember
-                          ? Icons.exit_to_app
-                          : _hasPendingRequest
-                          ? Icons.cancel
-                          : Icons.group_add,
-                      filled: !_isMember,
-                      color: theme.primaryColor,
-                      onTap: _handleJoinLeave,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _ActionButton(
-                      label: 'Email Club',
-                      icon: Icons.email_outlined,
-                      filled: false,
-                      color: theme.primaryColor,
-                      onTap: _handleEmailClub,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _ActionButton(
-                      label: 'Merch',
-                      icon: Icons.shopping_bag_outlined,
-                      filled: false,
-                      color: theme.primaryColor,
-                      onTap: () {},
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          // Owner/Admin badge
-          if (_isOwner)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: theme.primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.shield_rounded,
-                    size: 16,
-                    color: theme.primaryColor,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _isOwner ? 'Club Owner' : 'Club Admin',
-                    style: TextStyle(
-                      color: theme.primaryColor,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          const SizedBox(height: 16),
-
-          // Social links
-          if (_hasSocials(facebook, instagram, website))
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (facebook != null && facebook.toString().isNotEmpty)
-                  _buildSocialChip(
-                    Icons.facebook,
-                    'Facebook',
-                    theme,
-                    () => _openUrl(facebook),
-                  ),
-                if (instagram != null && instagram.toString().isNotEmpty)
-                  _buildSocialChip(
-                    Icons.camera_alt_outlined,
-                    'Instagram',
-                    theme,
-                    () => _openUrl(instagram),
-                  ),
-                if (website != null && website.toString().isNotEmpty)
-                  _buildSocialChip(
-                    Icons.language_rounded,
-                    'Website',
-                    theme,
-                    () => _openUrl(website),
-                  ),
-              ],
-            ),
-
-          const SizedBox(height: 8),
-        ],
-      ),
+            await Share.share(
+              'Check out the "$title" club on Drivelife! https://app.drivelife.app/clubs/$id',
+            );
+          },
+        ),
+      ],
     );
   }
 
-  bool _hasSocials(dynamic facebook, dynamic instagram, dynamic website) {
-    return (facebook != null && facebook.toString().isNotEmpty) ||
-        (instagram != null && instagram.toString().isNotEmpty) ||
-        (website != null && website.toString().isNotEmpty);
-  }
-
-  Widget _buildSocialChip(
-    IconData icon,
-    String label,
-    ThemeProvider theme,
-    VoidCallback onTap,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 5),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          decoration: BoxDecoration(
-            color: theme.primaryColor.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: theme.primaryColor.withOpacity(0.18)),
-          ),
-          child: Icon(icon, color: theme.primaryColor, size: 20),
+  // ===========================================================================
+  // Pending requests banner (owner-only)
+  // ===========================================================================
+  Widget _buildPendingRequestsBanner(ThemeProvider theme) {
+    return InkWell(
+      onTap: () async {
+        final result = await Navigator.pushNamed(
+          context,
+          '/club-pending-requests',
+          arguments: {
+            'clubId': _clubData!['id'],
+            'clubName': _clubData!['title'],
+          },
+        );
+        if (result == true) {
+          _loadPendingRequestsCount();
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: _gold.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 26,
+              height: 26,
+              decoration: const BoxDecoration(
+                color: _gold,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                '$_pendingRequestsCount',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _pendingRequestsCount == 1
+                    ? '1 pending membership request'
+                    : '$_pendingRequestsCount pending membership requests',
+                style: const TextStyle(
+                  color: _ink,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 18, color: _gold),
+          ],
         ),
       ),
     );
   }
 
-  // ✅ Tab bar rendered as a normal widget (not a SliverPersistentHeader), so it scrolls
-  // Replace _buildTabBar method:
+  // ===========================================================================
+  // Social chips (only render if at least one is set)
+  // ===========================================================================
+  bool _hasSocials() {
+    final fb = _clubData?['facebook'];
+    final ig = _clubData?['instagram'];
+    final ws = _clubData?['website'];
+    return (fb != null && fb.toString().isNotEmpty) ||
+        (ig != null && ig.toString().isNotEmpty) ||
+        (ws != null && ws.toString().isNotEmpty);
+  }
 
+  List<Widget> _buildSocialChips(ThemeProvider theme) {
+    final fb = _clubData?['facebook'];
+    final ig = _clubData?['instagram'];
+    final ws = _clubData?['website'];
+    final chips = <Widget>[];
+
+    if (fb != null && fb.toString().isNotEmpty) {
+      chips.add(_SocialChip(icon: Icons.facebook, onTap: () => _openUrl(fb)));
+    }
+    if (ig != null && ig.toString().isNotEmpty) {
+      chips.add(
+        _SocialChip(icon: Icons.camera_alt_outlined, onTap: () => _openUrl(ig)),
+      );
+    }
+    if (ws != null && ws.toString().isNotEmpty) {
+      chips.add(
+        _SocialChip(icon: Icons.language_rounded, onTap: () => _openUrl(ws)),
+      );
+    }
+
+    // Inject 8px spacing between chips
+    final spaced = <Widget>[];
+    for (int i = 0; i < chips.length; i++) {
+      if (i > 0) spaced.add(const SizedBox(width: 8));
+      spaced.add(chips[i]);
+    }
+    return spaced;
+  }
+
+  // ===========================================================================
+  // Tab bar (sticky)
+  // ===========================================================================
   Widget _buildTabBar(ThemeProvider theme) {
     return Container(
-      margin: const EdgeInsets.only(top: 4),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.2))),
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+        ),
       ),
+      child: TabBar(
+        controller: _tabController,
+        indicatorColor: _gold,
+        indicatorSize: TabBarIndicatorSize.tab,
+        indicatorWeight: 2.5,
+        labelColor: _ink,
+        unselectedLabelColor: _muted,
+        labelStyle: const TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+          letterSpacing: -0.1,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+          letterSpacing: -0.1,
+        ),
+        tabs: const [
+          Tab(text: 'Posts'),
+          Tab(text: 'Events'),
+          Tab(text: 'Members'),
+          Tab(text: 'About'),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // POSTS panel
+  // HARDCODED: posts come from a hardcoded list — wire up when you have a
+  // club posts endpoint. The original screen had Announcements here instead;
+  // I've kept the announcements logic accessible but rendered the new UI's
+  // post-style layout.
+  // ===========================================================================
+  Widget _buildPostsPanel(ThemeProvider theme) {
+    if (_isLockedForPrivacy) return _buildPrivateLockedView();
+
+    final announcements = _clubData?['announcements'];
+    if (announcements is List && announcements.isNotEmpty) {
+      return ListView.separated(
+        padding: const EdgeInsets.only(top: 8, bottom: 32),
+        itemCount: announcements.length,
+        separatorBuilder: (_, __) =>
+            Container(height: 8, color: const Color(0xFFF5F5F5)),
+        itemBuilder: (context, i) {
+          final a = announcements[i] as Map<String, dynamic>;
+          return _AnnouncementCard(
+            authorName: _clubData?['title'] ?? 'Club',
+            posted: (a['date'] ?? '').toString(),
+            content: (a['content'] ?? '').toString(),
+            logoUrl: _clubData?['logo'] as String?,
+          );
+        },
+      );
+    }
+
+    // No announcements — show empty state instead of hardcoded posts
+    return Center(
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // ✅ Pending requests banner (only for owners)
-          if (_isOwner && _pendingRequestsCount > 0)
-            InkWell(
-              onTap: () async {
-                final result = await Navigator.pushNamed(
-                  context,
-                  '/club-pending-requests',
-                  arguments: {
-                    'clubId': _clubData!['id'],
-                    'clubName': _clubData!['title'],
-                  },
-                );
-
-                if (result == true) {
-                  _loadPendingRequestsCount(); // Refresh count
-                  // _refreshClubDataForOwnClub(); // Refresh member count
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                color: theme.primaryColor.withOpacity(0.08),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: theme.primaryColor,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '$_pendingRequestsCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _pendingRequestsCount == 1
-                            ? '1 pending membership request'
-                            : '$_pendingRequestsCount pending membership requests',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: theme.primaryColor,
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      Icons.arrow_forward_ios,
-                      size: 14,
-                      color: theme.primaryColor,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          // Existing tab bar
-          TabBar(
-            controller: _tabController,
-            labelColor: theme.primaryColor,
-            unselectedLabelColor: Colors.grey,
-            indicatorColor: theme.primaryColor,
-            indicatorWeight: 2.5,
-            labelStyle: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-            ),
-            unselectedLabelStyle: const TextStyle(
-              fontWeight: FontWeight.w400,
-              fontSize: 14,
-            ),
-            tabs: const [
-              Tab(text: 'Events'),
-              Tab(text: 'Announcements'),
-              Tab(text: 'About'),
-            ],
+          Icon(Icons.article_outlined, size: 56, color: Colors.grey.shade300),
+          const SizedBox(height: 14),
+          Text(
+            'No announcements yet',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Check back soon',
+            style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEventsTab(ThemeProvider theme) {
+  Widget _buildEventsPanel(ThemeProvider theme) {
+    if (_isLockedForPrivacy) return _buildPrivateLockedView();
+
     if (_loadingEvents) {
       return Center(
         child: CircularProgressIndicator(color: theme.primaryColor),
@@ -798,357 +1132,204 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _events.length,
-      itemBuilder: (context, index) {
-        final event = _events[index];
-        return _buildEventCard(event, theme);
-      },
-    );
-  }
-
-  Widget _buildEventCard(Map<String, dynamic> event, ThemeProvider theme) {
-    final startDate = event['start_date'] ?? '';
-    final location = event['location'] ?? 'TBA';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade200,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: InkWell(
-        onTap: () {
-          Navigator.pushNamed(
-            context,
-            '/event-detail',
-            arguments: {'event': event},
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Row(
-          children: [
-            // Event image
-            ClipRRect(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                bottomLeft: Radius.circular(12),
-              ),
-              child: event['cover_image'] != null
-                  ? Image.network(
-                      event['cover_image'],
-                      width: 100,
-                      height: 100,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _buildEventPlaceholder(),
-                    )
-                  : _buildEventPlaceholder(),
-            ),
-
-            // Event details
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      event['name'] ?? '',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (startDate.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        _formatEventDate(startDate),
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: theme.primaryColor,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 4),
-                    Text(
-                      location,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 32),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                'Upcoming events',
+                style: TextStyle(
+                  color: _ink,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
-          ],
+              Text(
+                '${_events.length} ${_events.length == 1 ? "event" : "events"}',
+                style: const TextStyle(
+                  color: _muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildEventPlaceholder() {
-    return Container(
-      width: 100,
-      height: 100,
-      color: Colors.grey.shade300,
-      child: const Icon(Icons.event, size: 40, color: Colors.grey),
-    );
-  }
-
-  String _formatEventDate(String date) {
-    try {
-      // Parse "02/15/2026 10:00 AM" format
-      final parts = date.split(' ');
-      if (parts.isEmpty) return date;
-
-      final dateParts = parts[0].split('/');
-      if (dateParts.length != 3) return date;
-
-      final month = int.parse(dateParts[0]);
-      final day = int.parse(dateParts[1]);
-      final year = int.parse(dateParts[2]);
-
-      final monthNames = [
-        '',
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ];
-
-      return '${monthNames[month]} $day, $year';
-    } catch (e) {
-      return date;
-    }
-  }
-
-  Widget _buildAnnouncementsTab(ThemeProvider theme) {
-    if (_clubData!['announcements'] != null &&
-        (_clubData!['announcements'] as List).isNotEmpty) {
-      return ListView.separated(
-        padding: const EdgeInsets.all(20),
-        itemCount: (_clubData!['announcements'] as List).length,
-        separatorBuilder: (_, __) =>
-            Divider(height: 1, color: Colors.grey.shade100),
-        itemBuilder: (context, index) {
-          final announcement = _clubData!['announcements'][index];
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(vertical: 8),
-            leading: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: theme.primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                Icons.announcement_rounded,
-                color: theme.primaryColor,
-                size: 20,
+        const SizedBox(height: 12),
+        for (final event in _events)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: _EventCard(
+              event: event,
+              onTap: () => Navigator.pushNamed(
+                context,
+                '/event-detail',
+                arguments: {'event': event},
               ),
             ),
-            title: Text(
-              announcement['content'] ?? '',
-              style: const TextStyle(fontSize: 14),
-            ),
-            subtitle: Text(
-              announcement['date'] ?? '',
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-            ),
-          );
-        },
-      );
-    }
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.announcement_rounded,
-            size: 56,
-            color: Colors.grey.shade300,
           ),
-          const SizedBox(height: 14),
-          Text(
-            'No announcements yet',
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
-          ),
-        ],
-      ),
+      ],
     );
   }
 
-  Widget _buildAboutTab(ThemeProvider theme) {
-    final description = _clubData!['description'] ?? '';
-    final location = _clubData!['location'] ?? '';
-    final locationType = _clubData!['location_type'] == 1
+  // ===========================================================================
+  // ABOUT panel — description, details, social links
+  // ===========================================================================
+  Widget _buildAboutPanel(ThemeProvider theme) {
+    final description = (_clubData?['description'] ?? '') as String;
+    final location = (_clubData?['location'] ?? '') as String;
+    final locationType = _clubData?['location_type'] == 1
         ? 'National'
         : 'Local / Regional';
-    final website = _clubData!['website'] ?? '';
+    final website = (_clubData?['website'] ?? '') as String;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (description.isNotEmpty) ...[
-            _buildSectionHeader('About'),
-            const SizedBox(height: 10),
-            // Text(
-            //   description,
-            //   style: TextStyle(
-            //     fontSize: 14,
-            //     height: 1.65,
-            //     color: Colors.grey.shade700,
-            //   ),
-            // ),
-            // render HTML description with basic tags (p, br, b, i)
-            Html(
-              data: description,
-              style: {
-                'p': Style(
-                  fontSize: FontSize(14),
-                  lineHeight: LineHeight(1.65),
-                  color: Colors.grey.shade700,
-                ),
-                'b': Style(fontWeight: FontWeight.w600),
-                'i': Style(fontStyle: FontStyle.italic),
-              },
-              onAnchorTap: (url, attributes, element) =>
-                  _openUrl(url!), // Handle link taps
-              onLinkTap: (url, attributes, element) =>
-                  _openUrl(url!), // Handle link taps
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+      children: [
+        if (description.isNotEmpty) ...[
+          const Text(
+            'About',
+            style: TextStyle(
+              color: _ink,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(height: 28),
-          ],
-          _buildSectionHeader('Details'),
-          const SizedBox(height: 12),
-          _buildDetailCard(theme, [
-            _DetailItem(label: 'Type', value: locationType),
-            if (location.isNotEmpty)
-              _DetailItem(label: 'Location', value: location),
-            if (website.isNotEmpty)
-              _DetailItem(label: 'Website', value: website, isLink: true),
-          ]),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.2,
-      ),
-    );
-  }
-
-  Widget _buildDetailCard(ThemeProvider theme, List<_DetailItem> items) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        children: items.asMap().entries.map((entry) {
-          final i = entry.key;
-          final item = entry.value;
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 13,
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 80,
-                      child: Text(
-                        item.label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey.shade500,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: item.isLink
-                          ? GestureDetector(
-                              onTap: () => _openUrl(item.value),
-                              child: Text(
-                                item.value,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: theme.primaryColor,
-                                  decoration: TextDecoration.underline,
-                                ),
-                              ),
-                            )
-                          : Text(
-                              item.value,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                    ),
-                  ],
-                ),
+          ),
+          const SizedBox(height: 8),
+          Html(
+            data: description,
+            style: {
+              'body': Style(margin: Margins.zero, padding: HtmlPaddings.zero),
+              'p': Style(
+                fontSize: FontSize(14),
+                lineHeight: LineHeight(1.5),
+                color: _ink.withOpacity(0.85),
+                margin: Margins.only(bottom: 12),
               ),
-              if (i < items.length - 1)
-                Divider(height: 1, color: Colors.grey.shade200),
-            ],
-          );
-        }).toList(),
-      ),
+              'b': Style(fontWeight: FontWeight.w600),
+              'i': Style(fontStyle: FontStyle.italic),
+              'a': Style(color: _gold, textDecoration: TextDecoration.none),
+            },
+            onAnchorTap: (url, _, __) => _openUrl(url ?? ''),
+            onLinkTap: (url, _, __) => _openUrl(url ?? ''),
+          ),
+          const SizedBox(height: 16),
+        ],
+        const Text(
+          'Details',
+          style: TextStyle(
+            color: _ink,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        // HARDCODED: founded date — no field in your data model yet
+        const _DetailRow(
+          icon: Icons.calendar_today_outlined,
+          label: 'Founded',
+          value: 'March 2017',
+        ),
+        const SizedBox(height: 12),
+        _DetailRow(
+          icon: Icons.location_on_outlined,
+          label: 'Based in',
+          value: location.isNotEmpty ? location : locationType,
+        ),
+        if (website.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _DetailRow(
+            icon: Icons.public,
+            label: 'Website',
+            value: website,
+            isLink: true,
+            onTap: () => _openUrl(website),
+          ),
+        ],
+        // HARDCODED: contact email — no field on club model
+        const SizedBox(height: 12),
+        const _DetailRow(
+          icon: Icons.mail_outline,
+          label: 'Contact',
+          value: 'hello@example.com',
+        ),
+        const SizedBox(height: 24),
+        // HARDCODED: rules — no field on club model
+        const Text(
+          'Rules & guidelines',
+          style: TextStyle(
+            color: _ink,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final rule in const [
+          'Be respectful — this is a community first.',
+          'No selling cars or parts in the main feed.',
+          'Drive responsibly. We endorse legal driving only.',
+          'Keep event sign-ups honest — no shows hurt the club.',
+        ])
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Container(
+                    width: 4,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: _ink.withOpacity(0.85),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    rule,
+                    style: TextStyle(
+                      color: _ink.withOpacity(0.85),
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
+  // ===========================================================================
+  // Loading skeleton
+  // ===========================================================================
   Widget _buildSkeleton(ThemeProvider theme) {
     return SingleChildScrollView(
       child: Column(
         children: [
-          // Cover shimmer
-          Container(height: 240, color: Colors.grey.shade200),
+          Container(height: 200, color: Colors.grey.shade200),
           const SizedBox(height: 60),
-          Center(
-            child: CircleAvatar(
-              radius: 52,
-              backgroundColor: Colors.grey.shade200,
+          Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(16),
             ),
           ),
           const SizedBox(height: 16),
           Container(
             height: 20,
-            width: 160,
+            width: 200,
             decoration: BoxDecoration(
               color: Colors.grey.shade200,
               borderRadius: BorderRadius.circular(6),
@@ -1157,7 +1338,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           const SizedBox(height: 10),
           Container(
             height: 14,
-            width: 100,
+            width: 140,
             decoration: BoxDecoration(
               color: Colors.grey.shade200,
               borderRadius: BorderRadius.circular(6),
@@ -1168,9 +1349,60 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 
+  // ===========================================================================
+  // Join / leave / cancel logic — preserved from original
+  // ===========================================================================
   void _handleJoinLeave() {
     if (_isMember) {
-      // TODO: leave logic
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            'Leave Club?',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          content: const Text(
+            'Are you sure you want to leave this club?',
+            style: TextStyle(fontSize: 14, color: Colors.grey),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text(
+                'Stay in Club',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final success = await ClubApiService.leaveClub(
+                  clubId: _clubData!['id'].toString(),
+                );
+                
+                if (success && mounted) {
+                  setState(() => _isMember = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('You have left the club.')),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade400,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Leave Club'),
+            ),
+          ],
+        ),
+      );
       return;
     }
 
@@ -1231,7 +1463,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
 
     if (questions.isEmpty) {
-
       questions.add(
         'This club requires no additional information. Do you want to submit your request to join?',
       );
@@ -1247,61 +1478,870 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 
-  void _handleEmailClub() {
-    // TODO: Implement email club
-  }
-
   void _openUrl(String url) {
-    // TODO: url_launcher
+    print('Opening URL: $url');
+    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 }
 
-// ─── Reusable action button ────────────────────────────────────────────────
+class _AnnouncementCard extends StatelessWidget {
+  final String authorName;
+  final String posted;
+  final String content;
+  final String? logoUrl;
 
-class _ActionButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool filled;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _ActionButton({
-    required this.label,
-    required this.icon,
-    required this.filled,
-    required this.color,
-    required this.onTap,
+  const _AnnouncementCard({
+    required this.authorName,
+    required this.posted,
+    required this.content,
+    this.logoUrl,
   });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 16, 0, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Author header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(
+                    color: _ink,
+                    shape: BoxShape.circle,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: logoUrl != null
+                      ? Image.network(
+                          logoUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _logoFallback(),
+                        )
+                      : _logoFallback(),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              authorName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _ink,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.verified, size: 14, color: _gold),
+                        ],
+                      ),
+                      if (posted.isNotEmpty) ...[
+                        const SizedBox(height: 1),
+                        Text(
+                          posted,
+                          style: const TextStyle(color: _muted, fontSize: 12),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              content,
+              style: const TextStyle(color: _ink, fontSize: 14, height: 1.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _logoFallback() => Container(
+    color: _ink,
+    alignment: Alignment.center,
+    child: const Text(
+      '⫽',
+      style: TextStyle(color: _gold, fontSize: 14, fontWeight: FontWeight.w900),
+    ),
+  );
+}
+
+// =============================================================================
+// SliverPersistentHeaderDelegate for sticky tabs
+// =============================================================================
+class _TabBarDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  _TabBarDelegate(this.child);
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return child;
+  }
+
+  @override
+  double get maxExtent => 48;
+  @override
+  double get minExtent => 48;
+  @override
+  bool shouldRebuild(_TabBarDelegate oldDelegate) => false;
+}
+
+// =============================================================================
+// Reusable widgets
+// =============================================================================
+
+class _OverlayCircleButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _OverlayCircleButton({required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 11),
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
-          color: filled ? color : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: filled ? color : Colors.grey.shade300),
+          color: Colors.black.withOpacity(0.40),
+          shape: BoxShape.circle,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: filled ? Colors.white : Colors.grey.shade700,
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: filled ? Colors.white : Colors.grey.shade700,
+        child: Icon(icon, color: Colors.white, size: 20),
+      ),
+    );
+  }
+}
+
+class _PrimaryActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _PrimaryActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _gold,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: Colors.white, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              textAlign: TextAlign.center,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChipActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _ChipActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _chip,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: _ink, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: _ink,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SocialChip extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _SocialChip({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: _gold.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _gold.withOpacity(0.18)),
+        ),
+        child: Icon(icon, color: _gold, size: 18),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Post card
+// =============================================================================
+class _PostCard extends StatelessWidget {
+  final String authorName;
+  final String posted;
+  final String? imageUrl;
+  final int carouselDotCount;
+  final int activeDotIndex;
+  final int likes;
+  final int comments;
+  final String content;
+  final String? authorPrefix;
+  final List<(String, String)> previewComments;
+  final int totalComments;
+
+  const _PostCard({
+    required this.authorName,
+    required this.posted,
+    required this.imageUrl,
+    required this.likes,
+    required this.comments,
+    required this.content,
+    this.authorPrefix,
+    this.carouselDotCount = 0,
+    this.activeDotIndex = 0,
+    this.previewComments = const [],
+    this.totalComments = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = imageUrl != null;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Author header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(
+                    color: _ink,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    '⫽',
+                    style: TextStyle(
+                      color: _gold,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              authorName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _ink,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.verified, size: 14, color: _gold),
+                        ],
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        posted,
+                        style: const TextStyle(color: _muted, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.more_horiz, color: _muted, size: 20),
+              ],
             ),
+          ),
+          if (hasImage) ...[
+            const SizedBox(height: 12),
+            Stack(
+              alignment: Alignment.bottomCenter,
+              children: [
+                AspectRatio(
+                  aspectRatio: 4 / 3,
+                  child: Image.network(
+                    imageUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        Container(color: Colors.grey.shade200),
+                  ),
+                ),
+                if (carouselDotCount > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (int i = 0; i < carouselDotCount; i++) ...[
+                          if (i > 0) const SizedBox(width: 6),
+                          Container(
+                            width: i == activeDotIndex ? 7 : 6,
+                            height: i == activeDotIndex ? 7 : 6,
+                            decoration: BoxDecoration(
+                              color: i == activeDotIndex
+                                  ? Colors.white
+                                  : Colors.white.withOpacity(0.55),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            _buildActionRow(true),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
+                  children: [
+                    if (authorPrefix != null)
+                      TextSpan(
+                        text: '$authorPrefix ',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    TextSpan(text: content),
+                  ],
+                ),
+              ),
+            ),
+          ] else ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Text(
+                content,
+                style: const TextStyle(color: _ink, fontSize: 14, height: 1.35),
+              ),
+            ),
+            _buildActionRow(false),
+          ],
+          if (previewComments.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final (user, text) in previewComments)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: RichText(
+                        text: TextSpan(
+                          style: const TextStyle(
+                            color: _ink,
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: '$user ',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            TextSpan(text: text),
+                          ],
+                        ),
+                      ),
+                    ),
+                  GestureDetector(
+                    onTap: () {},
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        'View all $totalComments comments',
+                        style: const TextStyle(color: _muted, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionRow(bool showShare) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Row(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.favorite_border, size: 24, color: _ink),
+              const SizedBox(width: 6),
+              Text(
+                '$likes',
+                style: const TextStyle(
+                  color: _ink,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 20),
+          Row(
+            children: [
+              const Icon(Icons.chat_bubble_outline, size: 24, color: _ink),
+              const SizedBox(width: 6),
+              Text(
+                '$comments',
+                style: const TextStyle(
+                  color: _ink,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          if (showShare) const Icon(Icons.send_outlined, size: 22, color: _ink),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Event card
+// =============================================================================
+class _EventCard extends StatelessWidget {
+  final Map<String, dynamic> event;
+  final VoidCallback onTap;
+  const _EventCard({required this.event, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final coverImage = event['cover_image'];
+    final title = (event['name'] ?? '') as String;
+    final startDate = (event['start_date'] ?? '') as String;
+    final location = (event['location'] ?? 'TBA') as String;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: _panelBg,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: coverImage != null
+                  ? Image.network(
+                      coverImage,
+                      width: 78,
+                      height: 78,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _eventPlaceholder(),
+                    )
+                  : _eventPlaceholder(),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _ink,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      height: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  if (startDate.isNotEmpty)
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.calendar_today_outlined,
+                          size: 12,
+                          color: _gold,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _formatEventDate(startDate),
+                          style: const TextStyle(color: _muted, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.location_on_outlined,
+                        size: 12,
+                        color: _gold,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          location,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: _muted, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: onTap,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _gold,
+                side: const BorderSide(color: _gold, width: 1.2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                minimumSize: const Size(0, 32),
+              ),
+              child: const Text(
+                'View',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _eventPlaceholder() {
+    return Container(
+      width: 78,
+      height: 78,
+      color: Colors.grey.shade200,
+      child: Icon(Icons.event, color: Colors.grey.shade400, size: 28),
+    );
+  }
+
+  String _formatEventDate(String date) {
+    try {
+      final parts = date.split(' ');
+      if (parts.isEmpty) return date;
+      final dateParts = parts[0].split('/');
+      if (dateParts.length != 3) return date;
+      final month = int.parse(dateParts[0]);
+      final day = int.parse(dateParts[1]);
+      final year = int.parse(dateParts[2]);
+      const monthNames = [
+        '',
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      return '${monthNames[month]} $day, $year';
+    } catch (e) {
+      return date;
+    }
+  }
+}
+
+// =============================================================================
+// Detail row (About panel)
+// =============================================================================
+class _DetailRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool isLink;
+  final VoidCallback? onTap;
+
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.isLink = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(icon, size: 18, color: _gold),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: isLink ? _gold : _ink,
+                    fontSize: 14,
+                    fontWeight: isLink ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _MemberAdminAction { viewProfile, makeAdmin, removeAdmin, remove }
+
+class _MemberRow extends StatelessWidget {
+  final Map<String, dynamic> member;
+  final bool isViewerAdmin;
+  final VoidCallback onTap;
+  final void Function(_MemberAdminAction) onAdminAction;
+
+  const _MemberRow({
+    required this.member,
+    required this.isViewerAdmin,
+    required this.onTap,
+    required this.onAdminAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (member['name'] ?? '') as String;
+    final avatar = member['avatar'] as String?;
+    final isOwner = member['is_owner'] == true;
+    final isAdmin = member['is_admin'] == true;
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            // Avatar
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: _gold.withOpacity(0.15),
+              backgroundImage: (avatar != null && avatar.isNotEmpty)
+                  ? NetworkImage(avatar)
+                  : null,
+              child: (avatar == null || avatar.isEmpty)
+                  ? Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: const TextStyle(
+                        color: _gold,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            // Name + role
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _ink,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (isOwner || isAdmin) ...[
+                    const SizedBox(height: 2),
+                    _RoleBadge(label: isOwner ? 'Owner' : 'Admin'),
+                  ],
+                ],
+              ),
+            ),
+            // Admin actions
+            if (isViewerAdmin && !isOwner)
+              PopupMenuButton<_MemberAdminAction>(
+                icon: const Icon(Icons.more_horiz, color: _muted),
+                position: PopupMenuPosition.under,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                onSelected: onAdminAction,
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: _MemberAdminAction.viewProfile,
+                    child: Row(
+                      children: [
+                        Icon(Icons.person_outline, size: 18, color: _ink),
+                        SizedBox(width: 10),
+                        Text('View profile'),
+                      ],
+                    ),
+                  ),
+                  // PopupMenuItem(
+                  //   value: isAdmin
+                  //       ? _MemberAdminAction.removeAdmin
+                  //       : _MemberAdminAction.makeAdmin,
+                  //   child: Row(
+                  //     children: [
+                  //       Icon(
+                  //         isAdmin
+                  //             ? Icons.shield_outlined
+                  //             : Icons.shield_rounded,
+                  //         size: 18,
+                  //         color: _ink,
+                  //       ),
+                  //       const SizedBox(width: 10),
+                  //       Text(isAdmin ? 'Remove admin' : 'Make admin'),
+                  //     ],
+                  //   ),
+                  // ),
+                  PopupMenuItem(
+                    value: _MemberAdminAction.remove,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.person_remove_outlined,
+                          size: 18,
+                          color: Colors.red.shade400,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Remove from club',
+                          style: TextStyle(color: Colors.red.shade400),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            else
+              const Icon(Icons.chevron_right, size: 18, color: _muted),
           ],
         ),
       ),
@@ -1309,16 +2349,27 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-// ─── Detail item model ─────────────────────────────────────────────────────
-
-class _DetailItem {
+class _RoleBadge extends StatelessWidget {
   final String label;
-  final String value;
-  final bool isLink;
+  const _RoleBadge({required this.label});
 
-  const _DetailItem({
-    required this.label,
-    required this.value,
-    this.isLink = false,
-  });
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: _gold.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: _gold,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
 }

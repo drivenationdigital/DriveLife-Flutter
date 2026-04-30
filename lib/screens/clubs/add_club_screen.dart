@@ -867,6 +867,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
               indicatorColor: theme.primaryColor,
               indicatorWeight: 3,
               isScrollable: true,
+              tabAlignment: TabAlignment.start,
               labelStyle: const TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 14,

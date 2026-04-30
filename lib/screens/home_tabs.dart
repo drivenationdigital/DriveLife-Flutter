@@ -1,18 +1,14 @@
-import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/main.dart';
 import 'package:drivelife/models/account_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
-import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/auth/entity_switcher.dart';
 import 'package:drivelife/screens/chat/ChatList.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
-// import 'package:drivelife/screens/clubs/add_club_screen.dart';
-// import 'package:drivelife/screens/clubs/club_creation_screen.dart';
-// import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
+import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
 import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
@@ -20,7 +16,6 @@ import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
 import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/profile/my_club_profile_view.dart';
-import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/screens/news/create_news_post_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
@@ -104,7 +99,7 @@ class _HomeTabsState extends State<HomeTabs> {
         PostsScreen(key: _postsScreenKey),
         EventsScreen(),
         VenuesScreen(),
-        ShopScreen(),
+        MyClubsScreen(),
         ClubProfileScreen(),
         InboxScreen(myUserId: currentAccount!.user.id.toString()),
       ];
@@ -113,7 +108,7 @@ class _HomeTabsState extends State<HomeTabs> {
         PostsScreen(key: _postsScreenKey),
         EventsScreen(),
         VenuesScreen(),
-        ShopScreen(),
+        MyClubsScreen(),
         ProfileScreen(),
         InboxScreen(myUserId: currentAccount!.user.id.toString()),
       ];
@@ -278,12 +273,13 @@ class _HomeTabsState extends State<HomeTabs> {
                     );
                   },
                 ),
-               SharedHeaderIcons.qrCodeIconWLabel(
-                iconColor: theme.primaryColor,
-                onSuccess: (data) {
-                  // Handle QR code scan result here
-                  print('QR Code scanned: $data');
-                }),
+                SharedHeaderIcons.qrCodeIconWLabel(
+                  iconColor: theme.primaryColor,
+                  onSuccess: (data) {
+                    // Handle QR code scan result here
+                    print('QR Code scanned: $data');
+                  },
+                ),
               ],
             ),
           ),
@@ -311,7 +307,7 @@ class _HomeTabsState extends State<HomeTabs> {
             ),
             onPressed: () => _showAddMenu(theme),
           ),
-          SharedHeaderIcons.storeIcon()
+          SharedHeaderIcons.storeIcon(),
         ],
       ),
       title: Image.asset('assets/logo-dark.png', height: 18),
@@ -480,7 +476,11 @@ class _HomeTabsState extends State<HomeTabs> {
           label: 'Places',
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.storefront_outlined),
+          icon: iconSvg(
+            'assets/app-icons/06-Clubs.svg',
+            theme,
+            isActive: _currentIndex == 3,
+          ),
           label: 'Clubs',
         ),
         BottomNavigationBarItem(icon: _buildProfileIcon(), label: 'Profile'),
@@ -504,7 +504,6 @@ class _HomeTabsState extends State<HomeTabs> {
       ],
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
