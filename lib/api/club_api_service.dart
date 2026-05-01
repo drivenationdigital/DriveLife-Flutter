@@ -5,6 +5,7 @@ import 'package:drivelife/models/club_api_models.dart';
 import 'package:drivelife/models/event_media.dart';
 import 'package:drivelife/models/my_clubs.dart';
 import 'package:drivelife/utils/event_media_uploader.dart';
+import 'package:drivelife/widgets/events/filter_bottom_sheet.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:drivelife/services/auth_service.dart';
@@ -27,6 +28,28 @@ class ClubApiService {
     }
 
     return headers;
+  }
+
+  static Future<List<FilterOption>> fetchClubTypes() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/club-categories'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['categories'] != null) {
+          return data['categories']
+              .map<FilterOption>((entry) => FilterOption(label: entry['name'], value: entry['id'].toString()))
+              .toList();
+        }
+      }
+      throw Exception('Failed to load club types');
+    } catch (e) {
+      print('Error fetching club types: $e');
+      rethrow;
+    }
   }
 
   static Future<List<dynamic>?> fetchClubs({
@@ -82,7 +105,6 @@ class ClubApiService {
       if (response.statusCode == 200) {
         return data['data'] as List<dynamic>?;
       }
-      print(data);
       throw Exception('Failed to load clubs');
     } catch (e) {
       print('Error fetching clubs: $e');

@@ -6,7 +6,6 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/auth/entity_switcher.dart';
-import 'package:drivelife/screens/chat/ChatList.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/clubs/add_club_screen.dart';
 import 'package:drivelife/screens/clubs/club_creation_screen.dart';

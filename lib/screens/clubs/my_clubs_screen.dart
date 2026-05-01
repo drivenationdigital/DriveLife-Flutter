@@ -62,6 +62,8 @@ class _MyClubsScreenState extends State<MyClubsScreen>
   bool _isSpotlightLoading = true;
 
   static const int _totalClubResults = 128;
+  List<FilterOption> _clubTypes = [];
+  bool _loadingClubTypes = false;
 
   @override
   void initState() {
@@ -73,7 +75,8 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     _scrollController.addListener(_onScroll);
     _loadMyClubs();
     _loadDiscoverClubs();
-    _loadFeaturedClubs(); // NEW
+    _loadFeaturedClubs();
+    _loadClubTypes();
   }
 
   @override
@@ -143,9 +146,6 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     }
   }
 
-  // ===========================================================================
-  // MY CLUBS — load (unchanged)
-  // ===========================================================================
   Future<void> _loadMyClubs() async {
     setState(() {
       _isLoading = true;
@@ -189,7 +189,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     try {
       final result = await ClubApiService.fetchClubs(
         page: _discoverPage,
-        clubType: _selectedClubType,
+        category: _selectedClubType,
         lat: _customLat,
         lng: _customLng,
         location: _customLocationName,
@@ -222,7 +222,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     try {
       final result = await ClubApiService.fetchClubs(
         page: _discoverPage,
-        clubType: _selectedClubType,
+        category: _selectedClubType,
       );
 
       if (!mounted) return;
@@ -275,9 +275,6 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     }
   }
 
-  // ===========================================================================
-  // BUILD
-  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     theme = Provider.of<ThemeProvider>(context);
@@ -543,6 +540,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     );
   }
 
+  // ignore: unused_element
   Widget _buildSpotlightHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -772,6 +770,77 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     _loadDiscoverClubs();
   }
 
+  Future<void> _loadClubTypes() async {
+    if (!mounted) return;
+    setState(() => _loadingClubTypes = true);
+
+    try {
+      final types = await ClubApiService.fetchClubTypes();
+      if (!mounted) return;
+      setState(() {
+        _clubTypes = types;
+        _loadingClubTypes = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingClubTypes = false);
+    }
+  }
+
+  void _onClubTypeFilterTapped() {
+    if (_loadingClubTypes) return; // ignore taps while loading
+
+    if (_clubTypes.isEmpty) {
+      // Try one retry in case the initial fetch failed
+      _loadClubTypes();
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => FilterBottomSheet(
+        title: 'Filter by Club Type',
+        multiSelect: false,
+        options: [
+          FilterOption(label: 'All', value: 'all'),
+          ..._clubTypes,
+        ],
+        selectedValues: [_selectedClubType],
+        onApply: (selected) {
+          setState(() {
+            _selectedClubType = selected.isNotEmpty ? selected.first : 'all';
+          });
+          _onFilterChanged();
+        },
+      ),
+    );
+  }
+
+  String _resolveClubTypeLabel() {
+    // Look up the label that matches the stored value
+    final match = _clubTypes.firstWhere(
+      (t) => t.value == _selectedClubType,
+      orElse: () => FilterOption(label: 'All', value: 'all'),
+    );
+    return match.label;
+  }
+
+  String _resolveLocationLabel() {
+    switch (_selectedLocation) {
+      case 'national':
+        return 'National';
+      case 'near-me':
+        return 'Near me';
+      case '50-miles':
+        return '50 Miles';
+      case '100-miles':
+        return '100 Miles';
+      default:
+        return 'Custom';
+    }
+  }
+
   Widget _buildFilters() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -780,25 +849,15 @@ class _MyClubsScreenState extends State<MyClubsScreen>
           Expanded(
             child: _buildFilterButton(
               'Club Type',
-              _selectedClubType == 'all' ? 'All' : _selectedClubType,
-              () {
-                // TODO: open club type filter sheet
-              },
+              _selectedClubType == 'all' ? 'All' : _resolveClubTypeLabel(),
+              _onClubTypeFilterTapped,
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: _buildFilterButton(
               'Location',
-              _selectedLocation == 'national'
-                  ? 'National'
-                  : _selectedLocation == 'near-me'
-                  ? 'Near me'
-                  : _selectedLocation == '50-miles'
-                  ? '50 Miles'
-                  : _selectedLocation == '100-miles'
-                  ? '100 Miles'
-                  : 'Custom',
+              _resolveLocationLabel(),
               () => _showLocationFilter(theme),
             ),
           ),
