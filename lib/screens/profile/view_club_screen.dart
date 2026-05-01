@@ -1,25 +1,24 @@
 import 'package:drivelife/api/club_api_service.dart';
 import 'package:drivelife/components/post_card.dart';
 import 'package:drivelife/providers/account_provider.dart';
+import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/clubs/join_club_modal.dart';
 import 'package:drivelife/screens/clubs/request_modal.dart';
+import 'package:drivelife/screens/clubs/ui-widgets/announcement-card.dart';
+import 'package:drivelife/screens/clubs/ui-widgets/event-card.dart';
+import 'package:drivelife/screens/clubs/ui-widgets/member-listing.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// =============================================================================
-// Design tokens — match the new club profile mock
-// =============================================================================
 const Color _gold = Color(0xFFC4A062);
 const Color _ink = Color(0xFF0B0B0B);
 const Color _muted = Color(0xFF8A8A8A);
 const Color _chip = Color(0xFFEFEFEF);
-const Color _panelBg = Color(0xFFF7F7F7);
 
 class ClubViewScreen extends StatefulWidget {
   final int? clubPostId;
@@ -32,7 +31,7 @@ class ClubViewScreen extends StatefulWidget {
     this.clubPostId,
     this.showAppBar = true,
     this.isOwnClub = false,
-    this.tab
+    this.tab,
   });
 
   @override
@@ -62,22 +61,41 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   bool _loadingClubPosts = false;
   bool _clubPostsLoaded = false;
 
+  // Upload completion tracking — refresh club posts when an upload finishes
+  final Set<String> _completedUploads = {};
+  bool _refreshScheduled = false;
+  UploadPostProvider? _uploadProvider;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_onTabChanged);
-    
+
     _loadClubData();
   }
 
   @override
   void dispose() {
+    _uploadProvider?.removeListener(_onUploadsChanged);
     _tabController.dispose();
     super.dispose();
   }
 
- void _onTabChanged() {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Subscribe to upload provider once
+    final provider = Provider.of<UploadPostProvider>(context, listen: false);
+    if (_uploadProvider != provider) {
+      _uploadProvider?.removeListener(_onUploadsChanged);
+      _uploadProvider = provider;
+      _uploadProvider!.addListener(_onUploadsChanged);
+    }
+  }
+
+  void _onTabChanged() {
     if (_tabController.index == 0 &&
         !_clubPostsLoaded &&
         !_isLockedForPrivacy) {
@@ -89,6 +107,286 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     if (_tabController.index == 2 && !_membersLoaded) {
       _loadMembers();
     }
+  }
+
+  void _onUploadsChanged() {
+    if (!mounted || _uploadProvider == null) return;
+    _checkUploadCompletions(_uploadProvider!.uploads);
+  }
+
+  void _checkUploadCompletions(Map<String, UploadPostProgress> uploads) {
+    if (!mounted) return;
+
+    bool needsRefresh = false;
+
+    for (final entry in uploads.entries) {
+      if (entry.value.status == UploadStatus.completed &&
+          !_completedUploads.contains(entry.key)) {
+        // Only refresh if the completed upload was for THIS club
+        _completedUploads.add(entry.key);
+        needsRefresh = true;
+      }
+    }
+
+    // Clean up tracking for uploads that have been removed from the provider
+    _completedUploads.removeWhere((id) => !uploads.containsKey(id));
+
+    if (needsRefresh && !_refreshScheduled) {
+      _refreshScheduled = true;
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _refreshScheduled = false;
+        if (!mounted) return;
+        // Force a fresh fetch of club posts
+        setState(() => _clubPostsLoaded = false);
+        _loadClubPosts();
+      });
+    }
+  }
+
+  void _handleJoinLeave() {
+    if (_isMember) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            'Leave Club?',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          content: const Text(
+            'Are you sure you want to leave this club?',
+            style: TextStyle(fontSize: 14, color: Colors.grey),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text(
+                'Stay in Club',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final success = await ClubApiService.leaveClub(
+                  clubId: _clubData!['id'].toString(),
+                );
+
+                if (success && mounted) {
+                  setState(() => _isMember = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('You have left the club.')),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade400,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Leave Club'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    if (_hasPendingRequest) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            'Cancel Request?',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          content: const Text(
+            'Are you sure you want to cancel your membership request?',
+            style: TextStyle(fontSize: 14, color: Colors.grey),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text(
+                'Keep Request',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final success = await ClubApiService.cancelJoinRequest(
+                  clubId: _clubData!['id'].toString(),
+                );
+                if (success && mounted) {
+                  setState(() => _hasPendingRequest = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Request cancelled.')),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade400,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Cancel Request'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final questions = List<String>.from(
+      _clubData!['membership_questions'] ?? [],
+    );
+
+    if (questions.isEmpty) {
+      questions.add(
+        'This club requires no additional information. Do you want to submit your request to join?',
+      );
+    }
+
+    showClubJoinModal(
+      context,
+      clubId: _clubData!['id'].toString(),
+      questions: questions,
+      onSuccess: () {
+        setState(() => _hasPendingRequest = true);
+      },
+    );
+  }
+
+  void _openUrl(String url) {
+    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
+
+  void _openMemberProfile(Map<String, dynamic> member) {
+    Navigator.pushNamed(
+      context,
+      '/view-profile',
+      arguments: {'userId': member['user_id']},
+    );
+  }
+
+  void _showClubLinks() {
+    if (!mounted) return;
+
+    final website = _clubData?['website'];
+    final facebook = _clubData?['facebook'];
+    final instagram = _clubData?['instagram'];
+
+    bool hasValue(dynamic v) => v != null && v.toString().trim().isNotEmpty;
+
+    // Build the list of links that actually have values
+    final links = <Map<String, String>>[
+      if (hasValue(website))
+        {'label': 'Website', 'url': website.toString(), 'icon': 'web'},
+      if (hasValue(facebook))
+        {'label': 'Facebook', 'url': facebook.toString(), 'icon': 'fb'},
+      if (hasValue(instagram))
+        {'label': 'Instagram', 'url': instagram.toString(), 'icon': 'ig'},
+    ];
+
+    if (links.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No links available'),
+          backgroundColor: Colors.grey,
+        ),
+      );
+      return;
+    }
+
+    IconData iconFor(String key) {
+      switch (key) {
+        case 'fb':
+          return Icons.facebook;
+        case 'ig':
+          return Icons.camera_alt_outlined;
+        case 'web':
+        default:
+          return Icons.public;
+      }
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Club Links',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.black),
+                      onPressed: () => Navigator.pop(context),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Links list
+              ...links.map((link) {
+                return ListTile(
+                  leading: Icon(iconFor(link['icon']!), color: _gold, size: 22),
+                  title: Text(
+                    link['label']!,
+                    style: const TextStyle(fontSize: 16, color: Colors.black),
+                  ),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final url = link['url']!;
+                    try {
+                      final uri = Uri.parse(url);
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    } catch (e) {
+                      print('Error launching URL: $e');
+                    }
+                  },
+                );
+              }),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _loadClubPosts() async {
@@ -218,8 +516,12 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         // If widget.tab is set, open that tab instead of defaulting to "Posts"
         if (widget.tab != null) {
           print('Opening club with tab: ${widget.tab}');
-          final tabIndex = ['feed', 'events', 'members', 'about']
-              .indexOf(widget.tab!.toLowerCase());
+          final tabIndex = [
+            'feed',
+            'events',
+            'members',
+            'about',
+          ].indexOf(widget.tab!.toLowerCase());
           if (tabIndex != -1) {
             _tabController.index = tabIndex;
           }
@@ -258,7 +560,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
 
           _loadClubEvents();
           _loadClubPosts();
-          }
+        }
       }
     } catch (e) {
       print('❌ Error loading club: $e ${widget.clubPostId}');
@@ -291,9 +593,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     await _loadClubData();
   }
 
-  // ===========================================================================
-  // Build
-  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
@@ -348,7 +647,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   }
 
   Future<void> _openRequestModal(Map<String, dynamic> member) async {
-    print(member);
     final result = await showDialog<RequestModalResult>(
       context: context,
       barrierDismissible: true,
@@ -436,7 +734,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           ),
         ),
         for (final member in sorted)
-         _MemberRow(
+          MemberRow(
             member: member,
             isViewerAdmin: _isOwner,
             onTap: () => _openMemberProfile(member),
@@ -455,38 +753,29 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     return 2;
   }
 
-  void _openMemberProfile(Map<String, dynamic> member) {
-    print(member);
-    Navigator.pushNamed(
-      context,
-      '/view-profile',
-      arguments: {'userId': member['user_id']},
-    );
-  }
-
   Future<void> _handleMemberAdminAction(
     Map<String, dynamic> member,
-    _MemberAdminAction action,
+    MemberAdminAction action,
   ) async {
     final name = member['name'] ?? 'this member';
 
     switch (action) {
-      case _MemberAdminAction.viewProfile:
+      case MemberAdminAction.viewProfile:
         _openMemberProfile(member);
         return;
 
-      case _MemberAdminAction.makeAdmin:
+      case MemberAdminAction.makeAdmin:
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('$name promoted to admin')));
         return;
-      case _MemberAdminAction.removeAdmin:
+      case MemberAdminAction.removeAdmin:
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("$name's admin role removed")));
         return;
 
-      case _MemberAdminAction.remove:
+      case MemberAdminAction.remove:
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -574,9 +863,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 
-  // ===========================================================================
-  // Top floating overlay (only when no app bar)
-  // ===========================================================================
   Widget _buildTopOverlay(BuildContext context) {
     return Positioned(
       top: 0,
@@ -609,15 +895,12 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 
-  // ===========================================================================
-  // Header: cover + overlapping logo + name + meta + actions
-  // ===========================================================================
   Widget _buildHeaderArea(ThemeProvider theme) {
     final coverImage = _clubData?['cover_image'];
     final logo = _clubData?['logo'];
     final title = (_clubData?['title'] ?? '') as String;
     final memberCount = _clubData?['member_count'] ?? 0;
-    final clubType = _clubData?['club_type'] == '1' ? 'Private' : 'Public';
+    // final clubType = _clubData?['club_type'] == '1' ? 'Private' : 'Public';
     final location = _clubData?['location'] ?? 'National Club';
     final verified = _clubData?['is_verified'] == true;
 
@@ -994,7 +1277,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
               _ChipActionButton(
                 icon: Icons.link_outlined,
                 label: 'More',
-                onTap: _showClubLinks
+                onTap: _showClubLinks,
               ),
             ],
           ),
@@ -1026,117 +1309,9 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         _ChipActionButton(
           icon: Icons.link,
           label: 'More',
-          onTap: _showClubLinks
+          onTap: _showClubLinks,
         ),
       ],
-    );
-  }
-
-  void _showClubLinks() {
-    if (!mounted) return;
-
-    final website = _clubData?['website'];
-    final facebook = _clubData?['facebook'];
-    final instagram = _clubData?['instagram'];
-
-    bool hasValue(dynamic v) => v != null && v.toString().trim().isNotEmpty;
-
-    // Build the list of links that actually have values
-    final links = <Map<String, String>>[
-      if (hasValue(website))
-        {'label': 'Website', 'url': website.toString(), 'icon': 'web'},
-      if (hasValue(facebook))
-        {'label': 'Facebook', 'url': facebook.toString(), 'icon': 'fb'},
-      if (hasValue(instagram))
-        {'label': 'Instagram', 'url': instagram.toString(), 'icon': 'ig'},
-    ];
-
-    if (links.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No links available'),
-          backgroundColor: Colors.grey,
-        ),
-      );
-      return;
-    }
-
-    IconData iconFor(String key) {
-      switch (key) {
-        case 'fb':
-          return Icons.facebook;
-        case 'ig':
-          return Icons.camera_alt_outlined;
-        case 'web':
-        default:
-          return Icons.public;
-      }
-    }
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Club Links',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.black),
-                      onPressed: () => Navigator.pop(context),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              // Links list
-              ...links.map((link) {
-                return ListTile(
-                  leading: Icon(iconFor(link['icon']!), color: _gold, size: 22),
-                  title: Text(
-                    link['label']!,
-                    style: const TextStyle(fontSize: 16, color: Colors.black),
-                  ),
-                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    final url = link['url']!;
-                    try {
-                      final uri = Uri.parse(url);
-                      await launchUrl(
-                        uri,
-                        mode: LaunchMode.externalApplication,
-                      );
-                    } catch (e) {
-                      print('Error launching URL: $e');
-                    }
-                  },
-                );
-              }),
-              const SizedBox(height: 16),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -1157,9 +1332,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     }
   }
 
-  // ===========================================================================
-  // Pending requests banner (owner-only)
-  // ===========================================================================
   Widget _buildPendingRequestsBanner(ThemeProvider theme) {
     return InkWell(
       onTap: () async {
@@ -1220,45 +1392,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       ),
     );
   }
-  
-  bool _hasSocials() {
-    final fb = _clubData?['facebook'];
-    final ig = _clubData?['instagram'];
-    final ws = _clubData?['website'];
-    return (fb != null && fb.toString().isNotEmpty) ||
-        (ig != null && ig.toString().isNotEmpty) ||
-        (ws != null && ws.toString().isNotEmpty);
-  }
 
-  List<Widget> _buildSocialChips(ThemeProvider theme) {
-    final fb = _clubData?['facebook'];
-    final ig = _clubData?['instagram'];
-    final ws = _clubData?['website'];
-    final chips = <Widget>[];
-
-    if (fb != null && fb.toString().isNotEmpty) {
-      chips.add(_SocialChip(icon: Icons.facebook, onTap: () => _openUrl(fb)));
-    }
-    if (ig != null && ig.toString().isNotEmpty) {
-      chips.add(
-        _SocialChip(icon: Icons.camera_alt_outlined, onTap: () => _openUrl(ig)),
-      );
-    }
-    if (ws != null && ws.toString().isNotEmpty) {
-      chips.add(
-        _SocialChip(icon: Icons.language_rounded, onTap: () => _openUrl(ws)),
-      );
-    }
-
-    // Inject 8px spacing between chips
-    final spaced = <Widget>[];
-    for (int i = 0; i < chips.length; i++) {
-      if (i > 0) spaced.add(const SizedBox(width: 8));
-      spaced.add(chips[i]);
-    }
-    return spaced;
-  }
- 
   Widget _buildTabBar(ThemeProvider theme) {
     return Container(
       decoration: BoxDecoration(
@@ -1393,7 +1527,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         // Announcements
         if (hasAnnouncements)
           for (int i = 0; i < announcements.length; i++) ...[
-            _AnnouncementCard(
+            AnnouncementCard(
               authorName: _clubData?['title'] ?? 'Club',
               posted: (announcements[i]['date'] ?? '').toString(),
               content: (announcements[i]['content'] ?? '').toString(),
@@ -1468,7 +1602,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         for (final event in _events)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: _EventCard(
+            child: EventCard(
               event: event,
               onTap: () => Navigator.pushNamed(
                 context,
@@ -1483,11 +1617,11 @@ class _ClubViewScreenState extends State<ClubViewScreen>
 
   Widget _buildAboutPanel(ThemeProvider theme) {
     final description = (_clubData?['description'] ?? '') as String;
-    final location = (_clubData?['location'] ?? '') as String;
-    final locationType = _clubData?['location_type'] == 1
-        ? 'National'
-        : 'Local / Regional';
-    final website = (_clubData?['website'] ?? '') as String;
+    // final location = (_clubData?['location'] ?? '') as String;
+    // final locationType = _clubData?['location_type'] == 1
+    //     ? 'National'
+    //     : 'Local / Regional';
+    // final website = (_clubData?['website'] ?? '') as String;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
@@ -1646,238 +1780,8 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       ),
     );
   }
-
-  void _handleJoinLeave() {
-    if (_isMember) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(
-            'Leave Club?',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-          ),
-          content: const Text(
-            'Are you sure you want to leave this club?',
-            style: TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text(
-                'Stay in Club',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                final success = await ClubApiService.leaveClub(
-                  clubId: _clubData!['id'].toString(),
-                );
-                
-                if (success && mounted) {
-                  setState(() => _isMember = false);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('You have left the club.')),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade400,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text('Leave Club'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    if (_hasPendingRequest) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(
-            'Cancel Request?',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-          ),
-          content: const Text(
-            'Are you sure you want to cancel your membership request?',
-            style: TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text(
-                'Keep Request',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                final success = await ClubApiService.cancelJoinRequest(
-                  clubId: _clubData!['id'].toString(),
-                );
-                if (success && mounted) {
-                  setState(() => _hasPendingRequest = false);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Request cancelled.')),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade400,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text('Cancel Request'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    final questions = List<String>.from(
-      _clubData!['membership_questions'] ?? [],
-    );
-
-    if (questions.isEmpty) {
-      questions.add(
-        'This club requires no additional information. Do you want to submit your request to join?',
-      );
-    }
-
-    showClubJoinModal(
-      context,
-      clubId: _clubData!['id'].toString(),
-      questions: questions,
-      onSuccess: () {
-        setState(() => _hasPendingRequest = true);
-      },
-    );
-  }
-
-  void _openUrl(String url) {
-    print('Opening URL: $url');
-    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-  }
 }
 
-class _AnnouncementCard extends StatelessWidget {
-  final String authorName;
-  final String posted;
-  final String content;
-  final String? logoUrl;
-
-  const _AnnouncementCard({
-    required this.authorName,
-    required this.posted,
-    required this.content,
-    this.logoUrl,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 16, 0, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Author header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: const BoxDecoration(
-                    color: _ink,
-                    shape: BoxShape.circle,
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: logoUrl != null
-                      ? Image.network(
-                          logoUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _logoFallback(),
-                        )
-                      : _logoFallback(),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              authorName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: _ink,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.verified, size: 14, color: _gold),
-                        ],
-                      ),
-                      if (posted.isNotEmpty) ...[
-                        const SizedBox(height: 1),
-                        Text(
-                          posted,
-                          style: const TextStyle(color: _muted, fontSize: 12),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              content,
-              style: const TextStyle(color: _ink, fontSize: 14, height: 1.4),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _logoFallback() => Container(
-    color: _ink,
-    alignment: Alignment.center,
-    child: const Text(
-      '⫽',
-      style: TextStyle(color: _gold, fontSize: 14, fontWeight: FontWeight.w900),
-    ),
-  );
-}
 
 class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   final Widget child;
@@ -1998,421 +1902,6 @@ class _ChipActionButton extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SocialChip extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _SocialChip({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: _gold.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _gold.withOpacity(0.18)),
-        ),
-        child: Icon(icon, color: _gold, size: 18),
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// Event card
-// =============================================================================
-class _EventCard extends StatelessWidget {
-  final Map<String, dynamic> event;
-  final VoidCallback onTap;
-  const _EventCard({required this.event, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final coverImage = event['cover_image'];
-    final title = (event['name'] ?? '') as String;
-    final startDate = (event['start_date'] ?? '') as String;
-    final location = (event['location'] ?? 'TBA') as String;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: _panelBg,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: coverImage != null
-                  ? Image.network(
-                      coverImage,
-                      width: 78,
-                      height: 78,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _eventPlaceholder(),
-                    )
-                  : _eventPlaceholder(),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _ink,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      height: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  if (startDate.isNotEmpty)
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.calendar_today_outlined,
-                          size: 12,
-                          color: _gold,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          _formatEventDate(startDate),
-                          style: const TextStyle(color: _muted, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 12,
-                        color: _gold,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          location,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: _muted, fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: onTap,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _gold,
-                side: const BorderSide(color: _gold, width: 1.2),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                minimumSize: const Size(0, 32),
-              ),
-              child: const Text(
-                'View',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _eventPlaceholder() {
-    return Container(
-      width: 78,
-      height: 78,
-      color: Colors.grey.shade200,
-      child: Icon(Icons.event, color: Colors.grey.shade400, size: 28),
-    );
-  }
-
-  String _formatEventDate(String date) {
-    try {
-      final parts = date.split(' ');
-      if (parts.isEmpty) return date;
-      final dateParts = parts[0].split('/');
-      if (dateParts.length != 3) return date;
-      final month = int.parse(dateParts[0]);
-      final day = int.parse(dateParts[1]);
-      final year = int.parse(dateParts[2]);
-      const monthNames = [
-        '',
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ];
-      return '${monthNames[month]} $day, $year';
-    } catch (e) {
-      return date;
-    }
-  }
-}
-
-// =============================================================================
-// Detail row (About panel)
-// =============================================================================
-class _DetailRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final bool isLink;
-  final VoidCallback? onTap;
-
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.isLink = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Icon(icon, size: 18, color: _gold),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: _muted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: TextStyle(
-                    color: isLink ? _gold : _ink,
-                    fontSize: 14,
-                    fontWeight: isLink ? FontWeight.w600 : FontWeight.w400,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-enum _MemberAdminAction { viewProfile, makeAdmin, removeAdmin, remove }
-
-class _MemberRow extends StatelessWidget {
-  final Map<String, dynamic> member;
-  final bool isViewerAdmin;
-  final VoidCallback onTap;
-  final VoidCallback? onViewRequest;
-  final void Function(_MemberAdminAction) onAdminAction;
-
-  const _MemberRow({
-    required this.member,
-    required this.isViewerAdmin,
-    required this.onTap,
-    required this.onAdminAction,
-    this.onViewRequest,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final name = (member['name'] ?? '') as String;
-    final avatar = member['avatar'] as String?;
-    final isOwner = member['is_owner'] == true;
-    final isAdmin = member['is_admin'] == true;
-    final isPending = member['is_pending'] == true;
-
-    return InkWell(
-      onTap: isPending ? null : onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: _gold.withOpacity(0.15),
-              backgroundImage: (avatar != null && avatar.isNotEmpty)
-                  ? NetworkImage(avatar)
-                  : null,
-              child: (avatar == null || avatar.isEmpty)
-                  ? Text(
-                      name.isNotEmpty ? name[0].toUpperCase() : '?',
-                      style: const TextStyle(
-                        color: _gold,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _ink,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (isOwner || isAdmin || isPending) ...[
-                    const SizedBox(height: 2),
-                    _RoleBadge(
-                      label: isOwner
-                          ? 'Owner'
-                          : isAdmin
-                          ? 'Admin'
-                          : 'Pending',
-                      isPending: isPending,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            // Right-side action area
-            if (isPending && isViewerAdmin && onViewRequest != null)
-              OutlinedButton(
-                onPressed: onViewRequest,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _gold,
-                  side: const BorderSide(color: _gold, width: 1.2),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 6,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  minimumSize: const Size(0, 32),
-                ),
-                child: const Text(
-                  'View request',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                ),
-              )
-            else if (isViewerAdmin && !isOwner && !isPending)
-              PopupMenuButton<_MemberAdminAction>(
-                icon: const Icon(Icons.more_horiz, color: _muted),
-                position: PopupMenuPosition.under,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                onSelected: onAdminAction,
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: _MemberAdminAction.viewProfile,
-                    child: Row(
-                      children: [
-                        Icon(Icons.person_outline, size: 18, color: _ink),
-                        SizedBox(width: 10),
-                        Text('View profile'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: _MemberAdminAction.remove,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.person_remove_outlined,
-                          size: 18,
-                          color: Colors.red.shade400,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Remove from club',
-                          style: TextStyle(color: Colors.red.shade400),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              )
-            else if (!isPending)
-              const Icon(Icons.chevron_right, size: 18, color: _muted),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RoleBadge extends StatelessWidget {
-  final String label;
-  final bool isPending;
-  const _RoleBadge({required this.label, this.isPending = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isPending ? Colors.orange.shade700 : _gold;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.3,
         ),
       ),
     );
