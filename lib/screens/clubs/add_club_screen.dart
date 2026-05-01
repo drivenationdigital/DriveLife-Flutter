@@ -1107,16 +1107,20 @@ class _BasicDetailsTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Club Title
-          const Text(
-            'Club Title',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
+          const Row(
+            children: [
+              Text(
+                'Club Title',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              SizedBox(width: 4),
+              Text('*', style: TextStyle(color: Colors.red, fontSize: 14)),
+            ],
           ),
-          const SizedBox(height: 2),
-          const Text('*', style: TextStyle(color: Colors.red, fontSize: 14)),
           const SizedBox(height: 8),
           TextField(
             controller: titleController,
@@ -1248,16 +1252,20 @@ class _BasicDetailsTab extends StatelessWidget {
           const SizedBox(height: 24),
 
           // Club Location Type
-          const Text(
-            'Club Location',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
+          const Row(
+            children: [
+              Text(
+                'Club Location',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              SizedBox(width: 4),
+              Text('*', style: TextStyle(color: Colors.red, fontSize: 14)),
+            ],
           ),
-          const SizedBox(height: 2),
-          const Text('*', style: TextStyle(color: Colors.red, fontSize: 14)),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
