@@ -690,11 +690,11 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                   // Actions — depends on owner / member / pending state
                   _buildActionRow(theme),
                   // Social chips, if any
-                  if (_hasSocials())
-                    Padding(
-                      padding: const EdgeInsets.only(top: 14),
-                      child: Row(children: _buildSocialChips(theme), mainAxisAlignment: MainAxisAlignment.center,),
-                    ),
+                  // if (_hasSocials())
+                  //   Padding(
+                  //     padding: const EdgeInsets.only(top: 14),
+                  //     child: Row(children: _buildSocialChips(theme), mainAxisAlignment: MainAxisAlignment.center,),
+                  //   ),
                 ],
               ),
             ),
@@ -704,14 +704,14 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         Positioned(
           left: 20,
           right: 20,
-          top: 200 - 48,
+          top: 200 - 80,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // Logo
               Container(
-                width: 96,
-                height: 96,
+                width: 130,
+                height: 130,
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -740,6 +740,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                       : _buildLogoFallback(),
                 ),
               ),
+              const SizedBox(height: 60),
               // Type pill (Public/Private) — replaces "Active community" pill
               // Padding(
               //   padding: const EdgeInsets.only(bottom: 4),
@@ -870,7 +871,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         '⫽',
         style: TextStyle(
           color: _gold,
-          fontSize: 30,
+          fontSize: 38,
           fontWeight: FontWeight.w900,
         ),
       ),
@@ -933,16 +934,9 @@ class _ClubViewScreenState extends State<ClubViewScreen>
               ),
               const SizedBox(width: 8),
               _ChipActionButton(
-                icon: Icons.share_outlined,
-                label: 'Share',
-                onTap: () async {
-                  final title = _clubData?['title'] ?? 'this club';
-                  final id = _clubData?['id'] ?? '';
-
-                  await Share.share(
-                    'Check out the "$title" club on Drivelife! https://app.drivelife.app/clubs/$id',
-                  );
-                },
+                icon: Icons.link_outlined,
+                label: 'More',
+                onTap: _showClubLinks
               ),
             ],
           ),
@@ -972,18 +966,119 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         ),
         const SizedBox(width: 8),
         _ChipActionButton(
-          icon: Icons.share_outlined,
-          label: 'Share',
-          onTap: () async {
-            final title = _clubData?['title'] ?? 'this club';
-            final id = _clubData?['id'] ?? '';
-
-            await Share.share(
-              'Check out the "$title" club on Drivelife! https://app.drivelife.app/clubs/$id',
-            );
-          },
+          icon: Icons.link,
+          label: 'More',
+          onTap: _showClubLinks
         ),
       ],
+    );
+  }
+
+  void _showClubLinks() {
+    if (!mounted) return;
+
+    final website = _clubData?['website'];
+    final facebook = _clubData?['facebook'];
+    final instagram = _clubData?['instagram'];
+
+    bool hasValue(dynamic v) => v != null && v.toString().trim().isNotEmpty;
+
+    // Build the list of links that actually have values
+    final links = <Map<String, String>>[
+      if (hasValue(website))
+        {'label': 'Website', 'url': website.toString(), 'icon': 'web'},
+      if (hasValue(facebook))
+        {'label': 'Facebook', 'url': facebook.toString(), 'icon': 'fb'},
+      if (hasValue(instagram))
+        {'label': 'Instagram', 'url': instagram.toString(), 'icon': 'ig'},
+    ];
+
+    if (links.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No links available'),
+          backgroundColor: Colors.grey,
+        ),
+      );
+      return;
+    }
+
+    IconData iconFor(String key) {
+      switch (key) {
+        case 'fb':
+          return Icons.facebook;
+        case 'ig':
+          return Icons.camera_alt_outlined;
+        case 'web':
+        default:
+          return Icons.public;
+      }
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Club Links',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.black),
+                      onPressed: () => Navigator.pop(context),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Links list
+              ...links.map((link) {
+                return ListTile(
+                  leading: Icon(iconFor(link['icon']!), color: _gold, size: 22),
+                  title: Text(
+                    link['label']!,
+                    style: const TextStyle(fontSize: 16, color: Colors.black),
+                  ),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final url = link['url']!;
+                    try {
+                      final uri = Uri.parse(url);
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    } catch (e) {
+                      print('Error launching URL: $e');
+                    }
+                  },
+                );
+              }),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1067,10 +1162,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       ),
     );
   }
-
-  // ===========================================================================
-  // Social chips (only render if at least one is set)
-  // ===========================================================================
+  
   bool _hasSocials() {
     final fb = _clubData?['facebook'];
     final ig = _clubData?['instagram'];
@@ -1108,10 +1200,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     }
     return spaced;
   }
-
-  // ===========================================================================
-  // Tab bar (sticky)
-  // ===========================================================================
+ 
   Widget _buildTabBar(ThemeProvider theme) {
     return Container(
       decoration: BoxDecoration(
@@ -1147,13 +1236,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 
-  // ===========================================================================
-  // POSTS panel
-  // HARDCODED: posts come from a hardcoded list — wire up when you have a
-  // club posts endpoint. The original screen had Announcements here instead;
-  // I've kept the announcements logic accessible but rendered the new UI's
-  // post-style layout.
-  // ===========================================================================
   Widget _buildPostsPanel(ThemeProvider theme) {
     if (_isLockedForPrivacy) return _buildPrivateLockedView();
 
@@ -1341,9 +1423,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 
-  // ===========================================================================
-  // ABOUT panel — description, details, social links
-  // ===========================================================================
   Widget _buildAboutPanel(ThemeProvider theme) {
     final description = (_clubData?['description'] ?? '') as String;
     final location = (_clubData?['location'] ?? '') as String;
@@ -1384,98 +1463,95 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           ),
           const SizedBox(height: 16),
         ],
-        const Text(
-          'Details',
-          style: TextStyle(
-            color: _ink,
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 12),
-        // HARDCODED: founded date — no field in your data model yet
-        const _DetailRow(
-          icon: Icons.calendar_today_outlined,
-          label: 'Founded',
-          value: 'March 2017',
-        ),
-        const SizedBox(height: 12),
-        _DetailRow(
-          icon: Icons.location_on_outlined,
-          label: 'Based in',
-          value: location.isNotEmpty ? location : locationType,
-        ),
-        if (website.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          _DetailRow(
-            icon: Icons.public,
-            label: 'Website',
-            value: website,
-            isLink: true,
-            onTap: () => _openUrl(website),
-          ),
-        ],
-        // HARDCODED: contact email — no field on club model
-        const SizedBox(height: 12),
-        const _DetailRow(
-          icon: Icons.mail_outline,
-          label: 'Contact',
-          value: 'hello@example.com',
-        ),
-        const SizedBox(height: 24),
-        // HARDCODED: rules — no field on club model
-        const Text(
-          'Rules & guidelines',
-          style: TextStyle(
-            color: _ink,
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        for (final rule in const [
-          'Be respectful — this is a community first.',
-          'No selling cars or parts in the main feed.',
-          'Drive responsibly. We endorse legal driving only.',
-          'Keep event sign-ups honest — no shows hurt the club.',
-        ])
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Container(
-                    width: 4,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: _ink.withOpacity(0.85),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    rule,
-                    style: TextStyle(
-                      color: _ink.withOpacity(0.85),
-                      fontSize: 14,
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        // const Text(
+        //   'Details',
+        //   style: TextStyle(
+        //     color: _ink,
+        //     fontSize: 15,
+        //     fontWeight: FontWeight.w700,
+        //   ),
+        // ),
+        // const SizedBox(height: 12),
+        // // HARDCODED: founded date — no field in your data model yet
+        // const _DetailRow(
+        //   icon: Icons.calendar_today_outlined,
+        //   label: 'Founded',
+        //   value: 'March 2017',
+        // ),
+        // const SizedBox(height: 12),
+        // _DetailRow(
+        //   icon: Icons.location_on_outlined,
+        //   label: 'Based in',
+        //   value: location.isNotEmpty ? location : locationType,
+        // ),
+        // if (website.isNotEmpty) ...[
+        //   const SizedBox(height: 12),
+        //   _DetailRow(
+        //     icon: Icons.public,
+        //     label: 'Website',
+        //     value: website,
+        //     isLink: true,
+        //     onTap: () => _openUrl(website),
+        //   ),
+        // ],
+        // // HARDCODED: contact email — no field on club model
+        // const SizedBox(height: 12),
+        // const _DetailRow(
+        //   icon: Icons.mail_outline,
+        //   label: 'Contact',
+        //   value: 'hello@example.com',
+        // ),
+        // const SizedBox(height: 24),
+        // // HARDCODED: rules — no field on club model
+        // const Text(
+        //   'Rules & guidelines',
+        //   style: TextStyle(
+        //     color: _ink,
+        //     fontSize: 15,
+        //     fontWeight: FontWeight.w700,
+        //   ),
+        // ),
+        // const SizedBox(height: 8),
+        // for (final rule in const [
+        //   'Be respectful — this is a community first.',
+        //   'No selling cars or parts in the main feed.',
+        //   'Drive responsibly. We endorse legal driving only.',
+        //   'Keep event sign-ups honest — no shows hurt the club.',
+        // ])
+        //   Padding(
+        //     padding: const EdgeInsets.only(bottom: 6),
+        //     child: Row(
+        //       crossAxisAlignment: CrossAxisAlignment.start,
+        //       children: [
+        //         Padding(
+        //           padding: const EdgeInsets.only(top: 8),
+        //           child: Container(
+        //             width: 4,
+        //             height: 4,
+        //             decoration: BoxDecoration(
+        //               color: _ink.withOpacity(0.85),
+        //               shape: BoxShape.circle,
+        //             ),
+        //           ),
+        //         ),
+        //         const SizedBox(width: 10),
+        //         Expanded(
+        //           child: Text(
+        //             rule,
+        //             style: TextStyle(
+        //               color: _ink.withOpacity(0.85),
+        //               fontSize: 14,
+        //               height: 1.5,
+        //             ),
+        //           ),
+        //         ),
+        //       ],
+        //     ),
+        //   ),
       ],
     );
   }
 
-  // ===========================================================================
-  // Loading skeleton
-  // ===========================================================================
   Widget _buildSkeleton(ThemeProvider theme) {
     return SingleChildScrollView(
       child: Column(
@@ -1513,9 +1589,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 
-  // ===========================================================================
-  // Join / leave / cancel logic — preserved from original
-  // ===========================================================================
   void _handleJoinLeave() {
     if (_isMember) {
       showDialog(
@@ -1748,9 +1821,6 @@ class _AnnouncementCard extends StatelessWidget {
   );
 }
 
-// =============================================================================
-// SliverPersistentHeaderDelegate for sticky tabs
-// =============================================================================
 class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   final Widget child;
   _TabBarDelegate(this.child);
@@ -1771,10 +1841,6 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(_TabBarDelegate oldDelegate) => false;
 }
-
-// =============================================================================
-// Reusable widgets
-// =============================================================================
 
 class _OverlayCircleButton extends StatelessWidget {
   final IconData icon;
@@ -1898,262 +1964,6 @@ class _SocialChip extends StatelessWidget {
           border: Border.all(color: _gold.withOpacity(0.18)),
         ),
         child: Icon(icon, color: _gold, size: 18),
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// Post card
-// =============================================================================
-class _PostCard extends StatelessWidget {
-  final String authorName;
-  final String posted;
-  final String? imageUrl;
-  final int carouselDotCount;
-  final int activeDotIndex;
-  final int likes;
-  final int comments;
-  final String content;
-  final String? authorPrefix;
-  final List<(String, String)> previewComments;
-  final int totalComments;
-
-  const _PostCard({
-    required this.authorName,
-    required this.posted,
-    required this.imageUrl,
-    required this.likes,
-    required this.comments,
-    required this.content,
-    this.authorPrefix,
-    this.carouselDotCount = 0,
-    this.activeDotIndex = 0,
-    this.previewComments = const [],
-    this.totalComments = 0,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasImage = imageUrl != null;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Author header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: const BoxDecoration(
-                    color: _ink,
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text(
-                    '⫽',
-                    style: TextStyle(
-                      color: _gold,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              authorName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: _ink,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.verified, size: 14, color: _gold),
-                        ],
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        posted,
-                        style: const TextStyle(color: _muted, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.more_horiz, color: _muted, size: 20),
-              ],
-            ),
-          ),
-          if (hasImage) ...[
-            const SizedBox(height: 12),
-            Stack(
-              alignment: Alignment.bottomCenter,
-              children: [
-                AspectRatio(
-                  aspectRatio: 4 / 3,
-                  child: Image.network(
-                    imageUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
-                        Container(color: Colors.grey.shade200),
-                  ),
-                ),
-                if (carouselDotCount > 1)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (int i = 0; i < carouselDotCount; i++) ...[
-                          if (i > 0) const SizedBox(width: 6),
-                          Container(
-                            width: i == activeDotIndex ? 7 : 6,
-                            height: i == activeDotIndex ? 7 : 6,
-                            decoration: BoxDecoration(
-                              color: i == activeDotIndex
-                                  ? Colors.white
-                                  : Colors.white.withOpacity(0.55),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-            _buildActionRow(true),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: RichText(
-                text: TextSpan(
-                  style: const TextStyle(
-                    color: _ink,
-                    fontSize: 14,
-                    height: 1.35,
-                  ),
-                  children: [
-                    if (authorPrefix != null)
-                      TextSpan(
-                        text: '$authorPrefix ',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    TextSpan(text: content),
-                  ],
-                ),
-              ),
-            ),
-          ] else ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Text(
-                content,
-                style: const TextStyle(color: _ink, fontSize: 14, height: 1.35),
-              ),
-            ),
-            _buildActionRow(false),
-          ],
-          if (previewComments.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final (user, text) in previewComments)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: RichText(
-                        text: TextSpan(
-                          style: const TextStyle(
-                            color: _ink,
-                            fontSize: 13,
-                            height: 1.4,
-                          ),
-                          children: [
-                            TextSpan(
-                              text: '$user ',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            TextSpan(text: text),
-                          ],
-                        ),
-                      ),
-                    ),
-                  GestureDetector(
-                    onTap: () {},
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        'View all $totalComments comments',
-                        style: const TextStyle(color: _muted, fontSize: 13),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionRow(bool showShare) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Row(
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.favorite_border, size: 24, color: _ink),
-              const SizedBox(width: 6),
-              Text(
-                '$likes',
-                style: const TextStyle(
-                  color: _ink,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 20),
-          Row(
-            children: [
-              const Icon(Icons.chat_bubble_outline, size: 24, color: _ink),
-              const SizedBox(width: 6),
-              Text(
-                '$comments',
-                style: const TextStyle(
-                  color: _ink,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          if (showShare) const Icon(Icons.send_outlined, size: 22, color: _ink),
-        ],
       ),
     );
   }

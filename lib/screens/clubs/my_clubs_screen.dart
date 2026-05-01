@@ -327,8 +327,8 @@ class _MyClubsScreenState extends State<MyClubsScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (showSpotlight) ...[
-              const SizedBox(height: 16),
-              _buildSpotlightHeader(),
+              // const SizedBox(height: 16),
+              // _buildSpotlightHeader(),
               const SizedBox(height: 12),
               _buildSpotlightCarousel(),
               const SizedBox(height: 12),
@@ -1001,7 +1001,7 @@ class _ClubCard extends StatelessWidget {
                       Flexible(
                         child: Text(
                           club.title,
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 14,
@@ -1015,41 +1015,41 @@ class _ClubCard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(
-                        club.isNational ? Icons.public : Icons.location_on,
-                        size: 13,
-                        color: theme.primaryColor,
-                      ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          club.isNational
-                              ? 'National Club'
-                              : club.location.isNotEmpty
-                              ? club.location
-                              : 'Local Club',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.primaryColor,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(Icons.people, size: 13, color: theme.primaryColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${club.memberCount}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
+                  // Row(
+                  //   children: [
+                  //     Icon(
+                  //       club.isNational ? Icons.public : Icons.location_on,
+                  //       size: 13,
+                  //       color: theme.primaryColor,
+                  //     ),
+                  //     const SizedBox(width: 4),
+                  //     Flexible(
+                  //       child: Text(
+                  //         club.isNational
+                  //             ? 'National Club'
+                  //             : club.location.isNotEmpty
+                  //             ? club.location
+                  //             : 'Local Club',
+                  //         maxLines: 1,
+                  //         overflow: TextOverflow.ellipsis,
+                  //         style: TextStyle(
+                  //           fontSize: 12,
+                  //           color: theme.primaryColor,
+                  //         ),
+                  //       ),
+                  //     ),
+                  //     const SizedBox(width: 8),
+                  //     Icon(Icons.people, size: 13, color: theme.primaryColor),
+                  //     const SizedBox(width: 4),
+                  //     Text(
+                  //       '${club.memberCount}',
+                  //       style: TextStyle(
+                  //         fontSize: 12,
+                  //         color: Colors.grey.shade600,
+                  //       ),
+                  //     ),
+                  //   ],
+                  // ),
                 ],
               ),
             ),
@@ -1226,29 +1226,29 @@ class _SpotlightClubCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      if (memberCount > 0) ...[
-                        const Icon(
-                          Icons.person_outline,
-                          color: Colors.white70,
-                          size: 13,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$memberCount members',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                      if (memberCount > 0 && location.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        const Text(
-                          '·',
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
+                      // if (memberCount > 0) ...[
+                      //   const Icon(
+                      //     Icons.person_outline,
+                      //     color: Colors.white70,
+                      //     size: 13,
+                      //   ),
+                      //   const SizedBox(width: 4),
+                      //   Text(
+                      //     '$memberCount members',
+                      //     style: const TextStyle(
+                      //       color: Colors.white70,
+                      //       fontSize: 12,
+                      //     ),
+                      //   ),
+                      // ],
+                      // if (memberCount > 0 && location.isNotEmpty) ...[
+                      //   const SizedBox(width: 8),
+                      //   const Text(
+                      //     '·',
+                      //     style: TextStyle(color: Colors.white70),
+                      //   ),
+                      //   const SizedBox(width: 8),
+                      // ],
                       if (location.isNotEmpty)
                         Flexible(
                           child: Text(
@@ -1345,7 +1345,7 @@ class _DiscoverClubCard extends StatelessWidget {
                     Flexible(
                       child: Text(
                         title,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 14,
@@ -1361,36 +1361,36 @@ class _DiscoverClubCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.directions_car_outlined,
-                      size: 13,
-                      color: primaryColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: primaryColor),
-                      ),
-                    ),
-                    if (memberCount > 0) ...[
-                      const SizedBox(width: 8),
-                      Icon(Icons.people, size: 13, color: Colors.grey.shade600),
-                      const SizedBox(width: 4),
-                      Text(
-                        '$memberCount',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+                // Row(
+                //   children: [
+                //     Icon(
+                //       Icons.directions_car_outlined,
+                //       size: 13,
+                //       color: primaryColor,
+                //     ),
+                //     const SizedBox(width: 4),
+                //     Flexible(
+                //       child: Text(
+                //         subtitle,
+                //         maxLines: 1,
+                //         overflow: TextOverflow.ellipsis,
+                //         style: TextStyle(fontSize: 12, color: primaryColor),
+                //       ),
+                //     ),
+                //     if (memberCount > 0) ...[
+                //       const SizedBox(width: 8),
+                //       Icon(Icons.people, size: 13, color: Colors.grey.shade600),
+                //       const SizedBox(width: 4),
+                //       Text(
+                //         '$memberCount',
+                //         style: TextStyle(
+                //           fontSize: 12,
+                //           color: Colors.grey.shade600,
+                //         ),
+                //       ),
+                //     ],
+                //   ],
+                // ),
               ],
             ),
           ),
