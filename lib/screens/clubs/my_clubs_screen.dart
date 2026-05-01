@@ -777,12 +777,13 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          _buildFilterButton(
+          Expanded(child: _buildFilterButton(
             'Club Type',
             _selectedClubType == 'all' ? 'All' : _selectedClubType,
             () {
               // TODO: open club type filter sheet
             },
+          ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -806,51 +807,49 @@ class _MyClubsScreenState extends State<MyClubsScreen>
   }
 
   Widget _buildFilterButton(String label, String value, VoidCallback onTap) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.w500,
-                      ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      value,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Colors.black,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.black,
+                      fontWeight: FontWeight.w600,
                     ),
-                  ],
-                ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
-              Icon(
-                Icons.keyboard_arrow_down,
-                color: Colors.grey.shade600,
-                size: 20,
-              ),
-            ],
-          ),
+            ),
+            Icon(
+              Icons.keyboard_arrow_down,
+              color: Colors.grey.shade600,
+              size: 20,
+            ),
+          ],
         ),
       ),
     );
