@@ -511,6 +511,9 @@ class _NotificationTile extends StatelessWidget {
     final isPendingInvite = isInvite && inviteStatus == 'pending';
     final clubName = entityData['club_name']?.toString() ?? 'a club';
 
+    final clubJoinRequest = notification['type'] == 'join_request';
+    final clubId = entityData['club_id']?.toString() ?? '';
+
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -561,6 +564,40 @@ class _NotificationTile extends StatelessWidget {
                 notification['_id'],
               ),
             ],
+
+            // if join request show button to take to club page
+            if (clubJoinRequest) ...[
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () {
+                 final id = int.tryParse(clubId);
+                  if (id == null) {
+                    // handle bad ID — show snackbar, return early, etc.
+                    return;
+                  }
+
+                  Navigator.pushNamed(
+                    context,
+                    '/club-detail',
+                    arguments: {'clubId': id, 'tab': 'members'},
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.primaryColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+                child: const Text(
+                  'View Request',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ]
           ],
         ),
       ),
@@ -816,6 +853,9 @@ class _NotificationTile extends StatelessWidget {
       case 'invite':
         final clubName = entityData['club_name']?.toString() ?? 'a club';
         return '$name invited you to join $clubName';
+      case 'join_request':
+        final clubName = entityData['club_name']?.toString() ?? 'a club';
+        return '$name requested to join $clubName';
       default:
         return '$name interacted with your content';
     }

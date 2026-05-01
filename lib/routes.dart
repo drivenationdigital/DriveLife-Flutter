@@ -162,10 +162,10 @@ class AppRoutes {
         );
       case '/club-detail':
         final args = settings.arguments as Map<String, dynamic>;
-
         return _slide(
           ClubViewScreen(
             clubPostId: args['clubId'],
+            tab: args['tab'],
             showAppBar: true, // Show app bar when viewing from search
             isOwnClub: false, // Visitor view
           ),

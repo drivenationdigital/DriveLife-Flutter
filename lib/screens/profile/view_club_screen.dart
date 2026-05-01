@@ -3,6 +3,7 @@ import 'package:drivelife/components/post_card.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/clubs/join_club_modal.dart';
+import 'package:drivelife/screens/clubs/request_modal.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
@@ -24,12 +25,14 @@ class ClubViewScreen extends StatefulWidget {
   final int? clubPostId;
   final bool showAppBar;
   final bool isOwnClub;
+  final String? tab;
 
   const ClubViewScreen({
     super.key,
     this.clubPostId,
     this.showAppBar = true,
     this.isOwnClub = false,
+    this.tab
   });
 
   @override
@@ -64,6 +67,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_onTabChanged);
+    
     _loadClubData();
   }
 
@@ -211,6 +215,16 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           _isLoading = false;
         });
 
+        // If widget.tab is set, open that tab instead of defaulting to "Posts"
+        if (widget.tab != null) {
+          print('Opening club with tab: ${widget.tab}');
+          final tabIndex = ['feed', 'events', 'members', 'about']
+              .indexOf(widget.tab!.toLowerCase());
+          if (tabIndex != -1) {
+            _tabController.index = tabIndex;
+          }
+        }
+
         _loadClubEvents();
         _loadClubPosts();
         _loadPendingRequestsCount();
@@ -227,6 +241,20 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             _hasPendingRequest = data['has_pending_request'] ?? false;
             _isLoading = false;
           });
+
+          // If widget.tab is set, open that tab instead of defaulting to "Posts"
+          if (widget.tab != null) {
+            print('Opening club with tab: ${widget.tab}');
+            final tabIndex = [
+              'feed',
+              'events',
+              'members',
+              'about',
+            ].indexOf(widget.tab!.toLowerCase());
+            if (tabIndex != -1) {
+              _tabController.index = tabIndex;
+            }
+          }
 
           _loadClubEvents();
           _loadClubPosts();
@@ -319,6 +347,33 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 
+  Future<void> _openRequestModal(Map<String, dynamic> member) async {
+    print(member);
+    final result = await showDialog<RequestModalResult>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => ClubRequestModal(
+        clubName: _clubData?['title'] ?? 'this club',
+        memberName: (member['name'] ?? 'User').toString(),
+        userId: int.parse(member['user_id'].toString()),
+        clubId: int.parse(_clubData?['id'].toString() ?? '0'),
+        avatar: member['avatar'] as String?,
+        questions: (member['questions'] as List?) ?? const [],
+      ),
+    );
+
+    if (!mounted) return;
+
+    // Refresh the list whether they accepted or rejected — both change state
+    if (result == RequestModalResult.accepted ||
+        result == RequestModalResult.rejected) {
+      setState(() => _membersLoaded = false);
+      _loadMembers();
+      // Also refresh the pending banner count
+      _loadPendingRequestsCount();
+    }
+  }
+
   Widget _buildMembersPanel(ThemeProvider theme) {
     if (_isLockedForPrivacy) return _buildPrivateLockedView();
 
@@ -381,11 +436,14 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           ),
         ),
         for (final member in sorted)
-          _MemberRow(
+         _MemberRow(
             member: member,
             isViewerAdmin: _isOwner,
             onTap: () => _openMemberProfile(member),
             onAdminAction: (action) => _handleMemberAdminAction(member, action),
+            onViewRequest: member['is_pending'] == true
+                ? () => _openRequestModal(member)
+                : null,
           ),
       ],
     );
@@ -2194,6 +2252,7 @@ class _MemberRow extends StatelessWidget {
   final Map<String, dynamic> member;
   final bool isViewerAdmin;
   final VoidCallback onTap;
+  final VoidCallback? onViewRequest;
   final void Function(_MemberAdminAction) onAdminAction;
 
   const _MemberRow({
@@ -2201,6 +2260,7 @@ class _MemberRow extends StatelessWidget {
     required this.isViewerAdmin,
     required this.onTap,
     required this.onAdminAction,
+    this.onViewRequest,
   });
 
   @override
@@ -2209,14 +2269,14 @@ class _MemberRow extends StatelessWidget {
     final avatar = member['avatar'] as String?;
     final isOwner = member['is_owner'] == true;
     final isAdmin = member['is_admin'] == true;
+    final isPending = member['is_pending'] == true;
 
     return InkWell(
-      onTap: onTap,
+      onTap: isPending ? null : onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
-            // Avatar
             CircleAvatar(
               radius: 22,
               backgroundColor: _gold.withOpacity(0.15),
@@ -2235,7 +2295,6 @@ class _MemberRow extends StatelessWidget {
                   : null,
             ),
             const SizedBox(width: 12),
-            // Name + role
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2250,15 +2309,43 @@ class _MemberRow extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (isOwner || isAdmin) ...[
+                  if (isOwner || isAdmin || isPending) ...[
                     const SizedBox(height: 2),
-                    _RoleBadge(label: isOwner ? 'Owner' : 'Admin'),
+                    _RoleBadge(
+                      label: isOwner
+                          ? 'Owner'
+                          : isAdmin
+                          ? 'Admin'
+                          : 'Pending',
+                      isPending: isPending,
+                    ),
                   ],
                 ],
               ),
             ),
-            // Admin actions
-            if (isViewerAdmin && !isOwner)
+
+            // Right-side action area
+            if (isPending && isViewerAdmin && onViewRequest != null)
+              OutlinedButton(
+                onPressed: onViewRequest,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _gold,
+                  side: const BorderSide(color: _gold, width: 1.2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  minimumSize: const Size(0, 32),
+                ),
+                child: const Text(
+                  'View request',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              )
+            else if (isViewerAdmin && !isOwner && !isPending)
               PopupMenuButton<_MemberAdminAction>(
                 icon: const Icon(Icons.more_horiz, color: _muted),
                 position: PopupMenuPosition.under,
@@ -2277,24 +2364,6 @@ class _MemberRow extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // PopupMenuItem(
-                  //   value: isAdmin
-                  //       ? _MemberAdminAction.removeAdmin
-                  //       : _MemberAdminAction.makeAdmin,
-                  //   child: Row(
-                  //     children: [
-                  //       Icon(
-                  //         isAdmin
-                  //             ? Icons.shield_outlined
-                  //             : Icons.shield_rounded,
-                  //         size: 18,
-                  //         color: _ink,
-                  //       ),
-                  //       const SizedBox(width: 10),
-                  //       Text(isAdmin ? 'Remove admin' : 'Make admin'),
-                  //     ],
-                  //   ),
-                  // ),
                   PopupMenuItem(
                     value: _MemberAdminAction.remove,
                     child: Row(
@@ -2314,7 +2383,7 @@ class _MemberRow extends StatelessWidget {
                   ),
                 ],
               )
-            else
+            else if (!isPending)
               const Icon(Icons.chevron_right, size: 18, color: _muted),
           ],
         ),
@@ -2325,20 +2394,22 @@ class _MemberRow extends StatelessWidget {
 
 class _RoleBadge extends StatelessWidget {
   final String label;
-  const _RoleBadge({required this.label});
+  final bool isPending;
+  const _RoleBadge({required this.label, this.isPending = false});
 
   @override
   Widget build(BuildContext context) {
+    final color = isPending ? Colors.orange.shade700 : _gold;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: _gold.withOpacity(0.12),
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         label,
-        style: const TextStyle(
-          color: _gold,
+        style: TextStyle(
+          color: color,
           fontSize: 10,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.3,

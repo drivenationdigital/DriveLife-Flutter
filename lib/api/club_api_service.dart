@@ -393,6 +393,7 @@ class ClubApiService {
       );
 
       final data = json.decode(response.body);
+      print(data);
 
       if (response.statusCode == 200) {
         return data['success'] == true;
