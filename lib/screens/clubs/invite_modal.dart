@@ -19,19 +19,33 @@ class _ClubInviteModalState extends State<ClubInviteModal> {
   Future<void> _handleAccept() async {
     setState(() => _isLoading = true);
     try {
-      await ClubApiService.acceptClubAdminInvitation(widget.inviteId,widget.notificationId);
+      final response = await ClubApiService.acceptClubAdminInvitation(widget.inviteId,widget.notificationId);
       if (mounted) {
         Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('You\'ve joined ${widget.clubName}!'),
-            backgroundColor: _gold,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+
+        if (response.success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('You\'ve joined ${widget.clubName}!'),
+              backgroundColor: _gold,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to accept invite: ${response.message ?? 'Unknown error'}'),
+              backgroundColor: Colors.red.shade600,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {

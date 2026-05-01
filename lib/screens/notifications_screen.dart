@@ -507,6 +507,8 @@ class _NotificationTile extends StatelessWidget {
     final following = _isFollowing(userId);
 
     final isInvite = notification['type'] == 'invite';
+    final inviteStatus = entityData['invite_status'] ?? 'pending';
+    final isPendingInvite = isInvite && inviteStatus == 'pending';
     final clubName = entityData['club_name']?.toString() ?? 'a club';
 
     return InkWell(
@@ -550,7 +552,7 @@ class _NotificationTile extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             _buildRightWidget(isFollow, following, userId, postMedia),
-            if (isInvite) ...[
+            if (isInvite ) ...[
               const SizedBox(width: 8),
               _buildInviteAcceptButton(
                 clubName,

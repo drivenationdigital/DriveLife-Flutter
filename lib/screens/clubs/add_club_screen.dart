@@ -1,15 +1,20 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:drivelife/api/club_api_service.dart';
+import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/club_api_models.dart';
 import 'package:drivelife/models/event_media.dart';
+import 'package:drivelife/models/search_view_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/screens/search_user.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_quill_delta_from_html/flutter_quill_delta_from_html.dart';
+import 'package:fluttertagger/fluttertagger.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
@@ -76,6 +81,8 @@ class _CreateClubScreenState extends State<CreateClubScreen>
   // Club Administrators
   final List<ClubAdministrator> _administrators = [];
   final TextEditingController _adminEmailController = TextEditingController();
+  final FlutterTaggerController userSearchController =
+      FlutterTaggerController();
 
   // State
   bool _isLoading = false;
@@ -143,7 +150,6 @@ class _CreateClubScreenState extends State<CreateClubScreen>
   }
 
   Future<void> _loadExistingData() async {
-    print('🔍 Loading club data for ID: $_clubId');
     setState(() => _isLoadingClub = true);
     try {
       // Fetch club details using the new API service
@@ -299,17 +305,17 @@ class _CreateClubScreenState extends State<CreateClubScreen>
     });
   }
 
-  Future<void> _addAdministrator() async {
-    final email = _adminEmailController.text.trim();
-    if (email.isEmpty || !email.contains('@')) {
-      _showError('Please enter a valid email address');
-      return;
-    }
+  Future<void> _addAdministrator(int userId, String username) async {
+    // final email = _adminEmailController.text.trim();
+    // if (email.isEmpty || !email.contains('@')) {
+    //   _showError('Please enter a valid email address');
+    //   return;
+    // }
 
     setState(() => _isLoading = true);
 
     try {
-      final response = await ClubApiService.inviteClubAdmin(_clubId!, email);
+      final response = await ClubApiService.inviteClubAdmin(_clubId!, userId);
 
       if (response.success && response.data != null) {
         setState(() {
@@ -663,7 +669,6 @@ class _CreateClubScreenState extends State<CreateClubScreen>
             ),
           );
         }
-
       } else {
         throw Exception(response.message ?? 'Failed to update club');
       }
@@ -757,6 +762,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
     _termsController.dispose();
     _locationFocusNode.dispose();
     _adminEmailController.dispose();
+    userSearchController.dispose();
     for (var controller in _questionControllers) {
       controller.dispose();
     }
@@ -807,7 +813,9 @@ class _CreateClubScreenState extends State<CreateClubScreen>
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFAE9159),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFFAE9159),
                     ),
                   )
                 : Text(
@@ -972,8 +980,8 @@ class _CreateClubScreenState extends State<CreateClubScreen>
                 // Tab 6: Administrators
                 _loadedTabs.contains(5)
                     ? _AdministratorsTab(
+                        // userSearchController: userSearchController,
                         administrators: _administrators,
-                        emailController: _adminEmailController,
                         onAddAdministrator: _addAdministrator,
                         onRemoveAdministrator: _removeAdministrator,
                         onBack: () => _tabController.animateTo(4),
@@ -1150,46 +1158,93 @@ class _BasicDetailsTab extends StatelessWidget {
                   color: Colors.black87,
                 ),
               ),
-              if (!isLoadingCategories) // ADD THIS CONDITION
+              if (!isLoadingCategories)
                 TextButton(
                   onPressed: () {
-                    for (var category in availableCategories) {
-                      if (!selectedCategoryIds.contains(category.termId)) {
-                        // ✅ Changed
-                        onCategoryToggled(category.termId); // ✅ Changed
+                    // Toggle: if all are selected, clear; otherwise select all
+                    final allSelected = availableCategories.every(
+                      (c) => selectedCategoryIds.contains(c.termId),
+                    );
+                    if (allSelected) {
+                      for (var category in availableCategories) {
+                        if (selectedCategoryIds.contains(category.termId)) {
+                          onCategoryToggled(category.termId);
+                        }
+                      }
+                    } else {
+                      for (var category in availableCategories) {
+                        if (!selectedCategoryIds.contains(category.termId)) {
+                          onCategoryToggled(category.termId);
+                        }
                       }
                     }
                   },
                   child: Text(
-                    'Select all',
+                    availableCategories.every(
+                          (c) => selectedCategoryIds.contains(c.termId),
+                        )
+                        ? 'Clear all'
+                        : 'Select all',
                     style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 8),
-          // REPLACE THE CATEGORY LIST WITH THIS:
+          const SizedBox(height: 4),
           isLoadingCategories
               ? const _CategoryShimmer()
-              : Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
+              : Column(
                   children: availableCategories.map((category) {
                     final isSelected = selectedCategoryIds.contains(
                       category.termId,
-                    ); // ✅ Changed
-                    return FilterChip(
-                      label: Text(category.name),
-                      selected: isSelected,
-                      onSelected: (_) => onCategoryToggled(
-                        category.termId,
-                      ), // ✅ Changed to termId
-                      selectedColor: theme.primaryColor.withOpacity(0.1),
-                      checkmarkColor: theme.primaryColor,
+                    );
+                    return InkWell(
+                      onTap: () => onCategoryToggled(category.termId),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          children: [
+                            // Custom checkbox so we control the size/colour exactly
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? theme.primaryColor
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? theme.primaryColor
+                                      : Colors.grey.shade400,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: isSelected
+                                  ? const Icon(
+                                      Icons.check,
+                                      size: 16,
+                                      color: Colors.white,
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                category.name,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     );
                   }).toList(),
                 ),
-
           const SizedBox(height: 24),
 
           // Club Location Type
@@ -1591,15 +1646,15 @@ class _DescriptionTab extends StatelessWidget {
                     color: Colors.black87,
                   ),
                 ),
-                const SizedBox(height: 16),
-
-                // Quill Toolbar
                 Container(
+                  width: double.infinity,
                   decoration: BoxDecoration(
+                    color: Colors.white,
                     border: Border.all(color: Colors.grey.shade300),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Toolbar
                       Container(
@@ -1607,6 +1662,10 @@ class _DescriptionTab extends StatelessWidget {
                           color: Colors.grey.shade50,
                           border: Border(
                             bottom: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(8),
+                            topRight: Radius.circular(8),
                           ),
                         ),
                         child: QuillSimpleToolbar(
@@ -1633,8 +1692,11 @@ class _DescriptionTab extends StatelessWidget {
                             showSearchButton: false,
                             showSmallButton: false,
                             showStrikeThrough: false,
+                            showClearFormat: false,
                             showSubscript: false,
                             showSuperscript: false,
+                            showUndo: false,
+                            showRedo: false,
                           ),
                         ),
                       ),
@@ -1885,19 +1947,15 @@ class _ClubTermsTab extends StatelessWidget {
     );
   }
 }
-
-// Administrators Tab
-class _AdministratorsTab extends StatelessWidget {
+class _AdministratorsTab extends StatefulWidget {
   final List<ClubAdministrator> administrators;
-  final TextEditingController emailController;
-  final VoidCallback onAddAdministrator;
+  final void Function(int userId, String username) onAddAdministrator;
   final Function(int) onRemoveAdministrator;
   final VoidCallback onBack;
   final VoidCallback onNext;
 
   const _AdministratorsTab({
     required this.administrators,
-    required this.emailController,
     required this.onAddAdministrator,
     required this.onRemoveAdministrator,
     required this.onBack,
@@ -1905,8 +1963,111 @@ class _AdministratorsTab extends StatelessWidget {
   });
 
   @override
+  State<_AdministratorsTab> createState() => _AdministratorsTabState();
+}
+
+class _AdministratorsTabState extends State<_AdministratorsTab> {
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  Timer? _debounce;
+
+  List<dynamic> _searchResults = [];
+  bool _isSearching = false;
+
+  // Selected user (one at a time)
+  int? _selectedUserId;
+  String? _selectedUsername;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () => _search(query));
+  }
+
+  Future<void> _search(String query) async {
+    if (query.trim().length < 3) {
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+      });
+      return;
+    }
+
+    setState(() => _isSearching = true);
+
+    try {
+      final results = await PostsAPI.fetchTaggableEntities(
+        search: query,
+        entityType: 'users',
+        taggedEntities: const [],
+      );
+
+      if (mounted) {
+        setState(() {
+          _searchResults = results;
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _searchResults = [];
+          _isSearching = false;
+        });
+      }
+    }
+  }
+
+  void _selectUser(Map<String, dynamic> user) {
+    final id = int.tryParse(user['entity_id'].toString());
+    final username = (user['name'] ?? '').toString();
+
+    if (id == null || username.isEmpty) return;
+
+    // Block if already an admin
+    final alreadyAdmin = widget.administrators.any(
+      (a) => a.userId == id.toString(), // adjust field name if different on your model
+    );
+    if (alreadyAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('That user is already an administrator')),
+      );
+      return;
+    }
+
+    setState(() {
+      _selectedUserId = id;
+      _selectedUsername = username;
+      _searchResults = [];
+    });
+    _searchController.clear();
+    _searchFocusNode.unfocus();
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedUserId = null;
+      _selectedUsername = null;
+    });
+  }
+
+  void _sendInvite() {
+    if (_selectedUserId == null || _selectedUsername == null) return;
+    widget.onAddAdministrator(_selectedUserId!, _selectedUsername!);
+    _clearSelection();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
+    final hasSelection = _selectedUserId != null;
 
     return Column(
       children: [
@@ -1919,126 +2080,155 @@ class _AdministratorsTab extends StatelessWidget {
                 const Text(
                   'Club administrators can create and manage events, accept new member requests and remove members. They cannot edit club details, unpublish or delete a club.',
                   style: TextStyle(fontSize: 14, color: Colors.black87),
-                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
 
-                // Add Administrator Input
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: InputDecoration(
-                          hintText: 'Enter Email',
-                          hintStyle: TextStyle(color: Colors.grey.shade400),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: theme.primaryColor),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: onAddAdministrator,
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Invite'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.primaryColor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 18,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ],
+                const Text(
+                  'Invite by username',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 8),
 
-                // List of Administrators
-                if (administrators.isNotEmpty) ...[
-                  const Text(
-                    'Current Administrators',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
+                if (hasSelection)
+                  _buildSelectedUserChip(theme)
+                else
+                  _buildSearchField(theme),
+
+                // Inline results
+                if (!hasSelection &&
+                    _searchController.text.trim().length >= 3) ...[
+                  const SizedBox(height: 6),
+                  _buildResultsList(theme),
+                ],
+
+                const SizedBox(height: 12),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: hasSelection ? _sendInvite : null,
+                    icon: const Icon(Icons.send, size: 18),
+                    label: const Text('Send invite'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.primaryColor,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.grey.shade300,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
+                ),
+
+                const SizedBox(height: 32),
+
+                if (widget.administrators.isNotEmpty) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Current administrators',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      Text(
+                        '${widget.administrators.length}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
-                  // IN _AdministratorsTab build method, update the list display:
-                  ...List.generate(administrators.length, (index) {
-                    final admin = administrators[index];
+                  ...List.generate(widget.administrators.length, (index) {
+                    final admin = widget.administrators[index];
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        border: Border.all(color: Colors.grey.shade300),
+                        color: Colors.white,
+                        border: Border.all(color: Colors.grey.shade200),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Icon(
-                                admin.isActive
-                                    ? Icons.person
-                                    : Icons.mail_outline,
-                                size: 18,
-                                color: Colors.grey.shade600,
-                              ),
-                              const SizedBox(width: 8),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    admin.email,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.black87,
-                                    ),
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundColor: theme.primaryColor.withOpacity(
+                              0.12,
+                            ),
+                            child: Icon(
+                              admin.isActive
+                                  ? Icons.person
+                                  : Icons.mail_outline,
+                              size: 18,
+                              color: theme.primaryColor,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  admin.email,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87,
                                   ),
-                                  Text(
+                                ),
+                                const SizedBox(height: 2),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: admin.isActive
+                                        ? Colors.green.withOpacity(0.12)
+                                        : Colors.orange.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
                                     admin.status.toUpperCase(),
                                     style: TextStyle(
-                                      fontSize: 11,
+                                      fontSize: 10,
                                       color: admin.isActive
-                                          ? Colors.green
-                                          : Colors.orange,
-                                      fontWeight: FontWeight.w600,
+                                          ? Colors.green.shade700
+                                          : Colors.orange.shade700,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.4,
                                     ),
                                   ),
-                                ],
-                              ),
-                            ],
+                                ),
+                              ],
+                            ),
                           ),
                           IconButton(
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.close,
                               size: 18,
-                              color: Colors.red,
+                              color: Colors.red.shade400,
                             ),
-                            onPressed: () => onRemoveAdministrator(index),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
+                            onPressed: () =>
+                                widget.onRemoveAdministrator(index),
+                            visualDensity: VisualDensity.compact,
                           ),
                         ],
                       ),
@@ -2052,9 +2242,195 @@ class _AdministratorsTab extends StatelessWidget {
       ],
     );
   }
+
+  Widget _buildSearchField(ThemeProvider theme) {
+    return TextField(
+      controller: _searchController,
+      focusNode: _searchFocusNode,
+      onChanged: (q) {
+        _onSearchChanged(q);
+        setState(() {}); // refresh suffix icon visibility
+      },
+      style: const TextStyle(fontSize: 15),
+      decoration: InputDecoration(
+        hintText: 'Search by username...',
+        hintStyle: TextStyle(color: Colors.grey.shade400),
+        prefixIcon: Icon(Icons.search, color: Colors.grey.shade500),
+        suffixIcon: _searchController.text.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear, size: 18),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchResults = []);
+                },
+              )
+            : null,
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: theme.primaryColor),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 14,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultsList(ThemeProvider theme) {
+    if (_isSearching && _searchResults.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.grey.shade200),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    if (_searchResults.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.grey.shade200),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          'No users found',
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+        ),
+      );
+    }
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 280),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: _searchResults.length,
+        separatorBuilder: (_, __) =>
+            Divider(height: 1, color: Colors.grey.shade100),
+        itemBuilder: (context, i) {
+          final user = _searchResults[i] as Map<String, dynamic>;
+          final username = (user['name'] ?? '').toString();
+          final avatar = user['image'] as String?;
+
+          return InkWell(
+            onTap: () => _selectUser(user),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: theme.primaryColor.withOpacity(0.12),
+                    backgroundImage: (avatar != null && avatar.isNotEmpty)
+                        ? NetworkImage(avatar)
+                        : null,
+                    child: (avatar == null || avatar.isEmpty)
+                        ? Text(
+                            username.isNotEmpty
+                                ? username[0].toUpperCase()
+                                : '?',
+                            style: TextStyle(
+                              color: theme.primaryColor,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '@$username',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSelectedUserChip(ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.primaryColor.withOpacity(0.08),
+        border: Border.all(color: theme.primaryColor.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 14,
+            backgroundColor: theme.primaryColor.withOpacity(0.18),
+            child: Icon(Icons.person, size: 16, color: theme.primaryColor),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '@$_selectedUsername',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _clearSelection,
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              'Change',
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-// Image Upload Box Widget
 class _ImageUploadBox extends StatelessWidget {
   final ImageData? image;
   final double height;

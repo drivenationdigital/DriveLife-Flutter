@@ -491,7 +491,7 @@ class ClubApiService {
   /// Returns [ApiResponse<ClubAdministrator>] with the new invitation
   static Future<ApiResponse<ClubAdministrator>> inviteClubAdmin(
     String encryptedClubId,
-    String email,
+    int userId,
   ) async {
     try {
       final url = Uri.parse(
@@ -501,7 +501,7 @@ class ClubApiService {
       final response = await http.post(
         url,
         headers: await _getHeaders(),
-        body: jsonEncode({'email': email}),
+        body: jsonEncode({'user_id': userId}),
       );
 
       if (response.statusCode == 200) {
@@ -546,10 +546,11 @@ class ClubApiService {
       );
 
       final response = await http.post(url, headers: await _getHeaders());
-
-      if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
 
+        print('📡 Accept invite: ${response.statusCode} - ${json['message']}');
+
+      if (response.statusCode == 200) {
         return ApiResponse<void>(
           success: json['success'] as bool? ?? false,
           message: json['message'] as String?,
