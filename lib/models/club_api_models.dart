@@ -72,6 +72,7 @@ class ClubEditData {
   final List<String> membershipQuestions;
   final String clubTerms;
   final List<ClubAdministrator> administrators;
+  final String status; // 'publish' or 'draft'
 
   ClubEditData({
     required this.clubId,
@@ -92,12 +93,14 @@ class ClubEditData {
     required this.membershipQuestions,
     required this.clubTerms,
     required this.administrators,
+    this.status = 'draft',
   });
 
   factory ClubEditData.fromJson(Map<String, dynamic> json) {
     return ClubEditData(
       clubId: json['club_id'] as String,
       clubTitle: json['club_title'] as String,
+      status: json['status'] as String? ?? 'draft',
       categories: ClubCategories.fromJson(
         json['categories'] as Map<String, dynamic>,
       ),
@@ -133,6 +136,7 @@ class ClubEditData {
     return {
       'club_id': clubId,
       'club_title': clubTitle,
+      'status': status,
       'categories': categories.toJson(),
       'club_location_type': clubLocationType,
       'club_location': clubLocation,

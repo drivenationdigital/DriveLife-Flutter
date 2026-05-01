@@ -777,13 +777,14 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          Expanded(child: _buildFilterButton(
-            'Club Type',
-            _selectedClubType == 'all' ? 'All' : _selectedClubType,
-            () {
-              // TODO: open club type filter sheet
-            },
-          ),
+          Expanded(
+            child: _buildFilterButton(
+              'Club Type',
+              _selectedClubType == 'all' ? 'All' : _selectedClubType,
+              () {
+                // TODO: open club type filter sheet
+              },
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -945,7 +946,20 @@ class _MyClubsScreenState extends State<MyClubsScreen>
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final club = _clubs[index];
-          return _ClubCard(club: club, onTap: () => _openClubEditor(club));
+          return _ClubCard(
+            club: club,
+            onEdit: () => _openClubEditor(club),
+            onView: () => {
+              NavigationHelper.navigateTo(
+                context,
+                ClubViewScreen(
+                  clubPostId: int.parse(club.Id ?? '0'),
+                  isOwnClub: false,
+                  showAppBar: true,
+                ),
+              ),
+            },
+          );
         },
       ),
     );
@@ -954,17 +968,21 @@ class _MyClubsScreenState extends State<MyClubsScreen>
 
 class _ClubCard extends StatelessWidget {
   final MyClub club;
-  final VoidCallback onTap;
+  final VoidCallback onEdit;
+  final VoidCallback onView;
 
-  const _ClubCard({required this.club, required this.onTap});
+  const _ClubCard({
+    required this.club,
+    required this.onEdit,
+    required this.onView,
+  });
 
   @override
   Widget build(BuildContext context) {
     final primaryColor = Provider.of<ThemeProvider>(context).primaryColor;
-    final theme = Provider.of<ThemeProvider>(context);
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: onView, // tap the card body = view profile
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
@@ -1013,66 +1031,61 @@ class _ClubCard extends StatelessWidget {
                       _StatusDot(isPublished: club.isPublished),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  // Row(
-                  //   children: [
-                  //     Icon(
-                  //       club.isNational ? Icons.public : Icons.location_on,
-                  //       size: 13,
-                  //       color: theme.primaryColor,
-                  //     ),
-                  //     const SizedBox(width: 4),
-                  //     Flexible(
-                  //       child: Text(
-                  //         club.isNational
-                  //             ? 'National Club'
-                  //             : club.location.isNotEmpty
-                  //             ? club.location
-                  //             : 'Local Club',
-                  //         maxLines: 1,
-                  //         overflow: TextOverflow.ellipsis,
-                  //         style: TextStyle(
-                  //           fontSize: 12,
-                  //           color: theme.primaryColor,
-                  //         ),
-                  //       ),
-                  //     ),
-                  //     const SizedBox(width: 8),
-                  //     Icon(Icons.people, size: 13, color: theme.primaryColor),
-                  //     const SizedBox(width: 4),
-                  //     Text(
-                  //       '${club.memberCount}',
-                  //       style: TextStyle(
-                  //         fontSize: 12,
-                  //         color: Colors.grey.shade600,
-                  //       ),
-                  //     ),
-                  //   ],
-                  // ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
 
-            // Edit button
-            OutlinedButton(
-              onPressed: onTap,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: primaryColor,
-                side: BorderSide(color: primaryColor, width: 1.2),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 6,
+            // Stacked action buttons
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 80,
+                  height: 30,
+                  child: OutlinedButton(
+                    onPressed: onEdit,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: primaryColor,
+                      side: BorderSide(color: primaryColor, width: 1.2),
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text(
+                      'Edit',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: 80,
+                  height: 30,
+                  child: TextButton(
+                    onPressed: onView,
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.grey.shade700,
+                      padding: EdgeInsets.zero,
+                      side: BorderSide(color: Colors.grey.shade700, width: 1.2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text(
+                      'View',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
-                minimumSize: const Size(0, 32),
-              ),
-              child: const Text(
-                'Edit',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
+              ],
             ),
           ],
         ),

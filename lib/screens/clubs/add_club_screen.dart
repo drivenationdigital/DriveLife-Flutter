@@ -191,6 +191,8 @@ class _CreateClubScreenState extends State<CreateClubScreen>
       _instagramController.text = club.instagram;
       _merchandiseController.text = club.merchandiseLink;
 
+      _isPublished = club.status == 'publish';
+
       // Load description (convert HTML to Quill Delta)
       if (club.description.isNotEmpty) {
         try {
@@ -198,8 +200,8 @@ class _CreateClubScreenState extends State<CreateClubScreen>
           _descriptionController.document = Document.fromDelta(delta);
         } catch (e) {
           print('Error converting description HTML to Quill: $e');
-          _descriptionController.document = Document()
-            ..insert(0, club.description);
+          // _descriptionController.document = Document()
+            // ..insert(0, club.description);
         }
       }
 

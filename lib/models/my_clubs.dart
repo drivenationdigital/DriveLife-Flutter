@@ -8,6 +8,7 @@ class MyClub {
   final String location;
   final int memberCount;
   final DateTime createdDate;
+  final String? Id;
 
   MyClub({
     required this.clubId,
@@ -19,10 +20,12 @@ class MyClub {
     required this.location,
     required this.memberCount,
     required this.createdDate,
+    required this.Id,
   });
 
   factory MyClub.fromJson(Map<String, dynamic> json) {
     return MyClub(
+      Id: json['id'].toString(),
       clubId: json['club_id'] as String,
       title: json['title'] as String,
       status: json['status'] as String,
