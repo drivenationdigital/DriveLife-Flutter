@@ -35,7 +35,8 @@ class ClubApiService {
     String? category,
     double? lat,
     double? lng,
-    String? location, // For future use if we want to support location by name instead of coordinates
+    String?
+    location, // For future use if we want to support location by name instead of coordinates
     int page = 1,
     int perPage = 15,
   }) async {
@@ -77,7 +78,7 @@ class ClubApiService {
         },
       );
 
-        final data = json.decode(response.body);
+      final data = json.decode(response.body);
       if (response.statusCode == 200) {
         return data['data'] as List<dynamic>?;
       }

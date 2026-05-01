@@ -8,6 +8,8 @@ import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/auth/entity_switcher.dart';
 import 'package:drivelife/screens/chat/ChatList.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
+import 'package:drivelife/screens/clubs/add_club_screen.dart';
+import 'package:drivelife/screens/clubs/club_creation_screen.dart';
 import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
 import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
@@ -201,38 +203,40 @@ class _HomeTabsState extends State<HomeTabs> {
                     ),
                   ],
 
-                  // ListTile(
-                  //   leading: Icon(
-                  //     Icons.place_outlined,
-                  //     color: theme.primaryColor,
-                  //   ),
-                  //   title: const Text('Add Club'),
-                  //   onTap: () async {
-                  //     Navigator.pop(context);
+                  ListTile(
+                    leading: iconSvg(
+                      'assets/app-icons/06-Clubs.svg',
+                      theme,
+                      size: 18,
+                      isActive: true,
+                    ),
+                    title: const Text('Add Club'),
+                    onTap: () async {
+                      Navigator.pop(context);
 
-                  //     // Show bottom sheet first
-                  //     final result =
-                  //         await showModalBottomSheet<Map<String, dynamic>>(
-                  //           context: context,
-                  //           isScrollControlled: true,
-                  //           backgroundColor: Colors.transparent,
-                  //           builder: (context) =>
-                  //               const ClubTypeSelectionSheet(),
-                  //         );
+                      // Show bottom sheet first
+                      final result =
+                          await showModalBottomSheet<Map<String, dynamic>>(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (context) =>
+                                const ClubTypeSelectionSheet(),
+                          );
 
-                  //     // If club was created, navigate to edit screen
-                  //     if (result != null && result['clubId'] != null) {
-                  //       Navigator.push(
-                  //         context,
-                  //         MaterialPageRoute(
-                  //           builder: (context) => CreateClubScreen(
-                  //             existingClubId: result['clubId'],
-                  //           ),
-                  //         ),
-                  //       );
-                  //     }
-                  //   },
-                  // ),
+                      // If club was created, navigate to edit screen
+                      if (result != null && result['clubId'] != null) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => CreateClubScreen(
+                              existingClubId: result['clubId'],
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
                   ListTile(
                     leading: Icon(
                       Icons.directions_car,
