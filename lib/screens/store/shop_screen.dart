@@ -14,8 +14,8 @@ import 'package:drivelife/models/product_model.dart';
 import 'package:html_unescape/html_unescape.dart';
 
 class ShopScreen extends StatefulWidget {
-  const ShopScreen({super.key});
-
+  const ShopScreen({super.key, this.showAppBar = false});
+  final bool showAppBar;
   @override
   State<ShopScreen> createState() => _ShopScreenState();
 }
@@ -482,7 +482,7 @@ class _ShopScreenState extends State<ShopScreen>
     // ✅ Show loading while checking region
     if (_isCheckingRegion) {
       return Scaffold(
-        appBar: AppBar(
+        appBar: widget.showAppBar ? AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
           centerTitle: true,
@@ -503,7 +503,7 @@ class _ShopScreenState extends State<ShopScreen>
             SharedHeaderIcons.qrCodeIcon(),
             SharedHeaderIcons.notificationIcon(),
           ],
-        ),
+        ): null,
         backgroundColor: Colors.white,
         body: Center(
           child: CircularProgressIndicator(color: theme.primaryColor),
@@ -514,7 +514,7 @@ class _ShopScreenState extends State<ShopScreen>
     // ✅ Show region restriction message
     if (!_isUKRegion) {
       return Scaffold(
-        appBar: AppBar(
+        appBar: widget.showAppBar ? AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
           centerTitle: true,
@@ -535,7 +535,7 @@ class _ShopScreenState extends State<ShopScreen>
             SharedHeaderIcons.qrCodeIcon(),
             SharedHeaderIcons.notificationIcon(),
           ],
-        ),
+        ) : null,
         backgroundColor: Colors.white,
         body: Center(
           child: Padding(
@@ -572,7 +572,7 @@ class _ShopScreenState extends State<ShopScreen>
     }
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.showAppBar ? AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -593,7 +593,7 @@ class _ShopScreenState extends State<ShopScreen>
           SharedHeaderIcons.qrCodeIcon(),
           SharedHeaderIcons.notificationIcon(),
         ],
-      ),
+      ) : null,
       backgroundColor: Colors.white,
       body: Column(
         children: [

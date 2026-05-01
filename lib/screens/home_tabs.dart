@@ -19,6 +19,7 @@ import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/profile/my_club_profile_view.dart';
 import 'package:drivelife/screens/news/create_news_post_screen.dart';
+import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
@@ -102,8 +103,9 @@ class _HomeTabsState extends State<HomeTabs> {
         EventsScreen(),
         VenuesScreen(),
         MyClubsScreen(),
+        ShopScreen(),
         ClubProfileScreen(),
-        InboxScreen(myUserId: currentAccount!.user.id.toString()),
+        // InboxScreen(myUserId: currentAccount!.user.id.toString()),
       ];
     } else {
       screens = [
@@ -111,8 +113,9 @@ class _HomeTabsState extends State<HomeTabs> {
         EventsScreen(),
         VenuesScreen(),
         MyClubsScreen(),
+        // InboxScreen(myUserId: currentAccount!.user.id.toString()),
+        ShopScreen(),
         ProfileScreen(),
-        InboxScreen(myUserId: currentAccount!.user.id.toString()),
       ];
     }
 
@@ -388,7 +391,7 @@ class _HomeTabsState extends State<HomeTabs> {
                   'assets/app-icons/05-User.svg',
                   theme,
                   size: 24,
-                  isActive: _currentIndex == 4,
+                  isActive: _currentIndex == 5,
                 ),
         );
       },
@@ -440,7 +443,7 @@ class _HomeTabsState extends State<HomeTabs> {
       onTap: (index) {
         final current = _currentIndex; // snapshot before mutating
 
-        if (index == 4 && current == 4) {
+        if (index == 5 && current == 5) {
           _showAccountSwitcher();
           HapticFeedback.lightImpact();
           return;
@@ -487,24 +490,33 @@ class _HomeTabsState extends State<HomeTabs> {
           ),
           label: 'Clubs',
         ),
-        BottomNavigationBarItem(icon: _buildProfileIcon(), label: 'Profile'),
         BottomNavigationBarItem(
-          icon: Consumer<UnreadCountProvider>(
-            builder: (context, unread, child) {
-              final count = unread.count;
-              final icon = const Icon(Icons.chat_bubble_outline);
-              if (count > 0) {
-                return Badge(
-                  backgroundColor: theme.primaryColor,
-                  label: Text(count > 99 ? '99+' : '$count'),
-                  child: icon,
-                );
-              }
-              return icon;
-            },
+          icon: iconSvg(
+            'assets/app-icons/04-Basket.svg',
+            theme,
+            isActive: _currentIndex == 4,
           ),
-          label: 'Chat',
+          label: 'Store',
         ),
+        BottomNavigationBarItem(icon: _buildProfileIcon(), label: 'Profile'),
+        // BottomNavigationBarItem(
+        //   icon: Consumer<UnreadCountProvider>(
+        //     builder: (context, unread, child) {
+        //       final count = unread.count;
+        //       final icon = const Icon(Icons.chat_bubble_outline);
+        //       if (count > 0) {
+        //         return Badge(
+        //           backgroundColor: theme.primaryColor,
+        //           label: Text(count > 99 ? '99+' : '$count'),
+        //           child: icon,
+        //         );
+        //       }
+        //       return icon;
+        //     },
+        //   ),
+        //   label: 'Chat',
+        // ),
+        
       ],
     );
   }

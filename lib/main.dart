@@ -70,8 +70,8 @@ void main() async {
     print('Error initializing Firebase: $e');
   }
 
-  await SupabaseConfig.initialize();
-  await UserProfileCache.instance.loadFromDisk();
+  // await SupabaseConfig.initialize();
+  // await UserProfileCache.instance.loadFromDisk();
 
   runApp(
     MultiProvider(

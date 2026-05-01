@@ -34,7 +34,7 @@ class SharedHeaderIcons {
     );
   }
 
-  static Widget storeIcon(){
+  static Widget storeIcon() {
     return Builder(
       builder: (context) => Consumer<CartProvider>(
         builder: (context, cart, child) {
@@ -43,10 +43,7 @@ class SharedHeaderIcons {
             'assets/app-icons/04-Basket.svg',
             width: 24,
             height: 24,
-            colorFilter: ColorFilter.mode(
-             Colors.black,
-              BlendMode.srcIn,
-            ),
+            colorFilter: ColorFilter.mode(Colors.black, BlendMode.srcIn),
           );
           if (count > 0) {
             return Badge(
@@ -56,13 +53,14 @@ class SharedHeaderIcons {
             );
           }
 
-
-          return 
-          IconButton(
+          return IconButton(
             padding: EdgeInsets.zero,
-            onPressed: () => NavigationHelper.navigateTo(context, const ShopScreen()),
-            icon:icon
-            );
+            onPressed: () => NavigationHelper.navigateTo(
+              context,
+              const ShopScreen(showAppBar: true),
+            ),
+            icon: icon,
+          );
         },
       ),
     );
@@ -96,9 +94,9 @@ class SharedHeaderIcons {
   static Widget qrCodeIconWLabel({
     Color iconColor = Colors.black,
     Function(Map<String, dynamic>)? onSuccess,
-  }){
+  }) {
     return Builder(
-      builder: (context) =>  ListTile(
+      builder: (context) => ListTile(
         // PADDING
         contentPadding: const EdgeInsets.symmetric(horizontal: 19, vertical: 0),
         leading: SvgPicture.asset(
