@@ -45,9 +45,9 @@ class PostsScreenState extends State<PostsScreen>
     _tabController = TabController(length: 3, vsync: this);
     // When the user switches tabs, reveal the pills again so they're never
     // stuck hidden on a tab that has nothing to scroll.
-    _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) _pillsVisible.value = true;
-    });
+    // _tabController.addListener(() {
+    //   if (!_tabController.indexIsChanging) _pillsVisible.value = true;
+    // });
   }
 
   Future<void> scrollToTopAndRefresh() async {
@@ -199,14 +199,17 @@ class _PostsTabState extends State<_PostsTab>
       final pos = _scrollController.position;
       if (pos.pixels <= 0) {
         widget.pillsVisible.value = true;
-      } else {
-        final dir = pos.userScrollDirection;
-        if (dir == ScrollDirection.reverse) {
-          widget.pillsVisible.value = false;
-        } else if (dir == ScrollDirection.forward) {
-          widget.pillsVisible.value = true;
-        }
+      }  else {
+        widget.pillsVisible.value = false;
       }
+      // else {
+      //   final dir = pos.userScrollDirection;
+      //   if (dir == ScrollDirection.reverse) {
+      //     widget.pillsVisible.value = false;
+      //   } else if (dir == ScrollDirection.forward) {
+      //     widget.pillsVisible.value = true;
+      //   }
+      // }
     }
 
     // Pagination — debounced (unchanged behaviour).
