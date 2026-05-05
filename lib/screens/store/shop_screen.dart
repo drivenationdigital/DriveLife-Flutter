@@ -148,7 +148,7 @@ class _ShopScreenState extends State<ShopScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoadingBanners = false);
-      _showError('Failed to load banners: $e');
+      _showError('Unable to load banners');
     }
   }
 
@@ -174,7 +174,7 @@ class _ShopScreenState extends State<ShopScreen>
       if (!mounted) return;
 
       setState(() => _isLoadingProducts = false);
-      _showError('Failed to load products: $e');
+      _showError('Unable to load products');
     }
   }
 
@@ -211,7 +211,7 @@ class _ShopScreenState extends State<ShopScreen>
       });
     } catch (e) {
       setState(() => _isLoadingProducts = false);
-      _showError('Failed to load products: $e');
+      _showError('Unable to load products');
     }
   }
 

@@ -240,6 +240,19 @@ class _RegisterStepOneScreenState extends State<RegisterStepOneScreen> {
                                       print('Registration Response: $response');
                                       // Check response
                                       if (response['success'] != true) {
+                                        // if network error, show snackbar
+                                        if (response['code'] == 'network_error') {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(response['message'] ??
+                                                  'Network error, please try again'),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                          return;
+                                        }
+
                                         // Show error dialog
                                         showDialog(
                                           context: context,
