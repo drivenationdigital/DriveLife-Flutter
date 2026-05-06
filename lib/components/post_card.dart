@@ -60,6 +60,14 @@ class _PostCardState extends State<PostCard>
   late final double _maxMediaHeight;
   late final bool _hasMedia;
 
+  /// True when this post is a club post with no media — render as an
+  /// announcement-style card (caption-first, prominent typography).
+  bool get _isClubAnnouncement {
+    final isClubPost =
+        widget.post['is_club_post'] == true || widget.post['club_id'] != null;
+    return isClubPost && !_hasMedia;
+  }
+
   int _currentPage = 0;
   bool _liked = false;
   int _likesCount = 0;
@@ -623,107 +631,188 @@ class _PostCardState extends State<PostCard>
             ),
           ),
 
-          // ✅ Media - Wrapped in RepaintBoundary
-          if (_hasMedia)
-            RepaintBoundary(
-              child: _MediaCarousel(
-                media: _media,
-                maxHeight: _maxMediaHeight,
-                currentPage: _currentPage,
-                allowSwipe: _allowSwipe,
-                showHeart: _showHeart,
-                heartAnimation: _heartScale,
-                heartController: _heartController,
-                onPageChanged: (i) {
-                  if (!mounted) return;
-                  setState(() => _currentPage = i);
-                  _preloadMedia(_media, i);
-                },
-                onDoubleTap: _handleDoubleTap,
-                onSwipeChanged: (allow) {
-                  if (mounted) setState(() => _allowSwipe = allow);
-                },
+          // ── ANNOUNCEMENT LAYOUT ──────────────────────────────────
+          if (_isClubAnnouncement) ...[
+            // Caption — large, plain, generous spacing
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: _PostCaptionSection(
+                commentsEnabled: false,
+                username: '',
+                caption: widget.post['caption'] ?? '',
+                commentsCount: 0,
+                onViewComments: () => _openComments(context),
+                isEvent: false,
+                eventEndDate: null,
+                eventLocation: null,
+                eventStartDate: null,
+                eventDescription: '',
               ),
             ),
 
-          // ✅ Actions - Wrapped in RepaintBoundary
-          RepaintBoundary(
-            child: _PostActions(
-              liked: _liked,
-              onLikeTap: () {
-                HapticFeedback.heavyImpact();
-                _liked ? _toggleUnlike() : _optimisticLike();
-              },
-              onCommentTap: () => _openComments(context),
-              onShareTap: _sharePost,
-              newsTitle: widget.post['is_news'] == true
-                  ? widget.post['caption'] ?? 'News'
-                  : null,
-              isNews: widget.post['is_news'] == true,
-              isEvent: widget.post['is_event'] == true,
-              eventId: widget.post['is_event'] == true
-                  ? widget.post['id']
-                  : null,
-              newsContent: widget.post['news_content'], // HTML from ACF
-              newsDate: widget.post['post_date'],
-              newsImageUrls: _media
-                  .map((m) => m['media_url'])
-                  .whereType<String>()
-                  .toList(),
-              creatorProfileImage: widget.post['user_profile_image'],
-              username: widget.post['username'] ?? '',
-              isVerified: widget.post['user_verified'] == true,
-              postUserId: widget.post['user_id'],
-              asc_link_type: widget.post['asc_link_type'],
-              asc_link_url: widget.post['asc_link'],
+            // Slim divider, like the line between tweets
+            Container(
+              height: 1,
+              color: Colors.grey.shade100,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
             ),
-          ),
 
-          GestureDetector(
-            onTap: (_likesCount > 0 && widget.post['is_event'] != true)
-                ? () {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (_) => LikesModal(postId: widget.post['id']),
-                    );
-                  }
-                : null,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '$_likesCount likes',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black,
+            // Action row
+            RepaintBoundary(
+              child: _PostActions(
+                liked: _liked,
+                onLikeTap: () {
+                  HapticFeedback.heavyImpact();
+                  _liked ? _toggleUnlike() : _optimisticLike();
+                },
+                onCommentTap: () => _openComments(context),
+                onShareTap: _sharePost,
+                newsTitle: null,
+                isNews: false,
+                isEvent: false,
+                eventId: null,
+                newsContent: null,
+                newsDate: widget.post['post_date'],
+                newsImageUrls: const [],
+                creatorProfileImage: widget.post['user_profile_image'],
+                username: widget.post['username'] ?? '',
+                isVerified: widget.post['user_verified'] == true,
+                postUserId: widget.post['user_id'],
+                asc_link_type: widget.post['asc_link_type'],
+                asc_link_url: widget.post['asc_link'],
+              ),
+            ),
+
+            GestureDetector(
+              onTap: (_likesCount > 0 && widget.post['is_event'] != true)
+                  ? () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (_) => LikesModal(postId: widget.post['id']),
+                      );
+                    }
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  '$_likesCount likes',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black,
+                  ),
                 ),
               ),
             ),
-          ),
-          // ✅ Caption - Wrapped in RepaintBoundary
-          RepaintBoundary(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: _PostCaptionSection(
-                // if not news or event, show caption as normal
-                commentsEnabled:
-                    widget.post['is_news'] != true &&
-                    widget.post['is_event'] != true,
-                username: widget.post['username'] ?? '',
-                caption: widget.post['caption'] ?? '',
-                commentsCount: widget.post['comments_count'] ?? 0,
-                onViewComments: () => _openComments(context),
+          ]
+          // ── REGULAR POST LAYOUT (unchanged) ──────────────────────
+          else ...[
+            // ✅ Media - Wrapped in RepaintBoundary
+            if (_hasMedia)
+              RepaintBoundary(
+                child: _MediaCarousel(
+                  media: _media,
+                  maxHeight: _maxMediaHeight,
+                  currentPage: _currentPage,
+                  allowSwipe: _allowSwipe,
+                  showHeart: _showHeart,
+                  heartAnimation: _heartScale,
+                  heartController: _heartController,
+                  onPageChanged: (i) {
+                    if (!mounted) return;
+                    setState(() => _currentPage = i);
+                    _preloadMedia(_media, i);
+                  },
+                  onDoubleTap: _handleDoubleTap,
+                  onSwipeChanged: (allow) {
+                    if (mounted) setState(() => _allowSwipe = allow);
+                  },
+                ),
+              ),
+
+            // ✅ Actions - Wrapped in RepaintBoundary
+            RepaintBoundary(
+              child: _PostActions(
+                liked: _liked,
+                onLikeTap: () {
+                  HapticFeedback.heavyImpact();
+                  _liked ? _toggleUnlike() : _optimisticLike();
+                },
+                onCommentTap: () => _openComments(context),
+                onShareTap: _sharePost,
+                newsTitle: widget.post['is_news'] == true
+                    ? widget.post['caption'] ?? 'News'
+                    : null,
+                isNews: widget.post['is_news'] == true,
                 isEvent: widget.post['is_event'] == true,
-                eventEndDate: widget.post['event_end_date'],
-                eventLocation: widget.post['event_location'],
-                eventStartDate: widget.post['event_start_date'],
-                eventDescription: widget.post['event_description'] ?? '',
+                eventId: widget.post['is_event'] == true
+                    ? widget.post['id']
+                    : null,
+                newsContent: widget.post['news_content'], // HTML from ACF
+                newsDate: widget.post['post_date'],
+                newsImageUrls: _media
+                    .map((m) => m['media_url'])
+                    .whereType<String>()
+                    .toList(),
+                creatorProfileImage: widget.post['user_profile_image'],
+                username: widget.post['username'] ?? '',
+                isVerified: widget.post['user_verified'] == true,
+                postUserId: widget.post['user_id'],
+                asc_link_type: widget.post['asc_link_type'],
+                asc_link_url: widget.post['asc_link'],
               ),
             ),
-          ),
 
-          const SizedBox(height: 10),
+            GestureDetector(
+              onTap: (_likesCount > 0 && widget.post['is_event'] != true)
+                  ? () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (_) => LikesModal(postId: widget.post['id']),
+                      );
+                    }
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  '$_likesCount likes',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+            ),
+            // ✅ Caption - Wrapped in RepaintBoundary
+            RepaintBoundary(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                child: _PostCaptionSection(
+                  // if not news or event, show caption as normal
+                  commentsEnabled:
+                      widget.post['is_news'] != true &&
+                      widget.post['is_event'] != true,
+                  username: widget.post['username'] ?? '',
+                  caption: widget.post['caption'] ?? '',
+                  commentsCount: widget.post['comments_count'] ?? 0,
+                  onViewComments: () => _openComments(context),
+                  isEvent: widget.post['is_event'] == true,
+                  eventEndDate: widget.post['event_end_date'],
+                  eventLocation: widget.post['event_location'],
+                  eventStartDate: widget.post['event_start_date'],
+                  eventDescription: widget.post['event_description'] ?? '',
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+          ],
         ],
       ),
     );
@@ -1683,14 +1772,15 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
       children: [
         // ── Username + caption (non-event) ───────────────────────
         if (!widget.isEvent) ...[
-          Text(
-            username,
-            style: const TextStyle(
-              color: Colors.black,
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
+          if (username.isNotEmpty)
+            Text(
+              username,
+              style: const TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
             ),
-          ),
           if (caption.isNotEmpty) ...[
             const SizedBox(height: 4),
             FormattedText(

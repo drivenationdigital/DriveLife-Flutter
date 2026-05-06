@@ -126,6 +126,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     super.dispose();
   }
 
+  /// True when this post is being created on behalf of a club.
+  /// Club posts have looser requirements (media optional, no tagging).
+  bool get _isClubPost =>
+      _associatedEntity != null && _associatedEntity!['type'] == 'club';
+
   void _autoFormatHashtags() {
     if (_processingTag) return; // block re-entry from addTag's own text update
 
@@ -381,8 +386,16 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Future<void> _createPost() async {
-    if (_selectedMedia.isEmpty) {
+    if (_selectedMedia.isEmpty && !_isClubPost) {
       _showMessage('Please select at least one image or video', isError: true);
+      return;
+    }
+
+    // For club posts with no media, require at least a caption
+    if (_isClubPost &&
+        _selectedMedia.isEmpty &&
+        _captionController.text.trim().isEmpty) {
+      _showMessage('Please add a caption or media', isError: true);
       return;
     }
 
@@ -868,6 +881,51 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 16),
+                if (_isClubPost) ...[
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFAE9159).withOpacity(0.10),
+                      border: Border.all(
+                        color: const Color(0xFFAE9159).withOpacity(0.3),
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.shield_rounded,
+                          size: 16,
+                          color: Color(0xFFAE9159),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Colors.black87,
+                              ),
+                              children: [
+                                const TextSpan(text: 'Posting as '),
+                                TextSpan(
+                                  text: _associatedEntity?['label'] ?? 'club',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 _buildCarousel(),
                 _buildThumbnails(),
 
@@ -910,8 +968,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                               ),
                             ),
                             const SizedBox(height: 20),
-                            const Text(
-                              'Add Photos or Videos',
+                            Text(
+                              _isClubPost
+                                  ? 'Add Media (Optional)'
+                                  : 'Add Photos or Videos',
                               style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w700,
@@ -920,7 +980,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Tap to select up to 10 items',
+                              _isClubPost
+                                  ? 'Optionally attach photos or videos'
+                                  : 'Tap to select up to 10 items',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey.shade600,
@@ -1154,82 +1216,84 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
                 const SizedBox(height: 24),
 
-                _OptionTile(
-                  icon: Icons.people_rounded,
-                  title: 'Tag People',
-                  count: _taggedUsers.length,
-                  onTap: () async {
-                    if (_selectedMedia.isEmpty) {
-                      _showMessage('Please add media first', isError: true);
-                      return;
-                    }
+                if (!_isClubPost) ...[
+                  _OptionTile(
+                    icon: Icons.people_rounded,
+                    title: 'Tag People',
+                    count: _taggedUsers.length,
+                    onTap: () async {
+                      if (_selectedMedia.isEmpty) {
+                        _showMessage('Please add media first', isError: true);
+                        return;
+                      }
 
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TagEntitiesScreen(
-                          media: _selectedMedia,
-                          entityType: 'users',
-                          existingTags: _taggedUsers,
-                          onTagsUpdated: (tags) =>
-                              setState(() => _taggedUsers = tags),
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TagEntitiesScreen(
+                            media: _selectedMedia,
+                            entityType: 'users',
+                            existingTags: _taggedUsers,
+                            onTagsUpdated: (tags) =>
+                                setState(() => _taggedUsers = tags),
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
 
-                _OptionTile(
-                  icon: Icons.directions_car_rounded,
-                  title: 'Tag Vehicles',
-                  count: _taggedVehicles.length,
-                  onTap: () async {
-                    if (_selectedMedia.isEmpty) {
-                      _showMessage('Please add media first', isError: true);
-                      return;
-                    }
+                  _OptionTile(
+                    icon: Icons.directions_car_rounded,
+                    title: 'Tag Vehicles',
+                    count: _taggedVehicles.length,
+                    onTap: () async {
+                      if (_selectedMedia.isEmpty) {
+                        _showMessage('Please add media first', isError: true);
+                        return;
+                      }
 
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TagEntitiesScreen(
-                          media: _selectedMedia,
-                          entityType: 'car',
-                          existingTags: _taggedVehicles,
-                          onTagsUpdated: (tags) =>
-                              setState(() => _taggedVehicles = tags),
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TagEntitiesScreen(
+                            media: _selectedMedia,
+                            entityType: 'car',
+                            existingTags: _taggedVehicles,
+                            onTagsUpdated: (tags) =>
+                                setState(() => _taggedVehicles = tags),
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
 
-                _OptionTile(
-                  icon: Icons.event_rounded,
-                  title: 'Tag Events',
-                  count: _taggedEvents.length,
-                  onTap: () async {
-                    if (_selectedMedia.isEmpty) {
-                      _showMessage('Please add media first', isError: true);
-                      return;
-                    }
+                  _OptionTile(
+                    icon: Icons.event_rounded,
+                    title: 'Tag Events',
+                    count: _taggedEvents.length,
+                    onTap: () async {
+                      if (_selectedMedia.isEmpty) {
+                        _showMessage('Please add media first', isError: true);
+                        return;
+                      }
 
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TagEntitiesScreen(
-                          media: _selectedMedia,
-                          entityType: 'events',
-                          existingTags: _taggedEvents,
-                          onTagsUpdated: (tags) =>
-                              setState(() => _taggedEvents = tags),
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TagEntitiesScreen(
+                            media: _selectedMedia,
+                            entityType: 'events',
+                            existingTags: _taggedEvents,
+                            onTagsUpdated: (tags) =>
+                                setState(() => _taggedEvents = tags),
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
 
-                const SizedBox(height: 80),
+                  const SizedBox(height: 80),
+                ],
               ],
             ),
           ),

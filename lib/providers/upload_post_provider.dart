@@ -252,58 +252,67 @@ class UploadPostProvider with ChangeNotifier {
     // Initialize notifications
     await initializeNotifications();
 
-    // Create initial progress
+    final hasMedia = data.mediaFiles.isNotEmpty;
+
     _uploads[data.id] = UploadPostProgress(
       uploadId: data.id,
-      status: UploadStatus.uploading,
+      status: hasMedia ? UploadStatus.uploading : UploadStatus.processing,
       totalItems: data.mediaFiles.length,
-      statusMessage: 'Preparing upload...',
+      progress: hasMedia ? 0.0 : 0.5,
+      statusMessage: hasMedia ? 'Preparing upload...' : 'Creating post...',
     );
     notifyListeners();
 
-    // Show initial notification
-    await _showProgressNotification(data.id, 0, 'Preparing upload...');
+    await _showProgressNotification(
+      data.id,
+      hasMedia ? 0 : 50,
+      hasMedia ? 'Preparing upload...' : 'Creating post...',
+    );
 
     try {
       // Convert files to MediaItem format with dimensions
-      final mediaList = <MediaItem>[];
-      for (int i = 0; i < data.mediaFiles.length; i++) {
-        final file = data.mediaFiles[i];
-        final isVideo = data.isVideoList[i];
 
-        // Get actual dimensions
-        final dimensions = await _getMediaDimensions(file, isVideo);
+      List<Map<String, dynamic>> uploadedMedia = [];
+      if (hasMedia) {
+        final mediaList = <MediaItem>[];
+        for (int i = 0; i < data.mediaFiles.length; i++) {
+          final file = data.mediaFiles[i];
+          final isVideo = data.isVideoList[i];
 
-        mediaList.add(
-          MediaItem(
-            file: file,
-            isVideo: isVideo,
-            height: dimensions['height'] ?? 0,
-            width: dimensions['width'] ?? 0,
-          ),
+          // Get actual dimensions
+          final dimensions = await _getMediaDimensions(file, isVideo);
+
+          mediaList.add(
+            MediaItem(
+              file: file,
+              isVideo: isVideo,
+              height: dimensions['height'] ?? 0,
+              width: dimensions['width'] ?? 0,
+            ),
+          );
+        }
+
+        // Upload media files
+        uploadedMedia = await PostsAPI.uploadMediaFiles(
+          mediaList: mediaList,
+          userId: data.userId,
+          onProgress: (current, total, percentage) {
+            final progress = (percentage * 100).toInt();
+            final message = 'Uploading ${current + 1}/$total items';
+
+            _uploads[data.id] = _uploads[data.id]!.copyWith(
+              progress: percentage,
+              currentItem: current + 1,
+              totalItems: total,
+              statusMessage: message,
+            );
+            notifyListeners();
+
+            // Update notification
+            _showProgressNotification(data.id, progress, message);
+          },
         );
       }
-
-      // Upload media files
-      final uploadedMedia = await PostsAPI.uploadMediaFiles(
-        mediaList: mediaList,
-        userId: data.userId,
-        onProgress: (current, total, percentage) {
-          final progress = (percentage * 100).toInt();
-          final message = 'Uploading ${current + 1}/$total items';
-
-          _uploads[data.id] = _uploads[data.id]!.copyWith(
-            progress: percentage,
-            currentItem: current + 1,
-            totalItems: total,
-            statusMessage: message,
-          );
-          notifyListeners();
-
-          // Update notification
-          _showProgressNotification(data.id, progress, message);
-        },
-      );
 
       // Update to processing
       _uploads[data.id] = _uploads[data.id]!.copyWith(
@@ -311,6 +320,7 @@ class UploadPostProvider with ChangeNotifier {
         progress: 0.95,
         statusMessage: 'Creating post...',
       );
+
       notifyListeners();
 
       await _showProgressNotification(data.id, 95, 'Creating post...');

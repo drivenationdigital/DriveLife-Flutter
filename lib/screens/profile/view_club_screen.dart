@@ -1477,17 +1477,17 @@ class _ClubViewScreenState extends State<ClubViewScreen>
               key: ValueKey(_clubPosts[i]['id']),
               post: _clubPosts[i] as Map<String, dynamic>,
               onTapProfile: () {
-                if (!mounted) return;
-                final post = _clubPosts[i];
-                if (post['is_event'] == true) return;
-                Navigator.pushNamed(
-                  context,
-                  '/view-profile',
-                  arguments: {
-                    'userId': post['user_id'],
-                    'username': post['username'],
-                  },
-                );
+                // if (!mounted) return;
+                // final post = _clubPosts[i];
+                // if (post['is_event'] == true) return;
+                // Navigator.pushNamed(
+                //   context,
+                //   '/view-profile',
+                //   arguments: {
+                //     'userId': post['user_id'],
+                //     'username': post['username'],
+                //   },
+                // );
               },
               onLikeChanged: (isLiked) {
                 setState(() {
