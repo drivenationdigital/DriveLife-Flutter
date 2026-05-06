@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/models/my_clubs.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/clubs/add_club_screen.dart';
@@ -398,7 +399,6 @@ class _MyClubsScreenState extends State<MyClubsScreen>
             club: club as Map<String, dynamic>,
             primaryColor: theme.primaryColor,
             onView: () {
-              print(club);
               NavigationHelper.navigateTo(
                 context,
                 ClubViewScreen(
@@ -1391,17 +1391,19 @@ class _DiscoverClubCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Row(
+      child: GestureDetector(
+        onTap: onView,
+        child: Row(
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: imageUrl.isNotEmpty
-                ? Image.network(
-                    imageUrl,
+                ? CachedNetworkImage(
+                    imageUrl: imageUrl,
                     width: 56,
                     height: 56,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _fallback(),
+                    errorWidget: (_, __, ___) => _fallback(),
                   )
                 : _fallback(),
           ),
@@ -1484,6 +1486,7 @@ class _DiscoverClubCard extends StatelessWidget {
           ),
         ],
       ),
+      )
     );
   }
 
