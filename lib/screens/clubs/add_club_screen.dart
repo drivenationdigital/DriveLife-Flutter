@@ -5,11 +5,9 @@ import 'package:drivelife/api/club_api_service.dart';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/club_api_models.dart';
 import 'package:drivelife/models/event_media.dart';
-import 'package:drivelife/models/search_view_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
-import 'package:drivelife/screens/search_user.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -103,6 +101,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
 
     if (widget.existingClubId != null) {
       _clubId = widget.existingClubId;
+      print('Editing existing club with ID: $_clubId');
       _loadExistingData();
     }
 
@@ -201,7 +200,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
         } catch (e) {
           print('Error converting description HTML to Quill: $e');
           // _descriptionController.document = Document()
-            // ..insert(0, club.description);
+          // ..insert(0, club.description);
         }
       }
 
@@ -212,7 +211,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
           _termsController.document = Document.fromDelta(delta);
         } catch (e) {
           print('Error converting terms HTML to Quill: $e');
-          _termsController.document = Document()..insert(0, club.clubTerms);
+          // _termsController.document = Document()..insert(0, club.clubTerms);
         }
       }
 
@@ -407,7 +406,8 @@ class _CreateClubScreenState extends State<CreateClubScreen>
     }
 
     // Show publish modal
-    _showPublishModal();
+    // _showPublishModal();
+    _saveClub(publish: _isPublished);
   }
 
   void _showPublishModal() {
@@ -685,7 +685,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
   }
 
   Future<void> _deleteClub() async {
-    Navigator.pop(context);
+    // Navigator.pop(context);
     final theme = Provider.of<ThemeProvider>(context, listen: false);
 
     final confirm = await showDialog<bool>(
@@ -720,7 +720,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
         );
 
         if (response == null || response['success'] != true) {
-          throw Exception('Failed to delete club');
+          throw Exception(response?['message'] ?? 'Failed to delete club');
         }
 
         if (!mounted) return;
@@ -928,6 +928,11 @@ class _CreateClubScreenState extends State<CreateClubScreen>
                     });
                   },
                   onNext: () => _tabController.animateTo(1),
+                  onStatusChanged: (value) =>
+                      setState(() => _isPublished = value == 'publish'),
+                  status: _isPublished ? 'publish' : 'draft',
+                  isEditMode: widget.existingClubId != null,
+                  onDelete: _deleteClub,
                 ),
 
                 // Tab 2: Club Profile
@@ -1083,6 +1088,10 @@ class _BasicDetailsTab extends StatelessWidget {
   final Function(int) onLocationTypeChanged;
   final Function(int) onCategoryToggled;
   final VoidCallback onNext;
+  final String status; // 'publish' | 'draft'
+  final ValueChanged<String> onStatusChanged;
+  final bool isEditMode; // controls Delete button visibility
+  final VoidCallback? onDelete;
 
   const _BasicDetailsTab({
     required this.titleController,
@@ -1097,6 +1106,10 @@ class _BasicDetailsTab extends StatelessWidget {
     required this.onLocationTypeChanged,
     required this.onCategoryToggled,
     required this.onNext,
+    required this.status,
+    required this.onStatusChanged,
+    this.isEditMode = false,
+    this.onDelete,
   });
 
   @override
@@ -1150,6 +1163,30 @@ class _BasicDetailsTab extends StatelessWidget {
               ),
             ),
           ),
+
+          const SizedBox(height: 12),
+
+          // Status toggle (Draft / Published)
+          Row(
+            children: [
+              Expanded(
+                child: _StatusToggleButton(
+                  label: 'Draft',
+                  isSelected: status == 'draft',
+                  onTap: () => onStatusChanged('draft'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _StatusToggleButton(
+                  label: 'Published',
+                  isSelected: status == 'publish',
+                  onTap: () => onStatusChanged('publish'),
+                ),
+              ),
+            ],
+          ),
+
           const SizedBox(height: 24),
 
           // Categories
@@ -1342,9 +1379,74 @@ class _BasicDetailsTab extends StatelessWidget {
               },
               isCrossBtnShown: true,
             ),
+          const SizedBox(height: 32),
+
+          // Delete (edit mode only)
+          if (isEditMode)
+            Center(
+              child: TextButton(
+                onPressed: onDelete,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                ),
+                child: const Text(
+                  'Delete this club',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
 
           const SizedBox(height: 40),
         ],
+      ),
+    );
+  }
+}
+
+class _StatusToggleButton extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _StatusToggleButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? theme.primaryColor : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? theme.primaryColor : Colors.grey.shade300,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.black87,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
@@ -1957,6 +2059,7 @@ class _ClubTermsTab extends StatelessWidget {
     );
   }
 }
+
 class _AdministratorsTab extends StatefulWidget {
   final List<ClubAdministrator> administrators;
   final void Function(int userId, String username) onAddAdministrator;
@@ -2043,7 +2146,9 @@ class _AdministratorsTabState extends State<_AdministratorsTab> {
 
     // Block if already an admin
     final alreadyAdmin = widget.administrators.any(
-      (a) => a.userId == id.toString(), // adjust field name if different on your model
+      (a) =>
+          a.userId ==
+          id.toString(), // adjust field name if different on your model
     );
     if (alreadyAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(

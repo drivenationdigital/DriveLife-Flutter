@@ -14,7 +14,6 @@ import 'package:flutter/material.dart';
 import 'package:drivelife/api/club_api_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 class MyClubsScreen extends StatefulWidget {
@@ -144,7 +143,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
   }
 
   void _onTabChanged() {
-    if (_tabController.index == 1) {
+    if (_tabController.index == 1 && _clubs.isEmpty && !_isLoading) {
       _loadMyClubs();
     }
   }
@@ -1017,7 +1016,8 @@ class _MyClubsScreenState extends State<MyClubsScreen>
 
   Widget _buildMyClubsTab() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      final theme = Provider.of<ThemeProvider>(context);
+      return Center(child: CircularProgressIndicator(color: theme.primaryColor,));
     }
 
     if (_errorMessage != null) {
@@ -1067,6 +1067,14 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       );
     }
 
+    const rolePriority = {'Owner': 0, 'Admin': 1, 'Member': 2};
+
+    _clubs.sort((a, b) {
+      final aRank = rolePriority[a.associationType] ?? 99;
+      final bRank = rolePriority[b.associationType] ?? 99;
+      return aRank.compareTo(bRank);
+    });
+
     return RefreshIndicator(
       onRefresh: _loadMyClubs,
       color: theme.primaryColor,
@@ -1079,15 +1087,21 @@ class _MyClubsScreenState extends State<MyClubsScreen>
           return _ClubCard(
             club: club,
             onEdit: () => _openClubEditor(club),
-            onView: () => {
-              NavigationHelper.navigateTo(
+            onView: () async {
+              final result = await NavigationHelper.navigateTo(
                 context,
                 ClubViewScreen(
                   clubPostId: int.parse(club.Id ?? '0'),
                   isOwnClub: false,
                   showAppBar: true,
                 ),
-              ),
+              );
+
+              if (!mounted) return;
+
+              if (result == 'deleted') {
+                _loadMyClubs(); // or whatever your refresh method is called
+              }
             },
           );
         },
@@ -1109,8 +1123,6 @@ class _ClubCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Provider.of<ThemeProvider>(context).primaryColor;
-
     return GestureDetector(
       onTap: onView, // tap the card body = view profile
       child: Container(
@@ -1161,6 +1173,14 @@ class _ClubCard extends StatelessWidget {
                       _StatusDot(isPublished: club.isPublished),
                     ],
                   ),
+                  Text(
+                    '${club.associationType} • ${club.memberCount} member${club.memberCount == 1 ? '' : 's'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                    semanticsIdentifier: '${club.associationType}, ${club.memberCount} members',
+                  )
                 ],
               ),
             ),
@@ -1170,29 +1190,29 @@ class _ClubCard extends StatelessWidget {
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(
-                  width: 80,
-                  height: 30,
-                  child: OutlinedButton(
-                    onPressed: onEdit,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: primaryColor,
-                      side: BorderSide(color: primaryColor, width: 1.2),
-                      padding: EdgeInsets.zero,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text(
-                      'Edit',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
+                // SizedBox(
+                //   width: 80,
+                //   height: 30,
+                //   child: OutlinedButton(
+                //     onPressed: onEdit,
+                //     style: OutlinedButton.styleFrom(
+                //       foregroundColor: primaryColor,
+                //       side: BorderSide(color: primaryColor, width: 1.2),
+                //       padding: EdgeInsets.zero,
+                //       shape: RoundedRectangleBorder(
+                //         borderRadius: BorderRadius.circular(8),
+                //       ),
+                //     ),
+                //     child: const Text(
+                //       'Edit',
+                //       style: TextStyle(
+                //         fontSize: 12,
+                //         fontWeight: FontWeight.w600,
+                //       ),
+                //     ),
+                //   ),
+                // ),
+                // const SizedBox(height: 6),
                 SizedBox(
                   width: 80,
                   height: 30,

@@ -41,7 +41,12 @@ class ClubApiService {
         final data = json.decode(response.body);
         if (data['success'] == true && data['categories'] != null) {
           return data['categories']
-              .map<FilterOption>((entry) => FilterOption(label: entry['name'], value: entry['id'].toString()))
+              .map<FilterOption>(
+                (entry) => FilterOption(
+                  label: entry['name'],
+                  value: entry['id'].toString(),
+                ),
+              )
               .toList();
         }
       }
@@ -569,9 +574,9 @@ class ClubApiService {
       );
 
       final response = await http.post(url, headers: await _getHeaders());
-        final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
 
-        print('📡 Accept invite: ${response.statusCode} - ${json['message']}');
+      print('📡 Accept invite: ${response.statusCode} - ${json['message']}');
 
       if (response.statusCode == 200) {
         return ApiResponse<void>(
@@ -837,11 +842,12 @@ class ClubApiService {
         },
       );
 
+      final data = json.decode(response.body);
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
         return data;
       }
-      throw Exception('Failed to delete club');
+
+      throw Exception('${data['message'] ?? 'Unknown error'}');
     } catch (e) {
       print('Error deleting club: $e');
       return null;

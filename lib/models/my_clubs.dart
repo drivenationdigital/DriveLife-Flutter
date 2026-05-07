@@ -9,6 +9,8 @@ class MyClub {
   final int memberCount;
   final DateTime createdDate;
   final String? Id;
+  final String? associationType; // 'owner' | 'admin' | 'member'
+  final bool canEdit; // true if user can edit (only for owners)
 
   MyClub({
     required this.clubId,
@@ -21,6 +23,8 @@ class MyClub {
     required this.memberCount,
     required this.createdDate,
     required this.Id,
+    required this.associationType,
+    required this.canEdit,
   });
 
   factory MyClub.fromJson(Map<String, dynamic> json) {
@@ -35,6 +39,8 @@ class MyClub {
       location: json['location'] as String? ?? '',
       memberCount: json['member_count'] as int? ?? 0,
       createdDate: DateTime.parse(json['created_date'] as String),
+      associationType: json['association_type'] as String?,
+      canEdit: json['can_edit'] as bool? ?? false,
     );
   }
 

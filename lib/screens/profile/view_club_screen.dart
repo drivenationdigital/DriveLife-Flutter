@@ -249,14 +249,18 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       return;
     }
 
-    final questions = List<String>.from(
-      _clubData!['membership_questions'] ?? [],
-    );
+    final raw = _clubData!['membership_questions'];
+
+    final questions = (raw is List)
+        ? raw
+              .map((q) => q?.toString().trim() ?? '')
+              .where((q) => q.isNotEmpty)
+              .toList()
+        : <String>[];
 
     if (questions.isEmpty) {
-      questions.add(
-        'This club requires no additional information. Do you want to submit your request to join?',
-      );
+      _handleFreeJoin();
+      return;
     }
 
     showClubJoinModal(
@@ -267,6 +271,37 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         setState(() => _hasPendingRequest = true);
       },
     );
+  }
+
+  Future<void> _handleFreeJoin() async {
+    try {
+      final success = await ClubApiService.submitJoinRequest(
+        clubId: _clubData!['id'].toString(),
+        questionsAndAnswers: [],
+      );
+
+      if (!mounted) return;
+
+      if (success) {
+        setState(() => _hasPendingRequest = true);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Request sent! The club owner will review your application.'
+                : 'Something went wrong. Please try again.',
+          ),
+          backgroundColor: success
+              ? Colors.green.shade600
+              : Colors.red.shade400,
+        ),
+      );
+    } catch (e) {
+      print('❌ Error submitting join request: $e');
+      if (!mounted) return;
+    }
   }
 
   void _openUrl(String url) {
@@ -977,25 +1012,25 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(
-                        Icons.directions_car_outlined,
-                        size: 14,
-                        color: _gold,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        location,
-                        style: const TextStyle(color: _muted, fontSize: 13),
-                      ),
-                      const SizedBox(width: 10),
-                      Container(
-                        width: 4,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: _muted.withOpacity(0.6),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
+                      // const Icon(
+                      //   Icons.directions_car_outlined,
+                      //   size: 14,
+                      //   color: _gold,
+                      // ),
+                      // const SizedBox(width: 6),
+                      // Text(
+                      //   location,
+                      //   style: const TextStyle(color: _muted, fontSize: 13),
+                      // ),
+                      // const SizedBox(width: 10),
+                      // Container(
+                      //   width: 4,
+                      //   height: 4,
+                      //   decoration: BoxDecoration(
+                      //     color: _muted.withOpacity(0.6),
+                      //     shape: BoxShape.circle,
+                      //   ),
+                      // ),
                       const SizedBox(width: 10),
                       const Icon(Icons.people_outline, size: 14, color: _gold),
                       const SizedBox(width: 6),
@@ -1278,6 +1313,30 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                 icon: Icons.link_outlined,
                 label: 'More',
                 onTap: _showClubLinks,
+              ),
+              const SizedBox(width: 8),
+              _ChipActionButton(
+                icon: Icons.edit_outlined,
+                label: 'Edit',
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/add-club',
+                    arguments: {'existingClubId': _clubData!['id'].toString()},
+                  ).then((result) {
+                    if (!mounted) return;
+
+                    if (result == 'deleted') {
+                      // Club was deleted — pop the view screen back to the list
+                      Navigator.pop(context, 'deleted');
+                      return;
+                    }
+
+                    if (result == true) {
+                      _refreshClub();
+                    }
+                  });
+                },
               ),
             ],
           ),
@@ -1781,7 +1840,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 }
-
 
 class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   final Widget child;
