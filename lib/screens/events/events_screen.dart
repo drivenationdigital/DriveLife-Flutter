@@ -978,7 +978,7 @@ class _EventsScreenState extends State<EventsScreen>
                   const Padding(
                     padding: EdgeInsets.only(bottom: 2), // tiny baseline nudge
                     child: Text(
-                      'Event data by ',
+                      'Powered by ',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 12,
