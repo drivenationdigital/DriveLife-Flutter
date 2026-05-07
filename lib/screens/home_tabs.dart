@@ -58,7 +58,7 @@ class _HomeTabsState extends State<HomeTabs> {
 
     _buildScreens();
     _reloadUserData();
-    
+
     // Single source of truth — checks once, all screens read from it
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -368,7 +368,7 @@ class _HomeTabsState extends State<HomeTabs> {
                 ? CircleAvatar(
                     radius: 16,
                     backgroundColor: Colors.transparent,
-                    backgroundImage: CachedNetworkImageProvider(url!),
+                    backgroundImage: CachedNetworkImageProvider(url),
                     onBackgroundImageError: (_, __) {},
                   )
                 : iconSvg(
@@ -390,7 +390,7 @@ class _HomeTabsState extends State<HomeTabs> {
               ? CircleAvatar(
                   radius: 13,
                   backgroundColor: Colors.transparent,
-                  backgroundImage: CachedNetworkImageProvider(url!),
+                  backgroundImage: CachedNetworkImageProvider(url),
                   onBackgroundImageError: (_, __) {},
                 )
               : iconSvg(

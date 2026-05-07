@@ -10,6 +10,7 @@ import 'package:drivelife/widgets/events/featured_events.dart';
 import 'package:drivelife/widgets/events/my_events.dart';
 import 'package:drivelife/widgets/events/my_tickets.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -951,9 +952,6 @@ class _EventsScreenState extends State<EventsScreen>
         controller: _scrollController,
         padding: EdgeInsets.zero,
         children: [
-          // Featured Banner Carousel
-          const SizedBox(height: 16),
-
           if (_showLocationBanner) ...[
             LocationBanner(
               onUpdate: () {
@@ -968,23 +966,48 @@ class _EventsScreenState extends State<EventsScreen>
           ],
 
           if (_featuredEvents.isNotEmpty)
-            FeaturedEventsCarousel(
-              featuredEvents: _featuredEvents,
-              pageController: _bannerController,
-              currentPage: _currentBannerIndex,
-              onPageChanged: (index) {
-                setState(() => _currentBannerIndex = index);
-              },
-              onEventTap: (event) {
-                Navigator.pushNamed(
-                  context,
-                  '/event-detail',
-                  arguments: {'event': event},
-                );
-              },
-              primaryColor: theme.primaryColor,
-              formatEventDate: (date) => DateHelpers.formatEventDate(date),
+            // Attribution bar
+            Container(
+              width: double.infinity,
+              color: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 2), // tiny baseline nudge
+                    child: Text(
+                      'Event data by ',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  SvgPicture.asset('assets/app-icons/ce-logo.svg', height: 22),
+                ],
+              ),
             ),
+          const SizedBox(height: 12),
+          FeaturedEventsCarousel(
+            featuredEvents: _featuredEvents,
+            pageController: _bannerController,
+            currentPage: _currentBannerIndex,
+            onPageChanged: (index) {
+              setState(() => _currentBannerIndex = index);
+            },
+            onEventTap: (event) {
+              Navigator.pushNamed(
+                context,
+                '/event-detail',
+                arguments: {'event': event},
+              );
+            },
+            primaryColor: theme.primaryColor,
+            formatEventDate: (date) => DateHelpers.formatEventDate(date),
+          ),
 
           const SizedBox(height: 16),
 

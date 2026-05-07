@@ -128,7 +128,7 @@ class _ShopScreenState extends State<ShopScreen>
       final user = userProvider.user;
 
       if (user?.lastLocation != null) {
-        final country = user!.lastLocation!.country?.toUpperCase() ?? '';
+        final country = user!.lastLocation!.country.toUpperCase();
         print('📍 User last location country: $country');
         setState(() {
           _isUKRegion = country == 'GB' || country == 'UK';
