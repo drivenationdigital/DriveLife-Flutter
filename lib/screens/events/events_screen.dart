@@ -1,7 +1,5 @@
-import 'dart:io';
-
 import 'package:drivelife/providers/account_provider.dart';
-import 'package:drivelife/routes.dart';
+import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/screens/account-settings/app_permissions_screen.dart';
 import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/events/order_ticket_view.dart';
@@ -12,7 +10,7 @@ import 'package:drivelife/widgets/events/featured_events.dart';
 import 'package:drivelife/widgets/events/my_events.dart';
 import 'package:drivelife/widgets/events/my_tickets.dart';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/api/events_api.dart';
@@ -54,7 +52,7 @@ class _EventsScreenState extends State<EventsScreen>
   // Filters
   String? _selectedDate = 'anytime'; // Changed default
   List<String> _selectedCategories = [];
-  String? _selectedLocation = 'national'; // Changed default
+  String? _selectedLocation = 'near-me'; // Changed default
 
   DateTime? _customDateFrom;
   DateTime? _customDateTo;
@@ -90,15 +88,29 @@ class _EventsScreenState extends State<EventsScreen>
     _tabController = TabController(length: 3, vsync: this);
     _scrollController.addListener(_onScroll);
 
-    // Fetch initial data
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
       final accountManager = Provider.of<AccountManager>(
         context,
         listen: false,
       );
       _currentUserId = accountManager.activeUser?.id;
 
-      _checkLocationBanner();
+      final locationProvider = context.read<LocationAccessProvider>();
+
+      // If the check hasn't run yet, wait for it. Otherwise read cached result.
+      if (!locationProvider.isResolved) {
+        await locationProvider.refresh();
+      }
+
+      if (!mounted) return;
+
+      final hasAccess = locationProvider.hasAccess;
+      setState(() {
+        _showLocationBanner = !hasAccess;
+        _selectedLocation = hasAccess ? 'near-me' : 'national';
+      });
 
       _fetchFeaturedEvents();
       _fetchCategories();
@@ -184,16 +196,6 @@ class _EventsScreenState extends State<EventsScreen>
 
   void _onFilterChanged() {
     _fetchEvents(refresh: true);
-  }
-
-  Future<void> _checkLocationBanner() async {
-    final status = Platform.isIOS
-        ? await Permission.locationWhenInUse.status
-        : await Permission.location.status;
-
-    if (mounted && status != PermissionStatus.granted) {
-      setState(() => _showLocationBanner = true);
-    }
   }
 
   Future<void> _performSearch(String query) async {
@@ -385,7 +387,7 @@ class _EventsScreenState extends State<EventsScreen>
         final past = (data?['past'] as List<dynamic>? ?? [])
             .cast<Map<String, dynamic>>();
 
-            print(past);
+        print(past);
 
         setState(() {
           _activeTickets = active;
@@ -688,12 +690,49 @@ class _EventsScreenState extends State<EventsScreen>
                 ),
             ],
           ),
-          onApply: (selected) {
+          onApply: (selected) async {
+            final newLocation = selected.isNotEmpty
+                ? selected.first
+                : 'national';
+            final needsLocationAccess = [
+              'near-me',
+              '50-miles',
+              '100-miles',
+            ].contains(newLocation);
+
+            // Re-check permissions/services if user picks a location-based option
+            if (needsLocationAccess) {
+              // Re-check (handles "user enabled it in Settings between visits")
+              final hasAccess = await context
+                  .read<LocationAccessProvider>()
+                  .refresh();
+              if (!mounted) return;
+
+              if (!hasAccess) {
+                setState(() => _showLocationBanner = true);
+                // Show a snackbar so the user knows why their pick didn't stick
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text(
+                      'Location access is needed for this filter. Falling back to National.',
+                    ),
+                    action: SnackBarAction(
+                      label: 'Settings',
+                      onPressed: () => Geolocator.openLocationSettings(),
+                    ),
+                  ),
+                );
+                // Force the selection to National since the chosen one won't work
+                setState(() => _selectedLocation = 'national');
+                _onFilterChanged();
+                return;
+              } else {
+                setState(() => _showLocationBanner = false);
+              }
+            }
+
             setState(() {
-              _selectedLocation = selected.isNotEmpty
-                  ? selected.first
-                  : 'national';
-              // Clear custom location if not using custom
+              _selectedLocation = newLocation;
               if (_selectedLocation != 'custom') {
                 _clearCustomLocation();
               }

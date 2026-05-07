@@ -39,25 +39,28 @@ class SharedHeaderIcons {
       builder: (context) => Consumer<CartProvider>(
         builder: (context, cart, child) {
           final count = cart.itemCount;
-          final icon = SvgPicture.asset(
+          final baseIcon = SvgPicture.asset(
             'assets/app-icons/04-Basket.svg',
             width: 24,
             height: 24,
-            colorFilter: ColorFilter.mode(Colors.black, BlendMode.srcIn),
+            colorFilter: const ColorFilter.mode(Colors.black, BlendMode.srcIn),
           );
-          if (count > 0) {
-            return Badge(
-              backgroundColor: Colors.red,
-              label: Text('$count'),
-              child: icon,
-            );
-          }
+
+          final icon = count > 0
+              ? Badge(
+                  backgroundColor: Colors.red,
+                  label: Text('$count'),
+                  child: baseIcon,
+                )
+              : baseIcon;
 
           return IconButton(
             padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            visualDensity: VisualDensity.compact,
             onPressed: () => NavigationHelper.navigateTo(
               context,
-              const ShopScreen(showAppBar: true),
+              const ShopScreen(showAppBar: true, initialTab: 'basket'),
             ),
             icon: icon,
           );

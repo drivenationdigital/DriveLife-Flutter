@@ -1,11 +1,16 @@
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/api/places_api.dart';
 import 'package:drivelife/components/venue_card.dart';
+import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
+import 'package:drivelife/screens/account-settings/app_permissions_screen.dart';
+import 'package:drivelife/screens/events/events_screen.dart';
+import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/events/filter_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/models/venue_model.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
@@ -56,12 +61,30 @@ class _VenuesScreenState extends State<VenuesScreen>
   double? _customLng;
   String? _customLocationName;
   String? _selectedLocation = 'near-me';
+  bool _showLocationBanner = false;
 
   List<Map<String, String>> _banners = [];
 
   @override
   void initState() {
     super.initState();
+     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final locationProvider = context.read<LocationAccessProvider>();
+
+      // If the check hasn't run yet, wait for it. Otherwise read cached result.
+      if (!locationProvider.isResolved) {
+        await locationProvider.refresh();
+      }
+
+      if (!mounted) return;
+
+      final hasAccess = locationProvider.hasAccess;
+      setState(() {
+        _showLocationBanner = !hasAccess;
+        _selectedLocation = hasAccess ? 'near-me' : 'national';
+      });
+    });
+    
     theme = Provider.of<ThemeProvider>(context, listen: false);
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
@@ -549,6 +572,18 @@ class _VenuesScreenState extends State<VenuesScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+             if (_showLocationBanner) ...[
+              LocationBanner(
+                onUpdate: () {
+                  setState(() => _showLocationBanner = false);
+                  NavigationHelper.navigateTo(
+                    context,
+                    const AppPermissionsScreen(),
+                  );
+                },
+              ),
+            ],
+            
             const SizedBox(height: 16),
             _buildBanner(),
 
@@ -754,11 +789,11 @@ class _VenuesScreenState extends State<VenuesScreen>
           ],
           selectedValues: _selectedLocation != null
               ? [_selectedLocation!]
-              : ['near-me'],
+              : ['national'],
           customWidget: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildGooglePlacesInput(),
+              _buildGooglePlacesInput(), // NEW: Use Google Places widget
               const SizedBox(height: 8),
               if (_customLocationName != null &&
                   _customLocationName!.isNotEmpty)
@@ -797,12 +832,49 @@ class _VenuesScreenState extends State<VenuesScreen>
                 ),
             ],
           ),
-          onApply: (selected) {
+          onApply: (selected) async {
+            final newLocation = selected.isNotEmpty
+                ? selected.first
+                : 'national';
+            final needsLocationAccess = [
+              'near-me',
+              '50-miles',
+              '100-miles',
+            ].contains(newLocation);
+
+            // Re-check permissions/services if user picks a location-based option
+            if (needsLocationAccess) {
+              // Re-check (handles "user enabled it in Settings between visits")
+              final hasAccess = await context
+                  .read<LocationAccessProvider>()
+                  .refresh();
+              if (!mounted) return;
+
+              if (!hasAccess) {
+                setState(() => _showLocationBanner = true);
+                // Show a snackbar so the user knows why their pick didn't stick
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text(
+                      'Location access is needed for this filter. Falling back to National.',
+                    ),
+                    action: SnackBarAction(
+                      label: 'Settings',
+                      onPressed: () => Geolocator.openLocationSettings(),
+                    ),
+                  ),
+                );
+                // Force the selection to National since the chosen one won't work
+                setState(() => _selectedLocation = 'national');
+                _onFilterChanged();
+                return;
+              } else {
+                setState(() => _showLocationBanner = false);
+              }
+            }
+
             setState(() {
-              _selectedLocation = selected.isNotEmpty
-                  ? selected.first
-                  : 'near-me';
-              // Clear custom location if not using custom
+              _selectedLocation = newLocation;
               if (_selectedLocation != 'custom') {
                 _clearCustomLocation();
               }

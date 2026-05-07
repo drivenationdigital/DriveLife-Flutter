@@ -1,14 +1,20 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/models/my_clubs.dart';
+import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/screens/account-settings/app_permissions_screen.dart';
 import 'package:drivelife/screens/clubs/add_club_screen.dart';
+import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/screens/profile/view_club_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/events/filter_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/api/club_api_service.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 class MyClubsScreen extends StatefulWidget {
@@ -48,6 +54,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
 
   String _selectedClubType = 'all';
   String _selectedLocation = 'near-me';
+  bool _showLocationBanner = false;
 
   final TextEditingController _customLocationController =
       TextEditingController();
@@ -69,6 +76,23 @@ class _MyClubsScreenState extends State<MyClubsScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final locationProvider = context.read<LocationAccessProvider>();
+
+      // If the check hasn't run yet, wait for it. Otherwise read cached result.
+      if (!locationProvider.isResolved) {
+        await locationProvider.refresh();
+      }
+
+      if (!mounted) return;
+
+      final hasAccess = locationProvider.hasAccess;
+      setState(() {
+        _showLocationBanner = !hasAccess;
+        _selectedLocation = hasAccess ? 'near-me' : 'national';
+      });
+    });
+
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
     _spotlightController = PageController(viewportFraction: 0.88);
@@ -324,6 +348,18 @@ class _MyClubsScreenState extends State<MyClubsScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_showLocationBanner) ...[
+              LocationBanner(
+                onUpdate: () {
+                  setState(() => _showLocationBanner = false);
+                  NavigationHelper.navigateTo(
+                    context,
+                    const AppPermissionsScreen(),
+                  );
+                },
+              ),
+            ],
+
             if (showSpotlight) ...[
               // const SizedBox(height: 16),
               // _buildSpotlightHeader(),
@@ -703,9 +739,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
             FilterOption(label: '100 Miles', value: '100-miles'),
             FilterOption(label: 'Custom', value: 'custom'),
           ],
-          selectedValues: _selectedLocation != null
-              ? [_selectedLocation!]
-              : ['national'],
+          selectedValues: [_selectedLocation],
           customWidget: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -748,12 +782,49 @@ class _MyClubsScreenState extends State<MyClubsScreen>
                 ),
             ],
           ),
-          onApply: (selected) {
+          onApply: (selected) async {
+            final newLocation = selected.isNotEmpty
+                ? selected.first
+                : 'national';
+            final needsLocationAccess = [
+              'near-me',
+              '50-miles',
+              '100-miles',
+            ].contains(newLocation);
+
+            // Re-check permissions/services if user picks a location-based option
+            if (needsLocationAccess) {
+              // Re-check (handles "user enabled it in Settings between visits")
+              final hasAccess = await context
+                  .read<LocationAccessProvider>()
+                  .refresh();
+              if (!mounted) return;
+
+              if (!hasAccess) {
+                setState(() => _showLocationBanner = true);
+                // Show a snackbar so the user knows why their pick didn't stick
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text(
+                      'Location access is needed for this filter. Falling back to National.',
+                    ),
+                    action: SnackBarAction(
+                      label: 'Settings',
+                      onPressed: () => Geolocator.openLocationSettings(),
+                    ),
+                  ),
+                );
+                // Force the selection to National since the chosen one won't work
+                setState(() => _selectedLocation = 'national');
+                _onFilterChanged();
+                return;
+              } else {
+                setState(() => _showLocationBanner = false);
+              }
+            }
+
             setState(() {
-              _selectedLocation = selected.isNotEmpty
-                  ? selected.first
-                  : 'national';
-              // Clear custom location if not using custom
+              _selectedLocation = newLocation;
               if (_selectedLocation != 'custom') {
                 _clearCustomLocation();
               }
@@ -1054,9 +1125,9 @@ class _ClubCard extends StatelessWidget {
             // Thumbnail
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: club.coverImage != null
+              child: club.logo != null
                   ? Image.network(
-                      club.coverImage!,
+                      club.logo!,
                       width: 56,
                       height: 56,
                       fit: BoxFit.cover,
@@ -1369,11 +1440,7 @@ class _DiscoverClubCard extends StatelessWidget {
     final title = _str(club['title']).isNotEmpty
         ? _str(club['title'])
         : _str(club['name']);
-    final imageUrl = _str(club['cover_image']).isNotEmpty
-        ? _str(club['cover_image'])
-        : _str(club['logo']).isNotEmpty
-        ? _str(club['logo'])
-        : _str(club['image']);
+    final imageUrl = _str(club['logo']);
     final category = _str(club['category']);
     final location = _str(club['location'] ?? 'N/A');
     final memberCount = _int(club['member_count']);
@@ -1394,99 +1461,102 @@ class _DiscoverClubCard extends StatelessWidget {
       child: GestureDetector(
         onTap: onView,
         child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: imageUrl.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: imageUrl,
-                    width: 56,
-                    height: 56,
-                    fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) => _fallback(),
-                  )
-                : _fallback(),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: imageUrl.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => _fallback(),
+                    )
+                  : _fallback(),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black,
+                          ),
                         ),
                       ),
-                    ),
-                    if (isOwnerOrMember) ...[
-                      const SizedBox(width: 4),
-                      Icon(Icons.verified, size: 14, color: primaryColor),
+                      if (isOwnerOrMember) ...[
+                        const SizedBox(width: 4),
+                        Icon(Icons.verified, size: 14, color: primaryColor),
+                      ],
                     ],
-                  ],
-                ),
-                const SizedBox(height: 4),
-                // Row(
-                //   children: [
-                //     Icon(
-                //       Icons.directions_car_outlined,
-                //       size: 13,
-                //       color: primaryColor,
-                //     ),
-                //     const SizedBox(width: 4),
-                //     Flexible(
-                //       child: Text(
-                //         subtitle,
-                //         maxLines: 1,
-                //         overflow: TextOverflow.ellipsis,
-                //         style: TextStyle(fontSize: 12, color: primaryColor),
-                //       ),
-                //     ),
-                //     if (memberCount > 0) ...[
-                //       const SizedBox(width: 8),
-                //       Icon(Icons.people, size: 13, color: Colors.grey.shade600),
-                //       const SizedBox(width: 4),
-                //       Text(
-                //         '$memberCount',
-                //         style: TextStyle(
-                //           fontSize: 12,
-                //           color: Colors.grey.shade600,
-                //         ),
-                //       ),
-                //     ],
-                //   ],
-                // ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(
-            onPressed: onView,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: primaryColor,
-              side: BorderSide(color: primaryColor, width: 1.2),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                  ),
+                  const SizedBox(height: 4),
+                  // Row(
+                  //   children: [
+                  //     Icon(
+                  //       Icons.directions_car_outlined,
+                  //       size: 13,
+                  //       color: primaryColor,
+                  //     ),
+                  //     const SizedBox(width: 4),
+                  //     Flexible(
+                  //       child: Text(
+                  //         subtitle,
+                  //         maxLines: 1,
+                  //         overflow: TextOverflow.ellipsis,
+                  //         style: TextStyle(fontSize: 12, color: primaryColor),
+                  //       ),
+                  //     ),
+                  //     if (memberCount > 0) ...[
+                  //       const SizedBox(width: 8),
+                  //       Icon(Icons.people, size: 13, color: Colors.grey.shade600),
+                  //       const SizedBox(width: 4),
+                  //       Text(
+                  //         '$memberCount',
+                  //         style: TextStyle(
+                  //           fontSize: 12,
+                  //           color: Colors.grey.shade600,
+                  //         ),
+                  //       ),
+                  //     ],
+                  //   ],
+                  // ),
+                ],
               ),
-              minimumSize: const Size(0, 32),
             ),
-            child: const Text(
-              'View',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: onView,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: primaryColor,
+                side: BorderSide(color: primaryColor, width: 1.2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                minimumSize: const Size(0, 32),
+              ),
+              child: const Text(
+                'View',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-      )
     );
   }
 

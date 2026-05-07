@@ -1,5 +1,6 @@
 import 'package:drivelife/api/drivelife_api_service.dart';
 import 'package:drivelife/providers/cart_provider.dart';
+import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/store/checkout/stripe_checkout_screen.dart';
@@ -14,8 +15,10 @@ import 'package:drivelife/models/product_model.dart';
 import 'package:html_unescape/html_unescape.dart';
 
 class ShopScreen extends StatefulWidget {
-  const ShopScreen({super.key, this.showAppBar = false});
   final bool showAppBar;
+  final String? initialTab; // 'browse', 'basket', or 'orders'
+  const ShopScreen({super.key, this.showAppBar = false, this.initialTab});
+
   @override
   State<ShopScreen> createState() => _ShopScreenState();
 }
@@ -58,19 +61,29 @@ class _ShopScreenState extends State<ShopScreen>
   void initState() {
     super.initState();
     _mainTabController = TabController(length: 3, vsync: this);
-    // _checkUserRegion();
+
+    if (widget.initialTab != null) {
+      switch (widget.initialTab) {
+        case 'browse':
+          _mainTabController.index = 0;
+          break;
+        case 'basket':
+          _mainTabController.index = 1;
+          break;
+        case 'orders':
+          _mainTabController.index = 2;
+          break;
+      }
+    }
+
     if (context.read<UserProvider>().notificationSetupDone) {
       _checkUserRegion();
     } else {
-      // If notifications aren't set up yet, wait a bit and check again
       Future.delayed(const Duration(seconds: 5), () {
-        if (mounted) {
-          _checkUserRegion();
-        }
+        if (mounted) _checkUserRegion();
       });
     }
 
-    // Load initial data
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CartProvider>().loadCart();
       _loadBanners();
@@ -78,18 +91,28 @@ class _ShopScreenState extends State<ShopScreen>
     });
   }
 
-  @override
-  void dispose() {
-    _mainTabController.dispose();
-    super.dispose();
-  }
-
   Future<void> _checkUserRegion() async {
+    if (!mounted) return;
     setState(() => _isCheckingRegion = true);
 
     try {
-      // ✅ Check 1: Try to get device's current location
-      final deviceCountry = await LocationService.getDeviceCountry();
+      final locationProvider = context.read<LocationAccessProvider>();
+
+      // Wait for the central permission resolution if it hasn't run yet
+      if (!locationProvider.isResolved) {
+        await locationProvider.refresh();
+      }
+
+      if (!mounted) return;
+
+      String? deviceCountry;
+
+      // Only ask for the device's country if we actually have access
+      if (locationProvider.hasAccess) {
+        deviceCountry = await LocationService.getDeviceCountry();
+      }
+
+      if (!mounted) return;
 
       if (deviceCountry != null) {
         print('📍 Device country: $deviceCountry');
@@ -100,7 +123,7 @@ class _ShopScreenState extends State<ShopScreen>
         return;
       }
 
-      // ✅ Check 2: Fall back to user's last known location
+      // Fall back to user's last known location
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final user = userProvider.user;
 
@@ -114,27 +137,22 @@ class _ShopScreenState extends State<ShopScreen>
         return;
       }
 
-      // ✅ Default: Allow access if we can't determine
+      // Default — allow access if we can't determine
       print('📍 Could not determine location, allowing access');
-
-      if (!mounted) return;
-
       setState(() {
         _isUKRegion = true;
         _isCheckingRegion = false;
       });
     } catch (e) {
       print('❌ Error checking region: $e');
-
       if (!mounted) return;
-
       setState(() {
-        _isUKRegion = true; // Default to allowing access
+        _isUKRegion = true;
         _isCheckingRegion = false;
       });
     }
   }
-
+  
   // Load banners
   Future<void> _loadBanners() async {
     setState(() => _isLoadingBanners = true);

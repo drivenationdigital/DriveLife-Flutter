@@ -180,7 +180,10 @@ class AppRoutes {
           ),
         );
       case addClub:
-        return _slide(const CreateClubScreen());
+        final args = settings.arguments as Map<String, dynamic>?;
+        return _slide(
+          CreateClubScreen(existingClubId: args?['existingClubId']),
+        );
       case createVenue:
         return _slide(const CreateVenueScreen());
       case events:

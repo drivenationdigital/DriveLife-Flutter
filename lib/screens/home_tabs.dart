@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/main.dart';
 import 'package:drivelife/models/account_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
+import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
@@ -57,7 +58,13 @@ class _HomeTabsState extends State<HomeTabs> {
 
     _buildScreens();
     _reloadUserData();
-    // _loadManagedEntities();
+    
+    // Single source of truth — checks once, all screens read from it
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<LocationAccessProvider>().refresh();
+      }
+    });
   }
 
   @override
@@ -381,7 +388,7 @@ class _HomeTabsState extends State<HomeTabs> {
           onLongPress: () => _showAccountSwitcher(),
           child: hasUrl
               ? CircleAvatar(
-                  radius: 16,
+                  radius: 13,
                   backgroundColor: Colors.transparent,
                   backgroundImage: CachedNetworkImageProvider(url!),
                   onBackgroundImageError: (_, __) {},
