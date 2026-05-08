@@ -341,7 +341,7 @@ class FirebaseMessagingService {
     final person = Person(
       name: senderName,
       icon: largeIcon != null
-          ? ByteArrayAndroidIcon(largeIcon!.data) // ← wrong, use this instead:
+          ? ByteArrayAndroidIcon(largeIcon.data) 
           : null,
       key: senderId,
     );
