@@ -160,11 +160,11 @@ class AppRoutes {
             associationLabel: args['association_label'],
           ),
         );
-      case '/club-detail':
+      case clubDetail:
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(
           ClubViewScreen(
-            clubPostId: args['clubId'],
+            clubPostId: int.parse(args['clubId'] ?? '0'),
             tab: args['tab'],
             showAppBar: true, // Show app bar when viewing from search
             isOwnClub: false, // Visitor view
@@ -245,7 +245,15 @@ class AppRoutes {
         );
       case postDetail:
         final args = settings.arguments as Map<String, dynamic>;
-        return _slide(PostDetailScreen(postId: args['postId'], highlightCommentId: args['highlightCommentId'])); 
+        debugPrint(
+          '📄 [AppRoutes] postDetail args: $args (postId type: ${args['postId'].runtimeType})',
+        );
+        return _slide(
+          PostDetailScreen(
+            postId: args['postId'].toString(),
+            highlightCommentId: args['highlightCommentId'],
+          ),
+        );
       case vehicleDetail:
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(VehicleDetailScreen(garageId: args['garageId']));

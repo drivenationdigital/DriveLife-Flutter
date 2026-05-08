@@ -1,26 +1,24 @@
 import 'dart:io';
 
+import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 
-// Top-level function for background messages
-// @pragma('vm:entry-point')
-// Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-//   print("Handling background message: ${message.messageId}");
-// }
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final data = message.data;
-  print('📩 Background message received: ${message.data}');
+  print('📩 Background message received: $data');
+
+  final convId = data['conversation_id'] ?? '';
+  final isChatMessage = convId.isNotEmpty;
   final isGroup = data['is_group'] == 'true';
   final senderId = data['sender_id'] ?? '';
-  final convId = data['conversation_id'] ?? '';
   final groupName = data['group_name'] ?? '';
-  final title = message.data['title'] ?? 'New message';
-  final body = message.data['body'] ?? '';
+  final title = data['title'] ?? 'Notification';
+  final body = data['body'] ?? '';
 
   // Init local notifications
   final localNotifications = FlutterLocalNotificationsPlugin();
@@ -29,32 +27,51 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     const InitializationSettings(android: androidSettings),
   );
 
-  // Try to fetch sender avatar
+  // Fetch sender avatar (with proper logging this time)
   ByteArrayAndroidBitmap? largeIcon;
   final senderImageUrl = data['sender_image'] ?? '';
   if (senderImageUrl.isNotEmpty) {
     try {
       final response = await http.get(Uri.parse(senderImageUrl));
-      largeIcon = ByteArrayAndroidBitmap(response.bodyBytes);
-    } catch (_) {}
+      if (response.statusCode == 200) {
+        largeIcon = ByteArrayAndroidBitmap(response.bodyBytes);
+      } else {
+        print(
+          '⚠️ BG avatar fetch failed: ${response.statusCode} for $senderImageUrl',
+        );
+      }
+    } catch (e) {
+      print('⚠️ BG avatar error: $e');
+    }
   }
 
-  final person = Person(
-    name: title,
-    icon: largeIcon != null ? ByteArrayAndroidIcon(largeIcon!.data) : null,
-    key: senderId,
-  );
+  // Unique ID — avoid the ''.hashCode = 0 collision for non-chat notifs
+  final notificationId = isChatMessage
+      ? convId.hashCode
+      : (message.messageId?.hashCode ??
+            DateTime.now().millisecondsSinceEpoch.remainder(100000));
 
-  final style = MessagingStyleInformation(
-    const Person(name: 'You'),
-    conversationTitle: isGroup ? groupName : null,
-    groupConversation: isGroup,
-    messages: [Message(body, DateTime.now(), person)],
-  );
+  // Pick style based on notification type
+  StyleInformation? style;
+  if (isChatMessage) {
+    final person = Person(
+      name: title,
+      icon: largeIcon != null ? ByteArrayAndroidIcon(largeIcon.data) : null,
+      key: senderId,
+    );
+    style = MessagingStyleInformation(
+      const Person(name: 'You'),
+      conversationTitle: isGroup ? groupName : null,
+      groupConversation: isGroup,
+      messages: [Message(body, DateTime.now(), person)],
+    );
+  } else {
+    style = BigTextStyleInformation(body);
+  }
 
   await localNotifications.show(
-    convId.hashCode,
-    isGroup ? groupName : title,
+    notificationId,
+    isChatMessage && isGroup ? groupName : title,
     body,
     NotificationDetails(
       android: AndroidNotificationDetails(
@@ -66,18 +83,20 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         largeIcon: largeIcon,
         styleInformation: style,
         playSound: true,
-         // ← add these for better grouped view
-        subText: isGroup ? groupName : null,
+        subText: isChatMessage && isGroup ? groupName : null,
         showWhen: true,
-        groupKey: 'chat_$convId', // groups same-convo notifications
+        groupKey: isChatMessage ? 'chat_$convId' : null,
         setAsGroupSummary: false,
       ),
     ),
-    payload: 'chat:$convId',
+    payload: data['url'] ?? '',
   );
 }
 
 class FirebaseMessagingService {
+  static GlobalKey<NavigatorState>? navigatorKey;
+  static String? _pendingDeepLink; // for cold-start before navigator is ready
+
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
@@ -145,6 +164,18 @@ class FirebaseMessagingService {
         >()
         ?.createNotificationChannel(channel);
 
+        // Handle case where app was launched by tapping a local notification
+    final launchDetails = await _localNotifications
+        .getNotificationAppLaunchDetails();
+    if (launchDetails?.didNotificationLaunchApp ?? false) {
+      final payload = launchDetails?.notificationResponse?.payload;
+      if (payload != null && payload.isNotEmpty) {
+        // Queue it — navigator won't be ready yet at this point
+        _pendingDeepLink = payload;
+        print('🚀 Cold-start from local notification, queued: $payload');
+      }
+    }
+
     // Handle foreground messages
     FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
@@ -163,18 +194,71 @@ class FirebaseMessagingService {
 
   // Handle notification tap (both tap and action buttons)
   static void _onNotificationResponse(NotificationResponse response) {
-    print('Notification tapped: ${response.payload}');
+    print('Local notification tapped: ${response.payload}');
+    _navigateToUrl(response.payload);
+  }
 
-    // Check if it's an action button or just a tap
-    if (response.actionId == 'view_post' || response.actionId == null) {
-      // Parse payload
-      if (response.payload != null && response.payload!.startsWith('post:')) {
-        final postId = response.payload!.replaceFirst('post:', '');
-        print('Navigate to post: $postId');
+  static void _navigateToUrl(String? url) {
+    if (url == null || url.isEmpty) {
+      print('No URL in notification payload');
+      return;
+    }
 
-        // Call the callback if set
-        onNotificationTapped?.call(postId);
-      }
+    print('_navigateToUrl called with: $url');
+    print(
+      'FirebaseMessagingService.navigatorKey: ${FirebaseMessagingService.navigatorKey}',
+    );
+    print(
+      'currentState: ${FirebaseMessagingService.navigatorKey?.currentState}',
+    );
+
+    final nav = FirebaseMessagingService.navigatorKey?.currentState;
+    if (nav == null) {
+      _pendingDeepLink = url;
+      print('Navigator not ready, queued: $url');
+      return;
+    }
+
+    final uri = Uri.parse(url);
+    final segments = uri.pathSegments;
+    if (segments.isEmpty) return;
+
+    final type = segments[0];
+    final id = segments.length > 1 ? segments[1] : null;
+
+    print('Navigating: type=$type, id=$id');
+
+    switch (type) {
+      case 'post-view':
+        nav.pushNamed(
+          AppRoutes.postDetail,
+          arguments: {
+            'postId': int.tryParse(id ?? ''),
+            'highlightCommentId': null,
+          },
+        );
+        break;
+      case 'profile-view':
+        nav.pushNamed(
+          AppRoutes.viewProfile,
+          arguments: {'userId': id, 'username': ''},
+        );
+        break;
+      case 'club-view':
+        nav.pushNamed(AppRoutes.clubDetail, arguments: {'clubId': id});
+        break;
+      default:
+        print('Unknown deep link type: $type');
+    }
+  }
+
+  /// Call this once after your navigator is mounted (e.g. from your home
+  /// screen's initState) to flush a deep link captured during cold start.
+  static void flushPendingDeepLink() {
+    if (_pendingDeepLink != null) {
+      final url = _pendingDeepLink;
+      _pendingDeepLink = null;
+      _navigateToUrl(url);
     }
   }
 
@@ -229,13 +313,28 @@ class FirebaseMessagingService {
 
     // ── Fetch sender avatar for largeIcon ──
     ByteArrayAndroidBitmap? largeIcon;
-    final profile = UserProfileCache.instance.getCached(senderId);
-    if (profile?.imageUrl != null) {
+
+    // 1. Prefer the URL in the payload (always present from your server)
+    String? imageUrl = data['sender_image'];
+
+    // 2. Fall back to cache if payload didn't include one
+    if (imageUrl == null || imageUrl.isEmpty) {
+      imageUrl = UserProfileCache.instance.getCached(senderId)?.imageUrl;
+    }
+
+    if (imageUrl != null && imageUrl.isNotEmpty) {
       try {
-        final response = await http.get(Uri.parse(profile!.imageUrl!));
-        final imageData = response.bodyBytes;
-        largeIcon = ByteArrayAndroidBitmap(imageData);
-      } catch (_) {}
+        final response = await http.get(Uri.parse(imageUrl));
+        if (response.statusCode == 200) {
+          largeIcon = ByteArrayAndroidBitmap(response.bodyBytes);
+        } else {
+          debugPrint(
+            '⚠️ Avatar fetch failed: ${response.statusCode} for $imageUrl',
+          );
+        }
+      } catch (e) {
+        debugPrint('⚠️ Avatar fetch error: $e');
+      }
     }
 
     // ── Build messaging style ──
@@ -271,7 +370,7 @@ class FirebaseMessagingService {
           largeIcon: largeIcon, // profile pic in notification
           styleInformation: style, // WhatsApp-style grouping
           playSound: true,
-           // ← add these for better grouped view
+          // ← add these for better grouped view
           subText: isGroup ? groupName : null,
           showWhen: true,
           groupKey: 'chat_$convId', // groups same-convo notifications
@@ -283,48 +382,14 @@ class FirebaseMessagingService {
           presentSound: true,
         ),
       ),
-      payload: 'chat:$convId',
+      // payload: 'chat:$convId',
+      payload: data['url'] ?? '',
     );
   }
 
-  // Handle notification tap (Firebase messages)
   static void _handleNotificationTap(RemoteMessage message) {
-    print('Notification tapped: ${message.messageId}');
-    print(message.data);
-
-    // Navigate based on notification data
-    if (message.data.containsKey('type')) {
-      String type = message.data['type'];
-
-      // Add your navigation logic here
-      switch (type) {
-        case 'post':
-          // Navigate to post detail
-          String? postId = message.data['post_id'];
-          print('Navigate to post: $postId');
-          onNotificationTapped?.call(postId); // Add this line
-          break;
-        case 'profile':
-          // Navigate to profile
-          String? userId = message.data['user_id'];
-          print('Navigate to profile: $userId');
-          onNotificationTapped?.call(userId); // Add this line
-          break;
-        case 'comment':
-          // Navigate to post with comments
-          String? postId = message.data['post_id'];
-          print('Navigate to post comments: $postId');
-          onNotificationTapped?.call(postId); // Add this line
-          break;
-        case 'chat_message':
-          final convId = message.data['conversation_id'];
-          print('Navigate to chat: $convId');
-          onNotificationTapped?.call('chat:$convId');
-          break;
-        default:
-          print('Unknown notification type: $type');
-      }
-    }
+    print('FCM notification tapped: ${message.data}');
+    _navigateToUrl(message.data['url']);
   }
 
   // Subscribe to topic

@@ -63,8 +63,9 @@ void main() async {
   }
 
   try {
-    // Initialize Firebase
     await Firebase.initializeApp();
+    FirebaseMessagingService.navigatorKey = navigatorKey;
+    print('✅ Assigned navigatorKey: ${FirebaseMessagingService.navigatorKey}');
     await FirebaseMessagingService.initialize();
   } catch (e) {
     print('Error initializing Firebase: $e');

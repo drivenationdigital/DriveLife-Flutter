@@ -32,6 +32,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       forceRefresh: forceRefresh,
     );
 
+    print(response); // Debug log to check the response
+
     if (!mounted) return;
 
     setState(() {
@@ -139,6 +141,19 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               onDelete: () => Navigator.pop(context, true),
               post: _post!,
               onTapProfile: () {
+                if (_post == null) return;
+
+                if (_post!['club_id'] != null) {
+                  Navigator.pushNamed(
+                    context,
+                    '/club-detail',
+                    arguments: {
+                      'clubId': _post!['club_id'],
+                    },
+                  );
+                  return;
+                }
+                
                 Navigator.pushNamed(
                   context,
                   '/view-profile',

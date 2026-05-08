@@ -21,6 +21,7 @@ import 'package:drivelife/screens/profile/my_club_profile_view.dart';
 import 'package:drivelife/screens/news/create_news_post_screen.dart';
 import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
+import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
@@ -63,6 +64,7 @@ class _HomeTabsState extends State<HomeTabs> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         context.read<LocationAccessProvider>().refresh();
+        FirebaseMessagingService.flushPendingDeepLink();
       }
     });
   }
@@ -505,6 +507,7 @@ class _HomeTabsState extends State<HomeTabs> {
           label: 'Store',
         ),
         BottomNavigationBarItem(icon: _buildProfileIcon(), label: 'Profile'),
+
         // BottomNavigationBarItem(
         //   icon: Consumer<UnreadCountProvider>(
         //     builder: (context, unread, child) {
@@ -522,7 +525,6 @@ class _HomeTabsState extends State<HomeTabs> {
         //   ),
         //   label: 'Chat',
         // ),
-        
       ],
     );
   }

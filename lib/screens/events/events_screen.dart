@@ -967,29 +967,29 @@ class _EventsScreenState extends State<EventsScreen>
 
           if (_featuredEvents.isNotEmpty)
             // Attribution bar
-            Container(
-              width: double.infinity,
-              color: Colors.black,
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 2), // tiny baseline nudge
-                    child: Text(
-                      'Powered by ',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  SvgPicture.asset('assets/app-icons/ce-logo.svg', height: 22),
-                ],
-              ),
-            ),
+            // Container(
+            //   width: double.infinity,
+            //   color: Colors.black,
+            //   padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+            //   child: Row(
+            //     mainAxisAlignment: MainAxisAlignment.center,
+            //     crossAxisAlignment: CrossAxisAlignment.center,
+            //     children: [
+            //       const Padding(
+            //         padding: EdgeInsets.only(bottom: 2), // tiny baseline nudge
+            //         child: Text(
+            //           'Powered by ',
+            //           style: TextStyle(
+            //             color: Colors.white,
+            //             fontSize: 12,
+            //             fontWeight: FontWeight.w500,
+            //           ),
+            //         ),
+            //       ),
+            //       SvgPicture.asset('assets/app-icons/ce-logo.svg', height: 22),
+            //     ],
+            //   ),
+            // ),
           const SizedBox(height: 12),
           FeaturedEventsCarousel(
             featuredEvents: _featuredEvents,

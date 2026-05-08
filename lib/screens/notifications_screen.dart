@@ -115,7 +115,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         '/post-detail',
         arguments: {'postId': postId.toString(), 'highlightCommentId': entityType == 'comment' ? entityId.toString() : null},
       );
-    } else if (notification['type'] == 'follow' || entityType == 'user') {
+    } else if (notification['type'] == 'follow' || entityType == 'user' ||
+        entityType == 'club') {
       // ✅ Route to club or user profile based on who initiated
       if (initiatorEntityType == 'club' && entityPostId != null) {
         Navigator.pushNamed(
@@ -507,8 +508,8 @@ class _NotificationTile extends StatelessWidget {
     final following = _isFollowing(userId);
 
     final isInvite = notification['type'] == 'invite';
-    final inviteStatus = entityData['invite_status'] ?? 'pending';
-    final isPendingInvite = isInvite && inviteStatus == 'pending';
+    // final inviteStatus = entityData['invite_status'] ?? 'pending';
+    // final isPendingInvite = isInvite && inviteStatus == 'pending';
     final clubName = entityData['club_name']?.toString() ?? 'a club';
 
     final clubJoinRequest = notification['type'] == 'join_request';
@@ -856,6 +857,13 @@ class _NotificationTile extends StatelessWidget {
       case 'join_request':
         final clubName = entityData['club_name']?.toString() ?? 'a club';
         return '$name requested to join $clubName';
+      case 'club':
+        if (entityType == 'post') {
+          final clubName = entityData['club_name']?.toString() ?? 'a club';
+          return '$clubName shared a new post';
+        }
+
+        return '$name interacted with your club';
       default:
         return '$name interacted with your content';
     }
