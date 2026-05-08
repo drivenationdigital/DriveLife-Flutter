@@ -541,19 +541,19 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
                         Row(
                           children: [
                             Expanded(
+                              flex: 2,
                               child: DropdownButtonFormField<String>(
                                 dropdownColor: Colors.white,
-
+                                isExpanded: true,
                                 value:
-                                    [
-                                      'GB',
-                                      'US',
-                                      'CA',
-                                    ].contains(_selectedCountry)
+                                    ['GB', 'US', 'CA', 'AU'].contains(
+                                      _selectedCountry,
+                                    ) // ← include AU, you had it in items but not in this check
                                     ? _selectedCountry
                                     : null,
                                 decoration: InputDecoration(
-                                  labelText: 'Country',
+                                  labelText:
+                                      'Country *', // ← visual cue it's required
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -581,7 +581,15 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
                                   ),
                                 ],
                                 onChanged: (value) {
-                                  setState(() => _selectedCountry = value!);
+                                  if (value != null) {
+                                    setState(() => _selectedCountry = value);
+                                  }
+                                },
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Country is required';
+                                  }
+                                  return null;
                                 },
                               ),
                             ),
