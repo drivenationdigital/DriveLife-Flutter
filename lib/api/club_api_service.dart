@@ -74,10 +74,12 @@ class ClubApiService {
       // Build the filters object the PHP endpoint expects
       final filters = <String, dynamic>{};
       if (search != null && search.isNotEmpty) filters['search'] = search;
-      if (clubType != null && clubType != 'all')
+      if (clubType != null && clubType != 'all') {
         filters['club_type'] = [clubType];
-      if (category != null && category != 'all')
+      }
+      if (category != null && category != 'all') {
         filters['category'] = [category];
+      }
 
       if (lat != null && lng != null) {
         filters['lat'] = lat;
@@ -107,6 +109,9 @@ class ClubApiService {
       );
 
       final data = json.decode(response.body);
+
+      // print(filters);
+      // print(data['_debug']);
       if (response.statusCode == 200) {
         return data['data'] as List<dynamic>?;
       }

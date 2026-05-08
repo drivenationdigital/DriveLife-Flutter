@@ -203,6 +203,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
 
   Future<void> _loadDiscoverClubs() async {
     if (!mounted) return;
+    
     setState(() {
       _isDiscoverLoading = true;
       _discoverError = null;
@@ -216,7 +217,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
         category: _selectedClubType,
         lat: _customLat,
         lng: _customLng,
-        location: _customLocationName,
+        location: _selectedLocation,
       );
 
       if (!mounted) return;
@@ -247,6 +248,9 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       final result = await ClubApiService.fetchClubs(
         page: _discoverPage,
         category: _selectedClubType,
+        lat: _customLat,
+        lng: _customLng,
+        location: _selectedLocation,
       );
 
       if (!mounted) return;
