@@ -129,6 +129,39 @@ class _CommentItemState extends State<CommentItem> {
     }
   }
 
+  void _openGifFullscreen(BuildContext context, String url) {
+    HapticFeedback.lightImpact();
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => GestureDetector(
+        onTap: () => Navigator.pop(ctx),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: SafeArea(
+            child: Stack(
+              children: [
+                Center(
+                  child: InteractiveViewer(
+                    child: Image.network(url, fit: BoxFit.contain),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
@@ -295,6 +328,58 @@ class _CommentItemState extends State<CommentItem> {
                           arguments: {'userId': userId},
                         );
                       },
+                    ),
+                  ],
+
+                  // GIF (if present)
+                  if (c['gif_url'] != null &&
+                      c['gif_url'].toString().isNotEmpty) ...[
+                    SizedBox(height: commentText.isNotEmpty ? 8 : 4),
+                    GestureDetector(
+                      onTap: () =>
+                          _openGifFullscreen(context, c['gif_url'].toString()),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: widget.isReply ? 200 : 240,
+                            maxHeight: widget.isReply ? 160 : 200,
+                          ),
+                          child: Container(
+                            color: Colors.grey.shade100,
+                            child: Image.network(
+                              c['gif_url'].toString(),
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, progress) {
+                                if (progress == null) return child;
+                                return SizedBox(
+                                  width: widget.isReply ? 200 : 240,
+                                  height: widget.isReply ? 160 : 200,
+                                  child: const Center(
+                                    child: SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (_, __, ___) => Container(
+                                width: widget.isReply ? 200 : 240,
+                                height: 80,
+                                alignment: Alignment.center,
+                                child: Icon(
+                                  Icons.broken_image_outlined,
+                                  color: Colors.grey.shade400,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ],
 

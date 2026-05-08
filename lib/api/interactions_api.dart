@@ -48,6 +48,8 @@ class InteractionsAPI {
     String postId,
     String comment, {
     int? parentId,
+    String? gifUrl,
+    String? imageUrl,
   }) async {
     try {
       final user = await _auth.getUser();
@@ -61,6 +63,8 @@ class InteractionsAPI {
           'post_id': postId,
           'comment': comment,
           'parent_id': parentId,
+          'gif_url': gifUrl,
+          'image_url': imageUrl,
         }),
       );
 
