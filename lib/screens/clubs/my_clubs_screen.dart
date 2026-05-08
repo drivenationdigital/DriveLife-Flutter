@@ -330,7 +330,8 @@ class _MyClubsScreenState extends State<MyClubsScreen>
 
   Widget _buildDiscoverTab() {
     if (_isDiscoverLoading && _discoverClubs.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      final theme = Provider.of<ThemeProvider>(context);
+      return Center(child: CircularProgressIndicator(color: theme.primaryColor));
     }
 
     if (_discoverError != null && _discoverClubs.isEmpty) {
@@ -379,9 +380,9 @@ class _MyClubsScreenState extends State<MyClubsScreen>
             const SizedBox(height: 12),
             _buildDiscoverClubsList(),
             if (_isDiscoverLoadingMore)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(child: CircularProgressIndicator()),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator(color: theme.primaryColor)),
               ),
             const SizedBox(height: 24),
           ],
