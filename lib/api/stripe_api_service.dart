@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 class StripeApiService {
   static const String baseUrl =
-      'https://www.drive-life.com'; // Replace with your WordPress URL
+      'https://www.drive-life.com/store'; // Replace with your WordPress URL
 
   /// Create Payment Intent V2
   /// Returns: {paymentIntentId, clientSecret, customer, ephemeralKey}

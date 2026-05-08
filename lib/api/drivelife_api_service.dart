@@ -4,7 +4,7 @@ import 'package:drivelife/models/product_model.dart';
 import 'package:http/http.dart' as http;
 
 class DriveLifeApiService {
-  static const String baseUrl = 'https://www.drive-life.com';
+  static const String baseUrl = 'https://www.drive-life.com/store';
 
   // Get featured products
   static Future<ProductsResponse> getFeaturedProducts() async {
