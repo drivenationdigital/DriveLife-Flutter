@@ -331,6 +331,67 @@ class _CommentItemState extends State<CommentItem> {
                     ),
                   ],
 
+                  // Image (if present)
+                  if (c['image_url'] != null &&
+                      c['image_url'].toString().isNotEmpty) ...[
+                    SizedBox(
+                      height:
+                          (commentText.isNotEmpty ||
+                              (c['gif_url'] != null &&
+                                  c['gif_url'].toString().isNotEmpty))
+                          ? 8
+                          : 4,
+                    ),
+                    GestureDetector(
+                      onTap: () => _openGifFullscreen(
+                        context,
+                        c['image_url'].toString(),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: widget.isReply ? 200 : 240,
+                            maxHeight: widget.isReply ? 200 : 260,
+                          ),
+                          child: Container(
+                            color: Colors.grey.shade100,
+                            child: Image.network(
+                              c['image_url'].toString(),
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, progress) {
+                                if (progress == null) return child;
+                                return SizedBox(
+                                  width: widget.isReply ? 200 : 240,
+                                  height: widget.isReply ? 200 : 260,
+                                  child: const Center(
+                                    child: SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (_, __, ___) => Container(
+                                width: widget.isReply ? 200 : 240,
+                                height: 80,
+                                alignment: Alignment.center,
+                                child: Icon(
+                                  Icons.broken_image_outlined,
+                                  color: Colors.grey.shade400,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+
                   // GIF (if present)
                   if (c['gif_url'] != null &&
                       c['gif_url'].toString().isNotEmpty) ...[

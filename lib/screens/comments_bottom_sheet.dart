@@ -62,11 +62,33 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
   String? _selectedImageUrl; // set after upload completes
   bool _uploadingImage = false;
 
+  bool _enableGifs = true;
+  bool _enableImages = true;
+
   @override
   void initState() {
     super.initState();
     _loadComments();
     _getCurrentUserId();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (!_enableImages && _selectedImageFile != null) {
+      setState(() {
+        _selectedImageFile = null;
+        _selectedImageUrl = null;
+      });
+    }
+
+    if (!_enableGifs && _selectedGifUrl != null) {
+      setState(() {
+        _selectedGifUrl = null;
+        _selectedGifPreviewUrl = null;
+      });
+    }
   }
 
   Future<void> _getCurrentUserId() async {
@@ -112,10 +134,12 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
   }
 
   Future<void> _loadComments() async {
-    final data = await InteractionsAPI.fetchComments(widget.postId);
+    final response = await InteractionsAPI.fetchComments(widget.postId);
     if (mounted) {
       setState(() {
-        comments = data;
+        comments = response.comments;
+        _enableGifs = response.enableGifs;
+        _enableImages = response.enableImages;
         loading = false;
       });
     }
@@ -219,46 +243,17 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
     );
     if (picked == null || !mounted) return;
 
-    final file = File(picked.path);
-
+    // Set the file as selected; do NOT upload yet — that happens on send.
     setState(() {
-      _selectedImageFile = file;
-      _uploadingImage = true;
+      _selectedImageFile = File(picked.path);
+      _selectedImageUrl =
+          null; // unused now; kept for backwards compat if you want
+      _uploadingImage = false;
+
+      // Clear any GIF — only one media item per comment
+      _selectedGifUrl = null;
+      _selectedGifPreviewUrl = null;
     });
-
-     // Clear any selected GIF — only one media item per comment
-    if (_selectedGifUrl != null) {
-      setState(() {
-        _selectedGifUrl = null;
-        _selectedGifPreviewUrl = null;
-      });
-    }
-
-    try {
-      // Replace with your actual upload method — must return a hosted URL.
-      // final url = await InteractionsAPI.uploadCommentImage(file);
-      final url ='https://i.imgur.com/placeholder.png'; // placeholder until API is ready
-
-      if (!mounted) return;
-      if (url == null || url.isEmpty) {
-        throw Exception('Upload returned empty URL');
-      }
-
-      setState(() {
-        _selectedImageUrl = url;
-        _uploadingImage = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _selectedImageFile = null;
-        _selectedImageUrl = null;
-        _uploadingImage = false;
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not upload photo: $e')));
-    }
   }
 
   void _clearSelectedImage() {
@@ -271,13 +266,34 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
 
   Future<void> _addComment() async {
     final hasText = _controller.text.trim().isNotEmpty;
-    final hasGif = _selectedGifUrl != null;
-    final hasImage = _selectedImageUrl != null;
+    final hasGif = _selectedGifUrl != null && _enableGifs;
+    final hasImage = _selectedImageFile != null && _enableImages;
 
     if (!hasText && !hasGif && !hasImage) return;
-    if (addingComment || _uploadingImage) return; // wait for upload to finish
+    if (addingComment) return;
 
     setState(() => addingComment = true);
+
+    // If a photo is attached, upload it to Cloudflare first
+    String? uploadedImageId;
+    if (hasImage) {
+      setState(() => _uploadingImage = true);
+
+      uploadedImageId = await InteractionsAPI.uploadCommentImage(
+        _selectedImageFile!,
+      );
+
+      if (!mounted) return;
+      setState(() => _uploadingImage = false);
+
+      if (uploadedImageId == null) {
+        setState(() => addingComment = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not upload photo. Try again.')),
+        );
+        return;
+      }
+    }
 
     await InteractionsAPI.addComment(
       widget.postId,
@@ -286,11 +302,13 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
           ? int.tryParse(_replyingToCommentId!)
           : null,
       gifUrl: _selectedGifUrl,
-      imageUrl: _selectedImageUrl,
+      imageUrl:
+          uploadedImageId, // stored in DB; backend resolves to CDN URL on read
     );
 
     _controller.clear();
 
+    if (!mounted) return;
     setState(() {
       _replyingToUsername = null;
       _replyingToCommentId = null;
@@ -612,50 +630,56 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                           // Photo button
-                          // GestureDetector(
-                          //   onTap: _pickImage,
-                          //   child: Container(
-                          //     width: 44,
-                          //     height: 40,
-                          //     margin: const EdgeInsets.only(right: 6),
-                          //     decoration: BoxDecoration(
-                          //       color: Colors.grey.shade100,
-                          //       borderRadius: BorderRadius.circular(12),
-                          //       border: Border.all(color: Colors.grey.shade300),
-                          //     ),
-                          //     alignment: Alignment.center,
-                          //     child: Icon(
-                          //       Icons.photo_camera_outlined,
-                          //       size: 20,
-                          //       color: Colors.grey.shade700,
-                          //     ),
-                          //   ),
-                          // ),
-                          // // GIF picker button
-                          // GestureDetector(
-                          //   onTap: _pickGif,
-                          //   child: Container(
-                          //     width: 44,
-                          //     height: 40,
-                          //     margin: const EdgeInsets.only(right: 8),
-                          //     decoration: BoxDecoration(
-                          //       color: Colors.grey.shade100,
-                          //       borderRadius: BorderRadius.circular(12),
-                          //       border: Border.all(color: Colors.grey.shade300),
-                          //     ),
-                          //     alignment: Alignment.center,
-                          //     child: const Text(
-                          //       'GIF',
-                          //       style: TextStyle(
-                          //         fontSize: 11,
-                          //         fontWeight: FontWeight.w800,
-                          //         color: Colors.black87,
-                          //         letterSpacing: 0.5,
-                          //       ),
-                          //     ),
-                          //   ),
-                          // ),
+                          // Photo button — hidden if images are disabled
+                          if (_enableImages)
+                            GestureDetector(
+                              onTap: _pickImage,
+                              child: Container(
+                                width: 44,
+                                height: 40,
+                                margin: const EdgeInsets.only(right: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.grey.shade300,
+                                  ),
+                                ),
+                                alignment: Alignment.center,
+                                child: Icon(
+                                  Icons.photo_camera_outlined,
+                                  size: 20,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ),
+                          // GIF button — hidden if GIFs are disabled
+                          if (_enableGifs)
+                            GestureDetector(
+                              onTap: _pickGif,
+                              child: Container(
+                                width: 44,
+                                height: 40,
+                                margin: const EdgeInsets.only(right: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.grey.shade300,
+                                  ),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  'GIF',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.black87,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                            ),
                           Expanded(
                             child: FlutterTagger(
                               controller: _controller,
@@ -739,9 +763,8 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                               final canSend =
                                   (value.text.trim().isNotEmpty ||
                                       _selectedGifUrl != null ||
-                                      _selectedImageUrl != null) &&
-                                  !addingComment &&
-                                  !_uploadingImage;
+                                      _selectedImageFile != null) &&
+                                  !addingComment;
                               return GestureDetector(
                                 onTap: canSend ? _addComment : null,
                                 child: Container(
@@ -776,7 +799,6 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
   }
 }
 
-
 class _TenorGif {
   final String id;
   final String url; // full-size for sending
@@ -794,7 +816,8 @@ class _TenorGifPicker extends StatefulWidget {
 
 class _TenorGifPickerState extends State<_TenorGifPicker> {
   // Paste your KLIPY test key here — get one at https://klipy.com
-  static const String _apiKey = '7UrnPvKjU6BCzy0guMtedUGtouNAHnbQvbjjou1S6ckPTVjvIJcF2UmLwhCVADvN';
+  static const String _apiKey =
+      '7UrnPvKjU6BCzy0guMtedUGtouNAHnbQvbjjou1S6ckPTVjvIJcF2UmLwhCVADvN';
 
   // KLIPY uses customer_id to track per-user recents/preferences.
   // For now use a stable anonymous value; later swap for the actual user ID.
@@ -891,34 +914,39 @@ class _TenorGifPickerState extends State<_TenorGifPicker> {
     final outerData = body['data'] as Map<String, dynamic>?;
     final results = (outerData?['data'] as List?) ?? [];
 
-    final gifs = results.map((item) {
-      final m = item as Map<String, dynamic>;
-      final file = m['file'] as Map<String, dynamic>? ?? {};
+    final gifs = results
+        .map((item) {
+          final m = item as Map<String, dynamic>;
+          final file = m['file'] as Map<String, dynamic>? ?? {};
 
-      // Try to pull the largest gif URL for sending, smallest for preview
-      String? extractUrl(String size) {
-        final sized = file[size] as Map<String, dynamic>?;
-        if (sized == null) return null;
-        // KLIPY returns format-keyed map: { gif: {url}, mp4: {url}, webp: {url} }
-        return sized['gif']?['url']?.toString();
-      }
+          // Try to pull the largest gif URL for sending, smallest for preview
+          String? extractUrl(String size) {
+            final sized = file[size] as Map<String, dynamic>?;
+            if (sized == null) return null;
+            // KLIPY returns format-keyed map: { gif: {url}, mp4: {url}, webp: {url} }
+            return sized['gif']?['url']?.toString();
+          }
 
-      final fullUrl = extractUrl('lg') ??
-          extractUrl('md') ??
-          extractUrl('sm') ??
-          extractUrl('xs') ??
-          '';
-      final previewUrl = extractUrl('sm') ??
-          extractUrl('xs') ??
-          extractUrl('md') ??
-          fullUrl;
+          final fullUrl =
+              extractUrl('lg') ??
+              extractUrl('md') ??
+              extractUrl('sm') ??
+              extractUrl('xs') ??
+              '';
+          final previewUrl =
+              extractUrl('sm') ??
+              extractUrl('xs') ??
+              extractUrl('md') ??
+              fullUrl;
 
-      return _TenorGif(
-        id: m['slug']?.toString() ?? m['id']?.toString() ?? '',
-        url: fullUrl,
-        previewUrl: previewUrl,
-      );
-    }).where((g) => g.url.isNotEmpty).toList();
+          return _TenorGif(
+            id: m['slug']?.toString() ?? m['id']?.toString() ?? '',
+            url: fullUrl,
+            previewUrl: previewUrl,
+          );
+        })
+        .where((g) => g.url.isNotEmpty)
+        .toList();
 
     setState(() {
       _gifs = gifs;
@@ -1005,62 +1033,69 @@ class _TenorGifPickerState extends State<_TenorGifPicker> {
 
               Expanded(
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator(color: Color(0xFFAE9159)))
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFAE9159),
+                        ),
+                      )
                     : _error != null
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Text(
-                                _error!,
-                                style: TextStyle(color: Colors.grey.shade600),
-                                textAlign: TextAlign.center,
-                              ),
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            _error!,
+                            style: TextStyle(color: Colors.grey.shade600),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      )
+                    : _gifs.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No GIFs found',
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                      )
+                    : GridView.builder(
+                        controller: scrollController,
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              mainAxisSpacing: 8,
+                              crossAxisSpacing: 8,
+                              childAspectRatio: 1,
                             ),
-                          )
-                        : _gifs.isEmpty
-                            ? Center(
-                                child: Text(
-                                  'No GIFs found',
-                                  style: TextStyle(color: Colors.grey.shade600),
-                                ),
-                              )
-                            : GridView.builder(
-                                controller: scrollController,
-                                padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  mainAxisSpacing: 8,
-                                  crossAxisSpacing: 8,
-                                  childAspectRatio: 1,
-                                ),
-                                itemCount: _gifs.length,
-                                itemBuilder: (context, i) {
-                                  final gif = _gifs[i];
-                                  return GestureDetector(
-                                    onTap: () => Navigator.pop(context, gif),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Container(
-                                        color: Colors.grey.shade200,
-                                        child: Image.network(
-                                          gif.previewUrl,
-                                          fit: BoxFit.cover,
-                                          loadingBuilder: (context, child, progress) {
-                                            if (progress == null) return child;
-                                            return const Center(
-                                              child: SizedBox(
-                                                width: 18,
-                                                height: 18,
-                                                child: CircularProgressIndicator(strokeWidth: 2),
-                                              ),
-                                            );
-                                          },
+                        itemCount: _gifs.length,
+                        itemBuilder: (context, i) {
+                          final gif = _gifs[i];
+                          return GestureDetector(
+                            onTap: () => Navigator.pop(context, gif),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                color: Colors.grey.shade200,
+                                child: Image.network(
+                                  gif.previewUrl,
+                                  fit: BoxFit.cover,
+                                  loadingBuilder: (context, child, progress) {
+                                    if (progress == null) return child;
+                                    return const Center(
+                                      child: SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
                                         ),
                                       ),
-                                    ),
-                                  );
-                                },
+                                    );
+                                  },
+                                ),
                               ),
+                            ),
+                          );
+                        },
+                      ),
               ),
 
               // KLIPY attribution (their TOS requires this)
@@ -1071,10 +1106,7 @@ class _TenorGifPickerState extends State<_TenorGifPicker> {
                 ),
                 child: Text(
                   'Powered by KLIPY',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey.shade500,
-                  ),
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
                 ),
               ),
             ],
