@@ -153,6 +153,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   );
                   return;
                 }
+
+                if (_post!['venue_id'] != null) {
+                  Navigator.pushNamed(
+                    context,
+                    '/venue-details',
+                    arguments: {
+                      'venueId': _post!['venue_id'],
+                    },
+                  );
+                  return;
+                }
                 
                 Navigator.pushNamed(
                   context,

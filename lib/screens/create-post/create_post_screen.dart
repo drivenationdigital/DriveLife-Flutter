@@ -126,10 +126,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     super.dispose();
   }
 
-  /// True when this post is being created on behalf of a club.
-  /// Club posts have looser requirements (media optional, no tagging).
-  bool get _isClubPost =>
-      _associatedEntity != null && _associatedEntity!['type'] == 'club';
+  /// True when this post is being created on behalf of an entity
+  /// (club or venue). Entity posts have looser requirements:
+  /// media is optional, and per-media tagging (people/vehicles/events)
+  /// is hidden.
+  bool get _isEntityPost =>
+      _associatedEntity != null &&
+      (_associatedEntity!['type'] == 'club' ||
+          _associatedEntity!['type'] == 'venue');
 
   void _autoFormatHashtags() {
     if (_processingTag) return; // block re-entry from addTag's own text update
@@ -386,13 +390,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Future<void> _createPost() async {
-    if (_selectedMedia.isEmpty && !_isClubPost) {
+    if (_selectedMedia.isEmpty && !_isEntityPost) {
       _showMessage('Please select at least one image or video', isError: true);
       return;
     }
 
     // For club posts with no media, require at least a caption
-    if (_isClubPost &&
+    if (_isEntityPost &&
         _selectedMedia.isEmpty &&
         _captionController.text.trim().isEmpty) {
       _showMessage('Please add a caption or media', isError: true);
@@ -881,7 +885,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 16),
-                if (_isClubPost) ...[
+                if (_isEntityPost) ...[
                   Container(
                     margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     padding: const EdgeInsets.symmetric(
@@ -969,7 +973,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                             ),
                             const SizedBox(height: 20),
                             Text(
-                              _isClubPost
+                              _isEntityPost
                                   ? 'Add Media (Optional)'
                                   : 'Add Photos or Videos',
                               style: TextStyle(
@@ -980,7 +984,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              _isClubPost
+                              _isEntityPost
                                   ? 'Optionally attach photos or videos'
                                   : 'Tap to select up to 10 items',
                               style: TextStyle(
@@ -1216,7 +1220,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
                 const SizedBox(height: 24),
 
-                if (!_isClubPost) ...[
+                if (!_isEntityPost) ...[
                   _OptionTile(
                     icon: Icons.people_rounded,
                     title: 'Tag People',

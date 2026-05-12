@@ -724,16 +724,23 @@ class _BasicDetailsTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Venue Title
-          const Text(
-            'Venue Title',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
+          Row(
+            children: [
+              const Text(
+                'Venue Title',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Text(
+                '*',
+                style: TextStyle(color: Colors.red, fontSize: 14),
+              ),
+            ],
           ),
-          const SizedBox(height: 2),
-          const Text('*', style: TextStyle(color: Colors.red, fontSize: 14)),
           const SizedBox(height: 8),
           TextField(
             controller: titleController,
@@ -764,16 +771,23 @@ class _BasicDetailsTab extends StatelessWidget {
           const SizedBox(height: 24),
 
           // Venue Location
-          const Text(
-            'Venue Location',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
+          Row(
+            children: [
+              const Text(
+                'Venue Location',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Text(
+                '*',
+                style: TextStyle(color: Colors.red, fontSize: 14),
+              ),
+            ],
           ),
-          const SizedBox(height: 2),
-          const Text('*', style: TextStyle(color: Colors.red, fontSize: 14)),
           const SizedBox(height: 8),
           GooglePlaceAutoCompleteTextField(
             textEditingController: locationController,
@@ -1146,12 +1160,10 @@ class _DescriptionTab extends StatelessWidget {
                       Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
-                          
                           color: Colors.grey.shade50,
                           border: Border(
                             bottom: BorderSide(color: Colors.grey.shade300),
                           ),
-                        
                         ),
                         child: QuillSimpleToolbar(
                           controller: controller,

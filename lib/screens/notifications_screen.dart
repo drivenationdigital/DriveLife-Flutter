@@ -116,7 +116,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         arguments: {'postId': postId.toString(), 'highlightCommentId': entityType == 'comment' ? entityId.toString() : null},
       );
     } else if (notification['type'] == 'follow' || entityType == 'user' ||
-        entityType == 'club') {
+        entityType == 'club' || entityType == 'venue') {
       // ✅ Route to club or user profile based on who initiated
       if (initiatorEntityType == 'club' && entityPostId != null) {
         Navigator.pushNamed(
@@ -481,6 +481,7 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    print(notification);
     final entity = notification['entity'] ?? {};
     final initiatorData = entity['initiator_data'] ?? {};
     final entityDataRaw = entity['entity_data'];
@@ -860,10 +861,25 @@ class _NotificationTile extends StatelessWidget {
       case 'club':
         if (entityType == 'post') {
           final clubName = entityData['club_name']?.toString() ?? 'a club';
+          final caption = entityData['caption']?.toString().trim() ?? '';
+          if (caption.isNotEmpty) {
+            final snippet = ellipsis(caption, 80);
+            return '$clubName shared a new post: "$snippet"';
+          }
           return '$clubName shared a new post';
         }
-
         return '$name interacted with your club';
+      case 'venue':
+        if (entityType == 'post') {
+          final venueName = entityData['venue_name']?.toString() ?? 'a venue';
+          final caption = entityData['caption']?.toString().trim() ?? '';
+          if (caption.isNotEmpty) {
+            final snippet = ellipsis(caption, 80);
+            return '$venueName shared a new post: "$snippet"';
+          }
+          return '$venueName shared a new post';
+        }
+        return '$name interacted with your venue';
       default:
         return '$name interacted with your content';
     }

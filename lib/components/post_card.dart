@@ -68,6 +68,12 @@ class _PostCardState extends State<PostCard>
     return isClubPost && !_hasMedia;
   }
 
+  bool get _isVenueAnnouncement {
+    final isVenuePost =
+        widget.post['is_venue_post'] == true || widget.post['venue_id'] != null;
+    return isVenuePost && !_hasMedia;
+  }
+
   int _currentPage = 0;
   bool _liked = false;
   int _likesCount = 0;
@@ -632,7 +638,8 @@ class _PostCardState extends State<PostCard>
           ),
 
           // ── ANNOUNCEMENT LAYOUT ──────────────────────────────────
-          if (_isClubAnnouncement) ...[
+          // if club or venue announcement (no media), show caption first with more spacing and larger font, then actions
+          if (_isClubAnnouncement || _isVenueAnnouncement) ...[
             // Caption — large, plain, generous spacing
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),

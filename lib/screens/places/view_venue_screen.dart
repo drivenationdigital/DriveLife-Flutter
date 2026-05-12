@@ -1,5 +1,7 @@
 import 'package:drivelife/api/places_api.dart';
+import 'package:drivelife/components/post_card.dart';
 import 'package:drivelife/models/venue_view_model.dart';
+import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
@@ -31,18 +33,79 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
   String? _errorMessage;
   final TextEditingController _searchController = TextEditingController();
 
+  List<dynamic> _posts = [];
+  bool _postsLoaded = false;
+  bool _isLoadingPosts = false;
+
+  // Upload completion tracking — refresh club posts when an upload finishes
+  final Set<String> _completedUploads = {};
+  bool _refreshScheduled = false;
+  UploadPostProvider? _uploadProvider;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadVenue();
+    _loadPosts();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _searchController.dispose();
+    _uploadProvider?.removeListener(_onUploadsChanged);
     super.dispose();
+  }
+
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Subscribe to upload provider once
+    final provider = Provider.of<UploadPostProvider>(context, listen: false);
+    if (_uploadProvider != provider) {
+      _uploadProvider?.removeListener(_onUploadsChanged);
+      _uploadProvider = provider;
+      _uploadProvider!.addListener(_onUploadsChanged);
+    }
+  }
+
+void _onUploadsChanged() {
+    if (!mounted || _uploadProvider == null) return;
+    _checkUploadCompletions(_uploadProvider!.uploads);
+  }
+
+  void _checkUploadCompletions(Map<String, UploadPostProgress> uploads) {
+    if (!mounted) return;
+
+    bool needsRefresh = false;
+
+    for (final entry in uploads.entries) {
+      if (entry.value.status == UploadStatus.completed &&
+          !_completedUploads.contains(entry.key)) {
+        // Only refresh if the completed upload was for THIS club
+        _completedUploads.add(entry.key);
+        needsRefresh = true;
+      }
+    }
+
+    print(_completedUploads);
+
+    // Clean up tracking for uploads that have been removed from the provider
+    _completedUploads.removeWhere((id) => !uploads.containsKey(id));
+
+    if (needsRefresh && !_refreshScheduled) {
+      _refreshScheduled = true;
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _refreshScheduled = false;
+        if (!mounted) return;
+        // Force a fresh fetch of club posts
+        setState(() => _postsLoaded = false);
+        _loadPosts();
+      });
+    }
   }
 
   Future<void> _loadVenue() async {
@@ -109,6 +172,51 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
           _isFollowing = !_isFollowing;
         });
       }
+    }
+  }
+
+  Future<void> _loadPosts() async {
+    if (!mounted) return;
+    setState(() => _isLoadingPosts = true);
+
+    try {
+      final result = await VenueApiService.fetchVenuePosts(
+        venueId: widget.venueId,
+        page: 1,
+        perPage: 10,
+      );
+
+      print(result);
+
+      if (!mounted) return;
+      setState(() {
+        _posts = result ?? [];
+        _postsLoaded = true;
+        _isLoadingPosts = false;
+      });
+    } catch (e) {
+      print('Error loading venue posts: $e');
+      if (!mounted) return;
+      setState(() {
+        _postsLoaded = true;
+        _isLoadingPosts = false;
+      });
+    }
+  }
+
+  Future<void> _handleCreateVenuePost() async {
+    final result = await Navigator.pushNamed(
+      context,
+      '/create-post',
+      arguments: {
+        'association_id': widget.venueId,
+        'association_type': 'venue',
+        'association_label': _venue?.title ?? '',
+      },
+    );
+
+    if (result == true && mounted) {
+      _loadPosts();
     }
   }
 
@@ -376,76 +484,106 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 16),
 
-                      // Follow button
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _toggleFollow,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _isFollowing
-                                ? Colors.grey.shade300
-                                : const Color(0xFFAE9159),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: Text(
-                            _isFollowing ? 'Following' : 'Follow',
-                            style: TextStyle(
-                              color: _isFollowing
-                                  ? Colors.black87
-                                  : Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // edit venue button if owner
-                      if (_venue!.isOwner) ...[
+                      if (!_venue!.isOwner) ...[
+                        const SizedBox(height: 16),
+                        // Follow button
                         SizedBox(
                           width: double.infinity,
-                          child: OutlinedButton(
-                            onPressed: () async {
-                              final response =
-                                  await NavigationHelper.navigateTo(
-                                    context,
-                                    CreateVenueScreen(existingVenue: _venue),
-                                  );
-
-                              if (response == true) {
-                                print('Reloading venue details');
-                                _loadVenue();
-                              }
-
-                              if (!mounted) return;
-
-                              // If the venue was deleted, pop back
-                              if (response == 'deleted') {
-                                Navigator.pop(context, true);
-                              }
-                            },
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFFAE9159)),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: ElevatedButton(
+                            onPressed: _toggleFollow,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isFollowing
+                                  ? Colors.grey.shade300
+                                  : const Color(0xFFAE9159),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            child: const Text(
-                              'Edit Venue',
+                            child: Text(
+                              _isFollowing ? 'Following' : 'Follow',
                               style: TextStyle(
-                                color: Color(0xFFAE9159),
+                                color: _isFollowing
+                                    ? Colors.black87
+                                    : Colors.white,
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+
+                      if (_venue!.isOwner) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _handleCreateVenuePost,
+                                icon: const Icon(
+                                  Icons.add_a_photo_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Create Post'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFAE9159),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () async {
+                                  final response =
+                                      await NavigationHelper.navigateTo(
+                                        context,
+                                        CreateVenueScreen(
+                                          existingVenue: _venue,
+                                        ),
+                                      );
+
+                                  if (response == true) {
+                                    print('Reloading venue details');
+                                    _loadVenue();
+                                  }
+
+                                  if (!mounted) return;
+
+                                  if (response == 'deleted') {
+                                    Navigator.pop(context, true);
+                                  }
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(
+                                    color: Color(0xFFAE9159),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Edit Venue',
+                                  style: TextStyle(
+                                    color: Color(0xFFAE9159),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 20),
                       ],
@@ -477,7 +615,12 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
       },
       body: TabBarView(
         controller: _tabController,
-        children: [_buildEventsTab(), _buildUpdatesTab(), _buildAboutTab()],
+        children: [
+          _buildPostsTab(),
+          _buildEventsTab(),
+          _buildUpdatesTab(),
+          _buildAboutTab(),
+        ],
       ),
     );
   }
@@ -499,11 +642,14 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
           Image.asset('assets/logo-dark.png', height: 18),
           const Spacer(),
           IconButton(
-            icon:SvgPicture.asset(
+            icon: SvgPicture.asset(
               'assets/app-icons/header-search.svg',
               width: 20,
               height: 20,
-              colorFilter: const ColorFilter.mode(Colors.black, BlendMode.srcIn),
+              colorFilter: const ColorFilter.mode(
+                Colors.black,
+                BlendMode.srcIn,
+              ),
             ),
             onPressed: () {
               Navigator.pushNamed(context, AppRoutes.search);
@@ -670,10 +816,103 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
         unselectedLabelColor: Colors.grey.shade600,
         labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         tabs: const [
+          Tab(text: 'Posts'),
           Tab(text: 'Events'),
           Tab(text: 'Updates'),
           Tab(text: 'About'),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPostsTab() {
+    if (_isLoadingPosts && _posts.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFFAE9159)),
+      );
+    }
+
+    if (_posts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.photo_library_outlined,
+              size: 80,
+              color: Colors.grey.shade300,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No posts yet',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _venue!.isOwner
+                  ? 'Share an update with your followers'
+                  : 'Check back later for new posts',
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+            ),
+            if (_venue!.isOwner) ...[
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _handleCreateVenuePost,
+                icon: const Icon(Icons.add),
+                label: const Text('Create Post'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFAE9159),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadPosts,
+      color: const Color(0xFFAE9159),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(0),
+        itemCount: _posts.length,
+        itemBuilder: (context, index) {
+          final post = _posts[index];
+          return PostCard(
+            key: ValueKey(post['id']),
+            post: post,
+            onTapProfile: () {
+              Navigator.pushNamed(
+                context,
+                '/view-profile',
+                arguments: {
+                  'userId': post['user_id'],
+                  'username': post['username'],
+                },
+              );
+            },
+            onLikeChanged: (isLiked) {
+              setState(() {
+                post['is_liked'] = isLiked;
+                post['likes_count'] =
+                    (post['likes_count'] as int) + (isLiked ? 1 : -1);
+              });
+            },
+            onDelete: _loadPosts,
+          );
+        },
       ),
     );
   }

@@ -70,6 +70,56 @@ class VenueApiService {
     }
   }
 
+  static Future<List<dynamic>?> fetchVenuePosts({
+    required String venueId,
+    int page = 1,
+    int perPage = 10,
+  }) async {
+    try {
+      final user = await _authService.getUser();
+      final token = await _authService.getToken();
+      if (user == null || token == null) return null;
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/get-venue-posts'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'venue_id': venueId,
+          'user_id': user['id'],
+          'page': page,
+          'limit': perPage,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        print('fetchVenuePosts failed: ${response.statusCode}');
+        return null;
+      }
+
+      final data = jsonDecode(response.body);
+
+      // Match shape returned by your get-club-posts endpoint:
+      // { success: true, data: [...], total_pages, page, limit }
+      if (data is Map<String, dynamic>) {
+        if (data['success'] == true && data['data'] is List) {
+          return data['data'] as List;
+        }
+        return null;
+      }
+
+      // Fallback: backend returns a bare list
+      if (data is List) return data;
+
+      return null;
+    } catch (e) {
+      print('fetchVenuePosts error: $e');
+      return null;
+    }
+  }
+
   // Delete venue
   static Future<Map<String, dynamic>?> deleteVenue({
     required String venueId,
