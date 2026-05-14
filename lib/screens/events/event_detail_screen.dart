@@ -1350,22 +1350,27 @@ class _EventDetailScreenState extends State<EventDetailScreen>
         ),
         title: Image.asset('assets/logo-dark.png', height: 18),
         centerTitle: true,
-        // actions: [
-        //   IconButton(
-        //     icon: SvgPicture.asset(
-        //       'assets/app-icons/header-search.svg',
-        //       width: 20,
-        //       height: 20,
-        //       colorFilter: const ColorFilter.mode(Colors.black, BlendMode.srcIn),
-        //     ),
-        //     onPressed: () {},
-        //   ),
-        //   ...SharedHeaderIcons.actionIcons(
-        //     iconColor: Colors.black,
-        //     showQr: false, // Already shown in leading
-        //     showNotifications: true,
-        //   ),
-        // ],
+        actions: [
+          // IconButton(
+          //   icon: SvgPicture.asset(
+          //     'assets/app-icons/header-search.svg',
+          //     width: 20,
+          //     height: 20,
+          //     colorFilter: const ColorFilter.mode(Colors.black, BlendMode.srcIn),
+          //   ),
+          //   onPressed: () {},
+          // ),
+          IconButton(
+            icon: const Icon(Icons.share, color: Colors.black),    
+            onPressed: () {
+              Share.share(
+                'Check out this event: ${_fullEventData?['title'] ?? 'Untitled Event'}\n\n'
+                'https://app.mydrivelife.com?dl-events/${_fullEventData?['id'] ?? ''}',
+              );
+            },
+          ),
+          const SizedBox(width: 8), // right-edge breathing room
+        ],
       ),
       body: _isLoadingEvent
           ? _buildSkeleton()

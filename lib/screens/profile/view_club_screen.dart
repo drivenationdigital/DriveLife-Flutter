@@ -8,11 +8,13 @@ import 'package:drivelife/screens/clubs/request_modal.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/announcement-card.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/event-card.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/member-listing.dart';
+import 'package:drivelife/utils/misc.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const Color _gold = Color(0xFFC4A062);
@@ -869,6 +871,8 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   }
 
   AppBar _buildAppBar() {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
@@ -886,14 +890,26 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       title: Image.asset('assets/logo-dark.png', height: 18),
       actions: [
         IconButton(
-          icon: const Icon(Icons.search, color: Colors.black),
-          onPressed: () => Navigator.pushNamed(context, AppRoutes.search),
+          icon: iconSvg(
+            'assets/app-icons/header-search.svg',
+            theme,
+            size: 20,
+            alwaysActive: true,
+          ),
+          onPressed: () {
+            Navigator.pushNamed(context, AppRoutes.search);
+          },
         ),
-        ...SharedHeaderIcons.actionIcons(
-          iconColor: Colors.black,
-          showQr: false,
-          showNotifications: true,
+        IconButton(
+          icon: const Icon(Icons.share, color: Colors.black),
+          onPressed: () {
+            Share.share(
+              'Check out this club on DriveLife: ${_clubData?['title'] ?? 'a club'}\n\n'
+              'https://app.mydrivelife.com?dl-clubs/${_clubData?['id']}',
+            );
+          },
         ),
+        const SizedBox(width: 8), // right-edge breathing room
       ],
     );
   }
