@@ -641,7 +641,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                 onTap: () async {
                   Navigator.pop(context);
                   final shareText =
-                      'Check out ${_userProfile?['name'] ?? 'this profile'} on DriveLife! https://app.mydrivelife.com?dl-profile=${_userProfile?['username'] ?? ''}';
+                      'Check out ${_userProfile?['name'] ?? 'this profile'} on DriveLife! https://app.mydrivelife.com/profile/${_userProfile?['username'] ?? ''}';
 
                   try {
                     await Share.share(

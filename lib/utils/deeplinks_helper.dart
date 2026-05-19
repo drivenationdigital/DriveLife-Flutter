@@ -98,9 +98,18 @@ class DeepLinkHandler {
         return;
       }
 
-      // Handle post share
-      if (params.containsKey('dl-postv')) {
-        final postId = params['dl-postv']!;
+      // Handle post share if dl-postv OR /post/:id is present: https://app.mydrivelife.com/?dl-postv=123 OR https://app.mydrivelife.com/post/123
+      if (params.containsKey('dl-postv') ||
+          (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'post')) {
+        var uriID =
+            (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'post')
+            ? uri.pathSegments[1]
+            : null;
+        uriID = uriID
+            ?.split('&')
+            .first; // Handle potential extra params in path
+        final postId =
+            params['dl-postv'] ?? uriID; // Handle potential extra params
         debugPrint('🔗 [DeepLink] Post ID: $postId');
 
         if (currentUser == null) {
@@ -128,8 +137,82 @@ class DeepLinkHandler {
         return;
       }
 
-      if (params.containsKey('dl-profile')) {
-        final profileId = params['dl-profile']!;
+      // EVENT — extend existing handler to also catch /event/:id
+      if (params.containsKey('dl-event') || (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'event')) {
+        var uriID =
+            (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'event')
+            ? uri.pathSegments[1]
+            : null;
+        uriID = uriID?.split('&').first;
+        final eventId = params['dl-event'] ?? uriID;
+        debugPrint('🔗 [DeepLink] Event ID: $eventId');
+
+        if (currentUser == null) {
+          debugPrint('⚠️ [DeepLink] User not logged in');
+          navigatorKey.currentState?.pushNamed(AppRoutes.login);
+          return;
+        }
+
+        navigatorKey.currentState?.pushNamed(
+          AppRoutes.eventDetail,
+          arguments: {
+            'event': {'id': eventId},
+          },
+        );
+        return;
+      }
+
+      // CLUB — new, /club/:id or ?dl-club=:id
+      if (params.containsKey('dl-club') || (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'club')) {
+        var uriID = (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'club') ? uri.pathSegments[1] : null;
+        uriID = uriID?.split('&').first;
+        final clubId = params['dl-club'] ?? uriID;
+        debugPrint('🔗 [DeepLink] Club ID: $clubId');
+
+        if (currentUser == null) {
+          debugPrint('⚠️ [DeepLink] User not logged in');
+          navigatorKey.currentState?.pushNamed(AppRoutes.login);
+          return;
+        }
+
+        navigatorKey.currentState?.pushNamed(
+          AppRoutes.clubDetail, // ← confirm route name
+          arguments: {'clubId': clubId}, // ← confirm arg shape
+        );
+        return;
+      }
+
+      // VENUE — new, /venue/:id or ?dl-venue=:id
+      if (params.containsKey('dl-venue') || (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'venue')) {
+        var uriID =
+            (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'venue')
+            ? uri.pathSegments[1]
+            : null;
+        uriID = uriID?.split('&').first;
+        final venueId = params['dl-venue'] ?? uriID;
+        debugPrint('🔗 [DeepLink] Venue ID: $venueId');
+
+        if (currentUser == null) {
+          debugPrint('⚠️ [DeepLink] User not logged in');
+          navigatorKey.currentState?.pushNamed(AppRoutes.login);
+          return;
+        }
+
+        navigatorKey.currentState?.pushNamed(
+          AppRoutes.venueDetails, // ← confirm route name
+          arguments: {'venueId': venueId}, // ← confirm arg shape
+        );
+        return;
+      }
+
+      // PROFILE — extend existing handler to also catch /user/:username
+      if (params.containsKey('dl-profile') || (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'profile')) {
+        var uriUsername =
+            (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'user')
+            ? uri.pathSegments[1]
+            : null;
+        uriUsername = uriUsername?.split('&').first;
+        final profileId = params['dl-profile'] ?? uriUsername;
         debugPrint('🔗 [DeepLink] Profile ID: $profileId');
 
         if (currentUser == null) {
@@ -141,23 +224,6 @@ class DeepLinkHandler {
         navigatorKey.currentState?.pushNamed(
           AppRoutes.viewProfile,
           arguments: {'username': profileId},
-        );
-        return;
-      }
-
-      if (params.containsKey('dl-event')) {
-        final eventId = params['dl-event']!;
-        debugPrint('🔗 [DeepLink] Event ID: $eventId');
-
-        if (currentUser == null) {
-          debugPrint('⚠️ [DeepLink] User not logged in');
-          navigatorKey.currentState?.pushNamed(AppRoutes.login);
-          return;
-        }
-
-        navigatorKey.currentState?.pushNamed(
-          AppRoutes.eventDetail,
-          arguments: {'event': {'id': eventId}},
         );
         return;
       }

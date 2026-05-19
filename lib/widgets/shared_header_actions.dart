@@ -156,11 +156,20 @@ class SharedHeaderIcons {
     Color iconColor = Colors.black,
     bool showQr = true,
     bool showNotifications = true,
+    bool showShare = false,
     Function(Map<String, dynamic>)? onQrSuccess,
+    Function()? onShareTap,
   }) {
     return [
       if (showQr) qrCodeIcon(iconColor: iconColor, onSuccess: onQrSuccess),
       if (showNotifications) notificationIcon(iconColor: iconColor),
+      if (showShare)
+        IconButton(
+          padding: EdgeInsets.zero,
+          iconSize: 22,
+          onPressed: onShareTap,
+          icon: const Icon(Icons.share, color: Colors.black),
+        ),
     ];
   }
 }

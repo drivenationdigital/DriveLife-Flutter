@@ -595,7 +595,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
 
   Widget _buildEventContent(ThemeProvider theme) {
     final event = _fullEventData!;
-
+    final eventId = event['id']?.toString() ?? widget.event?['id']?.toString() ?? '';
     final eventImages = _getEventImages(event);
     final eventTitle = event['title'] ?? 'Untitled Event';
     final eventDate = _formatEventDate(event);
@@ -1110,8 +1110,9 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                             Expanded(
                               child: ElevatedButton.icon(
                                 onPressed: () async {
+                                  final eventUrl = 'https://app.mydrivelife.com/event/$eventId?ref=share';
                                   final shareText =
-                                      'Check out this event: $eventTitle\n$eventLocation\n$eventDate at $eventTime';
+                                      'Check out this event: $eventTitle\n$eventLocation\n$eventDate at $eventTime\n\n$eventUrl';
                                   await Share.share(
                                     shareText,
                                     subject: eventTitle,
@@ -1365,7 +1366,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
             onPressed: () {
               Share.share(
                 'Check out this event: ${_fullEventData?['title'] ?? 'Untitled Event'}\n\n'
-                'https://app.mydrivelife.com?dl-events/${_fullEventData?['id'] ?? ''}',
+                'https://app.mydrivelife.com/event/${_fullEventData?['id'] ?? ''}',
               );
             },
           ),

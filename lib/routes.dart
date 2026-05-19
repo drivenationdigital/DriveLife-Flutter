@@ -82,13 +82,25 @@ class AppRoutes {
     final routeName = settings.name ?? '';
     debugPrint('🔍 [AppRoutes] Requested route: $routeName');
 
+    final seoDeepLinkRoutes = ['/post/', '/event/', '/profile/', '/venue/', '/club/'];
+
     // ⭐ Check if this is a deep link URL
-    final isDeepLink =
+    var isDeepLink =
         routeName.startsWith('https://') ||
         routeName.startsWith('http://') ||
         routeName.contains('app.mydrivelife.com') ||
         routeName.startsWith('?') ||
         (routeName.startsWith('/') && routeName.contains('?'));
+
+    if (!isDeepLink) {
+      seoDeepLinkRoutes.forEach((seoRoute) {
+        if (routeName.contains(seoRoute)) {
+          debugPrint('🔍 [AppRoutes] Detected SEO deep link pattern: $seoRoute in $routeName');
+          // Treat as deep link
+          isDeepLink = true;
+        }
+      });
+    }
 
     if (isDeepLink) {
       // ⭐ Check if this is a warm start (app already initialized)

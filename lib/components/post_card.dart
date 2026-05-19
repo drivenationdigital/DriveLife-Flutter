@@ -324,14 +324,14 @@ class _PostCardState extends State<PostCard>
     final postId = widget.post['id'];
     final postUser = widget.post['username'] ?? 'DriveLifeUser';
     final postDescription = widget.post['caption'] ?? 'DriveLife post';
-    final postUrl = 'https://app.mydrivelife.com?dl-postv=$postId&ref=share';
+    final postUrl = 'https://app.mydrivelife.com/post/$postId?ref=share';
     final shareText =
         'Check out this post on DriveLife by @$postUser.\n\n$postDescription\n\n$postUrl';
 
     if (widget.post['is_event'] == true) {
       final eventId = widget.post['id'];
-      final eventUrl =
-          'https://app.mydrivelife.com?dl-event=$eventId&ref=share';
+      final eventUrl = 'https://app.mydrivelife.com/event/$eventId?ref=share';
+
       final eventText =
           'Check out this event on DriveLife by @$postUser.\n\n$postDescription\n\n$eventUrl';
 
@@ -1155,7 +1155,7 @@ class _PostHeader extends StatelessWidget {
       trailing: isOwnPost
           ? GestureDetector(
               onTap: onSettings,
-              child: const Icon(Icons.more_vert, color: Colors.black, size: 24),
+              child: const Icon(Icons.more_horiz, color: Colors.black, size: 24),
             )
           : null,
     );

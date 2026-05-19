@@ -10,6 +10,7 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:shimmer/shimmer.dart';
@@ -658,7 +659,14 @@ void _onUploadsChanged() {
           ...SharedHeaderIcons.actionIcons(
             iconColor: Colors.black,
             showQr: false, // Already shown in leading
-            showNotifications: true,
+            showNotifications: false,
+            showShare: true,
+            onShareTap: () => {
+              Share.share(
+                'Check out ${_venue?.title ?? 'this venue'} on DriveLife!\n\n'
+                'https://app.mydrivelife.com/venue/${_venue?.id ?? widget.venueId}',
+              ),
+            },
           ),
         ],
       ),
