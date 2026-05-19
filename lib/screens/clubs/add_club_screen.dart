@@ -410,18 +410,6 @@ class _CreateClubScreenState extends State<CreateClubScreen>
     _saveClub(publish: _isPublished);
   }
 
-  void _showPublishModal() {
-    showDialog(
-      context: context,
-      builder: (context) => _PublishClubModal(
-        isPublished: _isPublished,
-        onPublish: () => _saveClub(publish: true),
-        onSaveDraft: () => _saveClub(publish: false),
-        onDelete: widget.existingClubId != null ? _deleteClub : null,
-      ),
-    );
-  }
-
   String _getQuillContentAsHtml(QuillController controller) {
     try {
       final delta = controller.document.toDelta();

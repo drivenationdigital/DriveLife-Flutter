@@ -221,13 +221,14 @@ class ClubApiService {
     required String clubId,
     int page = 1,
     int perPage = 10,
+    String? kind = 'updates', // 'updates' | 'community' 
   }) async {
     try {
       final token = await AuthService().getParentUserToken();
 
       final response = await http.get(
         Uri.parse(
-          '${ApiConfig.baseUrl}/wp-json/app/v1/clubs/$clubId/posts?page=$page&per_page=$perPage',
+          '${ApiConfig.baseUrl}/wp-json/app/v1/clubs/$clubId/posts?page=$page&per_page=$perPage${kind != null ? '&kind=$kind' : ''}',
         ),
         headers: {
           'Content-Type': 'application/json',
