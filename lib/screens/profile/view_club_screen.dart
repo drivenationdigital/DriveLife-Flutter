@@ -20,7 +20,6 @@ const Color _gold = Color(0xFFC4A062);
 const Color _ink = Color(0xFF0B0B0B);
 const Color _muted = Color(0xFF8A8A8A);
 const Color _chip = Color(0xFFEFEFEF);
-const Color _panelBg = Color(0xFFF7F7F7);
 
 class ClubViewScreen extends StatefulWidget {
   final int? clubPostId;
@@ -49,6 +48,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   bool _isMember = false;
   bool _hasPendingRequest = false;
   bool _isOwner = false;
+  bool _isAdmin = false;
   int _pendingRequestsCount = 0;
 
   List<Map<String, dynamic>> _events = [];
@@ -71,7 +71,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_onTabChanged);
 
     _loadClubData();
@@ -97,7 +97,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     }
   }
 
-  void _onTabChanged() {
+void _onTabChanged() {
     if (_tabController.index == 0 &&
         !_clubPostsLoaded &&
         !_isLockedForPrivacy) {
@@ -106,9 +106,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     if (_tabController.index == 1 && !_eventsLoaded) {
       _loadClubEvents();
     }
-    if (_tabController.index == 2 && !_membersLoaded) {
-      _loadMembers();
-    }
+    // Members loader removed — triggered when the modal opens instead
   }
 
   void _onUploadsChanged() {
@@ -488,7 +486,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   bool get _isLockedForPrivacy {
     if (_clubData == null) return false;
     final isPrivate = _clubData!['club_type'] == '1';
-    return isPrivate && !_isMember && !_isOwner;
+    return isPrivate && !_isMember && !_isOwner && !_isAdmin;
   }
 
   Future<void> _loadClubEvents() async {
@@ -563,10 +561,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             _tabController.index = tabIndex;
           }
         }
-
-        _loadClubEvents();
-        _loadClubPosts();
-        _loadPendingRequestsCount();
       } else {
         final data = await ClubApiService.getClubDetails(
           clubPostId: widget.clubPostId!,
@@ -577,6 +571,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             _clubData = data;
             _isMember = data['is_member'] ?? false;
             _isOwner = data['is_owner'] ?? false;
+            _isAdmin = data['is_admin'] ?? false;
             _hasPendingRequest = data['has_pending_request'] ?? false;
             _isLoading = false;
           });
@@ -594,11 +589,19 @@ class _ClubViewScreenState extends State<ClubViewScreen>
               _tabController.index = tabIndex;
             }
           }
-
-          _loadClubEvents();
-          _loadClubPosts();
         }
       }
+
+      // print(_clubData);
+      // loop through _clubData and print all keys and types for debugging
+      _clubData?.forEach((key, value) {
+        print('Club data key: $key, val: $value, type: ${value.runtimeType}');
+      });
+      
+      _loadClubEvents();
+      _loadClubPosts();
+      _loadPendingRequestsCount();
+      _loadMembers();
     } catch (e) {
       print('❌ Error loading club: $e ${widget.clubPostId}');
       if (mounted) setState(() => _isLoading = false);
@@ -668,7 +671,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                       children: [
                         _buildUpdatesScroll(theme),
                         _buildEventsPanel(theme),
-                        _buildMembersPanel(theme),
+                        // _buildMembersPanel(theme),
                         _buildCommunityPanel(theme),
                         _buildAboutPanel(theme),
                       ],
@@ -720,7 +723,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         SliverToBoxAdapter(child: _buildHeaderArea(theme)),
 
         // Owner pending-requests banner
-        if (_isOwner && _pendingRequestsCount > 0)
+        if ((_isOwner || _isAdmin) && _pendingRequestsCount > 0)
           SliverToBoxAdapter(child: _buildPendingRequestsBanner(theme)),
 
         // Empty state when no content
@@ -851,7 +854,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     }
   }
 
-  Widget _buildMembersPanel(ThemeProvider theme) {
+  Widget _buildMembersPanel(ThemeProvider theme, ScrollController? scrollController) {
     if (_isLockedForPrivacy) return _buildPrivateLockedView();
 
     if (_loadingMembers && _members.isEmpty) {
@@ -886,6 +889,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       });
 
     return ListView(
+      controller: scrollController,
       padding: const EdgeInsets.only(bottom: 32),
       children: [
         Padding(
@@ -915,7 +919,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         for (final member in sorted)
           MemberRow(
             member: member,
-            isViewerAdmin: _isOwner,
+            isViewerAdmin: _isOwner || _isAdmin,
             onTap: () => _openMemberProfile(member),
             onAdminAction: (action) => _handleMemberAdminAction(member, action),
             onViewRequest: member['is_pending'] == true
@@ -999,10 +1003,11 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             userId: member['user_id'],
           );
           if (success) {
-            // Optimistic update
+            // // Optimistic update
             setState(() {
               _members.removeWhere((m) => m['id'] == member['id']);
             });
+            _loadMembers();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('$name removed from the club')),
             );
@@ -1189,9 +1194,9 @@ class _ClubViewScreenState extends State<ClubViewScreen>
               children: [
                 _segButton(label: 'Updates', index: 0),
                 _segButton(label: 'Events', index: 1),
-                _segButton(label: 'Members', index: 2),
-                _segButton(label: 'Community', index: 3),
-                _segButton(label: 'About', index: 4),
+                // _segButton(label: 'Members', index: 2),
+                _segButton(label: 'Community', index: 2),
+                _segButton(label: 'About', index: 3),
               ],
             ),
           );
@@ -1226,9 +1231,9 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             label,
             style: TextStyle(
               color: isActive ? Colors.white : _muted,
-              fontSize: 11.5, // small for 5 tabs
+              fontSize: 12.5,
               fontWeight: FontWeight.w700,
-              letterSpacing: -0.1,
+              letterSpacing: -0.01,
             ),
           ),
         ),
@@ -1453,11 +1458,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                       const SizedBox(width: 6),
                       // Members — tappable to open ClubMembersScreen
                       GestureDetector(
-                        onTap: _isLockedForPrivacy
-                            ? null
-                            : () {
-                                _tabController.animateTo(2);
-                              },
+                        onTap: _isLockedForPrivacy ? null : _openMembersModal,
                         child: Text.rich(
                           TextSpan(
                             children: [
@@ -1531,6 +1532,90 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _openMembersModal() async {
+    // Trigger the members load now if not already done
+    if (!_membersLoaded) {
+      _loadMembers();
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (modalContext) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, scrollController) {
+          return Column(
+            children: [
+              // Drag handle
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Members',
+                        style: TextStyle(
+                          color: _ink,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${_clubData?['member_count'] ?? 0}',
+                      style: const TextStyle(
+                        color: _muted,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+
+              // Reuse the existing members panel logic, passing in the
+              // scrollController so DraggableScrollableSheet can drive it
+              Expanded(
+                child: AnimatedBuilder(
+                  animation: this is Listenable
+                      ? this as Listenable
+                      : const AlwaysStoppedAnimation(0),
+                  builder: (context, _) {
+                    return _buildMembersPanel(
+                      Provider.of<ThemeProvider>(context), 
+                      scrollController,
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -1641,7 +1726,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   }
 
   Widget _buildActionRow(ThemeProvider theme) {
-    if (_isOwner) {
+    if (_isOwner || _isAdmin) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1688,30 +1773,34 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                 label: 'More',
                 onTap: _showClubLinks,
               ),
-              const SizedBox(width: 8),
-              _ChipActionButton(
-                icon: Icons.edit_outlined,
-                label: 'Edit',
-                onTap: () {
-                  Navigator.pushNamed(
-                    context,
-                    '/add-club',
-                    arguments: {'existingClubId': _clubData!['id'].toString()},
-                  ).then((result) {
-                    if (!mounted) return;
+              if (_isOwner) ...[
+                const SizedBox(width: 8),
+                _ChipActionButton(
+                  icon: Icons.edit_outlined,
+                  label: 'Edit',
+                  onTap: () {
+                    Navigator.pushNamed(
+                      context,
+                      '/add-club',
+                      arguments: {
+                        'existingClubId': _clubData!['id'].toString(),
+                      },
+                    ).then((result) {
+                      if (!mounted) return;
 
-                    if (result == 'deleted') {
-                      // Club was deleted — pop the view screen back to the list
-                      Navigator.pop(context, 'deleted');
-                      return;
-                    }
+                      if (result == 'deleted') {
+                        // Club was deleted — pop the view screen back to the list
+                        Navigator.pop(context, 'deleted');
+                        return;
+                      }
 
-                    if (result == true) {
-                      _refreshClub();
-                    }
-                  });
-                },
-              ),
+                      if (result == true) {
+                        _refreshClub();
+                      }
+                    });
+                  },
+                ),
+              ]
             ],
           ),
         ],

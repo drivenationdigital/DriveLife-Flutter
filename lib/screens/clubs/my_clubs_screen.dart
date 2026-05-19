@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/models/my_clubs.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
@@ -17,7 +16,7 @@ import 'package:google_places_flutter/google_places_flutter.dart';
 import 'package:provider/provider.dart';
 
 class MyClubsScreen extends StatefulWidget {
-  const MyClubsScreen({Key? key}) : super(key: key);
+  const MyClubsScreen({super.key});
 
   @override
   State<MyClubsScreen> createState() => _MyClubsScreenState();
@@ -1292,7 +1291,7 @@ class _SpotlightClubCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     String _str(dynamic v) => v is String ? v : '';
-    int _int(dynamic v) => v is int ? v : (v is num ? v.toInt() : 0);
+    // int _int(dynamic v) => v is int ? v : (v is num ? v.toInt() : 0);
 
     final imageUrl = _str(club['cover_image']).isNotEmpty
         ? _str(club['cover_image'])
@@ -1300,7 +1299,7 @@ class _SpotlightClubCard extends StatelessWidget {
     final title = _str(club['title']);
     final category = _str(club['category']);
     final location = _str(club['location'] ?? 'N/A');
-    final memberCount = _int(club['member_count']);
+    // final memberCount = _int(club['member_count']);
 
     return GestureDetector(
       onTap: () => NavigationHelper.navigateTo(
@@ -1460,21 +1459,21 @@ class _DiscoverClubCard extends StatelessWidget {
   Widget build(BuildContext context) {
     // Pull values with fallbacks so the card is resilient to missing fields
     String _str(dynamic v) => v is String ? v : '';
-    int _int(dynamic v) => v is int ? v : (v is num ? v.toInt() : 0);
+    // int _int(dynamic v) => v is int ? v : (v is num ? v.toInt() : 0);
 
     final title = _str(club['title']).isNotEmpty
         ? _str(club['title'])
         : _str(club['name']);
     final imageUrl = _str(club['logo']);
-    final category = _str(club['category']);
-    final location = _str(club['location'] ?? 'N/A');
-    final memberCount = _int(club['member_count']);
+    // final category = _str(club['category']);
+    // final location = _str(club['location'] ?? 'N/A');
+    // final memberCount = _int(club['member_count']);
     final isOwnerOrMember =
         (club['is_owner'] == true) ||
         (club['is_member'] == true) ||
         (club['is_admin'] == true);
 
-    final subtitle = category.isNotEmpty ? category : location;
+    // final subtitle = category.isNotEmpty ? category : location;
 
     return Container(
       padding: const EdgeInsets.all(10),

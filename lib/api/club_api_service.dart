@@ -502,9 +502,9 @@ class ClubApiService {
           if (token != null) 'Authorization': 'Bearer $token',
         },
       );
+      final data = json.decode(response.body);
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
         if (data['success'] == true) {
           return data['members'];
         }
