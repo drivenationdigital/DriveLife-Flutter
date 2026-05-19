@@ -138,6 +138,8 @@ flutter:
     - assets/app-icons/header-qr.svg
     - assets/app-icons/header-search.svg
     - assets/app-icons/ce-logo.svg
+    - assets/app-icons/comment.svg
+    - assets/app-icons/share.svg
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

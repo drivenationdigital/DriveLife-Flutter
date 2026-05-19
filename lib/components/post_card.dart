@@ -1532,23 +1532,31 @@ class _PostActions extends StatelessWidget {
             ),
           ),
           if (!isNews && !isEvent) ...[
-            const SizedBox(width: 16),
+             const SizedBox(width: 16),
             GestureDetector(
               onTap: onCommentTap,
-              child: const Icon(
-                Icons.mode_comment_outlined,
-                color: Colors.black,
-                size: 22,
+              child: SvgPicture.asset(
+                'assets/app-icons/comment.svg',
+                width: 25,
+                height: 25,
+                colorFilter: const ColorFilter.mode(
+                  Colors.black,
+                  BlendMode.srcIn,
+                ),
               ),
             ),
           ],
           const SizedBox(width: 16),
           GestureDetector(
             onTap: onShareTap,
-            child: const Icon(
-              Icons.send_outlined,
-              color: Colors.black,
-              size: 22,
+            child: SvgPicture.asset(
+              'assets/app-icons/share.svg',
+              width: 24,
+              height: 24,
+              colorFilter: const ColorFilter.mode(
+                Colors.black,
+                BlendMode.srcIn,
+              ),
             ),
           ),
 
