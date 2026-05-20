@@ -10,6 +10,7 @@ import 'package:drivelife/screens/auth/reset_password_screen.dart';
 import 'package:drivelife/screens/clubs/add_club_screen.dart';
 import 'package:drivelife/screens/clubs/club_pending_requests.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
+import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/events/event_admin_view_screen.dart';
 import 'package:drivelife/screens/events/event_detail_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
@@ -77,6 +78,7 @@ class AppRoutes {
   static const String addClub = '/add-club';
   static const String clubDetail = '/club-detail';
   static const String verifyEmail = '/verify-email';
+  static const String addEvent = '/add-event';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     final routeName = settings.name ?? '';
@@ -174,12 +176,22 @@ class AppRoutes {
         );
       case clubDetail:
         final args = settings.arguments as Map<String, dynamic>;
+        final clubId = int.parse(args['clubId'].toString());
+        
         return _slide(
           ClubViewScreen(
-            clubPostId: int.parse(args['clubId'] ?? '0'),
+            clubPostId: clubId,
             tab: args['tab'],
             showAppBar: true, // Show app bar when viewing from search
             isOwnClub: false, // Visitor view
+          ),
+        );
+      case addEvent:
+        final args = settings.arguments as Map<String, dynamic>?;
+        return _slide(
+          AddEventScreen(
+            eventId: args?['eventId'],
+            clubId: args?['clubId'], // Pass clubId for pre-selecting club events
           ),
         );
       // In routes.dart

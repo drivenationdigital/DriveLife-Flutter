@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/models/tagged_entity.dart';
@@ -94,13 +95,18 @@ class _TagEntitiesScreenState extends State<TagEntitiesScreen> {
       return;
     }
 
-    setState(() {
+    print(entity); // Debugging line
+
+   setState(() {
       _tags.add(
         TaggedEntity(
           index: _currentIndex,
           id: entity['entity_id'].toString(),
           type: widget.entityType == 'users' ? 'user' : widget.entityType,
           label: entity['name'] ?? entity['vehicle_name'] ?? 'Unknown',
+          imageUrl: entity['image']?.toString() != 'search_q'
+              ? entity['image']?.toString()
+              : null, // ← new
           x: _tapPosition!.dx,
           y: _tapPosition!.dy,
         ),
@@ -174,53 +180,138 @@ class _TagEntitiesScreenState extends State<TagEntitiesScreen> {
   AppBar _buildAppBar() {
     return AppBar(
       backgroundColor: Colors.white,
-      elevation: 1,
+      elevation: 0,
+      surfaceTintColor: Colors.white,
       leading: IconButton(
-        icon: const Icon(Icons.close, color: Colors.black87),
-        onPressed: () => Navigator.pop(context),
-      ),
-      title: _isSearching && _isTaggable
-          ? _buildSearchField()
-          : Text(
-              _getTitle(),
-              style: const TextStyle(
-                color: Colors.black87,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-      actions: [
-        TextButton(
-          onPressed: () {
-            widget.onTagsUpdated(_tags);
+        icon: Icon(
+          _isSearching ? Icons.arrow_back : Icons.close,
+          color: const Color(0xFF0B0B0B),
+          size: 22,
+        ),
+        onPressed: () {
+          if (_isSearching && _isTaggable) {
+            setState(_resetSearch); // back-out of search first
+          } else {
             Navigator.pop(context);
-          },
-          child: const Text(
-            'Done',
-            style: TextStyle(
-              color: Color(0xFFAE9159),
-              fontWeight: FontWeight.w600,
-              fontSize: 16,
-            ),
+          }
+        },
+      ),
+      titleSpacing: 0,
+      title: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 180),
+        switchInCurve: Curves.easeOut,
+        transitionBuilder: (child, anim) => FadeTransition(
+          opacity: anim,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.3),
+              end: Offset.zero,
+            ).animate(anim),
+            child: child,
           ),
         ),
+        child: _isSearching && _isTaggable
+            ? _buildSearchField()
+            : Text(
+                _getTitle(),
+                key: const ValueKey('title'),
+                style: const TextStyle(
+                  color: Color(0xFF0B0B0B),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                ),
+              ),
+      ),
+      actions: [
+        if (!_isSearching)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton(
+              onPressed: () {
+                widget.onTagsUpdated(_tags);
+                Navigator.pop(context);
+              },
+              style: TextButton.styleFrom(
+                backgroundColor: const Color(0xFFC4A062),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              child: const Text(
+                'Done',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+              ),
+            ),
+          ),
       ],
+      bottom: _isSearching && _isTaggable
+          ? PreferredSize(
+              preferredSize: const Size.fromHeight(1),
+              child: Container(height: 1, color: Colors.grey.shade200),
+            )
+          : null,
     );
   }
 
   Widget _buildSearchField() {
-    return TextField(
-      controller: _searchController,
-      focusNode: _searchFocusNode,
-      autofocus: true,
-      onChanged: _onSearchChanged,
-      style: const TextStyle(color: Colors.black87),
-      decoration: InputDecoration(
-        hintText: 'Search ${_getTitle().toLowerCase()}...',
-        hintStyle: TextStyle(color: Colors.grey.shade400),
-        border: InputBorder.none,
-        suffixIcon: IconButton(
-          icon: const Icon(Icons.close, color: Colors.black54),
-          onPressed: () => setState(_resetSearch),
+    return Container(
+      key: const ValueKey('search'),
+      height: 36,
+      margin: const EdgeInsets.only(right: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F4F4),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        autofocus: true,
+        onChanged: _onSearchChanged,
+        style: const TextStyle(color: Color(0xFF0B0B0B), fontSize: 14),
+        decoration: InputDecoration(
+          hintText: widget.entityType == 'car'
+              ? 'Search vehicles…'
+              : 'Search people…',
+          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+          prefixIcon: Icon(Icons.search, size: 18, color: Colors.grey.shade500),
+          suffixIcon: _searchController.text.isNotEmpty
+              ? GestureDetector(
+                  onTap: () {
+                    _searchController.clear();
+                    setState(() => _searchResults = []);
+                  },
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    margin: const EdgeInsets.only(right: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      size: 11,
+                      color: Colors.white,
+                    ),
+                  ),
+                )
+              : null,
+          suffixIconConstraints: const BoxConstraints(
+            minWidth: 24,
+            minHeight: 24,
+          ),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 32,
+            minHeight: 32,
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+          isDense: true,
         ),
       ),
     );
@@ -258,43 +349,95 @@ class _TagEntitiesScreenState extends State<TagEntitiesScreen> {
   }
 
   Widget _buildPageIndicators() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(
-          widget.media.length,
-          (index) => Container(
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _currentIndex == index
-                  ? const Color(0xFFAE9159)
-                  : Colors.grey.shade300,
+        children: [
+          for (int i = 0; i < widget.media.length; i++)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: _currentIndex == i ? 18 : 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: _currentIndex == i
+                    ? const Color(0xFFC4A062)
+                    : Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(3),
+              ),
             ),
-          ),
-        ),
+        ],
       ),
     );
   }
 
   Widget _buildSearchOverlay() {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 100,
+    return Positioned.fill(
       child: Container(
-        color: Colors.white.withOpacity(0.98),
-        child: _searchResults.isNotEmpty
+        color: Colors.white,
+        child: _searchController.text.isEmpty
+            ? _buildSearchEmptyState()
+            : _searchResults.isNotEmpty
             ? _buildSearchResults()
             : _searchController.text.length >= 3
             ? const Center(
-                child: CircularProgressIndicator(color: Color(0xFFAE9159)),
+                child: CircularProgressIndicator(
+                  color: Color(0xFFC4A062),
+                  strokeWidth: 2.5,
+                ),
               )
-            : const SizedBox(),
+            : _buildHintState(),
+      ),
+    );
+  }
+
+  Widget _buildSearchEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFC4A062).withOpacity(0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              widget.entityType == 'car'
+                  ? Icons.directions_car_outlined
+                  : Icons.person_outline,
+              size: 36,
+              color: const Color(0xFFC4A062),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            widget.entityType == 'car'
+                ? 'Search for a vehicle'
+                : 'Search for someone',
+            style: const TextStyle(
+              color: Color(0xFF0B0B0B),
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Type at least 3 characters',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHintState() {
+    return Center(
+      child: Text(
+        'Keep typing…',
+        style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
       ),
     );
   }
@@ -461,6 +604,9 @@ class _TagEntitiesScreenState extends State<TagEntitiesScreen> {
                           id: entity['entity_id'].toString(),
                           type: 'event',
                           label: entity['name'] ?? 'Unknown',
+                          imageUrl: entity['image']?.toString() != 'search_q'
+                              ? entity['image']?.toString()
+                              : null, // ← new
                         ),
                       );
                     });
@@ -522,6 +668,13 @@ class _MediaItem extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
+                  // Blurred background fill
+                _buildBlurredBackground(),
+
+                // Optional dark scrim — keeps tag pins/labels readable against busy
+                // backgrounds. Tweak opacity to taste (0.15 - 0.35 range works).
+                Container(color: Colors.black.withOpacity(0.20)),
+
                 _buildMedia(),
                 ...currentTags.map(
                   (tag) => _TagMarker(
@@ -543,6 +696,38 @@ class _MediaItem extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildBlurredBackground() {
+    if (media.isVideo && media.videoController != null) {
+      return ClipRect(
+        child: ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          child: SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: media.videoController!.value.size.width,
+                height: media.videoController!.value.size.height,
+                child: VideoPlayer(media.videoController!),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ClipRect(
+      child: ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: Image.file(
+          media.file,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+        ),
+      ),
     );
   }
 
@@ -579,55 +764,75 @@ class _TagMarker extends StatelessWidget {
       left: tag.x! * constraints.maxWidth,
       top: tag.y! * constraints.maxHeight,
       child: Transform.translate(
-        offset: const Offset(-50, -40),
+        offset: const Offset(-12, -12),
         child: GestureDetector(
-          onTap: () => _showRemoveDialog(context),
+          onTap: () => _showTagSheet(context),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Pin dot
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
+                width: 24,
+                height: 24,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFAE9159),
-                  borderRadius: BorderRadius.circular(20),
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFFC4A062),
+                    width: 2.5,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 8,
+                      color: Colors.black.withOpacity(0.25),
+                      blurRadius: 6,
                       offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      entityType == 'car' ? Icons.directions_car : Icons.person,
-                      color: Colors.white,
-                      size: 14,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      tag.label,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+                child: const Center(
+                  child: Icon(Icons.add, size: 14, color: Color(0xFFC4A062)),
                 ),
               ),
-              Container(width: 2, height: 12, color: const Color(0xFFAE9159)),
-              Container(
-                width: 12,
-                height: 12,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFAE9159),
-                  shape: BoxShape.circle,
+              const SizedBox(height: 6),
+              // Label
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.78),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        entityType == 'car'
+                            ? Icons.directions_car
+                            : Icons.person,
+                        color: Colors.white70,
+                        size: 11,
+                      ),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(
+                          tag.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 11.5,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -637,26 +842,70 @@ class _TagMarker extends StatelessWidget {
     );
   }
 
-  void _showRemoveDialog(BuildContext context) {
-    showDialog(
+  void _showTagSheet(BuildContext context) {
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: Text(tag.label),
-        content: const Text('Remove this tag?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              onRemove(tag);
-            },
-            child: const Text('Remove', style: TextStyle(color: Colors.red)),
-          ),
-        ],
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: const Color(0xFFC4A062).withOpacity(0.1),
+                backgroundImage:
+                    tag.imageUrl != null && tag.imageUrl!.isNotEmpty
+                    ? NetworkImage(tag.imageUrl!)
+                    : null,
+                child: tag.imageUrl == null || tag.imageUrl!.isEmpty
+                    ? Icon(
+                        entityType == 'car'
+                            ? Icons.directions_car
+                            : Icons.person,
+                        color: const Color(0xFFC4A062),
+                      )
+                    : null,
+              ),
+              title: Text(
+                tag.label,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                entityType == 'car' ? 'Vehicle tag' : 'Person tag',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            const Divider(height: 1, indent: 16, endIndent: 16),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text(
+                'Remove tag',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                onRemove(tag);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
@@ -691,29 +940,43 @@ class _TapIndicator extends StatelessWidget {
   }
 }
 
-// Tap Instruction Widget
 class _TapInstruction extends StatelessWidget {
   const _TapInstruction();
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Text(
-          'Tap to tag',
-          style: TextStyle(color: Colors.white, fontSize: 16),
+    return Positioned(
+      bottom: 24,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.75),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.touch_app_outlined, color: Colors.white, size: 14),
+              SizedBox(width: 6),
+              Text(
+                'Tap to tag someone',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// Search Result Tile Widget
 class _SearchResultTile extends StatelessWidget {
   final Map<String, dynamic> entity;
   final String entityType;
@@ -729,37 +992,122 @@ class _SearchResultTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundImage:
-            entity['image'] != null && entity['image'] != 'search_q'
-            ? NetworkImage(entity['image'])
-            : null,
-        backgroundColor: Colors.grey.shade200,
-        child: entity['image'] == null || entity['image'] == 'search_q'
-            ? Icon(
-                entityType == 'car' ? Icons.directions_car : Icons.person,
-                color: Colors.grey.shade600,
-              )
-            : null,
-      ),
-      title: Text(
-        entity['name'] ?? entity['vehicle_name'] ?? '',
-        style: const TextStyle(
-          color: Colors.black87,
-          fontWeight: FontWeight.w500,
+    final imageUrl = entity['image']?.toString();
+    final hasImage =
+        imageUrl != null && imageUrl.isNotEmpty && imageUrl != 'search_q';
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  shape: BoxShape.circle,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: hasImage
+                    ? Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Icon(
+                          entityType == 'car'
+                              ? Icons.directions_car
+                              : Icons.person,
+                          color: Colors.grey.shade500,
+                        ),
+                      )
+                    : Icon(
+                        entityType == 'car'
+                            ? Icons.directions_car
+                            : Icons.person,
+                        color: Colors.grey.shade500,
+                      ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entity['name'] ?? entity['vehicle_name'] ?? '',
+                      style: const TextStyle(
+                        color: Color(0xFF0B0B0B),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (entity['vehicle_name'] != null &&
+                        entity['name'] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          entity['vehicle_name'],
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (isTagged)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check, size: 13, color: Colors.green),
+                      SizedBox(width: 4),
+                      Text(
+                        'Tagged',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC4A062).withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.add,
+                    color: Color(0xFFC4A062),
+                    size: 18,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-      subtitle: entity['vehicle_name'] != null && entity['name'] != null
-          ? Text(
-              entity['vehicle_name'],
-              style: TextStyle(color: Colors.grey.shade600),
-            )
-          : null,
-      trailing: isTagged
-          ? const Icon(Icons.check_circle, color: Colors.green)
-          : const Icon(Icons.add_circle_outline, color: Color(0xFFAE9159)),
-      onTap: onTap,
     );
   }
 }

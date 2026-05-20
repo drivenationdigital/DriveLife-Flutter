@@ -201,8 +201,9 @@ class PostsAPI {
         }),
       );
 
-      if (response.statusCode == 200) {
         final data = json.decode(response.body);
+        print(data);
+      if (response.statusCode == 200) {
         return List<Map<String, dynamic>>.from(data);
       }
       return [];
@@ -503,7 +504,7 @@ class PostsAPI {
     required int userId,
     required List<Map<String, dynamic>> media,
     required String caption,
-    String? location,
+    Map<String, dynamic>? location,
     String? linkType,
     String? linkUrl,
     dynamic associationId,
@@ -516,7 +517,7 @@ class PostsAPI {
       final body = {
         'user_id': userId.toString(),
         'caption': caption,
-        'location': location ?? '',
+        'location': location != null ? json.encode(location) : null,
         'media': json.encode(media),
       };
 

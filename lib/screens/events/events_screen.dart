@@ -10,7 +10,6 @@ import 'package:drivelife/widgets/events/featured_events.dart';
 import 'package:drivelife/widgets/events/my_events.dart';
 import 'package:drivelife/widgets/events/my_tickets.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';

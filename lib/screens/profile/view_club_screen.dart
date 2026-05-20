@@ -611,20 +611,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           _isOwner = true;
           _isLoading = false;
         });
-
-        // If widget.tab is set, open that tab instead of defaulting to "Posts"
-        if (widget.tab != null) {
-          print('Opening club with tab: ${widget.tab}');
-          final tabIndex = [
-            'feed',
-            'events',
-            'members',
-            'about',
-          ].indexOf(widget.tab!.toLowerCase());
-          if (tabIndex != -1) {
-            _tabController.index = tabIndex;
-          }
-        }
       } else {
         final data = await ClubApiService.getClubDetails(
           clubPostId: widget.clubPostId!,
@@ -639,19 +625,37 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             _hasPendingRequest = data['has_pending_request'] ?? false;
             _isLoading = false;
           });
+        }
+      }
 
-          // If widget.tab is set, open that tab instead of defaulting to "Posts"
-          if (widget.tab != null) {
-            print('Opening club with tab: ${widget.tab}');
-            final tabIndex = [
-              'feed',
-              'events',
-              'members',
-              'about',
-            ].indexOf(widget.tab!.toLowerCase());
-            if (tabIndex != -1) {
-              _tabController.index = tabIndex;
-            }
+      // If widget.tab is set, open that tab/screen
+      if (widget.tab != null) {
+        print('Opening club with tab: ${widget.tab}');
+        final tab = widget.tab!.toLowerCase();
+
+        // Members tab is now a modal — for "members" deep-link, open pending requests
+        // (the typical use case from notifications)
+        if (tab == 'members') {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            Navigator.pushNamed(
+              context,
+              '/club-pending-requests',
+              arguments: {
+                'clubId': _clubData?['id'],
+                'clubName': _clubData?['title'],
+              },
+            ).then((result) {
+              if (result == true && mounted) {
+                _loadPendingRequestsCount();
+              }
+            });
+          });
+        } else {
+          // Regular tab navigation (feed/events/about)
+          final tabIndex = ['feed', 'events', 'about'].indexOf(tab);
+          if (tabIndex != -1) {
+            _tabController.index = tabIndex;
           }
         }
       }
@@ -1226,7 +1230,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
               onTap: () {
                 Share.share(
                   'Check out this club on DriveLife: ${_clubData?['title']}\n\n'
-                  'https://drivelife.app/club/${_clubData?['id']}',
+                  'https://app.mydrivelife.com/club/${_clubData?['id']}',
                 );
               },
               child: Container(
@@ -1471,7 +1475,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       case 'share':
         Share.share(
           'Check out this club on DriveLife: ${_clubData?['title']}\n\n'
-          'https://drivelife.app/clubs/${_clubData?['id']}',
+          'https://app.mydrivelife.com/club/${_clubData?['id']}',
         );
         break;
       case 'edit':
@@ -2244,19 +2248,16 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   }
 
   Future<void> _handleCreateEvent() async {
-    // final result = await Navigator.pushNamed(
-    //   context,
-    //   '/add-event', // adjust to your route name
-    //   arguments: {'clubId': _clubData?['id'], 'clubName': _clubData?['title']},
-    // );
-
-    // if (result == true && mounted) {
-    //   setState(() => _eventsLoaded = false);
-    //   _loadClubEvents();
-    // }
-    ScaffoldMessenger.of(
+    final result = await Navigator.pushNamed(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Event creation coming soon')));
+      '/add-event', // adjust to your route name
+      arguments: {'clubId': _clubData?['id'], 'clubName': _clubData?['title']},
+    );
+
+    if (result == true && mounted) {
+      setState(() => _eventsLoaded = false);
+      _loadClubEvents();
+    }
   }
 
   Widget _buildAboutPanel(ThemeProvider theme) {

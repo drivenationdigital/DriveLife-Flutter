@@ -16,8 +16,9 @@ import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 
 class AddEventScreen extends StatefulWidget {
   final String? eventId; // Add this parameter
+  final int? clubId; // Optional club ID for pre-selecting club events
 
-  const AddEventScreen({super.key, this.eventId});
+  const AddEventScreen({super.key, this.eventId, this.clubId});
 
   @override
   State<AddEventScreen> createState() => _AddEventScreenState();
@@ -92,6 +93,8 @@ class _AddEventScreenState extends State<AddEventScreen>
 
     _fetchCategories();
 
+    _eventClubId = widget.clubId ?? 0; // Set club ID if provided
+    
     // Load event data if editing
     if (widget.eventId != null) {
       _eventID = widget.eventId;

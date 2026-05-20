@@ -629,6 +629,11 @@ class _PostCardState extends State<PostCard>
                 );
               },
               date: _formattedDate,
+              location: {
+                'name': widget.post['location'] ?? '',
+                'lat': widget.post['lat'] ?? 0.0,
+                'lng': widget.post['lng'] ?? 0.0,
+              },
               currentUserId: user?.id,
               postUserId: widget.post['user_id'],
               onTapProfile: widget.onTapProfile,
@@ -840,6 +845,7 @@ class _PostHeader extends StatelessWidget {
   final List<dynamic>? eventOrganisers; // ← change type from Map to List
   final bool isEvent;
   final List<Map<String, dynamic>>? taggedUsers;
+  final Map<String, dynamic>? location;
   final void Function(dynamic userId)? onUserTap;
 
   const _PostHeader({
@@ -852,6 +858,7 @@ class _PostHeader extends StatelessWidget {
     required this.onTapProfile,
     required this.onSettings,
     required this.primaryColor,
+    this.location,
     this.onUserTap,
     this.taggedUsers,
     this.eventOrganisers,
@@ -1048,6 +1055,227 @@ class _PostHeader extends StatelessWidget {
     );
   }
 
+  String _shortenLocationName(String full) {
+    if (full.isEmpty) return full;
+
+    // Strip the country if it's the last segment
+    // ("Hardwick Hall, Sedgefield, UK" → "Hardwick Hall, Sedgefield")
+    final parts = full.split(',').map((s) => s.trim()).toList();
+
+    // Keep only first 2 parts — usually "Place name, City"
+    // This drops postcodes, regions, countries
+    if (parts.length > 2) {
+      return '${parts[0]}, ${parts[1]}';
+    }
+
+    return full;
+  }
+
+  Widget _buildSubtitle(BuildContext context) {
+    final hasLocation =
+        location != null && (location!['name']?.toString() ?? '').isNotEmpty;
+
+    if (!hasLocation) {
+      return Text(
+        date,
+        style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+      );
+    }
+
+    return GestureDetector(
+      onTap: () => _showLocationSheet(context),
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              _shortenLocationName(location!['name'].toString()),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF0B0B0B),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            width: 2.5,
+            height: 2.5,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade500,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            date,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLocationSheet(BuildContext context) {
+    final name = location?['name']?.toString() ?? '';
+    final lat = double.tryParse(location?['lat']?.toString() ?? '');
+    final lng = double.tryParse(location?['lng']?.toString() ?? '');
+    final hasCoords = lat != null && lng != null && (lat != 0.0 || lng != 0.0);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Location preview header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: primaryColor.withOpacity(0.10),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.location_on,
+                      color: primaryColor,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0B0B0B),
+                          ),
+                        ),
+                        if (hasCoords) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
+                            style: TextStyle(
+                              color: Colors.grey.shade500,
+                              fontSize: 11.5,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+
+            // Actions
+            ListTile(
+              leading: const Icon(Icons.map_outlined, color: Color(0xFF0B0B0B)),
+              title: const Text(
+                'Open in Maps',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _launchMaps(name, lat, lng);
+              },
+            ),
+            if (hasCoords) ...[
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(
+                  Icons.directions_outlined,
+                  color: Color(0xFF0B0B0B),
+                ),
+                title: const Text(
+                  'Get directions',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _launchDirections(lat, lng);
+                },
+              ),
+            ],
+            const Divider(height: 1, indent: 16, endIndent: 16),
+            ListTile(
+              leading: const Icon(
+                Icons.copy_outlined,
+                color: Color(0xFF0B0B0B),
+              ),
+              title: const Text(
+                'Copy address',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
+              ),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: name));
+                Navigator.pop(sheetContext);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Address copied'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _launchMaps(String name, double? lat, double? lng) async {
+    final Uri uri;
+    if (lat != null && lng != null && (lat != 0.0 || lng != 0.0)) {
+      // Apple Maps on iOS, Google Maps on Android — generic geo: works on both
+      uri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
+      );
+    } else {
+      uri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(name)}',
+      );
+    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _launchDirections(double lat, double lng) async {
+    final uri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng',
+    );
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isOwnPost = postUserId.toString() == currentUserId.toString();
@@ -1072,8 +1300,18 @@ class _PostHeader extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     'Featured',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade500,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
+                  if (location != null &&
+                      (location!['name']?.toString() ?? '').isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: _buildSubtitle(context),
+                    ),
                 ],
               ),
             ),
@@ -1106,10 +1344,7 @@ class _PostHeader extends StatelessWidget {
                     child: _buildCollabTitle(context, collabList),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    date,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                  ),
+                  _buildSubtitle(context),
                 ],
               ),
             ),
@@ -1155,7 +1390,11 @@ class _PostHeader extends StatelessWidget {
       trailing: isOwnPost
           ? GestureDetector(
               onTap: onSettings,
-              child: const Icon(Icons.more_horiz, color: Colors.black, size: 24),
+              child: const Icon(
+                Icons.more_horiz,
+                color: Colors.black,
+                size: 24,
+              ),
             )
           : null,
     );
@@ -1195,75 +1434,274 @@ class _MediaCarousel extends StatelessWidget {
   }
 
   void _showTagsBottomSheet(BuildContext context, List<dynamic> tags) {
+    // Group tags by type
+    final grouped = <String, List<dynamic>>{};
+    for (final tag in tags) {
+      final type = tag['type']?.toString() ?? 'unknown';
+      grouped.putIfAbsent(type, () => []).add(tag);
+    }
+
+    // Display order — people first, then vehicles, then events, then anything else
+    const typeOrder = ['user', 'car', 'event'];
+    final orderedKeys = [
+      ...typeOrder.where(grouped.containsKey),
+      ...grouped.keys.where((k) => !typeOrder.contains(k)),
+    ];
+
     showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 8),
             Container(
               width: 40,
               height: 4,
-              margin: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
                 color: Colors.grey[300],
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Tagged',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            const SizedBox(height: 14),
+
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Tagged',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0B0B0B),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${tags.length} ${tags.length == 1 ? "tag" : "tags"}',
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
+
             const Divider(height: 1),
-            ...tags.map((tag) {
-              final entity = tag['entity'];
-              if (entity == null) return const SizedBox.shrink();
 
-              final type = tag['type'];
-              final name = entity['name'] ?? 'Unknown';
-              final image = entity['image'];
-
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.grey.shade300,
-                  backgroundImage: image != null ? NetworkImage(image) : null,
-                  child: image == null
-                      ? Icon(
-                          type == 'car' ? Icons.directions_car : Icons.person,
-                        )
-                      : null,
+            // Sections
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    for (final key in orderedKeys) ...[
+                      _buildTagSection(
+                        context: sheetContext,
+                        type: key,
+                        items: grouped[key]!,
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                  ],
                 ),
-                title: Text(name),
-                subtitle: Text(type == 'car' ? 'Vehicle' : 'User'),
-                onTap: () {
-                  Navigator.pop(context);
-                  if (type == 'user') {
-                    Navigator.pushNamed(
-                      context,
-                      '/view-profile',
-                      arguments: {'userId': entity['id']},
-                    );
-                  } else if (type == 'car') {
-                    Navigator.pushNamed(
-                      context,
-                      '/vehicle-detail',
-                      arguments: {'garageId': entity['id']},
-                    );
-                  }
-                },
-              );
-            }),
-            const SizedBox(height: 16),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildTagSection({
+    required BuildContext context,
+    required String type,
+    required List<dynamic> items,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+          child: Row(
+            children: [
+              Icon(
+                _iconForType(type),
+                size: 14,
+                color: const Color(0xFFC4A062),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _labelForType(type, items.length),
+                style: const TextStyle(
+                  color: Color(0xFF8A8A8A),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Items
+        for (final tag in items) _buildTagTile(context, tag),
+      ],
+    );
+  }
+
+  Widget _buildTagTile(BuildContext context, dynamic tag) {
+    final entity = tag['entity'];
+    if (entity == null) return const SizedBox.shrink();
+
+    final type = tag['type']?.toString() ?? '';
+    final name = entity['name']?.toString() ?? 'Unknown';
+    final image = entity['image']?.toString();
+
+    // Subtitle text per type
+    String? subtitle;
+    if (type == 'user') {
+      subtitle = entity['username'] != null ? '@${entity['username']}' : null;
+    } else if (type == 'car') {
+      subtitle = 'Vehicle';
+    } else if (type == 'event') {
+      subtitle = 'Event';
+    }
+
+    return InkWell(
+      onTap: () {
+        Navigator.pop(context);
+        _navigateToEntity(context, type, entity);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Row(
+          children: [
+            // Avatar/image — square with rounded corners for events, circle for people/cars
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                shape: type == 'event' ? BoxShape.rectangle : BoxShape.circle,
+                borderRadius: type == 'event' ? BorderRadius.circular(8) : null,
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: image != null && image.isNotEmpty
+                  ? Image.network(
+                      image,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Icon(
+                        _iconForType(type),
+                        color: Colors.grey.shade500,
+                        size: 22,
+                      ),
+                    )
+                  : Icon(
+                      _iconForType(type),
+                      color: Colors.grey.shade500,
+                      size: 22,
+                    ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      color: Color(0xFF0B0B0B),
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 12.5,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _iconForType(String type) {
+    switch (type) {
+      case 'user':
+        return Icons.person_outline;
+      case 'car':
+        return Icons.directions_car_outlined;
+      case 'event':
+        return Icons.calendar_today_outlined;
+      default:
+        return Icons.tag;
+    }
+  }
+
+  String _labelForType(String type, int count) {
+    switch (type) {
+      case 'user':
+        return count == 1 ? 'USER' : 'USERS';
+      case 'car':
+        return count == 1 ? 'VEHICLE' : 'VEHICLES';
+      case 'event':
+        return count == 1 ? 'EVENT' : 'EVENTS';
+      default:
+        return type.toUpperCase();
+    }
+  }
+
+  void _navigateToEntity(BuildContext context, String type, dynamic entity) {
+    switch (type) {
+      case 'user':
+        Navigator.pushNamed(
+          context,
+          '/view-profile',
+          arguments: {'userId': entity['id']},
+        );
+        break;
+      case 'car':
+        Navigator.pushNamed(
+          context,
+          '/vehicle-detail',
+          arguments: {'garageId': entity['id']},
+        );
+        break;
+      case 'event':
+        Navigator.pushNamed(
+          context,
+          '/event-detail',
+          arguments: {
+            'event': {'id': entity['id'], 'name': entity['name']},
+          },
+        );
+        break;
+    }
   }
 
   bool _isCfBlurredUrl(String? url) {
@@ -1532,7 +1970,7 @@ class _PostActions extends StatelessWidget {
             ),
           ),
           if (!isNews && !isEvent) ...[
-             const SizedBox(width: 16),
+            const SizedBox(width: 16),
             GestureDetector(
               onTap: onCommentTap,
               child: SvgPicture.asset(

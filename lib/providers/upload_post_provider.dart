@@ -22,7 +22,7 @@ class UploadPostData {
   final int userId;
   final List<Map<String, dynamic>> mentionedUsers;
   final List<Map<String, dynamic>> mentionedHashtags;
-  final String? location;
+  final Map<String, dynamic>? location;
   final Map<String, dynamic>? association;
   final String? newsContent; // Add newsId field
 
@@ -330,7 +330,7 @@ class UploadPostProvider with ChangeNotifier {
         userId: data.userId,
         media: uploadedMedia,
         caption: data.caption,
-        location: null,
+        location: data.location,
         linkType: data.linkType,
         linkUrl: data.linkUrl,
         associationId: data.association != null

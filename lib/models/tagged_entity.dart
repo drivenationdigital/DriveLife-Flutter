@@ -3,6 +3,7 @@ class TaggedEntity {
   final String id;
   final String type; // 'user', 'car', 'event'
   final String label;
+  final String? imageUrl;
   final double? x;
   final double? y;
 
@@ -11,6 +12,7 @@ class TaggedEntity {
     required this.id,
     required this.type,
     required this.label,
+    this.imageUrl,
     this.x,
     this.y,
   });
@@ -20,6 +22,7 @@ class TaggedEntity {
     'id': id,
     'type': type,
     'label': label,
+    'image_url': imageUrl,
     'x': x,
     'y': y,
   };
