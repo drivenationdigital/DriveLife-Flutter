@@ -1383,10 +1383,7 @@ class _PostHeader extends StatelessWidget {
           ],
         ),
       ),
-      subtitle: Text(
-        date,
-        style: const TextStyle(fontSize: 12, color: Colors.grey),
-      ),
+      subtitle: _buildSubtitle(context),
       trailing: isOwnPost
           ? GestureDetector(
               onTap: onSettings,

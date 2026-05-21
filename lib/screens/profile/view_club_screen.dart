@@ -347,7 +347,11 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       if (!mounted) return;
 
       if (success) {
-        setState(() => _hasPendingRequest = true);
+        if (_clubData?['club_type'] == '2') { // Public club with auto-join
+          setState(() => _isMember = true);
+        } else {
+          setState(() => _hasPendingRequest = true);
+        }
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -488,38 +492,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 
-  // Future<void> _loadClubPosts() async {
-  //   if (_loadingClubPosts || _clubData == null) return;
-
-  //   setState(() => _loadingClubPosts = true);
-
-  //   try {
-  //     final data = await ClubApiService.fetchClubPosts(
-  //       clubId: _clubData!['id'].toString(),
-  //       page: 1,
-  //       perPage: 10,
-  //     );
-
-  //     if (!mounted) return;
-
-  //     if (data != null && data['success'] == true) {
-  //       setState(() {
-  //         _clubPosts = (data['data'] as List?) ?? [];
-  //         _clubPostsLoaded = true;
-  //         _loadingClubPosts = false;
-  //       });
-  //     } else {
-  //       setState(() {
-  //         _clubPostsLoaded = true;
-  //         _loadingClubPosts = false;
-  //       });
-  //     }
-  //   } catch (e) {
-  //     print('❌ Error loading club posts: $e');
-  //     if (mounted) setState(() => _loadingClubPosts = false);
-  //   }
-  // }
-
   Future<void> _loadMembers() async {
     if (_loadingMembers || _clubData == null) return;
 
@@ -549,7 +521,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   /// Privacy gates: events tab, posts tab, and member-list tap.
   bool get _isLockedForPrivacy {
     if (_clubData == null) return false;
-    final isPrivate = _clubData!['club_type'] == '1';
+    final isPrivate = _clubData!['club_type'] == '1' || _clubData!['club_type'] == '2';
     return isPrivate && !_isMember && !_isOwner && !_isAdmin;
   }
 
@@ -786,127 +758,141 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     final hasAnnouncements = announcements.isNotEmpty;
 
     return CustomScrollView(
-      controller: _updatesScrollController, // ← attach
+      controller: _updatesScrollController,
       slivers: [
-        // Cover + logo + name + meta + actions
+        // Cover + logo + name + meta + actions — always shown
         SliverToBoxAdapter(child: _buildHeaderArea(theme)),
 
         // Owner pending-requests banner
         if ((_isOwner || _isAdmin) && _pendingRequestsCount > 0)
           SliverToBoxAdapter(child: _buildPendingRequestsBanner(theme)),
 
-        // Empty state when no content
-        if (!hasPosts && !hasAnnouncements)
+        // Non-members of a private club: locked view fills the rest
+        if (_isLockedForPrivacy)
           SliverFillRemaining(
             hasScrollBody: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 48),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.article_outlined,
-                    size: 56,
-                    color: Colors.grey.shade300,
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    'Nothing here yet',
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Check back soon',
-                    style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-        // Posts — lazy-rendered via SliverList
-        if (hasPosts)
-          SliverList(
-            delegate: SliverChildBuilderDelegate((context, i) {
-              final post = _clubPosts[i] as Map<String, dynamic>;
-
-              return PostCard(
-                key: ValueKey(post['id']),
-                post: post,
-                onTapProfile: () {},
-                onLikeChanged: (isLiked) {
-                  setState(() {
-                    post['is_liked'] = isLiked;
-                    post['likes_count'] =
-                        (post['likes_count'] as int) + (isLiked ? 1 : -1);
-                  });
-                },
-                onDelete: _refreshClub,
-              );
-            }, childCount: _clubPosts.length),
-          ),
-
-        // Divider between posts and announcements
-        if (hasPosts && hasAnnouncements)
-          SliverToBoxAdapter(
-            child: Container(height: 8, color: const Color(0xFFF5F5F5)),
-          ),
-
-        // Announcements section header
-        if (hasAnnouncements && hasPosts)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-              child: Text(
-                'Announcements',
-                style: TextStyle(
-                  color: _ink,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.3,
+            child: _buildPrivateLockedView(),
+          )
+        else ...[
+          // Empty state
+          if (!hasPosts && !hasAnnouncements)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 48),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.article_outlined,
+                      size: 56,
+                      color: Colors.grey.shade300,
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Nothing here yet',
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Check back soon',
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ),
 
-        // Announcements — also lazy via SliverList
-        if (hasAnnouncements)
-          SliverList(
-            delegate: SliverChildBuilderDelegate((context, i) {
-              return AnnouncementCard(
-                authorName: _clubData?['title'] ?? 'Club',
-                posted: (announcements[i]['date'] ?? '').toString(),
-                content: (announcements[i]['content'] ?? '').toString(),
-                logoUrl: _clubData?['logo'] as String?,
-              );
-            }, childCount: announcements.length),
-          ),
+          // Posts
+          if (hasPosts)
+            SliverList(
+              delegate: SliverChildBuilderDelegate((context, i) {
+                final post = _clubPosts[i] as Map<String, dynamic>;
+                return PostCard(
+                  key: ValueKey(post['id']),
+                  post: post,
+                  onTapProfile: () {},
+                  onLikeChanged: (isLiked) {
+                    setState(() {
+                      post['is_liked'] = isLiked;
+                      post['likes_count'] =
+                          (post['likes_count'] as int) + (isLiked ? 1 : -1);
+                    });
+                  },
+                  onDelete: _refreshClub,
+                );
+              }, childCount: _clubPosts.length),
+            ),
 
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Center(
-              child: _loadingClubPosts && _clubPosts.isNotEmpty
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: _gold,
-                      ),
-                    )
-                  : (!_hasMoreClubPosts && _clubPosts.isNotEmpty)
-                  ? const Text(
-                      'You\'re all caught up',
-                      style: TextStyle(color: _muted, fontSize: 13),
-                    )
-                  : const SizedBox.shrink(),
+          // Divider between posts and announcements
+          if (hasPosts && hasAnnouncements)
+            SliverToBoxAdapter(
+              child: Container(height: 8, color: const Color(0xFFF5F5F5)),
+            ),
+
+          // Announcements section header
+          if (hasAnnouncements && hasPosts)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+                child: Text(
+                  'Announcements',
+                  style: TextStyle(
+                    color: _ink,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+            ),
+
+          // Announcements
+          if (hasAnnouncements)
+            SliverList(
+              delegate: SliverChildBuilderDelegate((context, i) {
+                return AnnouncementCard(
+                  authorName: _clubData?['title'] ?? 'Club',
+                  posted: (announcements[i]['date'] ?? '').toString(),
+                  content: (announcements[i]['content'] ?? '').toString(),
+                  logoUrl: _clubData?['logo'] as String?,
+                );
+              }, childCount: announcements.length),
+            ),
+
+          // Loading / end indicator
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: _loadingClubPosts && _clubPosts.isNotEmpty
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _gold,
+                        ),
+                      )
+                    : (!_hasMoreClubPosts && _clubPosts.isNotEmpty)
+                    ? const Text(
+                        'You\'re all caught up',
+                        style: TextStyle(color: _muted, fontSize: 13),
+                      )
+                    : const SizedBox.shrink(),
+              ),
             ),
           ),
-        ),
 
-        // Bottom padding so the floating pill nav doesn't cover the last card
-        const SliverToBoxAdapter(child: SizedBox(height: 100)),
+          // Bottom padding for the floating pill nav
+          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        ],
       ],
     );
   }
@@ -1103,50 +1089,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     }
   }
 
-  AppBar _buildAppBar() {
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
-
-    return AppBar(
-      backgroundColor: Colors.white,
-      elevation: 0,
-      centerTitle: true,
-      leadingWidth: 96,
-      leading: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          ),
-        ],
-      ),
-      title: Image.asset('assets/logo-dark.png', height: 18),
-      actions: [
-        IconButton(
-          icon: iconSvg(
-            'assets/app-icons/header-search.svg',
-            theme,
-            size: 20,
-            alwaysActive: true,
-          ),
-          onPressed: () {
-            Navigator.pushNamed(context, AppRoutes.search);
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.share, color: Colors.black),
-          onPressed: () {
-            Share.share(
-              'Check out this club on DriveLife: ${_clubData?['title'] ?? 'a club'}\n\n'
-              'https://app.mydrivelife.com/club/${_clubData?['id']}',
-            );
-          },
-        ),
-        const SizedBox(width: 8), // right-edge breathing room
-      ],
-    );
-  }
-
   Widget _buildCompactHeader(ThemeProvider theme) {
     final title = _clubData?['title'] ?? '';
     final logo = _clubData?['logo'];
@@ -1226,22 +1168,18 @@ class _ClubViewScreenState extends State<ClubViewScreen>
               ),
             ),
 
+            // Right-hand action — Create (members/owners) or More (everyone else)
             GestureDetector(
-              onTap: () {
-                Share.share(
-                  'Check out this club on DriveLife: ${_clubData?['title']}\n\n'
-                  'https://app.mydrivelife.com/club/${_clubData?['id']}',
-                );
-              },
+              onTap: _handleCreateClubPost,
               child: Container(
                 width: 36,
                 height: 36,
                 decoration: const BoxDecoration(
-                  color: _chip,
+                  color: _gold,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: const Icon(Icons.more_horiz, size: 18, color: _ink),
+                child: const Icon(Icons.add, size: 20, color: Colors.white),
               ),
             ),
           ],
@@ -1333,6 +1271,9 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       onCompose: _handleCreateClubPost,
       isMember: _isMember,
       isOwner: _isOwner,
+      handleJoinLeave: _handleJoinLeave,
+      hasPendingRequest: _hasPendingRequest,
+      isPublicClub: !_isLockedForPrivacy,
     );
   }
 
@@ -1651,40 +1592,40 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                     ),
                     const SizedBox(height: 6),
                     // Meta row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const SizedBox(height: 8),
-                        GestureDetector(
-                          onTap: _isLockedForPrivacy ? null : _openMembersModal,
-                          behavior: HitTestBehavior.opaque,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.person_outline,
-                                size: 16,
-                                color: _gold,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '${_formatCount(memberCount)} ',
-                                style: const TextStyle(
-                                  color: _ink,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const Text(
-                                'members',
-                                style: TextStyle(color: _muted, fontSize: 13),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                    // Row(
+                    //   mainAxisAlignment: MainAxisAlignment.center,
+                    //   children: [
+                    //     const SizedBox(height: 8),
+                    //     GestureDetector(
+                    //       // onTap: _isLockedForPrivacy ? null : _openMembersModal,
+                    //       behavior: HitTestBehavior.opaque,
+                    //       child: Row(
+                    //         mainAxisAlignment: MainAxisAlignment.center,
+                    //         mainAxisSize: MainAxisSize.min,
+                    //         children: [
+                    //           const Icon(
+                    //             Icons.person_outline,
+                    //             size: 16,
+                    //             color: _gold,
+                    //           ),
+                    //           const SizedBox(width: 6),
+                    //           Text(
+                    //             '${_formatCount(memberCount)} ',
+                    //             style: const TextStyle(
+                    //               color: _ink,
+                    //               fontSize: 14,
+                    //               fontWeight: FontWeight.w700,
+                    //             ),
+                    //           ),
+                    //           const Text(
+                    //             'members',
+                    //             style: TextStyle(color: _muted, fontSize: 13),
+                    //           ),
+                    //         ],
+                    //       ),
+                    //     ),
+                    //   ],
+                    // ),
                     const SizedBox(height: 16),
                     _buildActionRow(theme),
                   ],
@@ -1850,8 +1791,11 @@ class _ClubViewScreenState extends State<ClubViewScreen>
               child: const Icon(Icons.lock_outline, size: 28, color: _gold),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Private Club',
+            Text(
+              _clubData!['club_type'] ==
+                  '1'
+                      ? 'Private Club'
+                      : 'Join Club',
               style: TextStyle(
                 color: _ink,
                 fontSize: 18,
@@ -1954,13 +1898,13 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           Expanded(
             child: _PrimaryActionButton(
               icon: Icons.add,
-              label: 'Create Post',
+              label: 'Create',
               onTap: _handleCreateClubPost,
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: _OutlinedGoldButton(
+            child: _PrimaryActionButton(
               icon: Icons.person_outline,
               label: 'Members',
               onTap: _openMembersModal,
@@ -1979,7 +1923,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           Expanded(
             child: _PrimaryActionButton(
               icon: Icons.add,
-              label: 'Create Post',
+              label: 'Post',
               onTap: _handleCreateClubPost,
             ),
           ),
@@ -2023,6 +1967,14 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   }
 
   Future<void> _handleCreateClubPost() async {
+    if (!_isMember && !_isOwner && !_isAdmin) {
+      // Not a member — show toast and return early
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Join the club to create posts')),
+      );
+      return;
+    }
+
     final result = await Navigator.pushNamed(
       context,
       '/create-post',
@@ -2432,12 +2384,18 @@ class _ClubCommunityFeed extends StatefulWidget {
   final VoidCallback onCompose;
   final bool isMember;
   final bool isOwner;
+  final bool hasPendingRequest;
+  final VoidCallback handleJoinLeave;
+  final bool isPublicClub;
 
   const _ClubCommunityFeed({
     required this.clubId,
     required this.onCompose,
     required this.isMember,
     required this.isOwner,
+    required this.hasPendingRequest,
+    required this.handleJoinLeave,
+    required this.isPublicClub,
   });
 
   @override
@@ -2517,9 +2475,93 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
     await _loadMore();
   }
 
+  Widget _buildPrivateLockedView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: _gold.withOpacity(0.10),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.lock_outline, size: 28, color: _gold),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Private Club',
+              style: TextStyle(
+                color: _ink,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Join the club to view posts and events',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 14,
+                height: 1.4,
+              ),
+            ),
+            if (!widget.hasPendingRequest) ...[
+              const SizedBox(height: 20),
+              SizedBox(
+                width: 180,
+                child: _PrimaryActionButton(
+                  icon: Icons.add,
+                  label: 'Join Club',
+                  onTap: widget.handleJoinLeave,
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: _chip,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.hourglass_empty, size: 14, color: _muted),
+                    SizedBox(width: 6),
+                    Text(
+                      'Request pending',
+                      style: TextStyle(
+                        color: _muted,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    // ── Non-member view: only show the locked screen ─────────────────
+    if (!widget.isMember && !widget.isOwner && !widget.isPublicClub) {
+      return _buildPrivateLockedView();
+    }
 
     return RefreshIndicator(
       color: _gold,

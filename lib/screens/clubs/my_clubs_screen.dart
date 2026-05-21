@@ -374,8 +374,8 @@ class _MyClubsScreenState extends State<MyClubsScreen>
             ] else
               const SizedBox(height: 16),
             _buildFilters(),
-            const SizedBox(height: 20),
-            _buildAllClubsHeader(),
+            // const SizedBox(height: 20),
+            // _buildAllClubsHeader(),
             const SizedBox(height: 12),
             _buildDiscoverClubsList(),
             if (_isDiscoverLoadingMore)
@@ -396,22 +396,22 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text(
-            'All Clubs',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
-          ),
-          Text(
-            '${_discoverClubs.length} ${_discoverClubs.length == 1 ? "result" : "results"}',
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey.shade600,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          // const Text(
+          //   'All Clubs',
+          //   style: TextStyle(
+          //     fontSize: 18,
+          //     fontWeight: FontWeight.w700,
+          //     color: Colors.black,
+          //   ),
+          // ),
+          // Text(
+          //   '${_discoverClubs.length} ${_discoverClubs.length == 1 ? "result" : "results"}',
+          //   style: TextStyle(
+          //     fontSize: 13,
+          //     color: Colors.grey.shade600,
+          //     fontWeight: FontWeight.w500,
+          //   ),
+          // ),
         ],
       ),
     );
