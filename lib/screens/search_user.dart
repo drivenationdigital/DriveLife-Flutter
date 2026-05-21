@@ -118,7 +118,7 @@ class HashtagListView extends StatelessWidget {
 
         return Container(
           constraints: const BoxConstraints(
-            maxHeight: 10,
+            maxHeight: 44,
           ), // fits exactly 1 row
           decoration: BoxDecoration(
             color: Colors.white,
@@ -132,7 +132,7 @@ class HashtagListView extends StatelessWidget {
             ],
           ),
           child: ListView.builder(
-            shrinkWrap: true,
+            // shrinkWrap: true,
             scrollDirection: Axis.horizontal, // horizontal pill list
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             itemCount: hashtags.length,

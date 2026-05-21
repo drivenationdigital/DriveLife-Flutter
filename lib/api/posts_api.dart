@@ -517,9 +517,12 @@ class PostsAPI {
       final body = {
         'user_id': userId.toString(),
         'caption': caption,
-        'location': location != null ? json.encode(location) : null,
         'media': json.encode(media),
       };
+
+      if (location != null) {
+        body['location'] = json.encode(location);
+      }
 
       if (linkType != null && linkUrl != null) {
         body['asc_link_type'] = linkType;

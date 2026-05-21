@@ -150,29 +150,29 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           _associatedEntity!['type'] == 'venue');
 
   void _autoFormatHashtags() {
-    if (_processingTag) return; // block re-entry from addTag's own text update
+    if (_processingTag) return;
 
     final text = _captionController.text;
     final cursor = _captionController.selection.baseOffset;
     if (cursor <= 0) return;
 
-    // Only fire on space
     if (text[cursor - 1] != ' ') return;
 
-    // Must have an active hashtag query tracked via onSearch
     if (_activeHashtagQuery == null || _activeHashtagQuery!.isEmpty) return;
 
-    // Confirm the raw #query is actually right before the space
     final beforeCursor = text.substring(0, cursor - 1);
     if (!beforeCursor.endsWith('#$_activeHashtagQuery')) return;
 
     final hashtag = _activeHashtagQuery!;
-    _activeHashtagQuery = null; // clear before addTag fires onSearch again
+    _activeHashtagQuery = null;
 
     _processingTag = true;
     _captionController.addTag(id: hashtag, name: hashtag);
 
-    // Release guard after this frame so normal typing resumes
+    // Clear the suggestion overlay state so the list disappears
+    captionSearchViewModel.hashtags.value = [];
+    captionSearchViewModel.activeView.value = SearchResultView.none;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _processingTag = false;
     });
@@ -479,8 +479,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       location: _taggedLocationName != null
           ? {
               'name': _taggedLocationName!,
-              'lat': _taggedLat,
-              'lng': _taggedLng,
+              if (_taggedLat != null) 'lat': _taggedLat,
+              if (_taggedLng != null) 'lng': _taggedLng,
             }
           : null,
       linkType: _linkType,
@@ -784,23 +784,23 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 label: 'Location',
                 onTap: _openLocationSheet,
               ),
-              if (!_isEntityPost) ...[
-                _ToolButton(
-                  icon: Icons.calendar_today_outlined,
-                  label: 'Event',
-                  onTap: () => _handleTagEntity('events'),
-                ),
-                _ToolButton(
-                  icon: Icons.directions_car_outlined,
-                  label: 'Car',
-                  onTap: () => _handleTagEntity('car'),
-                ),
-                _ToolButton(
-                  icon: Icons.person_outline,
-                  label: 'People',
-                  onTap: () => _handleTagEntity('users'),
-                ),
-              ],
+              // if (!_isEntityPost) ...[
+              _ToolButton(
+                icon: Icons.calendar_today_outlined,
+                label: 'Event',
+                onTap: () => _handleTagEntity('events'),
+              ),
+              _ToolButton(
+                icon: Icons.directions_car_outlined,
+                label: 'Car',
+                onTap: () => _handleTagEntity('car'),
+              ),
+              _ToolButton(
+                icon: Icons.person_outline,
+                label: 'People',
+                onTap: () => _handleTagEntity('users'),
+              ),
+              // ],
               _ToolButton(
                 icon: Icons.link,
                 label: 'Link',
@@ -1138,60 +1138,88 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                                 fontWeight: FontWeight.w600,
                               ),
                             },
+                            overlayPosition: OverlayPosition.bottom,
                             triggerStrategy: TriggerStrategy.eager,
                             tagTextFormatter: (id, tag, triggerCharacter) =>
                                 '$triggerCharacter$id#$tag#',
                             // overlayHeight: 200,
-                            overlayHeight: view == SearchResultView.hashtag
-                                ? 52.0
-                                : 200.0, // 👈
-                            overlay: SearchResultOverlay(
-                              tagController: _captionController,
-                              animation: const AlwaysStoppedAnimation(
-                                Offset.zero,
-                              ),
-                            ),
+                            // overlayHeight: view == SearchResultView.hashtag
+                            //     ? 52.0
+                            //     : 200.0, // 👈
+                            overlayHeight: 0,
+                            // overlay: SearchResultOverlay(
+                            //   tagController: _captionController,
+                            //   animation: const AlwaysStoppedAnimation(
+                            //     Offset.zero,
+                            //   ),
+                            // ),
+                            overlay: const SizedBox.shrink(),
                             builder: (context, textFieldKey) {
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 4,
-                                ),
-                                child: TextField(
-                                  key: textFieldKey,
-                                  controller: _captionController,
-                                  // focusNode: _captionFocus,
-                                  maxLines: null,
-                                  minLines: 5,
-                                  maxLength: 2000,
-                                  keyboardType: TextInputType.multiline,
-                                  textCapitalization:
-                                      TextCapitalization.sentences,
-                                  style: const TextStyle(
-                                    fontSize: 17,
-                                    color: Color(0xFF0B0B0B),
-                                    height: 1.45,
-                                  ),
-                                  decoration: const InputDecoration(
-                                    hintText: "What's on your mind?",
-                                    hintStyle: TextStyle(
-                                      color: Color(0xFFB5B5B5),
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w400,
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 4,
                                     ),
-                                    border: InputBorder.none,
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                    disabledBorder: InputBorder.none,
-                                    contentPadding: EdgeInsets.symmetric(
-                                      vertical: 6,
-                                      horizontal: 4,
+                                    child: TextField(
+                                      key: textFieldKey,
+                                      controller: _captionController,
+                                      maxLines: 8,
+                                      minLines: 5,
+                                      maxLength: 2000,
+                                      keyboardType: TextInputType.multiline,
+                                      textCapitalization:
+                                          TextCapitalization.sentences,
+                                      style: const TextStyle(
+                                        fontSize: 17,
+                                        color: Color(0xFF0B0B0B),
+                                        height: 1.45,
+                                      ),
+                                      decoration: const InputDecoration(
+                                        hintText: "What's on your mind?",
+                                        hintStyle: TextStyle(
+                                          color: Color(0xFFB5B5B5),
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                        border: InputBorder.none,
+                                        enabledBorder: InputBorder.none,
+                                        focusedBorder: InputBorder.none,
+                                        disabledBorder: InputBorder.none,
+                                        contentPadding: EdgeInsets.symmetric(
+                                          vertical: 6,
+                                          horizontal: 4,
+                                        ),
+                                        counterText: '',
+                                        isCollapsed: true,
+                                      ),
                                     ),
-                                    counterText:
-                                        '', // hide the "0/2000" counter
-                                    isCollapsed: true,
                                   ),
-                                ),
+
+                                  ValueListenableBuilder<SearchResultView>(
+                                    valueListenable:
+                                        captionSearchViewModel.activeView,
+                                    builder: (_, view, __) {
+                                      if (view == SearchResultView.none) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          // horizontal: 16,
+                                        ),
+                                        child: SearchResultOverlay(
+                                          tagController: _captionController,
+                                          animation:
+                                              const AlwaysStoppedAnimation(
+                                                Offset.zero,
+                                              ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
                               );
                             },
                           );
@@ -1477,13 +1505,29 @@ class _VideoThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // If you have a video frame loaded, you could try painting that.
-    // For now, show a dark placeholder — the play icon and badge make the
-    // type obvious.
-    return Container(
-      color: Colors.grey.shade800,
-      alignment: Alignment.center,
-      child: const Icon(Icons.videocam, color: Colors.white54, size: 28),
+    final controller = item.videoController;
+
+    if (controller == null || !controller.value.isInitialized) {
+      // Fallback while controller initializes
+      return Container(
+        color: Colors.grey.shade800,
+        alignment: Alignment.center,
+        child: const Icon(Icons.videocam, color: Colors.white54, size: 28),
+      );
+    }
+
+    // FittedBox + SizedBox crops the video to fill the tile,
+    // matching BoxFit.cover behaviour
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+          width: controller.value.size.width,
+          height: controller.value.size.height,
+          child: VideoPlayer(controller),
+        ),
+      ),
     );
   }
 }
