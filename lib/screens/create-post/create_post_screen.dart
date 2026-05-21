@@ -997,6 +997,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       body: Stack(
         children: [
           SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1155,71 +1156,74 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                             // ),
                             overlay: const SizedBox.shrink(),
                             builder: (context, textFieldKey) {
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 4,
-                                    ),
-                                    child: TextField(
-                                      key: textFieldKey,
-                                      controller: _captionController,
-                                      maxLines: 8,
-                                      minLines: 5,
-                                      maxLength: 2000,
-                                      keyboardType: TextInputType.multiline,
-                                      textCapitalization:
-                                          TextCapitalization.sentences,
-                                      style: const TextStyle(
-                                        fontSize: 17,
-                                        color: Color(0xFF0B0B0B),
-                                        height: 1.45,
+                              return TapRegion(
+                                onTapOutside: (event) {
+                                  FocusScope.of(context).unfocus();
+                                  captionSearchViewModel.activeView.value =
+                                      SearchResultView.none;
+                                },
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 4,
                                       ),
-                                      decoration: const InputDecoration(
-                                        hintText: "What's on your mind?",
-                                        hintStyle: TextStyle(
-                                          color: Color(0xFFB5B5B5),
+                                      child: TextField(
+                                        key: textFieldKey,
+                                        controller: _captionController,
+                                        maxLines: 8,
+                                        minLines: 5,
+                                        maxLength: 2000,
+                                        keyboardType: TextInputType.multiline,
+                                        textCapitalization:
+                                            TextCapitalization.sentences,
+                                        style: const TextStyle(
                                           fontSize: 17,
-                                          fontWeight: FontWeight.w400,
+                                          color: Color(0xFF0B0B0B),
+                                          height: 1.45,
                                         ),
-                                        border: InputBorder.none,
-                                        enabledBorder: InputBorder.none,
-                                        focusedBorder: InputBorder.none,
-                                        disabledBorder: InputBorder.none,
-                                        contentPadding: EdgeInsets.symmetric(
-                                          vertical: 6,
-                                          horizontal: 4,
+                                        decoration: const InputDecoration(
+                                          hintText: "What's on your mind?",
+                                          hintStyle: TextStyle(
+                                            color: Color(0xFFB5B5B5),
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                          border: InputBorder.none,
+                                          enabledBorder: InputBorder.none,
+                                          focusedBorder: InputBorder.none,
+                                          disabledBorder: InputBorder.none,
+                                          contentPadding: EdgeInsets.symmetric(
+                                            vertical: 6,
+                                            horizontal: 4,
+                                          ),
+                                          counterText: '',
+                                          isCollapsed: true,
                                         ),
-                                        counterText: '',
-                                        isCollapsed: true,
                                       ),
                                     ),
-                                  ),
 
-                                  ValueListenableBuilder<SearchResultView>(
-                                    valueListenable:
-                                        captionSearchViewModel.activeView,
-                                    builder: (_, view, __) {
-                                      if (view == SearchResultView.none) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      return Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          // horizontal: 16,
-                                        ),
-                                        child: SearchResultOverlay(
-                                          tagController: _captionController,
-                                          animation:
-                                              const AlwaysStoppedAnimation(
-                                                Offset.zero,
-                                              ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ],
+                                    // Overlay shares the same group → tapping it counts as "inside"
+                                    ValueListenableBuilder<SearchResultView>(
+                                      valueListenable:
+                                          captionSearchViewModel.activeView,
+                                      builder: (_, view, __) {
+                                        if (view == SearchResultView.none) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        return SearchResultOverlay(
+                                            tagController: _captionController,
+                                            animation:
+                                                const AlwaysStoppedAnimation(
+                                                  Offset.zero,
+                                                ),
+                                          );
+                                      },
+                                    ),
+                                  ],
+                                ),
                               );
                             },
                           );
