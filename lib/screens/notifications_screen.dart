@@ -481,7 +481,6 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    print(notification);
     final entity = notification['entity'] ?? {};
     final initiatorData = entity['initiator_data'] ?? {};
     final entityDataRaw = entity['entity_data'];
