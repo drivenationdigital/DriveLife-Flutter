@@ -296,8 +296,6 @@ class ClubApiService {
         body: jsonEncode({'club_id': clubId, 'user_id': userId}),
       );
 
-      print('📡 Approve request: ${response.statusCode}');
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['success'] == true;

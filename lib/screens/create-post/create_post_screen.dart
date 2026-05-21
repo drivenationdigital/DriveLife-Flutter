@@ -1156,7 +1156,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                             // ),
                             overlay: const SizedBox.shrink(),
                             builder: (context, textFieldKey) {
-                              return TapRegion(
+                            return TapRegion(
                                 onTapOutside: (event) {
                                   FocusScope.of(context).unfocus();
                                   captionSearchViewModel.activeView.value =
@@ -1170,37 +1170,43 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                                         horizontal: 16,
                                         vertical: 4,
                                       ),
-                                      child: TextField(
-                                        key: textFieldKey,
-                                        controller: _captionController,
-                                        maxLines: 8,
-                                        minLines: 5,
-                                        maxLength: 2000,
-                                        keyboardType: TextInputType.multiline,
-                                        textCapitalization:
-                                            TextCapitalization.sentences,
-                                        style: const TextStyle(
-                                          fontSize: 17,
-                                          color: Color(0xFF0B0B0B),
-                                          height: 1.45,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF8F8F8),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
                                         ),
-                                        decoration: const InputDecoration(
-                                          hintText: "What's on your mind?",
-                                          hintStyle: TextStyle(
-                                            color: Color(0xFFB5B5B5),
+                                        padding: const EdgeInsets.all(12),
+                                        child: TextField(
+                                          key: textFieldKey,
+                                          controller: _captionController,
+                                          maxLines: 8,
+                                          minLines: 5,
+                                          maxLength: 2000,
+                                          keyboardType: TextInputType.multiline,
+                                          textCapitalization:
+                                              TextCapitalization.sentences,
+                                          style: const TextStyle(
                                             fontSize: 17,
-                                            fontWeight: FontWeight.w400,
+                                            color: Color(0xFF0B0B0B),
+                                            height: 1.45,
                                           ),
-                                          border: InputBorder.none,
-                                          enabledBorder: InputBorder.none,
-                                          focusedBorder: InputBorder.none,
-                                          disabledBorder: InputBorder.none,
-                                          contentPadding: EdgeInsets.symmetric(
-                                            vertical: 6,
-                                            horizontal: 4,
+                                          decoration: const InputDecoration(
+                                            hintText: "What's on your mind?",
+                                            hintStyle: TextStyle(
+                                              color: Color(0xFFB5B5B5),
+                                              fontSize: 17,
+                                              fontWeight: FontWeight.w400,
+                                            ),
+                                            border: InputBorder.none,
+                                            enabledBorder: InputBorder.none,
+                                            focusedBorder: InputBorder.none,
+                                            disabledBorder: InputBorder.none,
+                                            contentPadding: EdgeInsets.zero,
+                                            counterText: '',
+                                            isCollapsed: true,
                                           ),
-                                          counterText: '',
-                                          isCollapsed: true,
                                         ),
                                       ),
                                     ),
@@ -1214,12 +1220,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                                           return const SizedBox.shrink();
                                         }
                                         return SearchResultOverlay(
-                                            tagController: _captionController,
-                                            animation:
-                                                const AlwaysStoppedAnimation(
-                                                  Offset.zero,
-                                                ),
-                                          );
+                                          tagController: _captionController,
+                                          animation:
+                                              const AlwaysStoppedAnimation(
+                                                Offset.zero,
+                                              ),
+                                        );
                                       },
                                     ),
                                   ],

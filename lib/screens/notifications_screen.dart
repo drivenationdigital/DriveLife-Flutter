@@ -481,6 +481,7 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    print(notification);
     final entity = notification['entity'] ?? {};
     final initiatorData = entity['initiator_data'] ?? {};
     final entityDataRaw = entity['entity_data'];
@@ -857,6 +858,9 @@ class _NotificationTile extends StatelessWidget {
       case 'join_request':
         final clubName = entityData['club_name']?.toString() ?? 'a club';
         return '$name requested to join $clubName';
+      case 'join_approval':
+        final clubName = entityData['club_name']?.toString() ?? 'a club';
+        return '$name approved your request to join $clubName';
       case 'club':
         if (entityType == 'post') {
           final clubName = entityData['club_name']?.toString() ?? 'a club';

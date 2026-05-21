@@ -358,7 +358,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         SnackBar(
           content: Text(
             success
-                ? 'Request sent! The club owner will review your application.'
+                ? _isMember ? 'Congratulations! You are now a member.' : 'Request sent! The club owner will review your application.'
                 : 'Something went wrong. Please try again.',
           ),
           backgroundColor: success
@@ -706,6 +706,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                   Expanded(
                     child: TabBarView(
                       controller: _tabController,
+                       physics: const NeverScrollableScrollPhysics(),
                       children: [
                         _buildUpdatesScroll(theme),
                         _buildEventsPanel(theme),
@@ -1169,19 +1170,22 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             ),
 
             // Right-hand action — Create (members/owners) or More (everyone else)
-            GestureDetector(
-              onTap: _handleCreateClubPost,
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: const BoxDecoration(
-                  color: _gold,
-                  shape: BoxShape.circle,
+            // only show if member, owner, or admin — otherwise just show empty space to keep title centered
+            if (_isMember || _isOwner || _isAdmin) ...[
+              GestureDetector(
+                onTap: _handleCreateClubPost,
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: const BoxDecoration(
+                    color: _gold,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.add, size: 20, color: Colors.white),
                 ),
-                alignment: Alignment.center,
-                child: const Icon(Icons.add, size: 20, color: Colors.white),
               ),
-            ),
+            ]
           ],
         ),
       ),
@@ -1987,7 +1991,11 @@ class _ClubViewScreenState extends State<ClubViewScreen>
 
     // Refresh the club so any new post/announcement shows up
     if (result == true && mounted) {
-      _refreshClub();
+      // _refreshClub();
+      if (_isMember) {
+        // goto community tab if regular member (so they can see their new post)
+        _tabController.animateTo(2);
+      }
     }
   }
 
@@ -2410,6 +2418,11 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
   bool _hasMore = true;
   int _page = 0;
 
+    // Upload completion tracking — refresh club posts when an upload finishes
+  final Set<String> _completedUploads = {};
+  bool _refreshScheduled = false;
+  UploadPostProvider? _uploadProvider;
+
   static const int _pageSize = 10;
 
   @override
@@ -2426,7 +2439,55 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
   void dispose() {
     _scroll.removeListener(_onScroll);
     _scroll.dispose();
+    _uploadProvider?.removeListener(_onUploadsChanged);
+
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Subscribe to upload provider once
+    final provider = Provider.of<UploadPostProvider>(context, listen: false);
+    if (_uploadProvider != provider) {
+      _uploadProvider?.removeListener(_onUploadsChanged);
+      _uploadProvider = provider;
+      _uploadProvider!.addListener(_onUploadsChanged);
+    }
+  }
+
+  void _onUploadsChanged() {
+    if (!mounted || _uploadProvider == null) return;
+    _checkUploadCompletions(_uploadProvider!.uploads);
+  }
+
+  void _checkUploadCompletions(Map<String, UploadPostProgress> uploads) {
+    if (!mounted) return;
+
+    bool needsRefresh = false;
+
+    for (final entry in uploads.entries) {
+      if (entry.value.status == UploadStatus.completed &&
+          !_completedUploads.contains(entry.key)) {
+        // Only refresh if the completed upload was for THIS club
+        _completedUploads.add(entry.key);
+        needsRefresh = true;
+      }
+    }
+
+    // Clean up tracking for uploads that have been removed from the provider
+    _completedUploads.removeWhere((id) => !uploads.containsKey(id));
+
+    if (needsRefresh && !_refreshScheduled) {
+      _refreshScheduled = true;
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _refreshScheduled = false;
+        if (!mounted) return;
+        // Force a fresh fetch of club posts
+        _refresh();
+      });
+    }
   }
 
   void _onScroll() {
