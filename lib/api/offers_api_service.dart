@@ -74,14 +74,18 @@ class LeaderboardEntry {
   final String displayName;
   final double score;
   final bool isCurrentUser;
-  final String? profileImage; // ← NEW
+  final String? profileImage; 
+  final int? hits; 
+  final int? misses; 
 
   const LeaderboardEntry({
     required this.rank,
     required this.displayName,
     required this.score,
     required this.isCurrentUser,
-    this.profileImage, // ← NEW
+    this.profileImage, 
+    this.hits,
+    this.misses,
   });
 
   factory LeaderboardEntry.fromJson(Map<String, dynamic> json) {
@@ -91,7 +95,9 @@ class LeaderboardEntry {
       displayName: (json['display_name'] ?? 'Unknown').toString(),
       score: (json['score'] as num).toDouble(),
       isCurrentUser: json['is_current_user'] == true,
-      profileImage: json['profile_image'] as String?, // ← NEW
+      profileImage: json['profile_image'] as String?,
+      hits: json['hits'] != null ? (json['hits'] as num).toInt() : null,
+      misses: json['misses'] != null ? (json['misses'] as num).toInt() : null,
     );
   }
 }

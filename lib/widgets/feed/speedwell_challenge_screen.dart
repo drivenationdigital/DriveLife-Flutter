@@ -562,7 +562,7 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
             )
           else ...[
             // ── Column headers ───────────────────────────────────────
-            Padding(
+           Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
               child: Row(
                 children: [
@@ -580,7 +580,7 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
                     ),
                   ),
                   Text(
-                    'Av. Hit Time',
+                    'Hits · Misses · Time',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -591,7 +591,6 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
                 ],
               ),
             ),
-
             Divider(color: Colors.grey.shade200, height: 1),
 
             // ── Rows ────────────────────────────────────────────────
@@ -699,103 +698,120 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
   }
 
   Widget _buildRow(LeaderboardEntry entry) {
-    final Color? medalColor = switch (entry.rank) {
-      1 => _gold,
-      2 => _silver,
-      3 => _bronze,
-      _ => null,
-    };
+    final bool isMe = entry.isCurrentUser;
 
-    final bool isHighlighted = entry.isCurrentUser;
+    // Medal tint for the top 3
+    Color rankColor;
+    switch (entry.rank) {
+      case 1:
+        rankColor = const Color(0xFFE9A23B); // gold
+        break;
+      case 2:
+        rankColor = const Color(0xFF9AA0A6); // silver
+        break;
+      case 3:
+        rankColor = const Color(0xFFB06A3B); // bronze
+        break;
+      default:
+        rankColor = Colors.grey.shade400;
+    }
 
     return Container(
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       decoration: BoxDecoration(
-        color: isHighlighted
-            ? theme.primaryColor.withOpacity(0.05)
-            : Colors.transparent,
-        border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
+        color: isMe ? theme.primaryColor.withOpacity(0.08) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        border: isMe
+            ? Border.all(color: theme.primaryColor.withOpacity(0.35))
+            : null,
       ),
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
       child: Row(
         children: [
-          // Rank
-          // SizedBox(width: 40, child: Center(child: rankWidget)),
-
-          // const SizedBox(width: 12),
-
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: (medalColor ?? theme.primaryColor).withOpacity(0.12),
-              border: Border.all(
-                color: isHighlighted
-                    ? theme.primaryColor.withOpacity(0.3)
-                    : Colors.transparent,
-                width: 1.5,
+          // ── Rank ────────────────────────────────────────────────
+          SizedBox(
+            width: 16,
+            child: Center(
+              child: Text(
+                '${entry.rank}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: rankColor,
+                ),
               ),
             ),
-            child: ClipOval(
-              child:
-                  entry.profileImage != null && entry.profileImage!.isNotEmpty
-                  ? Image.network(
-                      entry.profileImage!,
-                      width: 36,
-                      height: 36,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          _avatarFallback(entry, medalColor),
-                    )
-                  : _avatarFallback(entry, medalColor),
-            ),
           ),
+          const SizedBox(width: 10),
 
-          const SizedBox(width: 12),
+          // ── Avatar ──────────────────────────────────────────────
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: Colors.grey.shade200,
+            backgroundImage:
+                (entry.profileImage != null && entry.profileImage!.isNotEmpty)
+                ? NetworkImage(entry.profileImage!)
+                : null,
+            child: (entry.profileImage == null || entry.profileImage!.isEmpty)
+                ? Text(
+                    entry.displayName.isNotEmpty
+                        ? entry.displayName[0].toUpperCase()
+                        : '?',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey[600],
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 10),
 
-          // Name
+          // ── Name ────────────────────────────────────────────────
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.isCurrentUser
-                      ? '${entry.displayName} · You'
-                      : entry.displayName,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: isHighlighted
-                        ? FontWeight.w700
-                        : FontWeight.w500,
-                    color: Colors.black87,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  'Rank #${entry.rank}',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[400]),
-                ),
-              ],
+            child: Text(
+              entry.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: isMe ? FontWeight.w800 : FontWeight.w600,
+                color: Colors.black87,
+              ),
             ),
           ),
 
-          // Score
+          // ── Stats: hits headline, misses + time below ───────────
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                '${entry.score}s',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: medalColor != null
-                      ? Color.lerp(medalColor, Colors.black, 0.35)!
-                      : Colors.black87,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.gps_fixed_rounded,
+                    size: 13,
+                    color: const Color(0xFF22A06B),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${entry.hits ?? 0}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 2),
               Text(
-                'avg hit time',
-                style: TextStyle(fontSize: 10, color: Colors.grey[400]),
+                '${entry.misses ?? 0} miss · ${entry.score.toStringAsFixed(2)}s',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[500],
+                ),
               ),
             ],
           ),
