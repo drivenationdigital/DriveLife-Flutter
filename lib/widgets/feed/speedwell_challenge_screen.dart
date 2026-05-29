@@ -24,6 +24,7 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
   OfferRedemptionData? _offer;
   List<LeaderboardEntry> _leaderboard = [];
   LeaderboardEntry? _currentUserEntry;
+  Map<String, dynamic>? _stats;
 
   bool _loading = true;
   String? _offerError;
@@ -84,6 +85,7 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
       // Leaderboard (non-fatal if it fails — just shows empty state)
       _leaderboard = leaderboard.leaderboard;
       _currentUserEntry = leaderboard.currentUser;
+      _stats = leaderboard.stats;
     });
   }
 
@@ -418,6 +420,54 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
 
   int get _totalPages => (_leaderboard.length / _pageSize).ceil().clamp(1, 999);
 
+  Widget _buildStatCard({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: iconColor, size: 18),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[500],
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLeaderboardSection() {
     final bool userIsPinned =
         _currentUserEntry != null &&
@@ -455,6 +505,40 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
           ),
 
           const SizedBox(height: 16),
+
+          if (_stats != null) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    icon: Icons.gps_fixed_rounded,
+                    iconColor: const Color(0xFF22A06B),
+                    label: 'Top Hits',
+                    value: '${_stats!['highest_hits']}',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildStatCard(
+                    icon: Icons.close_rounded,
+                    iconColor: const Color(0xFFE5484D),
+                    label: 'Least Misses',
+                    value: '${_stats!['lowest_misses']}',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildStatCard(
+                    icon: Icons.bolt_rounded,
+                    iconColor: const Color(0xFFE9A23B),
+                    label: 'Best Time',
+                    value: '${_stats!['lowest_reaction_time']}s',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
 
           if (_leaderboard.isEmpty)
             Center(

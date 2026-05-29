@@ -102,14 +102,16 @@ class SpeedwellLeaderboardResult {
   final List<LeaderboardEntry> leaderboard;
   final LeaderboardEntry? currentUser;
   final String? error;
+  final Map<String, dynamic>? stats; // ← NEW
 
   bool get hasError => error != null;
 
-  SpeedwellLeaderboardResult.success(this.leaderboard, this.currentUser)
+  SpeedwellLeaderboardResult.success(this.leaderboard, this.currentUser, {this.stats})
     : error = null;
 
   SpeedwellLeaderboardResult.failure(this.error)
     : leaderboard = const [],
+      stats = null,
       currentUser = null;
 }
 
@@ -381,7 +383,9 @@ class OffersApi {
           ? LeaderboardEntry.fromJson(rawCurrent)
           : null;
 
-      return SpeedwellLeaderboardResult.success(entries, currentUser);
+      return SpeedwellLeaderboardResult.success(entries, currentUser,
+        stats: body['stats'] is Map<String, dynamic> ? body['stats'] : null,
+      );
     } on http.ClientException catch (e) {
       return SpeedwellLeaderboardResult.failure('Network error: ${e.message}');
     } catch (e) {
