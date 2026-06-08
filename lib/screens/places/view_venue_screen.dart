@@ -55,7 +55,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this); // was 3
     _updatesScrollController.addListener(_onUpdatesScroll);
     _loadVenue();
   }
@@ -183,6 +183,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
         venueId: widget.venueId,
         page: _postsPage + 1,
         perPage: _pageSize,
+        kind: 'updates', // ← admin/owner posts only
       );
 
       if (!mounted) return;
@@ -396,6 +397,10 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
                       children: [
                         _buildUpdatesScroll(theme),
                         _buildEventsPanel(theme),
+                        _VenueCommunityFeed(
+                          venueId: widget.venueId,
+                          onCompose: _handleCreateVenuePost,
+                        ),
                         _buildAboutPanel(theme),
                       ],
                     ),
@@ -1481,8 +1486,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
     );
   }
 
-  // ── Bottom segmented pill nav ──────────────────────────────────────────
-
   Widget _buildBottomSegmentedNav(ThemeProvider theme) {
     return SafeArea(
       top: false,
@@ -1506,7 +1509,8 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
             children: [
               _segButton(label: 'Updates', index: 0),
               _segButton(label: 'Events', index: 1),
-              _segButton(label: 'About', index: 2),
+              _segButton(label: 'Community', index: 2),
+              _segButton(label: 'About', index: 3),
             ],
           ),
         ),
@@ -1549,8 +1553,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
       ),
     );
   }
-
-  // ── Loading & error states ─────────────────────────────────────────────
 
   Widget _buildLoadingSkeleton() {
     return SingleChildScrollView(
@@ -1646,7 +1648,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
 }
 
 // ── Reusable button widgets (match club view styles) ───────────────────
-
 class _PrimaryActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -1780,6 +1781,244 @@ class _ChipActionButton extends StatelessWidget {
                   color: _ink,
                   fontWeight: FontWeight.w700,
                   fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+class _VenueCommunityFeed extends StatefulWidget {
+  final String venueId;
+  final VoidCallback onCompose;
+
+  const _VenueCommunityFeed({required this.venueId, required this.onCompose});
+
+  @override
+  State<_VenueCommunityFeed> createState() => _VenueCommunityFeedState();
+}
+
+class _VenueCommunityFeedState extends State<_VenueCommunityFeed>
+    with AutomaticKeepAliveClientMixin {
+  final ScrollController _scroll = ScrollController();
+  final List<Map<String, dynamic>> _posts = [];
+  bool _loading = false;
+  bool _hasMore = true;
+  int _page = 0;
+
+  static const int _pageSize = 10;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+    _loadMore();
+  }
+
+  @override
+  void dispose() {
+    _scroll.removeListener(_onScroll);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 400 &&
+        !_loading &&
+        _hasMore) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || !_hasMore) return;
+    setState(() => _loading = true);
+
+    try {
+      final result = await VenueApiService.fetchVenuePosts(
+        venueId: widget.venueId,
+        page: _page + 1,
+        perPage: _pageSize,
+        kind: 'community',
+      );
+
+      if (!mounted) return;
+
+      final newPosts = (result as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+      setState(() {
+        _posts.addAll(newPosts);
+        _hasMore = newPosts.length >= _pageSize;
+        _page++;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _posts.clear();
+      _page = 0;
+      _hasMore = true;
+    });
+    await _loadMore();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+
+    return RefreshIndicator(
+      color: _gold,
+      onRefresh: _refresh,
+      child: CustomScrollView(
+        controller: _scroll,
+        slivers: [
+          // Compose prompt — anyone can post in venue community
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: _VenueComposePrompt(onTap: widget.onCompose),
+            ),
+          ),
+
+          if (_posts.isEmpty && !_loading)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 40),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.forum_outlined,
+                      size: 56,
+                      color: Colors.grey.shade300,
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'No community posts yet',
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Share your visit to this venue',
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          if (_posts.isNotEmpty)
+            SliverList(
+              delegate: SliverChildBuilderDelegate((context, i) {
+                final post = _posts[i];
+                return PostCard(
+                  key: ValueKey(post['id']),
+                  post: post,
+                  onTapProfile: () {
+                    Navigator.pushNamed(
+                      context,
+                      '/view-profile',
+                      arguments: {
+                        'userId': post['user_id'],
+                        'username': post['username'],
+                      },
+                    );
+                  },
+                  onLikeChanged: (isLiked) {
+                    setState(() {
+                      post['is_liked'] = isLiked;
+                      post['likes_count'] =
+                          (post['likes_count'] as int) + (isLiked ? 1 : -1);
+                    });
+                  },
+                  onDelete: _refresh,
+                );
+              }, childCount: _posts.length),
+            ),
+
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: _loading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _gold,
+                        ),
+                      )
+                    : (!_hasMore && _posts.isNotEmpty)
+                    ? const Text(
+                        "You're all caught up",
+                        style: TextStyle(color: _muted, fontSize: 13),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ),
+          ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        ],
+      ),
+    );
+  }
+}
+
+class _VenueComposePrompt extends StatelessWidget {
+  final VoidCallback onTap;
+  const _VenueComposePrompt({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4F4F4),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.person, size: 20, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Share your visit…',
+                  style: TextStyle(color: _muted, fontSize: 14),
                 ),
               ),
             ],

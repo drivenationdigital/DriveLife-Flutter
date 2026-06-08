@@ -29,6 +29,7 @@ const String stripePublishableKey =
 // Create a global navigator key
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
+final rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 class BottomNavProvider extends ChangeNotifier {
   int _currentIndex = 0;
@@ -147,6 +148,7 @@ class _MyAppState extends State<MyApp> {
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         return MaterialApp(
+          scaffoldMessengerKey: rootScaffoldMessengerKey,
           navigatorObservers: [routeObserver],
           navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,

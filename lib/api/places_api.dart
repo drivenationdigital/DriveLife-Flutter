@@ -74,6 +74,7 @@ class VenueApiService {
     required String venueId,
     int page = 1,
     int perPage = 10,
+     String? kind, // 'updates' | 'community' | null
   }) async {
     try {
       final user = await _authService.getUser();
@@ -91,6 +92,7 @@ class VenueApiService {
           'user_id': user['id'],
           'page': page,
           'limit': perPage,
+          if (kind != null) 'kind': kind.toLowerCase(),
         }),
       );
 
