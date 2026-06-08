@@ -463,6 +463,58 @@ class ClubApiService {
     });
   }
 
+  static Future<Map<String, dynamic>?> blockUserFromClub({
+    required String clubId,
+    required int userId,
+  }) async {
+    try {
+      final token = await AuthService().getToken();
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/club-block-user'), // adjust to your route
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'club_id': clubId, 'user_id': userId}),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      print('blockUser failed: ${response.statusCode} ${response.body}');
+      return null;
+    } catch (e) {
+      print('blockUser error: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> unblockUserFromClub({
+    required String clubId,
+    required int userId,
+  }) async {
+    try {
+      final token = await AuthService().getToken();
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/club-unblock-user'),
+         headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'club_id': clubId, 'user_id': userId}),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      print('unblockUser error: $e');
+      return null;
+    }
+  }
+
   // Shared POST helper
   static Future<bool> _postSimple(
     String endpoint,
@@ -502,7 +554,6 @@ class ClubApiService {
         },
       );
       final data = json.decode(response.body);
-
       if (response.statusCode == 200) {
         if (data['success'] == true) {
           return data['members'];

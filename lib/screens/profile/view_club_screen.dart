@@ -3,13 +3,11 @@ import 'package:drivelife/components/post_card.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
-import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/clubs/join_club_modal.dart';
 import 'package:drivelife/screens/clubs/request_modal.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/announcement-card.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/event-card.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/member-listing.dart';
-import 'package:drivelife/utils/misc.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:provider/provider.dart';
@@ -347,7 +345,8 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       if (!mounted) return;
 
       if (success) {
-        if (_clubData?['club_type'] == '2') { // Public club with auto-join
+        if (_clubData?['club_type'] == '2') {
+          // Public club with auto-join
           setState(() => _isMember = true);
         } else {
           setState(() => _hasPendingRequest = true);
@@ -358,7 +357,9 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         SnackBar(
           content: Text(
             success
-                ? _isMember ? 'Congratulations! You are now a member.' : 'Request sent! The club owner will review your application.'
+                ? _isMember
+                      ? 'Congratulations! You are now a member.'
+                      : 'Request sent! The club owner will review your application.'
                 : 'Something went wrong. Please try again.',
           ),
           backgroundColor: success
@@ -521,7 +522,8 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   /// Privacy gates: events tab, posts tab, and member-list tap.
   bool get _isLockedForPrivacy {
     if (_clubData == null) return false;
-    final isPrivate = _clubData!['club_type'] == '1' || _clubData!['club_type'] == '2';
+    final isPrivate =
+        _clubData!['club_type'] == '1' || _clubData!['club_type'] == '2';
     return isPrivate && !_isMember && !_isOwner && !_isAdmin;
   }
 
@@ -632,12 +634,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         }
       }
 
-      // print(_clubData);
-      // loop through _clubData and print all keys and types for debugging
-      _clubData?.forEach((key, value) {
-        print('Club data key: $key, val: $value, type: ${value.runtimeType}');
-      });
-
       _loadClubEvents();
       _loadClubPosts();
       _loadPendingRequestsCount();
@@ -706,7 +702,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                   Expanded(
                     child: TabBarView(
                       controller: _tabController,
-                       physics: const NeverScrollableScrollPhysics(),
+                      physics: const NeverScrollableScrollPhysics(),
                       children: [
                         _buildUpdatesScroll(theme),
                         _buildEventsPanel(theme),
@@ -954,12 +950,16 @@ class _ClubViewScreenState extends State<ClubViewScreen>
 
     // Owner bubbles to the top, then admins, then everyone else
     final ownerId = _clubData?['user_id'];
-    final sorted = [..._members]
+      // Split into active and blocked
+    final blocked = _members.where((m) => m['is_blocked'] == true).toList();
+    final active = _members.where((m) => m['is_blocked'] != true).toList()
       ..sort((a, b) {
         final ar = _memberRank(a, ownerId);
         final br = _memberRank(b, ownerId);
         return ar.compareTo(br);
       });
+
+    final canSeeBlocked = (_isOwner || _isAdmin) && blocked.isNotEmpty;
 
     return ListView(
       controller: scrollController,
@@ -979,7 +979,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                 ),
               ),
               Text(
-                '${sorted.length} ${sorted.length == 1 ? "member" : "members"}',
+                '${active.length} ${active.length == 1 ? "member" : "members"}',
                 style: const TextStyle(
                   color: _muted,
                   fontSize: 12,
@@ -989,16 +989,49 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             ],
           ),
         ),
-        for (final member in sorted)
+        for (final member in active)
           MemberRow(
             member: member,
             isViewerAdmin: _isOwner || _isAdmin,
             onTap: () => _openMemberProfile(member),
-            onAdminAction: (action) => _handleMemberAdminAction(member, action),
+            onAdminAction: (action) async {
+              await _handleMemberAdminAction(member, action);
+            },
             onViewRequest: member['is_pending'] == true
                 ? () => _openRequestModal(member)
                 : null,
           ),
+
+         // Blocked members section (admin/owner only)
+        if (canSeeBlocked) ...[
+          const SizedBox(height: 12),
+          Container(height: 8, color: const Color(0xFFF5F5F5)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.block, size: 14, color: Colors.red.shade400),
+                const SizedBox(width: 6),
+                Text(
+                  'BLOCKED · ${blocked.length}',
+                  style: TextStyle(
+                    color: Colors.red.shade400,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          for (final blockedMember in blocked)
+            BlockedMemberRow(
+              member: blockedMember,
+              onUnblock: () async {
+                await _handleUnblockMember(blockedMember);
+              },
+            ),
+        ],
       ],
     );
   }
@@ -1007,6 +1040,137 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     if (ownerId != null && m['id'] == ownerId) return 0;
     if (m['is_admin'] == true) return 1;
     return 2;
+  }
+
+  Future<void> _handleBlockMember(Map<String, dynamic> member) async {
+    final name = (member['name'] ?? 'this member').toString();
+    final memberId = member['user_id'] ?? member['id'];
+    if (memberId == null) return;
+
+    final userIdInt = int.tryParse(memberId.toString());
+    if (userIdInt == null) return;
+
+    // Confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Block member?',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          'Block $name from the club?\n\n'
+          'They will be removed from the members list and won\'t be able to '
+          'rejoin until unblocked.',
+          style: const TextStyle(
+            fontSize: 14,
+            color: Colors.black54,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade400,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text('Block'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final result = await ClubApiService.blockUserFromClub(
+      clubId: _clubData!['id'].toString(),
+      userId: userIdInt,
+    );
+
+    if (!mounted) return;
+
+    if (result?['success'] == true) {
+      setState(() {
+        for (final m in _members) {
+          final mId = m['user_id'] ?? m['id'];
+          if (mId?.toString() == memberId.toString()) {
+            m['is_blocked'] = true;
+            m['is_pending'] = false;
+            break;
+          }
+        }
+        final count = _clubData?['member_count'];
+        if (count is int && count > 0) {
+          _clubData!['member_count'] = count - 1;
+        }
+      });
+
+      // Close the members modal so the snackbar isn't hidden behind it
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$name has been blocked')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to block member'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleUnblockMember(Map<String, dynamic> member) async {
+    final name = (member['name'] ?? 'this member').toString();
+    final memberId = member['user_id'] ?? member['id'];
+    if (memberId == null) return;
+
+    final userIdInt = int.tryParse(memberId.toString());
+    if (userIdInt == null) return;
+
+    final result = await ClubApiService.unblockUserFromClub(
+      clubId: _clubData!['id'].toString(),
+      userId: userIdInt,
+    );
+
+    if (!mounted) return;
+
+    if (result?['success'] == true) {
+      setState(() {
+        _members.removeWhere((m) {
+          final mId = m['user_id'] ?? m['id'];
+          return mId?.toString() == memberId.toString();
+        });
+      });
+
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$name has been unblocked')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to unblock $name'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _handleMemberAdminAction(
@@ -1086,6 +1250,10 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             );
           }
         }
+        return;
+
+      case MemberAdminAction.block:
+        await _handleBlockMember(member);
         return;
     }
   }
@@ -1185,7 +1353,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                   child: const Icon(Icons.add, size: 20, color: Colors.white),
                 ),
               ),
-            ]
+            ],
           ],
         ),
       ),
@@ -1766,7 +1934,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                   builder: (context, _) {
                     return _buildMembersPanel(
                       Provider.of<ThemeProvider>(context),
-                      scrollController,
+                      scrollController
                     );
                   },
                 ),
@@ -1796,10 +1964,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             ),
             const SizedBox(height: 16),
             Text(
-              _clubData!['club_type'] ==
-                  '1'
-                      ? 'Private Club'
-                      : 'Join Club',
+              _clubData!['club_type'] == '1' ? 'Private Club' : 'Join Club',
               style: TextStyle(
                 color: _ink,
                 fontSize: 18,
@@ -2418,7 +2583,7 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
   bool _hasMore = true;
   int _page = 0;
 
-    // Upload completion tracking — refresh club posts when an upload finishes
+  // Upload completion tracking — refresh club posts when an upload finishes
   final Set<String> _completedUploads = {};
   bool _refreshScheduled = false;
   UploadPostProvider? _uploadProvider;

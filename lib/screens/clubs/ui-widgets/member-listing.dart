@@ -4,7 +4,7 @@ const Color _gold = Color(0xFFC4A062);
 const Color _ink = Color(0xFF0B0B0B);
 const Color _muted = Color(0xFF8A8A8A);
 
-enum MemberAdminAction { viewProfile, makeAdmin, removeAdmin, remove }
+enum MemberAdminAction { viewProfile, makeAdmin, removeAdmin, remove, block }
 
 class MemberRow extends StatelessWidget {
   final Map<String, dynamic> member;
@@ -104,7 +104,7 @@ class MemberRow extends StatelessWidget {
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                 ),
               )
-            else if (isViewerAdmin && !isOwner && !isPending)
+            else if ((isViewerAdmin || isOwner) && !isPending)
               PopupMenuButton<MemberAdminAction>(
                 icon: const Icon(Icons.more_horiz, color: _muted),
                 position: PopupMenuPosition.under,
@@ -140,12 +140,119 @@ class MemberRow extends StatelessWidget {
                       ],
                     ),
                   ),
+                  //Block option only for admin/owner to block members
+                  PopupMenuItem(
+                    value: MemberAdminAction.block,
+                    child: Row(
+                      children: [
+                        Icon(Icons.block, size: 18, color: Colors.red.shade400),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Block user',
+                          style: TextStyle(color: Colors.red.shade400),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               )
             else if (!isPending)
               const Icon(Icons.chevron_right, size: 18, color: _muted),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class BlockedMemberRow extends StatelessWidget {
+  final Map<String, dynamic> member;
+  final VoidCallback onUnblock;
+
+  const BlockedMemberRow({super.key, required this.member, required this.onUnblock});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (member['name'] ?? '') as String;
+    final avatar = member['avatar'] as String?;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          // Avatar — desaturated look via grey background
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: Colors.grey.shade200,
+            backgroundImage: (avatar != null && avatar.isNotEmpty)
+                ? NetworkImage(avatar)
+                : null,
+            child: (avatar == null || avatar.isEmpty)
+                ? Text(
+                    name.isNotEmpty ? name[0].toUpperCase() : '?',
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 12),
+
+          // Name + blocked badge
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'Blocked',
+                    style: TextStyle(
+                      color: Colors.red.shade400,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Unblock action
+          TextButton(
+            onPressed: onUnblock,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFC4A062),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'Unblock',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -177,4 +284,3 @@ class _RoleBadge extends StatelessWidget {
     );
   }
 }
-
