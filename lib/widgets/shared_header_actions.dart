@@ -122,32 +122,19 @@ class SharedHeaderIcons {
     BuildContext context,
     Function(Map<String, dynamic>)? onSuccess,
   ) async {
+    // Capture a stable navigator BEFORE the await.
+    // The calling widget (menu item / button) may be disposed while
+    // the scanner is open, leaving `context` defunct afterwards.
+    final navigator = Navigator.of(context, rootNavigator: true);
     final result = await QrScannerService.showScanner(context);
-    if (result != null && context.mounted) {
-      QrScannerService.handleScanResult(
-        context,
-        result,
-        onSuccess: (data) {
-          // Call custom success callback if provided
-          onSuccess?.call(data);
 
-          // Default navigation based on entity type
-          if (data['entity_type'] == 'profile') {
-            Navigator.pushNamed(
-              context,
-              '/view-profile',
-              arguments: {'userId': data['entity_id']},
-            );
-          } else if (data['entity_type'] == 'vehicle') {
-            Navigator.pushNamed(
-              context,
-              '/vehicle-detail',
-              arguments: {'garageId': data['entity_id'].toString()},
-            );
-          }
-        },
-      );
-    }
+    if (result == null) return;
+
+    print('Scan result: $result');
+    QrScannerService.handleScanResult(
+      navigator.context, // stable context, not the defunct one
+      result,
+    );
   }
 
   /// Creates a combined row with QR and notification icons

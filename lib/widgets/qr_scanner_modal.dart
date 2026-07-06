@@ -62,7 +62,7 @@ class _QrScannerModalState extends State<QrScannerModal> {
       // Verify the QR code
       final response = await QrCodeAPI.verifyScan(qrCode, currentUser!.id);
 
-      if (!mounted) return;
+      print('Verification Response: $response');
 
       if (response == null) {
         setState(() {
