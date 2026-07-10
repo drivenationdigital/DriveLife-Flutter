@@ -560,9 +560,9 @@ class _VenuesScreenState extends State<VenuesScreen>
       return _buildErrorState();
     }
 
-    if (_filteredVenues.isEmpty) {
-      return _buildEmptyState();
-    }
+    // if (_filteredVenues.isEmpty) {
+    //   return _buildEmptyState();
+    // }
 
     return RefreshIndicator(
       onRefresh: _refreshVenues,
@@ -995,6 +995,10 @@ class _VenuesScreenState extends State<VenuesScreen>
   }
 
   Widget _buildVenuesList() {
+    if (_filteredVenues.isEmpty) {
+      return Padding(padding: const EdgeInsets.all(16), child: _buildEmptyState());
+    }
+
     return Column(
       children: _filteredVenues.map((venue) {
         return Padding(
@@ -1297,8 +1301,32 @@ class _VenuesScreenState extends State<VenuesScreen>
           ),
           const SizedBox(height: 8),
           Text(
-            'Try adjusting your filters',
+            "Can't find what you're looking for? Add it.",
             style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            onPressed: () async {
+              final result = await Navigator.pushNamed(
+                context,
+                '/create-venue', // adjust to your route
+              );
+              if (result == true && mounted) {
+                // refresh the list — call your existing reload method
+                _loadVenues();
+              }
+            },
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add venue'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFC4A062),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+              elevation: 0,
+            ),
           ),
         ],
       ),

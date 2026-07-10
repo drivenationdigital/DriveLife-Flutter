@@ -1,5 +1,6 @@
 import 'package:drivelife/models/account_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
+import 'package:drivelife/providers/user_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -134,24 +135,28 @@ class EntitySwitcherSheet extends StatelessWidget {
                   ),
                 );
 
-                if (confirmed == true && context.mounted) {
-                  Navigator.pop(
-                    context,
-                  ); // ✅ Close the entity switcher sheet first
+                // Capture early
+                final rootNavigator = Navigator.of(
+                  context,
+                  rootNavigator: true,
+                );
+                
+                final messenger = ScaffoldMessenger.of(context);
 
-                  await accountManager.clearAll();
+                if (confirmed != true) return;
 
-                  if (context.mounted) {
-                    // ✅ Use pushNamedAndRemoveUntil to clear all navigation stack
-                    Navigator.of(
-                      context,
-                      rootNavigator: true,
-                    ).pushNamedAndRemoveUntil(
-                      AppRoutes.login,
-                      (route) => false,
-                    );
-                  }
-                }
+                rootNavigator.pop(); // close sheet
+
+                await accountManager.clearAll();
+
+                Provider.of<UserProvider>(context, listen: false).clearUser();
+
+                await Future.delayed(const Duration(milliseconds: 50));
+
+                rootNavigator.pushNamedAndRemoveUntil(
+                  AppRoutes.login,
+                  (route) => false,
+                );
               },
             ),
           ],

@@ -417,15 +417,63 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     );
   }
 
+Widget _buildEmptyState() {
+  return Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
+        const SizedBox(height: 16),
+        Text(
+          'No clubs found',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          "Start your own and bring your community together.",
+          style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+        ),
+        const SizedBox(height: 20),
+        ElevatedButton.icon(
+          onPressed: () async {
+            final result = await Navigator.pushNamed(
+              context,
+              '/add-club',
+            );
+            if (result == true && mounted) {
+              _loadMyClubs();
+            }
+          },
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Add club'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFC4A062),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 12,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(999),
+            ),
+            elevation: 0,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
   Widget _buildDiscoverClubsList() {
-    if (_discoverClubs.isEmpty) {
+    if (              _discoverClubs.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
         child: Center(
-          child: Text(
-            'No clubs found',
-            style: TextStyle(color: Colors.grey.shade600),
-          ),
+          child: _buildEmptyState(),
         ),
       );
     }

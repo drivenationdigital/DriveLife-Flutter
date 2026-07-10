@@ -568,7 +568,7 @@ class _ShopScreenState extends State<ShopScreen>
                 ),
                 const SizedBox(height: 24),
                 const Text(
-                  'USA Store coming soon',
+                  'Store coming soon',
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
