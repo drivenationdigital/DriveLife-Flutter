@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/chunk_upload_utility.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -7,6 +8,23 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class GarageAPI {
   static const String _apiUrl = 'https://www.carevents.com/uk';
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
+    static final AuthService _authService = AuthService();
+
+  /// Get authorization headers
+  static Future<Map<String, String>> _getHeaders() async {
+    final headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    final authToken = await _authService.getToken();
+
+    if (authToken != null && authToken.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $authToken';
+    }
+
+    return headers;
+  }
 
   static Future<List<dynamic>?> getUserGarage(int userId) async {
     try {
@@ -68,6 +86,28 @@ class GarageAPI {
       return null;
     } catch (e) {
       print('Error fetching garage posts: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> lookupVehicleByReg(String reg) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v2/vehicle-spec-lookup'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'registration': reg}),
+      );
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+
+      print('Vehicle lookup response: $body');
+
+      if (response.statusCode == 200 && body['success'] == true) {
+        return body['data'] as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      print('Vehicle lookup error: $e');
       return null;
     }
   }

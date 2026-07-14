@@ -21,6 +21,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
   File? _imageFile;
   String? _base64Image;
+  bool _lookingUp = false;
 
   String _ownership = 'current';
   DateTime? _ownedFrom;
@@ -565,13 +566,116 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     return InputDecoration(
       labelText: label,
       hintText: hint,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      // Pin the label colour in ALL states — stops the purple flash
+      labelStyle: TextStyle(
+        color: Colors.grey.shade600,
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
+      ),
+      floatingLabelStyle: TextStyle(
+        color:
+            Colors.grey.shade600, // ← same grey when floated (was theme purple)
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+      ),
+      hintStyle: TextStyle(color: Colors.grey.shade400),
       border: InputBorder.none,
+      enabledBorder: InputBorder.none,
+      focusedBorder: InputBorder.none,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      // ... keep whatever else you already have in here
     );
   }
 
   Widget _divider() =>
       const Divider(height: 1, thickness: 1, color: Color(0xFFEFEFEF));
+
+  /// Dropdowns get the field decoration's own padding rather than a wrapper of
+  /// their own, so their caret lines up with the rows above and below.
+  static const Widget _caret = Icon(
+    Icons.keyboard_arrow_down_rounded,
+    size: 22,
+    color: Color(0xFF9A9A9A),
+  );
+
+  /// A date row built to read like the text fields around it: small grey label,
+  /// value beneath, same 14px inset.
+  Widget _dateRow({
+    required String label,
+    required DateTime? date,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _fmtDate(date),
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: date == null
+                          ? Colors.grey.shade500
+                          : Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.calendar_today_outlined,
+              size: 18,
+              color: Colors.grey.shade500,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _autoFillButton() {
+    const gold = Color(0xFFC4A062);
+
+    return Tooltip(
+      message: 'Auto fill from registration',
+      child: Material(
+        color: gold.withValues(alpha: 0.12),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: _lookingUp ? null : _handleRegLookup,
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: _lookingUp
+                ? CircularProgressIndicator(
+                      padding: EdgeInsets.all(14),
+                      strokeWidth: 2,
+                      color: gold,
+                    )
+                : const Icon(
+                    Icons.auto_fix_high_rounded,
+                    size: 18,
+                    color: gold,
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildImageSection() {
     final hasImage =
@@ -746,6 +850,282 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     }
   }
 
+  Future<void> _handleRegLookup() async {
+    final reg = _regCtrl.text.trim().toUpperCase().replaceAll(' ', '');
+
+    if (reg.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a registration first')),
+      );
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() => _lookingUp = true);
+
+    final res = await GarageAPI.lookupVehicleByReg(reg);
+
+    if (!mounted) return;
+    setState(() => _lookingUp = false);
+
+    if (res == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vehicle not found — check the reg and try again'),
+        ),
+      );
+      return;
+    }
+
+    final data = _unwrapLookup(res);
+
+    // The spec provider returns the same field in several places with varying
+    // quality (ModelData is properly cased, DVLA/SMMT are SHOUTED), so each of
+    // these reads the best source first and degrades to the rougher ones.
+    final make = _lookupString(data, const [
+      'ModelData.Make',
+      'SmmtDetails.Marque',
+      'VehicleIdentification.DvlaMake',
+      'make',
+    ]);
+    final range = _lookupString(data, const [
+      'ModelData.Range',
+      'SmmtDetails.Range',
+      'VehicleIdentification.DvlaModel',
+      'model',
+    ]);
+    final fullModel = _lookupString(data, const ['ModelData.Model']);
+    final variantBadge = _lookupString(data, const [
+      'ModelData.ModelVariant',
+      'SmmtDetails.Variant',
+    ]);
+    final colourRaw = _lookupString(data, const [
+      'ColourDetails.CurrentColour',
+      'ColourDetails.OriginalColour',
+      'colour',
+    ]);
+    final fuelRaw = _lookupString(data, const [
+      'ModelData.FuelType',
+      'VehicleIdentification.DvlaFuelType',
+      'SmmtDetails.FuelType',
+      'fuel_type',
+    ]);
+    final aspiration = _lookupString(data, const [
+      'PowerSource.IceDetails.Aspiration',
+      'SmmtDetails.Aspiration',
+    ]);
+    final year = _lookupString(data, const [
+      'VehicleIdentification.YearOfManufacture',
+      'year_of_manufacture',
+    ]);
+    final bhp = _lookupString(data, const [
+      'Performance.Power.Bhp',
+      'SmmtDetails.PowerBhp',
+    ]);
+    final zeroToSixty = _lookupString(data, const [
+      'Performance.Statistics.ZeroToSixtyMph',
+    ]);
+    final topSpeed = _lookupString(data, const [
+      'Performance.Statistics.MaxSpeedMph',
+      'SmmtDetails.MaxSpeedMph',
+    ]);
+
+    final isElectric =
+        _lookupString(data, const ['PowerSource.VehicleType']).toUpperCase() ==
+        'BEV';
+
+    final model = _titleCase(range);
+    final colour = _titleCase(colourRaw);
+    final fuel = isElectric && fuelRaw.isEmpty ? 'Electric' : _titleCase(fuelRaw);
+
+    // Engine size, e.g. "1.4L". Electric cars have none.
+    final engine = isElectric
+        ? ''
+        : _engineLitres(
+            _lookupString(data, const [
+              'PowerSource.IceDetails.EngineCapacityLitres',
+              'DvlaTechnicalDetails.EngineCapacityCc',
+              'PowerSource.IceDetails.EngineCapacityCc',
+              'SmmtDetails.EngineCapacity',
+              'engine_capacity',
+            ]),
+          );
+
+    // Trim — "Astra SRi T" minus the range gives "SRi T". Falls back to the
+    // SHOUTED badge ("SRI"), which is left as-is: trim names are acronyms and
+    // title-casing them reads worse than leaving them alone.
+    var trim = '';
+    if (fullModel.isNotEmpty &&
+        range.isNotEmpty &&
+        fullModel.toLowerCase().startsWith(range.toLowerCase())) {
+      trim = fullModel.substring(range.length).trim();
+    }
+    if (trim.isEmpty) trim = variantBadge;
+
+    final spec = [
+      trim,
+      engine,
+      if (aspiration.toLowerCase().contains('turbo') &&
+          !trim.toLowerCase().contains('turbo'))
+        'Turbo',
+      fuel,
+    ].where((p) => p.isNotEmpty).join(' ');
+
+    setState(() {
+      // Make — match against the dropdown list (case-insensitive). A make the
+      // list doesn't carry clears the field, so it can't keep showing the make
+      // of the reg looked up before this one.
+      final match = _makes.firstWhere(
+        (m) => m.toLowerCase() == make.toLowerCase(),
+        orElse: () => '',
+      );
+      _make = match.isEmpty ? null : match;
+
+      _applyLookup(_modelCtrl, model);
+      _applyLookup(_colourCtrl, colour);
+      _applyLookup(_variantCtrl, spec);
+
+      _applyLookup(_bhpCtrl, _fmtNum(bhp));
+      _applyLookup(_zero62Ctrl, _fmtNum(zeroToSixty));
+      _applyLookup(_topSpeedCtrl, _fmtNum(topSpeed));
+
+      // Short description — year / make / model / spec / colour summary
+      final summary = [
+        if (year.isNotEmpty) year,
+        if (_make != null) _make!,
+        if (model.isNotEmpty) model,
+        if (spec.isNotEmpty) spec,
+      ].join(' ').trim();
+      _applyLookup(
+        _descCtrl,
+        summary.isEmpty
+            ? ''
+            : (colour.isNotEmpty ? '$summary in $colour' : summary),
+      );
+
+      // Owned from — seed with the date the vehicle was first registered.
+      // Only a starting point: a second-hand car was first registered long
+      // before this owner got it, so the user can still change it.
+      final firstRegistered = _parseFirstRegistered(
+        _lookupString(data, const [
+          'VehicleIdentification.DateFirstRegistered',
+          'VehicleIdentification.DateFirstRegisteredInUk',
+          'month_first_registered',
+        ]),
+        year,
+      );
+      if (_ownership != 'dream_car') {
+        _ownedFrom = firstRegistered;
+        if (firstRegistered != null &&
+            _ownedTo != null &&
+            _ownedTo!.isBefore(firstRegistered)) {
+          _ownedTo = null;
+        }
+      }
+
+      // Normalise the reg field itself
+      _regCtrl.text = reg;
+    });
+
+    final found = [
+      year,
+      _titleCase(make),
+      model,
+      spec,
+    ].where((p) => p.isNotEmpty).join(' ');
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(found.isEmpty ? 'Vehicle found' : 'Found: $found'),
+        backgroundColor: Colors.green.shade600,
+      ),
+    );
+  }
+
+  /// The spec document is sometimes handed back wrapped in another envelope.
+  Map<String, dynamic> _unwrapLookup(Map<String, dynamic> res) {
+    for (final key in const ['data', 'Data', 'vehicle', 'result']) {
+      final inner = res[key];
+      if (inner is Map &&
+          (inner.containsKey('VehicleIdentification') ||
+              inner.containsKey('ModelData'))) {
+        return inner.cast<String, dynamic>();
+      }
+    }
+    return res;
+  }
+
+  /// First non-empty value among [paths], each a dot-separated path into the
+  /// nested lookup document, e.g. "Performance.Power.Bhp".
+  String _lookupString(Map<String, dynamic> data, List<String> paths) {
+    for (final path in paths) {
+      dynamic node = data;
+      for (final key in path.split('.')) {
+        node = (node is Map && node.containsKey(key)) ? node[key] : null;
+        if (node == null) break;
+      }
+      final value = node?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return '';
+  }
+
+  /// 148.0 -> "148", 7.8 -> "7.8", 0 / junk -> "" so it never autofills a zero.
+  String _fmtNum(String raw) {
+    final n = double.tryParse(raw);
+    if (n == null || n <= 0) return '';
+    return n == n.roundToDouble() ? n.round().toString() : n.toString();
+  }
+
+  /// Write a looked-up [value] into [ctrl]. Tapping Auto fill means "fill this
+  /// form from this reg", so it overwrites whatever is there — including an
+  /// earlier reg's answer, and including an empty [value], which clears the
+  /// field rather than leaving a figure that belongs to a different vehicle.
+  void _applyLookup(TextEditingController ctrl, String value) {
+    ctrl.text = value;
+  }
+
+  /// "2017-06-19T00:00:00Z" -> 19 Jun 2017, "2022-10" -> 1 Oct 2022, falling
+  /// back to 1 Jan of [year].
+  DateTime? _parseFirstRegistered(dynamic firstRegistered, dynamic year) {
+    final raw = firstRegistered?.toString().trim() ?? '';
+
+    final iso = DateTime.tryParse(raw);
+    if (iso != null) return DateTime(iso.year, iso.month, iso.day);
+
+    final parts = raw.split('-');
+    if (parts.length >= 2) {
+      final y = int.tryParse(parts[0]);
+      final m = int.tryParse(parts[1]);
+      if (y != null && m != null && m >= 1 && m <= 12) {
+        return DateTime(y, m, 1);
+      }
+    }
+
+    final fallbackYear = int.tryParse(year?.toString().trim() ?? '');
+    if (fallbackYear != null && fallbackYear > 1900) {
+      return DateTime(fallbackYear, 1, 1);
+    }
+
+    return null;
+  }
+
+  /// 1399 (cc) or 1.4 (litres) -> "1.4L". '' when missing or unusable.
+  String _engineLitres(dynamic capacity) {
+    final value = double.tryParse(capacity?.toString().trim() ?? '');
+    if (value == null || value <= 0) return '';
+    final litres = value >= 100 ? value / 1000 : value;
+    return '${litres.toStringAsFixed(1)}L';
+  }
+
+  String _titleCase(String input) {
+    return input
+        .toLowerCase()
+        .split(' ')
+        .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
@@ -805,52 +1185,47 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   _card(
                     child: Column(
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: DropdownButtonFormField<String>(
-                            value: _ownership,
-                        dropdownColor: Colors.white,
-
-                            padding: const EdgeInsets.symmetric(horizontal: 0),
-                            decoration: _dec('Ownership *'),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'current',
-                                child: Text('Current Vehicle'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'past',
-                                child: Text('Past Vehicle'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'dream_car',
-                                child: Text('Dream Vehicle'),
-                              ),
-                            ],
-                            onChanged: (v) {
-                              if (v == null) return;
-                              setState(() {
-                                _ownership = v;
-                                if (_ownership != 'past') _ownedTo = null;
-                              });
-                            },
-                          ),
+                        DropdownButtonFormField<String>(
+                          value: _ownership,
+                          dropdownColor: Colors.white,
+                          isExpanded: true,
+                          icon: _caret,
+                          decoration: _dec('Ownership *'),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'current',
+                              child: Text('Current Vehicle'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'past',
+                              child: Text('Past Vehicle'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'dream_car',
+                              child: Text('Dream Vehicle'),
+                            ),
+                          ],
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setState(() {
+                              _ownership = v;
+                              if (_ownership != 'past') _ownedTo = null;
+                            });
+                          },
                         ),
-                        _divider(),
                         if (_ownership != 'dream_car') ...[
-                          ListTile(
-                            title: const Text('Owned From'),
-                            subtitle: Text(_fmtDate(_ownedFrom)),
-                            trailing: const Icon(Icons.arrow_drop_down),
+                          _divider(),
+                          _dateRow(
+                            label: 'Owned From',
+                            date: _ownedFrom,
                             onTap: () => _pickDate(isFrom: true, theme: theme),
                           ),
                         ],
                         if (_showOwnedTo) ...[
                           _divider(),
-                          ListTile(
-                            title: const Text('Owned To'),
-                            subtitle: Text(_fmtDate(_ownedTo)),
-                            trailing: const Icon(Icons.arrow_drop_down),
+                          _dateRow(
+                            label: 'Owned To',
+                            date: _ownedTo,
                             onTap: () => _pickDate(isFrom: false, theme: theme),
                           ),
                         ],
@@ -862,35 +1237,29 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   _card(
                     child: Column(
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 6,
+                        DropdownButtonFormField<String>(
+                          dropdownColor: theme.cardColor,
+                          focusColor: theme.primaryColor,
+                          value: _make,
+                          isExpanded: true,
+                          icon: _caret,
+                          decoration: _dec(
+                            'Vehicle Make *',
+                            hint: 'Please Select',
                           ),
-                          child: DropdownButtonFormField<String>(
-                            dropdownColor: theme.cardColor,
-                            focusColor: theme.primaryColor,
-                            value: _make,
-                            decoration: _dec(
-                              'Vehicle Make *',
-                              hint: 'Please Select',
-                            ),
-                            items: _makes
-                                .map(
-                                  (m) => DropdownMenuItem(
-                                    value: m,
-                                    child: Text(m),
-                                  ),
-                                )
-                                .toList(),
-                            validator: (v) {
-                              if (v == null || v.isEmpty) {
-                                return 'Please select a make';
-                              }
-                              return null;
-                            },
-                            onChanged: (v) => setState(() => _make = v),
-                          ),
+                          items: _makes
+                              .map(
+                                (m) =>
+                                    DropdownMenuItem(value: m, child: Text(m)),
+                              )
+                              .toList(),
+                          validator: (v) {
+                            if (v == null || v.isEmpty) {
+                              return 'Please select a make';
+                            }
+                            return null;
+                          },
+                          onChanged: (v) => setState(() => _make = v),
                         ),
                         _divider(),
                         TextFormField(
@@ -914,10 +1283,21 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                         _divider(),
                         TextFormField(
                           controller: _regCtrl,
-                          decoration: _dec(
-                            'Registration',
-                            hint: 'Your vehicle reg',
-                          ),
+                          textCapitalization: TextCapitalization.characters,
+                          decoration:
+                              _dec(
+                                'Registration',
+                                hint: 'Your vehicle reg',
+                              ).copyWith(
+                                suffixIcon: Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: _autoFillButton(),
+                                ),
+                                suffixIconConstraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  minHeight: 48,
+                                ),
+                              ),
                         ),
                         _divider(),
                         TextFormField(
