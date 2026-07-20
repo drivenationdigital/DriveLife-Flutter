@@ -2,6 +2,7 @@ import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/screens/account-settings/app_permissions_screen.dart';
 import 'package:drivelife/screens/events/add_event_screen.dart';
+import 'package:drivelife/screens/events/event_community_gallery_screen.dart';
 import 'package:drivelife/screens/events/order_ticket_view.dart';
 import 'package:drivelife/utils/date.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
@@ -1303,6 +1304,7 @@ class _EventsScreenState extends State<EventsScreen>
       onAddEvent: () {
         NavigationHelper.navigateTo(context, AddEventScreen());
       },
+      
       onEventTap: (event) {
         if (event['is_owner'] == true) {
           Navigator.pushNamed(
@@ -1321,6 +1323,20 @@ class _EventsScreenState extends State<EventsScreen>
           '/event-detail',
           arguments: {'event': event},
         );
+      },
+      onSharePhotos: (event) async {
+        final uploaded = await NavigationHelper.navigateTo<bool>(
+          context,
+          EventCommunityGalleryScreen(
+            eventId: event['id'].toString(),
+            eventTitle: event['title'] ?? 'Untitled Event',
+            eventCoverUrl: event['thumbnail'],
+          ),
+        );
+
+        if (uploaded == true) {
+          _fetchProfileEvents();
+        }
       },
       formatEventDate: (date, index) => DateHelpers.formatEventDate(date),
       onUnlikeEvent: (eventId, site, eventIndex) async {

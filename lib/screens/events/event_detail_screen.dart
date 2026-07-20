@@ -1,3 +1,4 @@
+import 'package:drivelife/widgets/events/event_community_gallery_tab.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -40,7 +41,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _isFavorite = widget.event?['is_liked'] ?? false;
     _fetchEventDetails();
   }
@@ -1164,6 +1165,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                     tabs: const [
                       Tab(text: 'About Us'),
                       Tab(text: 'Entry & Tickets'),
+                      Tab(text: 'Gallery'),
                       // Tab(text: 'Map'),
                     ],
                   ),
@@ -1194,6 +1196,14 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                   ? 'Tickets are available for this event.'
                   : 'This is a free event. No tickets required.',
             ),
+          ),
+
+          // Community Gallery Tab
+          EventCommunityGalleryTab(
+            eventId: eventId,
+            eventTitle: eventTitle,
+            eventCoverUrl: eventImages.isNotEmpty ? eventImages.first : null,
+            primaryColor: theme.primaryColor,
           ),
 
           // Map Tab

@@ -670,6 +670,132 @@ class EventsAPI {
     }
   }
 
+  /// Community gallery: direct-to-Cloudflare upload, then batch registration.
+  static Future<Map<String, dynamic>?> uploadCommunityGalleryImages({
+    required String eventId,
+    required List<ImageData> images,
+    Function(double progress)? onProgress,
+  }) async {
+    try {
+       final token = await _authService.getToken();
+      if (token == null) {
+        print('❌ [EventsAPI] No token available');
+        return null;
+      }
+
+      final uploadedIds = <String>[];
+      final total = images.length;
+
+      for (int i = 0; i < total; i++) {
+        final imageData = images[i];
+        if (imageData.file == null) continue;
+
+        // Step 1 — mint a direct-upload URL
+        final urlResponse = await http.post(
+          Uri.parse(
+            '${ApiConfig.baseUrl}/wp-json/app/v2/event-community-gallery/create-upload',
+          ),
+          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        );
+        if (urlResponse.statusCode != 200) {
+          throw Exception('Failed to get upload URL');
+        }
+        final urlData = jsonDecode(urlResponse.body);
+        final uploadUrl = urlData['upload_url'] as String;
+        final imageId = urlData['image_id'] as String;
+
+        // Step 2 — upload straight to Cloudflare
+        final request = http.MultipartRequest('POST', Uri.parse(uploadUrl));
+        final file = imageData.file!;
+        request.files.add(
+          http.MultipartFile(
+            'file',
+            http.ByteStream(file.openRead()),
+            await file.length(),
+            filename: file.path.split('/').last,
+          ),
+        );
+
+        final streamed = await request.send();
+        final response = await http.Response.fromStream(streamed);
+        if (response.statusCode != 200) {
+          throw Exception('CF upload failed: ${response.statusCode}');
+        }
+
+        uploadedIds.add(imageId);
+        onProgress?.call(
+          ((i + 1) / total) * 90,
+        ); // reserve last 10% for register
+      }
+
+      if (uploadedIds.isEmpty) {
+        throw Exception('No images uploaded');
+      }
+
+      print('✅ [EventsAPI] Uploaded ${uploadedIds.length} images, registering...');
+      print('Uploaded IDs: $uploadedIds');
+
+      // Step 3 — register the batch against the event
+      final registerResponse = await http.post(
+        Uri.parse(
+          '${ApiConfig.baseUrl}/wp-json/app/v2/event-community-gallery/register',
+        ),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode({
+          'event_id': int.parse(eventId),
+          'media_ids': uploadedIds,
+        }),
+      );
+
+      if (registerResponse.statusCode != 200) {
+        throw Exception('Failed to register images');
+      }
+
+      onProgress?.call(100);
+      return jsonDecode(registerResponse.body) as Map<String, dynamic>;
+    } catch (e) {
+      print('❌ [EventsAPI] Community gallery upload failed: $e');
+      rethrow; // screen shows the error snackbar
+    }
+  }
+
+  static Future<Map<String, dynamic>?> fetchCommunityGallery({
+    required String eventId,
+    int page = 1,
+    int perPage = 30,
+  }) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) {
+        print('❌ [EventsAPI] No token available');
+        return null;
+      }
+
+      final response = await http.post(
+        Uri.parse(
+          '${ApiConfig.baseUrl}/wp-json/app/v2/event-community-gallery/list',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'event_id': int.parse(eventId),
+          'page': page,
+          'per_page': perPage,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      print('❌ [EventsAPI] fetchCommunityGallery failed: $e');
+      return null;
+    }
+  }
+
   /// Upload event images with chunked upload and progress
   static Future<Map<String, dynamic>?> uploadEventImages({
     required String eventId,

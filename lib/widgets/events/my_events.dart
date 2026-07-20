@@ -172,6 +172,43 @@ class EventCard extends StatelessWidget {
   }
 }
 
+/// Compact "add photos" affordance for the community gallery
+class SharePhotosButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const SharePhotosButton({Key? key, required this.onTap}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.add_photo_alternate_outlined,
+              size: 22,
+              color: Color(0xFFB8935E),
+            ),
+            SizedBox(height: 2),
+            Text(
+              'Photos',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFB8935E),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Empty state for saved events
 class EmptySavedEventsState extends StatelessWidget {
   const EmptySavedEventsState({Key? key}) : super(key: key);
@@ -230,6 +267,7 @@ class MyEventsTabContent extends StatelessWidget {
   final List<Map<String, dynamic>> likedEvents;
   final VoidCallback onAddEvent;
   final Function(Map<String, dynamic>) onEventTap;
+  final Function(Map<String, dynamic>) onSharePhotos;
   final Function(String, int) formatEventDate;
   final Function(String eventId, String site, int eventIndex) onUnlikeEvent;
   final Future<void> Function() onRefresh;
@@ -241,6 +279,7 @@ class MyEventsTabContent extends StatelessWidget {
     required this.likedEvents,
     required this.onAddEvent,
     required this.onEventTap,
+    required this.onSharePhotos,
     required this.formatEventDate,
     required this.onUnlikeEvent,
     required this.onRefresh,
@@ -272,6 +311,9 @@ class MyEventsTabContent extends StatelessWidget {
                 formattedDate: formatEventDate(event['start_date'] ?? '', 0),
                 dateColor: primaryColor,
                 onTap: () => onEventTap(event),
+                trailingWidget: SharePhotosButton(
+                  onTap: () => onSharePhotos(event),
+                ),
               );
             }),
             const SizedBox(height: 24),
@@ -298,9 +340,15 @@ class MyEventsTabContent extends StatelessWidget {
                 ),
                 dateColor: primaryColor,
                 onTap: () => onEventTap(event),
-                trailingWidget: IconButton(
-                  icon: const Icon(Icons.favorite, color: Color(0xFFB8935E)),
-                  onPressed: () => onUnlikeEvent(eventId, site, index),
+                trailingWidget: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SharePhotosButton(onTap: () => onSharePhotos(event)),
+                    IconButton(
+                      icon: const Icon(Icons.favorite, color: Color(0xFFB8935E)),
+                      onPressed: () => onUnlikeEvent(eventId, site, index),
+                    ),
+                  ],
                 ),
               );
             }),
