@@ -40,14 +40,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final email = _emailController.text.trim();
-      final password = _passwordController.text.trim();
+      // Deliberately NOT trimmed — WordPress stores the password verbatim, so
+      // trimming locks out anyone whose password starts or ends with a space.
+      final password = _passwordController.text;
 
       print('🔐 [LoginScreen] Attempting login...');
 
       // ✅ USE THE PROVIDED AUTHSERVICE:
       final authService = context.read<AuthService>();
 
-      final success = await authService
+      final result = await authService
           .login(email, password)
           .timeout(
             const Duration(seconds: 10),
@@ -59,7 +61,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      if (success) {
+      if (result.isSuccess) {
         print('✅ [LoginScreen] Login successful, navigating to home');
 
         // Navigate to home - account is already added by AuthService
@@ -71,8 +73,23 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } else {
-        print('❌ [LoginScreen] Login failed: $success');
-        _showError('Invalid email or password');
+        print(
+          '❌ [LoginScreen] Login failed: ${result.outcome} — ${result.detail}',
+        );
+        switch (result.outcome) {
+          case LoginOutcome.profileUnavailable:
+            // Authenticated fine, so this is not a password problem. Say so,
+            // otherwise the real cause stays invisible in the field.
+            _showError(
+              result.detail ??
+                  'Signed in, but your profile could not be loaded.',
+            );
+          case LoginOutcome.networkError:
+            _showError('Could not reach the server. Check your connection.');
+          case LoginOutcome.invalidCredentials:
+          case LoginOutcome.success:
+            _showError('Invalid email or password');
+        }
       }
     } catch (e) {
       print('❌ [LoginScreen] Login error: $e');

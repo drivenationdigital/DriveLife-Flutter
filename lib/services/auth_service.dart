@@ -4,6 +4,35 @@ import 'package:drivelife/providers/account_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+/// Why a login attempt ended the way it did.
+///
+/// Kept distinct so the UI never reports "wrong password" for a failure that
+/// had nothing to do with the password — the ambiguity that made login
+/// problems undiagnosable in the field.
+enum LoginOutcome {
+  success,
+
+  /// The server refused the credentials, or returned no token.
+  invalidCredentials,
+
+  /// Credentials were accepted and a token issued, but the profile could not
+  /// be loaded. Usually means the account is not resolvable on the site this
+  /// build points at (see `_apiUrl`) rather than a bad password.
+  profileUnavailable,
+
+  /// Request never completed: offline, DNS, TLS, timeout, malformed response.
+  networkError,
+}
+
+class LoginResult {
+  final LoginOutcome outcome;
+  final String? detail;
+
+  const LoginResult(this.outcome, [this.detail]);
+
+  bool get isSuccess => outcome == LoginOutcome.success;
+}
+
 class AuthService {
   static const String _apiUrl = 'https://www.carevents.com/uk';
   final _storage = const FlutterSecureStorage();
@@ -20,52 +49,77 @@ class AuthService {
     _accountManager = manager;
   }
 
-  /// Login user and cache token + user profile
-  Future<bool> login(String email, String password) async {
+  /// Login user and cache token + user profile.
+  ///
+  /// [identifier] is whatever the user typed — email or username. It must not
+  /// be pre-trimmed of anything but surrounding whitespace, and [password] must
+  /// not be trimmed at all: WordPress stores passwords verbatim, so trimming
+  /// silently locks out anyone whose password has a leading/trailing space.
+  Future<LoginResult> login(String identifier, String password) async {
     try {
-      print('🔐 Attempting login for $email');
+      print('🔐 Attempting login for $identifier');
+
+      // Credentials MUST go through queryParameters so they are percent-encoded.
+      // Interpolating them straight into the URL corrupts any password
+      // containing & (truncates), # (truncates, and the tail never leaves the
+      // device), + (becomes a space) or a %XX sequence (silently decoded).
       final uri = Uri.parse(
-        '$_apiUrl/wp-json/ticket_scanner/v1/verify_user/?email=$email&password=$password',
-      );
+        '$_apiUrl/wp-json/ticket_scanner/v1/verify_user/',
+      ).replace(queryParameters: {'email': identifier, 'password': password});
 
       final response = await http.get(
         uri,
         headers: {'Content-Type': 'application/json'},
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        print('✅ [AuthService] Login response: $data');
-
-        final token = data['token'];
-        print('✅ [AuthService] Token: $data');
-        if (token == null || token.isEmpty) return false;
-
-        // Fetch user profile
-        final userProfile = await _getUserProfileWithToken(token);
-        print('✅ [AuthService] User profile: $userProfile');
-        if (userProfile == null) return false;
-
-        if (_accountManager != null) {
-          print('✅ Adding account to AccountManager');
-          print('📊 Current accounts: ${_accountManager!.accounts.length}');
-          await _accountManager!.addAccount(token, User.fromJson(userProfile));
-          print('📊 After adding: ${_accountManager!.accounts.length}');
-        } else {
-          print('⚠️ AccountManager is NULL - using fallback storage');
-          await _storage.write(key: _tokenKey, value: token);
-          await _storage.write(key: _userKey, value: jsonEncode(userProfile));
-        }
-
-        return true;
-      } else {
-        print('Login failed: ${response.statusCode}');
-        return false;
+      if (response.statusCode != 200) {
+        print('Login failed: HTTP ${response.statusCode} — ${response.body}');
+        return LoginResult(
+          LoginOutcome.invalidCredentials,
+          'Server rejected the login (HTTP ${response.statusCode}).',
+        );
       }
+
+      final data = jsonDecode(response.body);
+      final token = data['token'];
+      if (token == null || token.isEmpty) {
+        // ce_verify_user answers 200 for every failure and puts the reason in
+        // `error` ("No user found with that email or username" / "Password is
+        // incorrect"), or in `message` for a soft-deleted account. Surface it
+        // rather than guessing — that distinction is the whole diagnosis.
+        print('Login failed: no token in response — $data');
+        return LoginResult(
+          LoginOutcome.invalidCredentials,
+          (data['error'] ?? data['message'])?.toString(),
+        );
+      }
+
+      // Credentials were accepted. Anything that fails from here on is NOT a
+      // wrong password, and must not be reported as one.
+      final userProfile = await _getUserProfileWithToken(token);
+      if (userProfile == null) {
+        print(
+          '⚠️ [AuthService] Authenticated but no profile from $_apiUrl — '
+          'account may not exist on this site',
+        );
+        return LoginResult(
+          LoginOutcome.profileUnavailable,
+          'Signed in, but your profile could not be loaded from this site.',
+        );
+      }
+
+      if (_accountManager != null) {
+        await _accountManager!.addAccount(token, User.fromJson(userProfile));
+      } else {
+        print('⚠️ AccountManager is NULL - using fallback storage');
+        await _storage.write(key: _tokenKey, value: token);
+        await _storage.write(key: _userKey, value: jsonEncode(userProfile));
+      }
+
+      return const LoginResult(LoginOutcome.success);
     } catch (e) {
       print('Login error: $e');
-      return false;
+      return LoginResult(LoginOutcome.networkError, e.toString());
     }
   }
 

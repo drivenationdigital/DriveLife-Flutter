@@ -170,7 +170,7 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
       print('🔐 Logging in user...');
       final authService = AuthService();
 
-      final success = await authService
+      final result = await authService
           .login(registrationProvider.email, registrationProvider.password)
           .timeout(
             const Duration(seconds: 10),
@@ -179,11 +179,13 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
             },
           );
 
-      print('✅ Login process completed with success: $success');
+      print('✅ Login process completed with outcome: ${result.outcome}');
       if (!mounted) return;
 
-      if (!success) {
-        throw Exception('Login failed after registration');
+      if (!result.isSuccess) {
+        throw Exception(
+          'Login failed after registration: ${result.detail ?? result.outcome}',
+        );
       }
 
       print('✅ Login successful, loading user...');
