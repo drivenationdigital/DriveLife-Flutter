@@ -6,6 +6,7 @@ import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
+import 'package:drivelife/widgets/feed/hot_right_now.dart';
 import 'package:drivelife/widgets/feed/offers_banner.dart';
 import 'package:drivelife/widgets/upload_progress_card.dart';
 import 'package:flutter/material.dart';
@@ -389,6 +390,9 @@ class _PostsTabState extends State<_PostsTab>
           // Upload progress cards — Latest tab only
           if (widget.tabType == PostTabType.latest)
             SliverToBoxAdapter(child: OffersBanner(offers: _offers)),
+          // Hard-coded for now; lives on Latest until the tabs are split out.
+          if (widget.tabType == PostTabType.latest)
+            const SliverToBoxAdapter(child: HotRightNow()),
           Consumer<UploadPostProvider>(
             builder: (context, uploadProvider, _) {
               final uploads = uploadProvider.uploads;

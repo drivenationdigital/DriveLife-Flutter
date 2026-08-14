@@ -149,6 +149,136 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       (_associatedEntity!['type'] == 'club' ||
           _associatedEntity!['type'] == 'venue');
 
+  /// Banner naming the destination of the post. Entity posts show the
+  /// club/venue logo and name; personal posts show the user's own avatar and
+  /// "Your Profile", so the destination is always explicit.
+  Widget _buildPostingToBanner() {
+    final user = Provider.of<UserProvider>(context).user;
+
+    final String label;
+    final bool verified;
+    final String? imageUrl;
+    if (_isEntityPost) {
+      label = _associatedEntity?['label'] ?? 'Club';
+      verified = _associatedEntity?['verified'] == true;
+      imageUrl = _associatedEntity?['logo'];
+    } else {
+      label = 'Your Profile';
+      verified = user?.verified == true;
+      imageUrl = user?.profileImage;
+    }
+
+    // Entity logos keep the rounded-square treatment; a person gets a circle,
+    // matching how avatars read everywhere else in the app.
+    final BorderRadius avatarRadius = _isEntityPost
+        ? BorderRadius.circular(8)
+        : BorderRadius.circular(16);
+
+    final Widget avatarFallback = _isEntityPost
+        ? const Text(
+            '⫽',
+            style: TextStyle(
+              color: Color(0xFFC4A062),
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          )
+        : Text(
+            (user?.firstName.isNotEmpty ?? false)
+                ? user!.firstName[0].toUpperCase()
+                : '⫽',
+            style: const TextStyle(
+              color: Color(0xFFC4A062),
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFBF7EE),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: const Color(0xFFC4A062).withOpacity(0.15),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0B0B0B),
+                borderRadius: avatarRadius,
+              ),
+              alignment: Alignment.center,
+              clipBehavior: Clip.antiAlias,
+              child: (imageUrl != null && imageUrl.isNotEmpty)
+                  ? Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      width: 32,
+                      height: 32,
+                      errorBuilder: (_, __, ___) => avatarFallback,
+                    )
+                  : avatarFallback,
+            ),
+            const SizedBox(width: 10),
+
+            // Label
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'POSTING TO',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFFC4A062),
+                      letterSpacing: 0.5,
+                      height: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          label,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0B0B0B),
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                      // Verified badge if applicable
+                      if (verified) ...[
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.verified,
+                          size: 14.5,
+                          color: Color(0xFFC4A062),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _autoFormatHashtags() {
     if (_processingTag) return;
 
@@ -1001,112 +1131,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_isEntityPost) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFBF7EE),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color(0xFFC4A062).withOpacity(0.15),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          // Logo placeholder — replace with real club/venue logo if available
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0B0B0B),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            alignment: Alignment.center,
-                            child: _associatedEntity?['logo'] != null
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: Image.network(
-                                      _associatedEntity!['logo'],
-                                      fit: BoxFit.cover,
-                                      width: 32,
-                                      height: 32,
-                                      errorBuilder: (_, __, ___) => const Text(
-                                        '⫽',
-                                        style: TextStyle(
-                                          color: Color(0xFFC4A062),
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                : const Text(
-                                    '⫽',
-                                    style: TextStyle(
-                                      color: Color(0xFFC4A062),
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                          ),
-                          const SizedBox(width: 10),
-
-                          // Label
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'POSTING TO',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    color: const Color(0xFFC4A062),
-                                    letterSpacing: 0.5,
-                                    height: 1,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        _associatedEntity?['label'] ?? 'Club',
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 14.5,
-                                          fontWeight: FontWeight.w800,
-                                          color: Color(0xFF0B0B0B),
-                                          height: 1.2,
-                                        ),
-                                      ),
-                                    ),
-                                    // Verified badge if applicable
-                                    if (_associatedEntity?['verified'] ==
-                                        true) ...[
-                                      const SizedBox(width: 4),
-                                      const Icon(
-                                        Icons.verified,
-                                        size: 14.5,
-                                        color: Color(0xFFC4A062),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+                _buildPostingToBanner(),
 
                 Padding(
                   padding: const EdgeInsets.all(0),
