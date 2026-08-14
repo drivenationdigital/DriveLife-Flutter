@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/main.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
@@ -24,25 +23,29 @@ class HotRightNow extends StatelessWidget {
   static const double _cardHeight = 132;
   static const double _horizontalPadding = 16;
 
-  // TODO: replace with real data. Set `imageUrl` to show photography.
+  // TODO: replace with real data when the endpoint exists.
   static final List<_HotItem> _items = [
     _HotItem(
       title: 'Find Events',
+      imagePath: 'assets/hot-images/01-events-b.jpg',
       // Events tab (bottom nav index 1)
       onTap: (context) => context.read<BottomNavProvider>().setIndex(1),
     ),
     _HotItem(
       title: 'Popular Venues',
+      imagePath: 'assets/hot-images/02-venues.jpg',
       // Venues/Places tab (bottom nav index 2)
       onTap: (context) => context.read<BottomNavProvider>().setIndex(2),
     ),
     _HotItem(
       title: 'Discover Clubs',
+      imagePath: 'assets/hot-images/03-clubs.jpg',
       // Clubs tab (bottom nav index 3)
       onTap: (context) => context.read<BottomNavProvider>().setIndex(3),
     ),
     _HotItem(
       title: 'Your Garage',
+      imagePath: 'assets/hot-images/04-garage.jpg',
       onTap: (context) =>
           NavigationHelper.navigateTo(context, const GarageListScreen()),
     ),
@@ -90,10 +93,9 @@ class HotRightNow extends StatelessWidget {
 class _HotItem {
   final String title;
   final void Function(BuildContext context) onTap;
-  final String? imageUrl;
+  final String? imagePath;
 
-  // ignore: unused_element_parameter
-  _HotItem({required this.title, required this.onTap, this.imageUrl});
+  _HotItem({required this.title, required this.onTap, this.imagePath});
 }
 
 class _HotCard extends StatelessWidget {
@@ -150,14 +152,13 @@ class _HotCard extends StatelessWidget {
   }
 
   Widget _background() {
-    final url = item.imageUrl;
-    if (url == null || url.isEmpty) return const _PlaceholderBackground();
+    final path = item.imagePath;
+    if (path == null || path.isEmpty) return const _PlaceholderBackground();
 
-    return CachedNetworkImage(
-      imageUrl: url,
+    return Image.asset(
+      path,
       fit: BoxFit.cover,
-      placeholder: (_, __) => const _PlaceholderBackground(),
-      errorWidget: (_, __, ___) => const _PlaceholderBackground(),
+      errorBuilder: (_, __, ___) => const _PlaceholderBackground(),
     );
   }
 }
