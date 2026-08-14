@@ -4,9 +4,11 @@ import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
+import 'package:drivelife/services/analytics_service.dart';
 import 'package:drivelife/services/app_error_logger.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/firebase_messaging_service.dart';
+import 'package:drivelife/utils/analytics_route_observer.dart';
 import 'package:drivelife/utils/deeplinks_helper.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -29,6 +31,7 @@ const String stripePublishableKey =
 // Create a global navigator key
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
+final AnalyticsRouteObserver analyticsObserver = AnalyticsRouteObserver();
 final rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 class BottomNavProvider extends ChangeNotifier {
@@ -71,6 +74,9 @@ void main() async {
   } catch (e) {
     print('Error initializing Firebase: $e');
   }
+
+  // Piwik PRO analytics — never throws, logs and no-ops on failure.
+  await Analytics.initialize();
 
   // await SupabaseConfig.initialize();
   // await UserProfileCache.instance.loadFromDisk();
@@ -149,7 +155,7 @@ class _MyAppState extends State<MyApp> {
       builder: (context, themeProvider, child) {
         return MaterialApp(
           scaffoldMessengerKey: rootScaffoldMessengerKey,
-          navigatorObservers: [routeObserver],
+          navigatorObservers: [routeObserver, analyticsObserver],
           navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           theme: themeProvider.themeData.copyWith(

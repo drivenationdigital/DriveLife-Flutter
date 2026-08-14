@@ -1,5 +1,6 @@
 import 'package:drivelife/api/profile_api.dart';
 import 'package:drivelife/models/user_model.dart';
+import 'package:drivelife/services/analytics_service.dart';
 import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:drivelife/services/location_service.dart';
 import 'package:flutter/material.dart';
@@ -38,6 +39,8 @@ class UserProvider extends ChangeNotifier {
         // Only proceed with permissions if user is loaded
         if (_user != null) {
           final userId = _user!.id;
+
+          Analytics.setUserId(userId.toString());
 
           // Request and associate FCM token (notifications)
           await _setupNotifications(userId);
@@ -299,6 +302,7 @@ class UserProvider extends ChangeNotifier {
   /// 🔹 Set user manually (e.g. after login)
   void setUser(Map<String, dynamic> userData) {
     _user = User.fromJson(userData);
+    Analytics.setUserId(_user!.id.toString());
     notifyListeners();
   }
 
@@ -306,11 +310,13 @@ class UserProvider extends ChangeNotifier {
   Future<void> logout() async {
     await _auth.logout();
     _user = null;
+    Analytics.clearUser();
     notifyListeners();
   }
 
   void clearUser() {
     _user = null;
+    Analytics.clearUser();
     print('🗑️ [UserProvider] User data cleared');
     notifyListeners();
   }

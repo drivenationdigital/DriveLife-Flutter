@@ -84,6 +84,13 @@ class AppRoutes {
     final routeName = settings.name ?? '';
     debugPrint('🔍 [AppRoutes] Requested route: $routeName');
 
+    // Carries `settings` onto the route so `route.settings.name` is populated.
+    // Without it every route is anonymous, which breaks anything reading the
+    // route name — analytics screen tracking, and ModalRoute.of(context).settings.
+    // ignore: no_leading_underscores_for_local_identifiers
+    Route<dynamic> _slide(Widget page) =>
+        CupertinoPageRoute(builder: (context) => page, settings: settings);
+
     final seoDeepLinkRoutes = ['/post/', '/event/', '/profile/', '/venue/', '/club/'];
 
     // ⭐ Check if this is a deep link URL
@@ -305,9 +312,5 @@ class AppRoutes {
           ),
         );
     }
-  }
-
-  static Route<dynamic> _slide(Widget page) {
-    return CupertinoPageRoute(builder: (context) => page);
   }
 }

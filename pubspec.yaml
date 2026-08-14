@@ -78,6 +78,7 @@ dependencies:
   flutter_volume_controller: ^1.0.0
   supabase_flutter: ^2.5.0
   device_info_plus: ^10.0.0
+  flutter_piwikpro: ^0.0.3
 
 dev_dependencies:
   flutter_test:

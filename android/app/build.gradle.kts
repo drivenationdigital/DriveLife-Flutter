@@ -60,6 +60,12 @@ dependencies {
     
     // Add these for crash fix:
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22")
+
+    // Piwik PRO's Tracker reads the Google Advertising ID on construction and
+    // only catches Exception, so a missing AdvertisingIdClient surfaces as an
+    // uncaught NoClassDefFoundError. The SDK treats this dependency as optional
+    // but the crash is not — it must be on the classpath.
+    implementation("com.google.android.gms:play-services-ads-identifier:18.2.0")
     
     val composeBom = platform("androidx.compose:compose-bom:2024.02.00")
     implementation(composeBom)
