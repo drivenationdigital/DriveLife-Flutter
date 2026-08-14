@@ -18,11 +18,16 @@ class EntitySwitcherSheet extends StatelessWidget {
     if (accountManager.activeAccount == null ||
         accountManager.accounts.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) {
-          Navigator.pop(context);
+        if (!context.mounted) return;
+        // Only pop while this sheet is genuinely the top route. Without the
+        // isCurrent check a pop that is already under way lets this one land
+        // on the page underneath and empty the navigator.
+        final route = ModalRoute.of(context);
+        if (route != null && route.isCurrent) {
+          Navigator.of(context).pop();
         }
       });
-      return SizedBox.shrink();
+      return const SizedBox.shrink();
     }
 
     final activeAccount = accountManager.activeAccount!;
@@ -135,24 +140,29 @@ class EntitySwitcherSheet extends StatelessWidget {
                   ),
                 );
 
-                // Capture early
+                if (confirmed != true || !context.mounted) return;
+
+                // Capture everything that needs `context` up front. Once the
+                // sheet is removed its element is deactivated, and looking up
+                // an ancestor through it then throws.
                 final rootNavigator = Navigator.of(
                   context,
                   rootNavigator: true,
                 );
-                
-                final messenger = ScaffoldMessenger.of(context);
-
-                if (confirmed != true) return;
-
-                rootNavigator.pop(); // close sheet
+                final userProvider = Provider.of<UserProvider>(
+                  context,
+                  listen: false,
+                );
 
                 await accountManager.clearAll();
+                userProvider.clearUser();
 
-                Provider.of<UserProvider>(context, listen: false).clearUser();
-
-                await Future.delayed(const Duration(milliseconds: 50));
-
+                // Do NOT pop the sheet first. Clearing the accounts rebuilds
+                // this sheet (it listens to AccountManager) and trips the
+                // empty-state guard in build(), whose deferred pop would then
+                // land on the page underneath and leave the navigator empty —
+                // a blank screen. This single call removes the sheet and every
+                // page below it atomically.
                 rootNavigator.pushNamedAndRemoveUntil(
                   AppRoutes.login,
                   (route) => false,
