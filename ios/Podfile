@@ -30,6 +30,12 @@ flutter_ios_podfile_setup
 target 'Runner' do
   use_frameworks!
 
+  # Pin PiwikPROSDK to the version flutter_piwikpro 0.0.3 was written against.
+  # The plugin's podspec allows `~> 1.1.2`, but 1.1.x releases after 1.1.2
+  # changed several method signatures (sendEvent/sendException/sendSocialInteraction/
+  # sendGoal), causing Swift compiler errors in SwiftFlutterPiwikProPlugin.swift.
+  pod 'PiwikPROSDK', '1.1.2'
+
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
     inherit! :search_paths
