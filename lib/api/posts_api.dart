@@ -15,6 +15,9 @@ class PostsAPI {
   static const _storage = FlutterSecureStorage();
   static final AuthService _authService = AuthService();
 
+  /// [forYou] powers the curated "For You" tab: pass 1 to get the hand-picked
+  /// featured posts plus news items, instead of the chronological feed. Items
+  /// come back in the order the backend decides — the app renders them as-is.
   static Future<List<dynamic>> getPosts({
     required String token,
     required int userId,
@@ -22,10 +25,11 @@ class PostsAPI {
     int limit = 10,
     int followingOnly = 0,
     int newsOnly = 0,
+    int forYou = 0,
   }) async {
     try {
       final uri = Uri.parse(
-        '$_baseUrl/wp-json/app/v2/get-posts?user_id=$userId&following_only=$followingOnly&news_only=$newsOnly&page=$page&limit=$limit',
+        '$_baseUrl/wp-json/app/v2/get-posts?user_id=$userId&following_only=$followingOnly&news_only=$newsOnly&for_you=$forYou&page=$page&limit=$limit',
       );
 
       final response = await http.get(

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class OrderApiService {
-  static const String baseUrl = 'https://www.drive-life.com';
+  static const String baseUrl = 'https://www.drive-life.com/store';
 
   // Create order with optional billing details
   static Future<Map<String, dynamic>> createOrderV2({

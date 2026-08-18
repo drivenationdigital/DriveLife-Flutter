@@ -87,7 +87,10 @@ class _PostCardState extends State<PostCard>
     _liked = widget.post['is_liked'] ?? false;
     _likesCount = (widget.post['likes_count'] ?? 0) as int;
 
-    if (widget.post['is_event'] == true) {
+    // Curated posts show "Featured" in place of the timestamp, so a post the
+    // team picked weeks ago doesn't read as stale in the For You tab.
+    if (widget.post['is_event'] == true ||
+        widget.post['is_featured'] == true) {
       _formattedDate = 'Featured';
     } else {
       // ✅ Cache values that don't change

@@ -24,9 +24,12 @@ import 'package:flutter_stripe/flutter_stripe.dart';
 
 
 // const String stripePublishableKey =
-//     'pk_test_51KPRpjHPxUaL4Jbz1Kn3SK5I4T5mL539JGCSyuM81qvXeExgBhxxngXg5FZyb0iqxLjK4FwpyFbG21lXLcinbynl008v1d9eo1';
+//     'pk_test_51H0Z3HGcmkippALfD7tDQ7tvZ80SHeBBOHX6ABm1fHca3FQWPDR4DnXIZtYh1AzaWnvRXAXgBpdur4XR5ceWdHOk00PEsDjNOZ';
+// const String stripePublishableKey =
+//     'pk_live_51KPRpjHPxUaL4Jbz8h65yzP0a0RRORzQbmOv9qdXZbRs8Scsb9lV9UlaDSIqI1QIIFi93JYwRBU76zl3RFsTjQK3001yEe0JHT';
+
 const String stripePublishableKey =
-    'pk_live_51KPRpjHPxUaL4Jbz8h65yzP0a0RRORzQbmOv9qdXZbRs8Scsb9lV9UlaDSIqI1QIIFi93JYwRBU76zl3RFsTjQK3001yEe0JHT';
+    'pk_live_51H0Z3HGcmkippALfhsfFEMLG0T7zbwRrAHFKk36djEg4n00qMSHTlIZXs9pth8LncJjFI7ER8inHFyZkaBcUAFhY00X4Gd5Bn9';
 
 // Create a global navigator key
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();

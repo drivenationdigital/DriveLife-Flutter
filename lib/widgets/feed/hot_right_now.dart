@@ -19,8 +19,8 @@ class HotRightNow extends StatelessWidget {
   static const _gold = Color(0xFFB9965A);
   static const _dark = Color(0xFF1A1A1A);
 
-  static const double _cardWidth = 190;
-  static const double _cardHeight = 132;
+  static const double _cardWidth = 225;
+  static const double _cardHeight = 156;
   static const double _horizontalPadding = 16;
 
   // TODO: replace with real data when the endpoint exists.
@@ -134,7 +134,7 @@ class _HotCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 15,
+                    fontSize: 16.5,
                     fontWeight: FontWeight.bold,
                   ),
                 ),

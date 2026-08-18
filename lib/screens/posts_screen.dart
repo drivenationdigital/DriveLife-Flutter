@@ -36,9 +36,9 @@ class PostsScreenState extends State<PostsScreen>
   // the parent rebuilds only the pills wrapper via ValueListenableBuilder.
   final ValueNotifier<bool> _pillsVisible = ValueNotifier<bool>(true);
 
+  final GlobalKey<_PostsTabState> _forYouKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _latestKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _followingKey = GlobalKey<_PostsTabState>();
-  final GlobalKey<_PostsTabState> _newsKey = GlobalKey<_PostsTabState>();
 
   @override
   void initState() {
@@ -58,13 +58,13 @@ class PostsScreenState extends State<PostsScreen>
   GlobalKey<_PostsTabState> _getCurrentTabKey() {
     switch (_tabController.index) {
       case 0:
-        return _latestKey;
+        return _forYouKey;
       case 1:
-        return _followingKey;
-      case 2:
-        return _newsKey;
-      default:
         return _latestKey;
+      case 2:
+        return _followingKey;
+      default:
+        return _forYouKey;
     }
   }
 
@@ -108,6 +108,11 @@ class PostsScreenState extends State<PostsScreen>
               physics: const NeverScrollableScrollPhysics(),
               children: [
                 _PostsTab(
+                  key: _forYouKey,
+                  tabType: PostTabType.forYou,
+                  pillsVisible: _pillsVisible,
+                ),
+                _PostsTab(
                   key: _latestKey,
                   tabType: PostTabType.latest,
                   pillsVisible: _pillsVisible,
@@ -115,11 +120,6 @@ class PostsScreenState extends State<PostsScreen>
                 _PostsTab(
                   key: _followingKey,
                   tabType: PostTabType.following,
-                  pillsVisible: _pillsVisible,
-                ),
-                _PostsTab(
-                  key: _newsKey,
-                  tabType: PostTabType.news,
                   pillsVisible: _pillsVisible,
                 ),
               ],
@@ -131,7 +131,10 @@ class PostsScreenState extends State<PostsScreen>
   }
 }
 
-enum PostTabType { latest, following, news }
+/// [forYou] is the curated tab: hand-picked featured posts plus news items,
+/// ordered by the backend. [latest] and [following] remain the chronological
+/// feeds they always were.
+enum PostTabType { forYou, latest, following }
 
 class _PostsTab extends StatefulWidget {
   final PostTabType tabType;
@@ -261,20 +264,20 @@ class _PostsTabState extends State<_PostsTab>
     }
 
     int followingOnly;
-    int newsOnly;
+    int forYou;
 
     switch (widget.tabType) {
       case PostTabType.following:
         followingOnly = 1;
-        newsOnly = 0;
+        forYou = 0;
         break;
-      case PostTabType.news:
+      case PostTabType.forYou:
         followingOnly = 0;
-        newsOnly = 1;
+        forYou = 1;
         break;
       default:
         followingOnly = 0;
-        newsOnly = 0;
+        forYou = 0;
     }
 
     try {
@@ -284,7 +287,7 @@ class _PostsTabState extends State<_PostsTab>
         page: _page,
         limit: 10,
         followingOnly: followingOnly,
-        newsOnly: newsOnly,
+        forYou: forYou,
       );
 
       if (!mounted) return;
@@ -387,11 +390,12 @@ class _PostsTabState extends State<_PostsTab>
         cacheExtent: 2000,
         slivers: [
           // SliverToBoxAdapter(child: StoriesRow()),
-          // Upload progress cards — Latest tab only
-          if (widget.tabType == PostTabType.latest)
+          // Offers + the "Hot right now" row head up the curated tab only;
+          // Latest and Following stay pure chronological feeds.
+          if (widget.tabType == PostTabType.forYou)
             SliverToBoxAdapter(child: OffersBanner(offers: _offers)),
-          // Hard-coded for now; lives on Latest until the tabs are split out.
-          if (widget.tabType == PostTabType.latest)
+          // Tiles are still hard-coded — see HotRightNow for the TODO.
+          if (widget.tabType == PostTabType.forYou)
             const SliverToBoxAdapter(child: HotRightNow()),
           Consumer<UploadPostProvider>(
             builder: (context, uploadProvider, _) {
@@ -509,8 +513,8 @@ class _PostsTabState extends State<_PostsTab>
     switch (widget.tabType) {
       case PostTabType.following:
         return 'No posts from people you follow';
-      case PostTabType.news:
-        return 'No news posts yet';
+      case PostTabType.forYou:
+        return 'Nothing featured right now';
       default:
         return 'No posts yet';
     }
@@ -638,13 +642,15 @@ class _PillButton extends StatelessWidget {
 }
 
 // =====================================================================
-// UPDATED: Underline-style tab bar (Latest / Following / News)
+// UPDATED: Underline-style tab bar (For You / Latest / Following)
 // =====================================================================
 class _CustomTabBar extends StatelessWidget {
   final TabController controller;
   final ThemeProvider theme;
 
   const _CustomTabBar({required this.controller, required this.theme});
+
+  static const List<String> _labels = ['For You', 'Latest', 'Following'];
 
   @override
   Widget build(BuildContext context) {
@@ -658,11 +664,11 @@ class _CustomTabBar extends StatelessWidget {
               bottom: BorderSide(color: Colors.grey.shade200, width: 1),
             ),
           ),
+          // Each label takes an equal share of the width.
           child: Row(
             children: [
-              Expanded(child: _buildTab(0, 'Latest')),
-              Expanded(child: _buildTab(1, 'Following')),
-              Expanded(child: _buildTab(2, 'News')),
+              for (var i = 0; i < _labels.length; i++)
+                Expanded(child: _buildTab(i, _labels[i])),
             ],
           ),
         );
