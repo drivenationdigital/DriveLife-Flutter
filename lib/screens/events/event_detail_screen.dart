@@ -15,7 +15,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 class EventDetailScreen extends StatefulWidget {
   final Map<String, dynamic>? event;
 
-  const EventDetailScreen({super.key, this.event});
+  /// Tab to open on: 0 About, 1 Entry & Tickets, 2 Community Gallery.
+  final int initialTabIndex;
+
+  const EventDetailScreen({super.key, this.event, this.initialTabIndex = 0});
 
   @override
   State<EventDetailScreen> createState() => _EventDetailScreenState();
@@ -41,7 +44,11 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: widget.initialTabIndex.clamp(0, 2),
+    );
     _isFavorite = widget.event?['is_liked'] ?? false;
     _fetchEventDetails();
   }

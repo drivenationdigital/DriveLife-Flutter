@@ -14,6 +14,8 @@ import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/events/event_admin_view_screen.dart';
 import 'package:drivelife/screens/events/event_detail_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
+import 'package:drivelife/screens/media/images_of_you_screen.dart';
+import 'package:drivelife/screens/media/media_screen.dart';
 import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
 import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/view_venue_screen.dart';
@@ -79,6 +81,8 @@ class AppRoutes {
   static const String clubDetail = '/club-detail';
   static const String verifyEmail = '/verify-email';
   static const String addEvent = '/add-event';
+  static const String media = '/media';
+  static const String imagesOfYou = '/images-of-you';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     final routeName = settings.name ?? '';
@@ -231,6 +235,10 @@ class AppRoutes {
         );
       case notifications:
         return _slide(const NotificationsScreen());
+      case media:
+        return _slide(const MediaScreen());
+      case imagesOfYou:
+        return _slide(const ImagesOfYouScreen());
       case garageList:
         return _slide(const GarageListScreen());
       case profile:
@@ -242,7 +250,13 @@ class AppRoutes {
       // In routes.dart or wherever you handle navigation
       case eventDetail:
         final args = settings.arguments as Map<String, dynamic>;
-        return _slide(EventDetailScreen(event: args['event']));
+        return _slide(
+          EventDetailScreen(
+            event: args['event'],
+            // Lets callers deep-link straight to the community gallery tab.
+            initialTabIndex: args['initialTabIndex'] ?? 0,
+          ),
+        );
       case eventOwnerView:
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(

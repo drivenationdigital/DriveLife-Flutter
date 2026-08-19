@@ -19,7 +19,7 @@ import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/profile/my_club_profile_view.dart';
 import 'package:drivelife/screens/news/create_news_post_screen.dart';
-import 'package:drivelife/screens/store/shop_screen.dart';
+import 'package:drivelife/screens/media/media_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
@@ -111,7 +111,7 @@ class _HomeTabsState extends State<HomeTabs> {
         EventsScreen(),
         VenuesScreen(),
         MyClubsScreen(),
-        ShopScreen(),
+        MediaScreen(),
         ClubProfileScreen(),
         // InboxScreen(myUserId: currentAccount!.user.id.toString()),
       ];
@@ -122,7 +122,7 @@ class _HomeTabsState extends State<HomeTabs> {
         VenuesScreen(),
         MyClubsScreen(),
         // InboxScreen(myUserId: currentAccount!.user.id.toString()),
-        ShopScreen(),
+        MediaScreen(),
         ProfileScreen(),
       ];
     }
@@ -499,12 +499,12 @@ class _HomeTabsState extends State<HomeTabs> {
           label: 'Clubs',
         ),
         BottomNavigationBarItem(
-          icon: iconSvg(
-            'assets/app-icons/04-Basket.svg',
-            theme,
-            isActive: _currentIndex == 4,
+          icon: Icon(
+            // No SVG in the icon set for this yet.
+            Icons.photo_library_outlined,
+            color: _currentIndex == 4 ? theme.primaryColor : Colors.grey,
           ),
-          label: 'Store',
+          label: 'Media',
         ),
         BottomNavigationBarItem(icon: _buildProfileIcon(), label: 'Profile'),
 
