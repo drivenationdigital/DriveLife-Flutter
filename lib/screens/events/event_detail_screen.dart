@@ -1,3 +1,4 @@
+import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/widgets/events/event_community_gallery_tab.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
@@ -27,6 +28,9 @@ class EventDetailScreen extends StatefulWidget {
 class _EventDetailScreenState extends State<EventDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+
+  /// About Us + Entry & Tickets, plus Gallery when it is switched on.
+  static const int _tabCount = FeatureFlags.eventCommunityGallery ? 3 : 2;
   final PageController _imageController = PageController();
   int _currentImageIndex = 0;
   bool _isFavorite = false;
@@ -44,10 +48,11 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   @override
   void initState() {
     super.initState();
+    // Length, tabs and TabBarView children must agree — see _tabCount.
     _tabController = TabController(
-      length: 3,
+      length: _tabCount,
       vsync: this,
-      initialIndex: widget.initialTabIndex.clamp(0, 2),
+      initialIndex: widget.initialTabIndex.clamp(0, _tabCount - 1),
     );
     _isFavorite = widget.event?['is_liked'] ?? false;
     _fetchEventDetails();
@@ -1169,10 +1174,11 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                       fontWeight: FontWeight.w600,
                       fontSize: 16,
                     ),
-                    tabs: const [
-                      Tab(text: 'About Us'),
-                      Tab(text: 'Entry & Tickets'),
-                      Tab(text: 'Gallery'),
+                    tabs: [
+                      const Tab(text: 'About Us'),
+                      const Tab(text: 'Entry & Tickets'),
+                      if (FeatureFlags.eventCommunityGallery)
+                        const Tab(text: 'Gallery'),
                       // Tab(text: 'Map'),
                     ],
                   ),
@@ -1206,12 +1212,13 @@ class _EventDetailScreenState extends State<EventDetailScreen>
           ),
 
           // Community Gallery Tab
-          EventCommunityGalleryTab(
-            eventId: eventId,
-            eventTitle: eventTitle,
-            eventCoverUrl: eventImages.isNotEmpty ? eventImages.first : null,
-            primaryColor: theme.primaryColor,
-          ),
+          if (FeatureFlags.eventCommunityGallery)
+            EventCommunityGalleryTab(
+              eventId: eventId,
+              eventTitle: eventTitle,
+              eventCoverUrl: eventImages.isNotEmpty ? eventImages.first : null,
+              primaryColor: theme.primaryColor,
+            ),
 
           // Map Tab
           // _buildMapTab(latitude, longitude, eventTitle, eventLocation, theme),

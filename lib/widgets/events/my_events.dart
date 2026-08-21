@@ -1,3 +1,4 @@
+import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -311,9 +312,9 @@ class MyEventsTabContent extends StatelessWidget {
                 formattedDate: formatEventDate(event['start_date'] ?? '', 0),
                 dateColor: primaryColor,
                 onTap: () => onEventTap(event),
-                trailingWidget: SharePhotosButton(
-                  onTap: () => onSharePhotos(event),
-                ),
+                trailingWidget: FeatureFlags.eventCommunityGallery
+                    ? SharePhotosButton(onTap: () => onSharePhotos(event))
+                    : null,
               );
             }),
             const SizedBox(height: 24),
@@ -343,7 +344,8 @@ class MyEventsTabContent extends StatelessWidget {
                 trailingWidget: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SharePhotosButton(onTap: () => onSharePhotos(event)),
+                    if (FeatureFlags.eventCommunityGallery)
+                      SharePhotosButton(onTap: () => onSharePhotos(event)),
                     IconButton(
                       icon: const Icon(Icons.favorite, color: Color(0xFFB8935E)),
                       onPressed: () => onUnlikeEvent(eventId, site, index),

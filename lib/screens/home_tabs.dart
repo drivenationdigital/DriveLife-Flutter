@@ -19,7 +19,9 @@ import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/profile/my_club_profile_view.dart';
 import 'package:drivelife/screens/news/create_news_post_screen.dart';
+import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/screens/media/media_screen.dart';
+import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
@@ -44,6 +46,19 @@ class _HomeTabsState extends State<HomeTabs> {
 
   // Provider-backed current tab. All existing _currentIndex references keep working.
   int get _currentIndex => context.read<BottomNavProvider>().currentIndex;
+
+  // Tab order: Home, Events, Places, Clubs, Shop, [Media], Profile.
+  // _buildBottomNav's items and the screens list in _loadScreens must both
+  // follow it.
+  static const int _shopIndex = 4;
+  static const int _mediaIndex = 5;
+
+  /// Profile is always the last tab. Derived rather than written down, because
+  /// a hard-coded literal goes stale the moment a tab is added or hidden and
+  /// silently points the account switcher and avatar highlight at the wrong
+  /// tab. Only read while [_screens] is non-empty — build() returns early
+  /// otherwise, so the nav never sees an empty list.
+  int get _profileIndex => _screens.length - 1;
   void _setIndex(int index) =>
       context.read<BottomNavProvider>().setIndex(index);
   final GlobalKey<PostsScreenState> _postsScreenKey =
@@ -105,27 +120,20 @@ class _HomeTabsState extends State<HomeTabs> {
 
     final List<Widget> screens;
 
-    if (currentAccount?.isClubAccount ?? false) {
-      screens = [
-        PostsScreen(key: _postsScreenKey),
-        EventsScreen(),
-        VenuesScreen(),
-        MyClubsScreen(),
-        MediaScreen(),
-        ClubProfileScreen(),
-        // InboxScreen(myUserId: currentAccount!.user.id.toString()),
-      ];
-    } else {
-      screens = [
-        PostsScreen(key: _postsScreenKey),
-        EventsScreen(),
-        VenuesScreen(),
-        MyClubsScreen(),
-        // InboxScreen(myUserId: currentAccount!.user.id.toString()),
-        MediaScreen(),
+    // Order must match the items in _buildBottomNav.
+    screens = [
+      PostsScreen(key: _postsScreenKey),
+      EventsScreen(),
+      VenuesScreen(),
+      MyClubsScreen(),
+      // InboxScreen(myUserId: currentAccount!.user.id.toString()),
+      const ShopScreen(),
+      if (FeatureFlags.mediaTab) MediaScreen(),
+      if (currentAccount?.isClubAccount ?? false)
+        ClubProfileScreen()
+      else
         ProfileScreen(),
-      ];
-    }
+    ];
 
     if (mounted) setState(() => _screens = screens);
   }
@@ -399,7 +407,7 @@ class _HomeTabsState extends State<HomeTabs> {
                   'assets/app-icons/05-User.svg',
                   theme,
                   size: 24,
-                  isActive: _currentIndex == 5,
+                  isActive: _currentIndex == _profileIndex,
                 ),
         );
       },
@@ -451,7 +459,7 @@ class _HomeTabsState extends State<HomeTabs> {
       onTap: (index) {
         final current = _currentIndex; // snapshot before mutating
 
-        if (index == 5 && current == 5) {
+        if (index == _profileIndex && current == _profileIndex) {
           _showAccountSwitcher();
           HapticFeedback.lightImpact();
           return;
@@ -499,13 +507,24 @@ class _HomeTabsState extends State<HomeTabs> {
           label: 'Clubs',
         ),
         BottomNavigationBarItem(
-          icon: Icon(
-            // No SVG in the icon set for this yet.
-            Icons.photo_library_outlined,
-            color: _currentIndex == 4 ? theme.primaryColor : Colors.grey,
+          icon: iconSvg(
+            'assets/app-icons/04-Basket.svg',
+            theme,
+            isActive: _currentIndex == _shopIndex,
           ),
-          label: 'Media',
+          label: 'Shop',
         ),
+        if (FeatureFlags.mediaTab)
+          BottomNavigationBarItem(
+            icon: Icon(
+              // No SVG in the icon set for this yet.
+              Icons.photo_library_outlined,
+              color: _currentIndex == _mediaIndex
+                  ? theme.primaryColor
+                  : Colors.grey,
+            ),
+            label: 'Media',
+          ),
         BottomNavigationBarItem(icon: _buildProfileIcon(), label: 'Profile'),
 
         // BottomNavigationBarItem(
