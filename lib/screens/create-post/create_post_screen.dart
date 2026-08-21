@@ -7,6 +7,8 @@ import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/search_user.dart';
 import 'package:drivelife/screens/create-post/tag_entities_screen.dart';
+import 'package:drivelife/services/media_compressor.dart';
+import 'package:drivelife/services/upload_quality_prefs.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -308,7 +310,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     });
   }
 
-  Future<File?> _compressVideo(File videoFile) async {
+  Future<File?> _compressVideo(File videoFile, UploadQuality quality) async {
     try {
       setState(() {
         _isUploading = true;
@@ -318,14 +320,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       final info = await VideoCompress.compressVideo(
         videoFile.path,
-        quality: VideoQuality
-            .Res1280x720Quality, // Change to Medium for better audio
+        // 1080p on high quality, 720p otherwise. frameRate is deliberately not
+        // set: forcing 60 on a 30fps source spends bitrate on duplicated
+        // frames instead of detail.
+        quality: MediaCompressor.videoQualityFor(quality),
         deleteOrigin: false,
         includeAudio: true,
-        // Add these parameters 👇
-        frameRate: 60,
-        // videoBitrate: 2500000, // 2.5 Mbps
-        // audioBitrate: 128000, // 128 kbps - ensures audio quality
       );
 
       if (info != null && info.file != null) {
@@ -406,36 +406,56 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       if (choice == null) return;
 
       if (choice == 'images') {
+        // Picked at full fidelity on purpose. image_picker's own imageQuality
+        // and maxWidth re-encode every image on the platform encoder, which
+        // costs a generation even when nothing needed resizing — MediaCompressor
+        // decides what actually needs touching.
         final List<XFile> images = await _picker.pickMultiImage(
-          imageQuality: 88, // high quality, minimal visual difference
-          maxWidth: 2160, // cap at 4K width
-          maxHeight: 2160,
           limit: 10 - _selectedMedia.length, // limit to remaining slots
         );
 
         if (images.isNotEmpty) {
           final remaining = 10 - _selectedMedia.length;
-          final imagesToAdd = images.take(remaining);
+          final imagesToAdd = images.take(remaining).toList();
+          final quality = await UploadQualityPrefs.current();
+
+          setState(() {
+            _isUploading = true;
+            _uploadProgress = 0.0;
+            _uploadStatus = 'Preparing photos...';
+          });
 
           final List<MediaItem> mediaItems = [];
-          for (final image in imagesToAdd) {
-            final file = File(image.path);
-            final decodedImage = await decodeImageFromList(
-              await file.readAsBytes(),
+          for (var i = 0; i < imagesToAdd.length; i++) {
+            if (mounted) {
+              setState(() {
+                _uploadProgress = i / imagesToAdd.length;
+                _uploadStatus =
+                    'Preparing photo ${i + 1} of ${imagesToAdd.length}...';
+              });
+            }
+
+            final result = await MediaCompressor.compressImage(
+              File(imagesToAdd[i].path),
+              quality: quality,
             );
 
             mediaItems.add(
               MediaItem(
-                file: file,
+                file: result.file,
                 isVideo: false,
-                height: decodedImage.height,
-                width: decodedImage.width,
+                height: result.size?.height ?? 0,
+                width: result.size?.width ?? 0,
               ),
             );
           }
 
+          if (!mounted) return;
           setState(() {
             _selectedMedia.addAll(mediaItems);
+            _isUploading = false;
+            _uploadProgress = 0.0;
+            _uploadStatus = '';
           });
 
           if (images.length > remaining) {
@@ -460,10 +480,22 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             return;
           }
 
-          // Compress video
-          final compressedFile = await _compressVideo(file);
-          if (compressedFile != null) {
-            file = compressedFile;
+          // Only re-encode when the clip is actually above the tier's ceiling.
+          // Cloudflare Stream transcodes its own renditions, so a local pass on
+          // an already-modest video is a second generation for nothing.
+          final quality = await UploadQualityPrefs.current();
+          final needsCompression = MediaCompressor.shouldCompressVideo(
+            quality: quality,
+            width: info.width,
+            height: info.height,
+            bytes: info.filesize,
+          );
+
+          if (needsCompression) {
+            final compressedFile = await _compressVideo(file, quality);
+            if (compressedFile != null) {
+              file = compressedFile;
+            }
           }
 
           final controller = VideoPlayerController.file(file);
@@ -1433,7 +1465,13 @@ class _MediaTile extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: item.isVideo
               ? _VideoThumbnail(item: item)
-              : Image.file(item.file, fit: BoxFit.cover),
+              : Image.file(
+                  item.file,
+                  fit: BoxFit.cover,
+                  // Decode to roughly tile size. Without this a 4096px source
+                  // is decoded in full for a thumbnail — ~67MB per image.
+                  cacheWidth: 512,
+                ),
         ),
 
         // Remove button
@@ -2148,7 +2186,12 @@ class _MediaPreviewScreenState extends State<_MediaPreviewScreen> {
                         : InteractiveViewer(
                             minScale: 1,
                             maxScale: 4,
-                            child: Image.file(item.file, fit: BoxFit.contain),
+                            child: Image.file(
+                              item.file,
+                              fit: BoxFit.contain,
+                              // Generous, but no screen resolves 4096px.
+                              cacheWidth: 1600,
+                            ),
                           ),
                   );
                 },

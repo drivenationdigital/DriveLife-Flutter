@@ -1825,10 +1825,17 @@ class _MediaCarousel extends StatelessWidget {
                                       },
                                   errorWidget: (context, url, error) =>
                                       _buildErrorPlaceholder(),
-                                  memCacheHeight: 1000,
-                                  memCacheWidth: 1000,
-                                  maxHeightDiskCache: 1000,
-                                  maxWidthDiskCache: 1000,
+                                  // ONLY width — never both. ResizeImage
+                                  // defaults to ResizeImagePolicy.exact, which
+                                  // clamps each axis independently: a 1365x2048
+                                  // photo with both set to 1400 decodes as
+                                  // 1365x1400, i.e. squashed. One dimension
+                                  // makes Flutter scale proportionally.
+                                  memCacheWidth: 1400,
+                                  // The disk resize is aspect-safe (single
+                                  // uniform factor), so it can bound both.
+                                  maxHeightDiskCache: 2048,
+                                  maxWidthDiskCache: 2048,
                                 ),
                         ),
                       ),

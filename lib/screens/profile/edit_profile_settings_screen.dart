@@ -1,4 +1,6 @@
 import 'package:drivelife/providers/account_provider.dart';
+import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/services/upload_quality_prefs.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/services/auth_service.dart';
@@ -177,6 +179,8 @@ class EditProfileSettingsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
+          const _UploadQualityTile(),
+          const SizedBox(height: 8),
           _buildMenuItem(
             context,
             'App Permissions',
@@ -229,6 +233,90 @@ class EditProfileSettingsScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "High quality uploads" switch.
+///
+/// Self-contained state so the surrounding settings screen can stay a
+/// StatelessWidget — the preference is read once on mount and written straight
+/// through, nothing else on the screen depends on it.
+class _UploadQualityTile extends StatefulWidget {
+  const _UploadQualityTile();
+
+  @override
+  State<_UploadQualityTile> createState() => _UploadQualityTileState();
+}
+
+class _UploadQualityTileState extends State<_UploadQualityTile> {
+  bool _value = false;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final value = await UploadQualityPrefs.isHighQuality();
+    if (!mounted) return;
+    setState(() {
+      _value = value;
+      _loaded = true;
+    });
+  }
+
+  Future<void> _set(bool value) async {
+    setState(() => _value = value);
+    await UploadQualityPrefs.setHighQuality(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'High quality uploads',
+                  style: TextStyle(fontSize: 16, color: Colors.black),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Upload photos exactly as they were taken and videos in '
+                  '1080p. Uses more data and takes longer to upload.',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: Colors.grey.shade600,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Switch(
+            // Disabled until the stored value is known, so it can't flash off
+            // and be toggled against a value that has not loaded yet.
+            value: _value,
+            onChanged: _loaded ? _set : null,
+            activeThumbColor: theme.primaryColor,
+          ),
+        ],
       ),
     );
   }
