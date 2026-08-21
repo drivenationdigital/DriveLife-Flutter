@@ -107,10 +107,15 @@ class MediaCompressor {
   /// from a 1080p master anyway, so nothing is saved by doing it here.
   static const int _videoPassThroughEdge = 1920;
 
-  /// …unless it is so large that the upload itself becomes the problem. Clips
-  /// are capped at 60s, so these are generous bitrates, not typical ones.
-  static const int _videoPassThroughBytesHigh = 220 * 1024 * 1024;
-  static const int _videoPassThroughBytesStandard = 60 * 1024 * 1024;
+  /// …unless it is so large that the upload itself becomes the problem.
+  ///
+  /// These are bitrate ceilings expressed as bytes, sized against the 2 minute
+  /// duration cap in create_post_screen.dart — roughly 30 Mbps on the high tier
+  /// and 8 Mbps on standard. If the duration cap moves, move these with it, or
+  /// ordinary clips start tripping the threshold and getting re-encoded for no
+  /// reason.
+  static const int _videoPassThroughBytesHigh = 440 * 1024 * 1024;
+  static const int _videoPassThroughBytesStandard = 120 * 1024 * 1024;
 
   static bool _canPassThrough(File file) {
     final path = file.path;

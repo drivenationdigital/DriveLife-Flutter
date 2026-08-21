@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/models/banner_model.dart';
 import 'package:drivelife/models/product_model.dart';
-import 'package:html_unescape/html_unescape.dart';
+import 'package:drivelife/utils/html_text.dart';
 
 class ShopScreen extends StatefulWidget {
   final bool showAppBar;
@@ -1798,11 +1798,7 @@ class PriceDisplay extends StatelessWidget {
     return '';
   }
 
-  String decodeHtmlPrice(String htmlPrice) {
-    final unescape = HtmlUnescape();
-    return unescape
-        .convert(htmlPrice)
-        .replaceAll(RegExp(r'<[^>]*>'), '') // Remove HTML tags
-        .trim();
-  }
+  /// Prices arrive as markup — `<span class="woocommerce-Price-amount">£30.00`
+  /// — so tags have to come off as well as entities.
+  String decodeHtmlPrice(String htmlPrice) => stripHtml(htmlPrice);
 }

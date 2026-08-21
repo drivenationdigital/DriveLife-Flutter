@@ -6,7 +6,7 @@ import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/models/product_model.dart';
-import 'package:html_unescape/html_unescape.dart';
+import 'package:drivelife/utils/html_text.dart';
 import 'package:shimmer/shimmer.dart';
 
 class ProductDetailScreen extends StatefulWidget {
@@ -1137,10 +1137,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return luminance > 0.5 ? Colors.black : Colors.white;
   }
 
-  String _decodeHtml(String html) {
-    final unescape = HtmlUnescape();
-    return unescape.convert(html).replaceAll(RegExp(r'<[^>]*>'), '').trim();
-  }
+  String _decodeHtml(String html) => stripHtml(html);
 }
 
 // Image viewer for full-screen gallery

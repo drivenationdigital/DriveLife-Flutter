@@ -1,3 +1,5 @@
+import 'package:drivelife/utils/html_text.dart';
+
 class Product {
   final int id;
   final String name;
@@ -44,7 +46,9 @@ class Product {
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
       id: json['id'] as int,
-      name: json['name'] as String,
+      // Decoded here rather than at each render site: the name travels into the
+      // cart, checkout and order confirmation, and all of them need it right.
+      name: decodeHtmlText(json['name'] as String),
       permalink: json['permalink'] as String,
       image: json['image'] as String,
       price: (json['price'] as num).toDouble(),
@@ -57,7 +61,9 @@ class Product {
       currencySymbol: json['currency_symbol'] as String,
       inStock: json['in_stock'] as bool,
       stockStatus: json['stock_status'] as String,
-      variant: json['variant'] as String?,
+      variant: json['variant'] == null
+          ? null
+          : decodeHtmlText(json['variant'] as String),
       colours:
           (json['colours'] as List<dynamic>?)
               ?.map((e) => ProductColour.fromJson(e as Map<String, dynamic>))
@@ -126,7 +132,7 @@ class ProductColour {
   factory ProductColour.fromJson(Map<String, dynamic> json) {
     return ProductColour(
       hex: json['hex'] as String,
-      name: json['name'] as String,
+      name: decodeHtmlText(json['name'] as String),
       sku: json['sku'] as String? ?? '',
       mockupFront: json['mockup_front'] as String?,
     );
@@ -205,9 +211,11 @@ class CategoryInfo {
 
   factory CategoryInfo.fromJson(Map<String, dynamic> json) {
     return CategoryInfo(
-      name: json['name'] as String,
+      name: decodeHtmlText(json['name'] as String),
       slug: json['slug'] as String,
-      description: json['description'] as String,
+      // Category descriptions are authored in the block editor, so they arrive
+      // wrapped in markup and are shown in a plain Text widget.
+      description: stripHtml(json['description'] as String),
     );
   }
 }

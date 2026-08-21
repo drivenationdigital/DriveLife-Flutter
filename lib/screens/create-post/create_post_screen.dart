@@ -68,6 +68,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   List<TaggedEntity> _taggedVehicles = [];
   List<TaggedEntity> _taggedEvents = [];
 
+  /// Longest clip a post accepts. Must stay in step with the
+  /// `maxDurationSeconds` sent to Cloudflare Stream by the
+  /// create-stream-upload endpoint — Stream rejects the upload outright if the
+  /// video runs past the value the direct-upload URL was minted with.
+  static const Duration _maxVideoDuration = Duration(minutes: 2);
+
   bool _isUploading = false;
   double _uploadProgress = 0.0;
   String _uploadStatus = '';
@@ -392,7 +398,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   _MediaTypeCard(
                     icon: Icons.videocam_rounded,
                     title: 'Videos',
-                    subtitle: 'Select from gallery (max 1 min)',
+                    subtitle:
+                        'Select from gallery (max '
+                        '${_maxVideoDuration.inMinutes} mins)',
                     onTap: () => Navigator.pop(context, 'videos'),
                   ),
                   const SizedBox(height: 12),
@@ -465,17 +473,24 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       } else {
         final XFile? video = await _picker.pickVideo(
           source: ImageSource.gallery,
-          maxDuration: const Duration(seconds: 60),
+          maxDuration: _maxVideoDuration,
         );
 
         if (video != null && _selectedMedia.length < 10) {
           File file = File(video.path);
 
-          // check if video is longer than 1 min
+          // maxDuration above is a hint the picker may ignore — on Android it
+          // trims rather than blocks, and some gallery apps skip it entirely —
+          // so the real check happens here.
           final info = await VideoCompress.getMediaInfo(file.path);
-          if (info.duration != null && (info.duration! / 1000).round() > 60) {
+          final seconds = info.duration == null
+              ? null
+              : (info.duration! / 1000).round();
+
+          if (seconds != null && seconds > _maxVideoDuration.inSeconds) {
             _showMessage(
-              'Please select a video shorter than 1 minute (${(info.duration! / 1000).round()} seconds)',
+              'Please select a video shorter than '
+              '${_maxVideoDuration.inMinutes} minutes ($seconds seconds)',
             );
             return;
           }

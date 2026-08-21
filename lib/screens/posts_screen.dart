@@ -58,13 +58,13 @@ class PostsScreenState extends State<PostsScreen>
   GlobalKey<_PostsTabState> _getCurrentTabKey() {
     switch (_tabController.index) {
       case 0:
-        return _forYouKey;
-      case 1:
         return _latestKey;
-      case 2:
+      case 1:
         return _followingKey;
-      default:
+      case 2:
         return _forYouKey;
+      default:
+        return _latestKey;
     }
   }
 
@@ -106,12 +106,8 @@ class PostsScreenState extends State<PostsScreen>
             child: TabBarView(
               controller: _tabController,
               physics: const NeverScrollableScrollPhysics(),
+              // Order must match _CustomTabBar._labels.
               children: [
-                _PostsTab(
-                  key: _forYouKey,
-                  tabType: PostTabType.forYou,
-                  pillsVisible: _pillsVisible,
-                ),
                 _PostsTab(
                   key: _latestKey,
                   tabType: PostTabType.latest,
@@ -120,6 +116,11 @@ class PostsScreenState extends State<PostsScreen>
                 _PostsTab(
                   key: _followingKey,
                   tabType: PostTabType.following,
+                  pillsVisible: _pillsVisible,
+                ),
+                _PostsTab(
+                  key: _forYouKey,
+                  tabType: PostTabType.forYou,
                   pillsVisible: _pillsVisible,
                 ),
               ],
@@ -390,12 +391,13 @@ class _PostsTabState extends State<_PostsTab>
         cacheExtent: 2000,
         slivers: [
           // SliverToBoxAdapter(child: StoriesRow()),
-          // Offers + the "Hot right now" row head up the curated tab only;
-          // Latest and Following stay pure chronological feeds.
+          // Offers head up the curated tab only.
           if (widget.tabType == PostTabType.forYou)
             SliverToBoxAdapter(child: OffersBanner(offers: _offers)),
+          // "Hot right now" sits on Latest, the landing tab. Following stays a
+          // pure chronological feed.
           // Tiles are still hard-coded — see HotRightNow for the TODO.
-          if (widget.tabType == PostTabType.forYou)
+          if (widget.tabType == PostTabType.latest)
             const SliverToBoxAdapter(child: HotRightNow()),
           Consumer<UploadPostProvider>(
             builder: (context, uploadProvider, _) {
@@ -642,7 +644,7 @@ class _PillButton extends StatelessWidget {
 }
 
 // =====================================================================
-// UPDATED: Underline-style tab bar (For You / Latest / Following)
+// UPDATED: Underline-style tab bar (Latest / Following / Featured)
 // =====================================================================
 class _CustomTabBar extends StatelessWidget {
   final TabController controller;
@@ -650,7 +652,9 @@ class _CustomTabBar extends StatelessWidget {
 
   const _CustomTabBar({required this.controller, required this.theme});
 
-  static const List<String> _labels = ['For You', 'Latest', 'Following'];
+  /// "Featured" is the curated tab — same feed as the old "For You", renamed.
+  /// Order must match the TabBarView children in [PostsScreenState.build].
+  static const List<String> _labels = ['Latest', 'Following', 'Featured'];
 
   @override
   Widget build(BuildContext context) {

@@ -1,3 +1,5 @@
+import 'package:drivelife/utils/html_text.dart';
+
 class CartItem {
   final String variantId;
   final String productId;
@@ -52,7 +54,10 @@ class CartItem {
     return CartItem(
       variantId: json['variantId'] as String,
       productId: json['productId'] as String,
-      name: json['name'] as String,
+      // Carts are persisted locally, so a basket saved before names were
+      // decoded still holds the raw entities. Cheap to re-decode; a decoded
+      // string passes through unchanged.
+      name: decodeHtmlText(json['name'] as String),
       price: (json['price'] as num).toDouble(),
       currencySymbol: json['currencySymbol'] as String,
       image: json['image'] as String,
