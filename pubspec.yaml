@@ -115,6 +115,11 @@ flutter_native_splash:
 
 # The following section is specific to Flutter packages.
 flutter:
+  # Disable native LLDB debug-attach on iOS devices (slow to start).
+  # Dart debugging, hot reload, and DevTools are unaffected.
+  config:
+    enable-lldb-debugging: false
+
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
