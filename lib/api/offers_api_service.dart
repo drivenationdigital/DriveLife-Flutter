@@ -229,6 +229,7 @@ class OffersApi {
           .timeout(const Duration(seconds: 15));
 
       final body = _parseBody(response.body);
+      print('Offers API response: ${response.statusCode} - $body');
 
       if (response.statusCode == 401) {
         return OffersResult.failure(

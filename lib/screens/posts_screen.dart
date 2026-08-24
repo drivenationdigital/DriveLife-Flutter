@@ -160,6 +160,12 @@ class _PostsTabState extends State<_PostsTab>
   final ScrollController _scrollController = ScrollController();
   final AuthService _auth = AuthService();
 
+  /// Which tab carries the offers banner and the "Hot right now" row.
+  ///
+  /// Named because it gates both the render and the fetch — move it and the
+  /// other tabs stop making a request whose result they would never show.
+  static const PostTabType _offersTab = PostTabType.latest;
+
   int? _currentUserId;
 
   List<dynamic> _posts = [];
@@ -189,7 +195,7 @@ class _PostsTabState extends State<_PostsTab>
       );
       _currentUserId = accountManager.activeUser?.id;
       _fetchPosts();
-      _fetchOffers();
+      if (widget.tabType == _offersTab) _fetchOffers();
     });
   }
 
@@ -261,7 +267,7 @@ class _PostsTabState extends State<_PostsTab>
     if (refresh) {
       _page = 1;
       _hasMore = true;
-      _fetchOffers();
+      if (widget.tabType == _offersTab) _fetchOffers();
     }
 
     int followingOnly;
@@ -391,14 +397,13 @@ class _PostsTabState extends State<_PostsTab>
         cacheExtent: 2000,
         slivers: [
           // SliverToBoxAdapter(child: StoriesRow()),
-          // Offers head up the curated tab only.
-          if (widget.tabType == PostTabType.forYou)
-            SliverToBoxAdapter(child: OffersBanner(offers: _offers)),
-          // "Hot right now" sits on Latest, the landing tab. Following stays a
-          // pure chronological feed.
+          // Offers and "Hot right now" both head up Latest, the landing tab.
+          // Following and Featured stay pure feeds.
           // Tiles are still hard-coded — see HotRightNow for the TODO.
-          if (widget.tabType == PostTabType.latest)
+          if (widget.tabType == _offersTab) ...[
+            SliverToBoxAdapter(child: OffersBanner(offers: _offers)),
             const SliverToBoxAdapter(child: HotRightNow()),
+          ],
           Consumer<UploadPostProvider>(
             builder: (context, uploadProvider, _) {
               final uploads = uploadProvider.uploads;
