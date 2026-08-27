@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'dart:io';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/models/event_media.dart';
@@ -41,10 +41,14 @@ class _EventCommunityGalleryScreenState
 
   // ── Picking ──────────────────────────────────────────────────────────
 
-  Future<ImageData> _fileToImageData(File file) async {
-    final bytes = await file.readAsBytes();
-    final base64String = base64Encode(bytes);
-
+  /// Builds the picker's model for a file WITHOUT reading it.
+  ///
+  /// This used to `readAsBytes` + `base64Encode` every photo the moment it was
+  /// picked and hold both in state. Sixty 5MB photos is ~300MB of bytes plus
+  /// ~400MB of base64 retained before a single one is sent — an out-of-memory
+  /// kill on exactly the large galleries this screen exists for. The community
+  /// gallery path uploads `file` as a stream and never reads `base64`.
+  ImageData _fileToImageData(File file) {
     final lower = file.path.toLowerCase();
     String mimeType;
     String extension;
@@ -62,7 +66,7 @@ class _EventCommunityGalleryScreenState
 
     return ImageData(
       file: file,
-      base64: base64String,
+      base64: '', // Never populated — see the note above.
       mimeType: mimeType,
       extension: extension,
     );
@@ -72,9 +76,9 @@ class _EventCommunityGalleryScreenState
     final List<XFile> picked = await _picker.pickMultiImage();
     if (picked.isEmpty || !mounted) return;
 
-    final imageDataList = await Future.wait(
-      picked.map((x) => _fileToImageData(File(x.path))),
-    );
+    final imageDataList = picked
+        .map((x) => _fileToImageData(File(x.path)))
+        .toList();
 
     if (!mounted) return;
     setState(() => _images.addAll(imageDataList));
@@ -86,7 +90,14 @@ class _EventCommunityGalleryScreenState
 
   // ── Upload ───────────────────────────────────────────────────────────
 
-  Future<void> _uploadAll() async {
+  /// Hands the photos to [GalleryUploadProvider] and leaves.
+  ///
+  /// Nothing is awaited here on purpose. The old flow opened a
+  /// `PopScope(canPop: false)` dialog and held the user on this screen for the
+  /// whole upload — on a 60-photo gallery over mobile data that is many
+  /// minutes of being unable to use the app, and backgrounding it killed the
+  /// in-flight requests and lost the batch.
+  void _uploadAll() {
     final pending = _images.where((i) => !i.isUploaded).toList();
     if (pending.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -95,97 +106,29 @@ class _EventCommunityGalleryScreenState
       return;
     }
 
-    setState(() => _uploading = true);
+    final files = [
+      for (final image in pending)
+        if (image.file != null) image.file!,
+    ];
 
-    final progressNotifier = ValueNotifier<double>(0);
+    context.read<GalleryUploadProvider>().startUpload(
+      eventId: widget.eventId,
+      eventTitle: widget.eventTitle,
+      files: files,
+    );
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => PopScope(
-        canPop: false,
-        child: ValueListenableBuilder<double>(
-          valueListenable: progressNotifier,
-          builder: (context, progress, _) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Sharing your photos',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 24),
-                  CircularProgressIndicator(
-                    value: progress / 100,
-                    color: _gold,
-                    backgroundColor: Colors.grey.shade200,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '${progress.toStringAsFixed(0)}%',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${pending.length} photo${pending.length == 1 ? '' : 's'}',
-                    style: const TextStyle(color: _muted, fontSize: 13),
-                  ),
-                ],
-              ),
-            );
-          },
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Sharing ${files.length} photo${files.length == 1 ? '' : 's'} — '
+          'you can keep using the app',
         ),
+        backgroundColor: Colors.green,
       ),
     );
 
-    try {
-      // ── API call — community gallery endpoint (separate table) ──────
-      final response = await EventsAPI.uploadCommunityGalleryImages(
-        eventId: widget.eventId,
-        images: pending,
-        onProgress: (progress) => progressNotifier.value = progress,
-      );
-
-      print('Upload response: $response');
-
-      if (!mounted) return;
-      setState(() {
-        for (final img in pending) {
-          img.isUploaded = true;
-        }
-      });
-
-      Navigator.of(context).pop(); // close progress dialog
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Photos shared — thanks for contributing!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      // Return true so the event screen can refresh its gallery
-      Navigator.of(context).pop(true);
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop(); // close progress dialog
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Upload failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      progressNotifier.dispose();
-      if (mounted) setState(() => _uploading = false);
-    }
+    // true → the event screen refreshes its gallery as photos land.
+    Navigator.of(context).pop(true);
   }
 
   // ── Build ────────────────────────────────────────────────────────────

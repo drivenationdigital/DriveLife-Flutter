@@ -2,6 +2,7 @@ import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/services/analytics_service.dart';
@@ -93,6 +94,9 @@ void main() async {
         ChangeNotifierProvider(create: (_) => VideoMuteProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => UploadPostProvider()),
+        // Above the navigator so a gallery upload outlives the screen that
+        // started it.
+        ChangeNotifierProvider(create: (_) => GalleryUploadProvider()),
         ChangeNotifierProvider(create: (_) => RegistrationProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => UnreadCountProvider()),

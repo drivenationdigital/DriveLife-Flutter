@@ -9,13 +9,15 @@ class FeatureFlags {
 
   /// The Media tab (bottom nav) and the "Images of you" screen behind it.
   ///
-  /// Hidden pending rework. While this is false the nav has five items and
-  /// Profile sits at index 4 — see HomeTabsState.\_profileIndex.
-  static const bool mediaTab = false;
+  /// Turning this off removes the tab from the nav and the screen from the
+  /// stack; nothing else needs touching, because the tab indices around it are
+  /// derived rather than hard-coded.
+  static const bool mediaTab = true;
 
   /// Community gallery on events: the tab on the event detail screen and the
-  /// full-screen gallery reached from the events list.
+  /// "Share photos" buttons on the events list.
   ///
-  /// Hidden pending rework. The API methods in EventsAPI are left in place.
-  static const bool eventCommunityGallery = false;
+  /// Turning this off also drops the tab count on the event detail screen, so
+  /// the TabController, the tabs and the TabBarView stay in agreement.
+  static const bool eventCommunityGallery = true;
 }

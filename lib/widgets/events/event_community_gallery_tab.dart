@@ -1,3 +1,5 @@
+import 'package:drivelife/providers/gallery_upload_provider.dart';
+import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/screens/events/event_community_gallery_screen.dart';
@@ -15,6 +17,11 @@ class CommunityPhoto {
   final String uploaderAvatar;
   final DateTime? takenAt;
 
+  /// Whether the signed-in viewer may remove this photo — their own upload, or
+  /// anything at all if they own the event. Decided server-side; this only
+  /// governs whether the control is offered.
+  final bool canDelete;
+
   const CommunityPhoto({
     required this.id,
     required this.url,
@@ -22,6 +29,7 @@ class CommunityPhoto {
     required this.uploaderName,
     required this.uploaderAvatar,
     this.takenAt,
+    this.canDelete = false,
   });
 
   factory CommunityPhoto.fromJson(Map<String, dynamic> json) {
@@ -39,6 +47,9 @@ class CommunityPhoto {
       uploaderAvatar: _str(uploader['avatar']),
       takenAt: DateTime.tryParse(_str(json['taken_at'])) ??
           DateTime.tryParse(_str(json['created_at'])),
+      // Absent on an older server build — default to no control rather than
+      // offering a delete that would come back 403.
+      canDelete: json['can_delete'] == true || json['can_delete'] == 1,
     );
   }
 
@@ -79,10 +90,62 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
   bool _isLoadingMore = false;
   String? _errorMessage;
 
+  /// Batches whose completion has already triggered a reload.
+  ///
+  /// Lives here, on state that survives a reload. It used to live on the status
+  /// strip inside the scroll view — which [_loadFirstPage] tears down when it
+  /// flips to the skeleton, so the set was destroyed and every finished batch
+  /// looked new again on the way back: refresh, teardown, refresh, forever.
+  final Set<String> _handledBatches = {};
+
+  GalleryUploadProvider? _uploads;
+
   @override
   void initState() {
     super.initState();
     _loadFirstPage();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Watching the provider directly, rather than reacting inside build().
+    // A refresh is a side effect, and build() must stay free of those.
+    final provider = context.read<GalleryUploadProvider>();
+    if (identical(provider, _uploads)) return;
+
+    _uploads?.removeListener(_onUploadsChanged);
+    _uploads = provider..addListener(_onUploadsChanged);
+  }
+
+  @override
+  void dispose() {
+    _uploads?.removeListener(_onUploadsChanged);
+    super.dispose();
+  }
+
+  /// Pulls in photos once per batch, as soon as that batch stops running.
+  void _onUploadsChanged() {
+    final provider = _uploads;
+    if (provider == null || !mounted) return;
+
+    for (final batch in provider.batches.values) {
+      if (batch.eventId != widget.eventId) continue;
+
+      if (!batch.isFinished) {
+        // Running again — a Retry on a partly-failed batch. Re-arm it so the
+        // photos it recovers still trigger a reload when it settles.
+        _handledBatches.remove(batch.id);
+        continue;
+      }
+
+      if (!_handledBatches.add(batch.id)) continue; // add() false = already in
+
+      // Quietly — a full skeleton flash after a successful upload is the
+      // "glitching" half of this bug, separate from the loop.
+      _loadFirstPage(silent: true);
+    }
   }
 
   // ── Data ─────────────────────────────────────────────────────────────
@@ -96,9 +159,13 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
         .toList();
   }
 
-  Future<void> _loadFirstPage() async {
+  /// [silent] refreshes in place, leaving the current grid on screen instead of
+  /// swapping in the skeleton. Used after a background upload lands, where the
+  /// user is looking at photos and a full-screen flash reads as a glitch — and
+  /// where tearing the grid down would also unmount the widgets driving it.
+  Future<void> _loadFirstPage({bool silent = false}) async {
     setState(() {
-      _isLoading = true;
+      if (!silent) _isLoading = true;
       _errorMessage = null;
     });
 
@@ -110,9 +177,12 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
     if (!mounted) return;
 
     if (response == null || response['success'] != true) {
+      // A silent refresh that fails leaves the grid alone — replacing photos
+      // the user is looking at with a full-screen error would be worse than
+      // showing a slightly stale gallery.
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Could not load the gallery';
+        if (!silent) _errorMessage = 'Could not load the gallery';
       });
       return;
     }
@@ -177,13 +247,85 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
     if (uploaded == true && mounted) _loadFirstPage();
   }
 
+  /// Confirms, deletes, then drops the photo from the grid in place.
+  ///
+  /// No full reload: the user is looking at the grid, and re-fetching would
+  /// reshuffle it under them for the sake of one removed tile.
+  Future<void> _confirmDelete(CommunityPhoto photo) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text('Delete this photo?'),
+        content: const Text(
+          'It will be removed from the event gallery. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final removed = await EventsAPI.deleteCommunityGalleryImages(
+        imageIds: [photo.id],
+      );
+
+      if (!mounted) return;
+
+      if (removed.contains(photo.id)) {
+        setState(() {
+          _photos.removeWhere((p) => p.id == photo.id);
+          if (_total > 0) _total--;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Photo deleted')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$e'.replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   void _openViewer(int index) {
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => _CommunityPhotoViewer(
+        builder: (viewerContext) => _CommunityPhotoViewer(
           photos: List.of(_photos),
           initialIndex: index,
+          onDelete: (photo) async {
+            await _confirmDelete(photo);
+
+            // The viewer holds a snapshot taken when it opened, so once a photo
+            // is gone from the grid that snapshot is stale — paging through a
+            // deleted photo would show a broken tile. Close back to the grid,
+            // which has already updated.
+            if (!_photos.any((p) => p.id == photo.id) &&
+                viewerContext.mounted) {
+              Navigator.of(viewerContext).pop();
+            }
+          },
         ),
       ),
     );
@@ -202,6 +344,12 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
         key: const PageStorageKey('event_community_gallery'),
         slivers: [
           SliverToBoxAdapter(child: _buildHeader()),
+          SliverToBoxAdapter(
+            child: _GalleryUploadStatus(
+              eventId: widget.eventId,
+              primaryColor: widget.primaryColor,
+            ),
+          ),
           if (_photos.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -297,22 +445,48 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
   Widget _buildTile(CommunityPhoto photo, int index) {
     return GestureDetector(
       onTap: () => _openViewer(index),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: CachedNetworkImage(
-          imageUrl: photo.thumb,
-          fit: BoxFit.cover,
-          memCacheWidth: 400,
-          placeholder: (context, url) => Container(color: Colors.grey.shade200),
-          errorWidget: (context, url, error) => Container(
-            color: Colors.grey.shade200,
-            child: Icon(
-              Icons.broken_image_outlined,
-              size: 22,
-              color: Colors.grey.shade400,
+      // Long-press to delete, so the grid stays clean for the common case of
+      // just looking. The viewer carries an explicit button for discoverability.
+      onLongPress: photo.canDelete ? () => _confirmDelete(photo) : null,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: CachedNetworkImage(
+              imageUrl: photo.thumb,
+              fit: BoxFit.cover,
+              memCacheWidth: 400,
+              placeholder: (context, url) =>
+                  Container(color: Colors.grey.shade200),
+              errorWidget: (context, url, error) => Container(
+                color: Colors.grey.shade200,
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  size: 22,
+                  color: Colors.grey.shade400,
+                ),
+              ),
             ),
           ),
-        ),
+          if (photo.canDelete)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.45),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.more_horiz,
+                  size: 13,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -433,9 +607,15 @@ class _CommunityPhotoViewer extends StatefulWidget {
   final List<CommunityPhoto> photos;
   final int initialIndex;
 
+  /// Deletion is owned by the tab, which holds the grid this viewer is a window
+  /// onto — so one confirm/API path serves both, and the grid updates whichever
+  /// place the delete was triggered from.
+  final Future<void> Function(CommunityPhoto photo) onDelete;
+
   const _CommunityPhotoViewer({
     required this.photos,
     required this.initialIndex,
+    required this.onDelete,
   });
 
   @override
@@ -515,7 +695,16 @@ class _CommunityPhotoViewerState extends State<_CommunityPhotoViewer> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  if (photo.canDelete)
+                    IconButton(
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.white,
+                      ),
+                      onPressed: () => widget.onDelete(photo),
+                    )
+                  else
+                    const SizedBox(width: 12),
                 ],
               ),
             ),
@@ -589,6 +778,160 @@ class _CommunityPhotoViewerState extends State<_CommunityPhotoViewer> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Live status strip for a background gallery upload.
+///
+/// The upload no longer blocks the screen that started it, so this is where the
+/// user finds out how it went — including the case that matters most on a bad
+/// connection: some photos landed and some did not, with a way to retry just
+/// the stragglers rather than re-picking the whole gallery.
+///
+/// Purely presentational. Reloading the grid on completion is the parent's job
+/// (see `_onUploadsChanged`): this widget is inside the scroll view that a
+/// reload tears down, so anything it remembered would be destroyed by the very
+/// refresh it asked for.
+class _GalleryUploadStatus extends StatelessWidget {
+  final String eventId;
+  final Color primaryColor;
+
+  const _GalleryUploadStatus({
+    required this.eventId,
+    required this.primaryColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<GalleryUploadProvider>(
+      builder: (context, provider, _) {
+        final batches = provider.batches.values
+            .where((b) => b.eventId == eventId)
+            .toList();
+
+        if (batches.isEmpty) return const SizedBox.shrink();
+        final batch = batches.last;
+
+        if (batch.status == GalleryBatchStatus.completed) {
+          return const SizedBox.shrink();
+        }
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFBF7EE),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: primaryColor.withOpacity(0.2)),
+            ),
+            child: batch.status == GalleryBatchStatus.uploading
+                ? _buildProgress(batch)
+                : _buildFailure(context, provider, batch),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildProgress(GalleryUploadBatch batch) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: primaryColor,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Sharing ${batch.uploaded} of ${batch.total} photos',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13.5,
+                ),
+              ),
+            ),
+            Text(
+              '${(batch.progress * 100).round()}%',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 13.5,
+                color: primaryColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: batch.progress,
+            minHeight: 5,
+            backgroundColor: Colors.grey.shade200,
+            color: primaryColor,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Keep using the app — this carries on in the background.',
+          style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFailure(
+    BuildContext context,
+    GalleryUploadProvider provider,
+    GalleryUploadBatch batch,
+  ) {
+    return Row(
+      children: [
+        Icon(Icons.error_outline, size: 18, color: Colors.red.shade600),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                batch.error ?? 'Some photos did not upload',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'The photos that did upload are already in the gallery.',
+                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+        ),
+        TextButton(
+          onPressed: () => provider.retryFailed(batch.id),
+          child: Text(
+            'Retry',
+            style: TextStyle(
+              color: primaryColor,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.close, size: 18),
+          color: Colors.grey.shade500,
+          onPressed: () => provider.dismiss(batch.id),
+        ),
+      ],
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 import 'package:drivelife/models/event_media.dart';
 import 'package:drivelife/utils/event_media_uploader.dart';
@@ -671,6 +672,104 @@ class EventsAPI {
   }
 
   /// Community gallery: direct-to-Cloudflare upload, then batch registration.
+  /// Mints a one-shot Cloudflare Images direct-upload URL.
+  ///
+  /// Split out of the old batch helper so a caller can drive one image at a
+  /// time: retry a single failure without redoing the whole gallery, and
+  /// register as it goes instead of betting the batch on a final call.
+  static Future<({String uploadUrl, String imageId})>
+  createCommunityGalleryUpload() async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/event-community-gallery/create-upload',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to get upload URL (${response.statusCode})');
+    }
+
+    final data = jsonDecode(response.body);
+    return (
+      uploadUrl: data['upload_url'] as String,
+      imageId: data['image_id'] as String,
+    );
+  }
+
+  /// Uploads one file to a minted Cloudflare URL.
+  ///
+  /// [onSent] reports bytes as they go on the wire, so a big photo advances the
+  /// bar instead of the UI sitting still until the whole file lands.
+  static Future<void> uploadCommunityGalleryFile({
+    required String uploadUrl,
+    required File file,
+    void Function(int sent, int total)? onSent,
+  }) async {
+    final length = await file.length();
+
+    final request = http.MultipartRequest('POST', Uri.parse(uploadUrl));
+    var sent = 0;
+
+    request.files.add(
+      http.MultipartFile(
+        'file',
+        file.openRead().map((chunk) {
+          sent += chunk.length;
+          onSent?.call(sent, length);
+          return chunk;
+        }),
+        length,
+        filename: file.path.split('/').last,
+      ),
+    );
+
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+
+    if (response.statusCode != 200) {
+      throw Exception('Cloudflare upload failed (${response.statusCode})');
+    }
+  }
+
+  /// Attaches already-uploaded Cloudflare image IDs to an event.
+  ///
+  /// Safe to call repeatedly with small batches — that is the point: an image
+  /// registered as soon as it lands is not lost if the app dies mid-gallery.
+  static Future<Map<String, dynamic>?> registerCommunityGalleryMedia({
+    required String eventId,
+    required List<String> mediaIds,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/event-community-gallery/register',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'event_id': int.parse(eventId),
+        'media_ids': mediaIds,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to register images (${response.statusCode})');
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>?> uploadCommunityGalleryImages({
     required String eventId,
     required List<ImageData> images,
@@ -757,6 +856,48 @@ class EventsAPI {
       print('❌ [EventsAPI] Community gallery upload failed: $e');
       rethrow; // screen shows the error snackbar
     }
+  }
+
+  /// Deletes community gallery photos.
+  ///
+  /// The server is the authority on who may delete what — the uploader, or the
+  /// event owner. [CommunityPhoto.canDelete] only decides whether to offer the
+  /// control; a 403 here means the answer was no.
+  ///
+  /// Returns the row ids actually removed.
+  static Future<List<int>> deleteCommunityGalleryImages({
+    required List<int> imageIds,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/event-community-gallery/delete',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'image_ids': imageIds}),
+    );
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+
+    if (response.statusCode == 403) {
+      throw Exception(
+        body['message']?.toString() ?? 'You cannot delete that photo',
+      );
+    }
+
+    if (response.statusCode != 200) {
+      throw Exception('Could not delete (${response.statusCode})');
+    }
+
+    return (body['deleted'] as List<dynamic>? ?? const [])
+        .map((e) => int.tryParse('$e') ?? 0)
+        .where((id) => id != 0)
+        .toList();
   }
 
   static Future<Map<String, dynamic>?> fetchCommunityGallery({

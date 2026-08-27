@@ -21,7 +21,6 @@ import 'package:drivelife/screens/profile/my_club_profile_view.dart';
 import 'package:drivelife/screens/news/create_news_post_screen.dart';
 import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/screens/media/media_screen.dart';
-import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
@@ -47,11 +46,10 @@ class _HomeTabsState extends State<HomeTabs> {
   // Provider-backed current tab. All existing _currentIndex references keep working.
   int get _currentIndex => context.read<BottomNavProvider>().currentIndex;
 
-  // Tab order: Home, Events, Places, Clubs, Shop, [Media], Profile.
-  // _buildBottomNav's items and the screens list in _loadScreens must both
-  // follow it.
-  static const int _shopIndex = 4;
-  static const int _mediaIndex = 5;
+  // Tab order: Home, Events, Places, Clubs, [Media], Profile.
+  // _buildBottomNav's items and the screens list in _buildScreens must both
+  // follow it. The shop is reached from the header basket button, not a tab.
+  static const int _mediaIndex = 4;
 
   /// Profile is always the last tab. Derived rather than written down, because
   /// a hard-coded literal goes stale the moment a tab is added or hidden and
@@ -127,7 +125,6 @@ class _HomeTabsState extends State<HomeTabs> {
       VenuesScreen(),
       MyClubsScreen(),
       // InboxScreen(myUserId: currentAccount!.user.id.toString()),
-      const ShopScreen(),
       if (FeatureFlags.mediaTab) MediaScreen(),
       if (currentAccount?.isClubAccount ?? false)
         ClubProfileScreen()
@@ -505,14 +502,6 @@ class _HomeTabsState extends State<HomeTabs> {
             isActive: _currentIndex == 3,
           ),
           label: 'Clubs',
-        ),
-        BottomNavigationBarItem(
-          icon: iconSvg(
-            'assets/app-icons/04-Basket.svg',
-            theme,
-            isActive: _currentIndex == _shopIndex,
-          ),
-          label: 'Shop',
         ),
         if (FeatureFlags.mediaTab)
           BottomNavigationBarItem(
