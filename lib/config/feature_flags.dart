@@ -14,6 +14,15 @@ class FeatureFlags {
   /// derived rather than hard-coded.
   static const bool mediaTab = true;
 
+  // NOTE: the event editor's Discounts / Show cars / Car clubs / Traders work
+  // is parked, not flagged. add_event_screen.dart has been reverted to its
+  // committed state, so it neither shows those tabs nor reads a flag for them.
+  // The pieces are still on disk for when the API side is ready:
+  //   models/event_editor_models.dart, models/event_edit_data.dart,
+  //   api/event_extras_api.dart, api/dl_accounts_api.dart,
+  //   widgets/events/editor/*.dart
+  // Re-wiring them means re-adding the tabs to the editor, not flipping a flag.
+
   /// Community gallery on events: the tab on the event detail screen and the
   /// "Share photos" buttons on the events list.
   ///

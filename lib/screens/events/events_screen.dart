@@ -320,20 +320,74 @@ class _EventsScreenState extends State<EventsScreen>
     }
   }
 
+  /// True when the carousel is showing live events because nothing is
+  /// currently featured — the strip is then labelled honestly rather than
+  /// passing them off as hand-picked.
+  bool _featuredIsFallback = false;
+
   Future<void> _fetchFeaturedEvents() async {
     try {
       final response = await EventsAPI.getFeaturedEvents();
 
-      if (response != null && response['success'] == true && mounted) {
-        final events = response['data'];
-        setState(() {
-          _featuredEvents =
-              (events as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
-        });
+      var events = <Map<String, dynamic>>[];
+      if (response != null && response['success'] == true) {
+        events =
+            (response['data'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+            [];
       }
+
+      // Nothing featured — the carousel is a fixed 240pt box, so an empty list
+      // rendered as a white gap. Fill it with real events instead of leaving a
+      // hole, and only hide the section if there is genuinely nothing to show.
+      var isFallback = false;
+      if (events.isEmpty) {
+        events = await _fetchFallbackFeatured();
+        isFallback = events.isNotEmpty;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _featuredEvents = events;
+        _featuredIsFallback = isFallback;
+      });
     } catch (e) {
       print('Error fetching featured events: $e');
     }
+  }
+
+  /// Live events to stand in for an empty featured list.
+  ///
+  /// Widens the net rather than asking once: nearest first, then further out,
+  /// then nationally. Someone outside the UK and US — testing from Canada, say
+  /// — has nothing within 25 miles, so a single near-me call would leave the
+  /// gap exactly where it is.
+  Future<List<Map<String, dynamic>>> _fetchFallbackFeatured() async {
+    const searches = ['near-me', '50-miles', '100-miles', 'national'];
+
+    for (final location in searches) {
+      try {
+        final response = await EventsAPI.getEvents(
+          page: 1,
+          limit: 5,
+          location: location,
+          dateFilter: 'anytime',
+        );
+
+        final events =
+            (response?['data'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+            [];
+
+        if (events.isNotEmpty) {
+          // Trending rows already carry title / thumbnail / start_date /
+          // location, which is exactly what the carousel reads — no mapping.
+          return events.take(5).toList();
+        }
+      } catch (e) {
+        print('Featured fallback ($location) failed: $e');
+      }
+    }
+
+    return [];
   }
 
   Future<void> _fetchProfileEvents() async {
@@ -965,7 +1019,12 @@ class _EventsScreenState extends State<EventsScreen>
             const SizedBox(height: 16),
           ],
 
-          if (_featuredEvents.isNotEmpty)
+          // The whole strip is conditional. It used to read
+          // `if (_featuredEvents.isNotEmpty)` immediately followed by a
+          // commented-out Container — so the guard attached to the SizedBox
+          // below it and the carousel rendered unconditionally. Being a fixed
+          // 240pt box, an empty list drew 240pt of white nothing.
+          if (_featuredEvents.isNotEmpty) ...[
             // Attribution bar
             // Container(
             //   width: double.infinity,
@@ -990,26 +1049,44 @@ class _EventsScreenState extends State<EventsScreen>
             //     ],
             //   ),
             // ),
-          const SizedBox(height: 12),
-          FeaturedEventsCarousel(
-            featuredEvents: _featuredEvents,
-            pageController: _bannerController,
-            currentPage: _currentBannerIndex,
-            onPageChanged: (index) {
-              setState(() => _currentBannerIndex = index);
-            },
-            onEventTap: (event) {
-              Navigator.pushNamed(
-                context,
-                '/event-detail',
-                arguments: {'event': event},
-              );
-            },
-            primaryColor: theme.primaryColor,
-            formatEventDate: (date) => DateHelpers.formatEventDate(date),
-          ),
+            const SizedBox(height: 12),
 
-          const SizedBox(height: 16),
+            // Says what these actually are. Passing nearby events off as
+            // "featured" would be a small lie the user can see through the
+            // moment they recognise a local listing.
+            if (_featuredIsFallback)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: Text(
+                  'Happening near you',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: theme.textColor,
+                  ),
+                ),
+              ),
+
+            FeaturedEventsCarousel(
+              featuredEvents: _featuredEvents,
+              pageController: _bannerController,
+              currentPage: _currentBannerIndex,
+              onPageChanged: (index) {
+                setState(() => _currentBannerIndex = index);
+              },
+              onEventTap: (event) {
+                Navigator.pushNamed(
+                  context,
+                  '/event-detail',
+                  arguments: {'event': event},
+                );
+              },
+              primaryColor: theme.primaryColor,
+              formatEventDate: (date) => DateHelpers.formatEventDate(date),
+            ),
+
+            const SizedBox(height: 16),
+          ],
 
           // Filter Row
           Padding(

@@ -110,12 +110,22 @@ class MediaAPI {
   ///
   /// When nothing has photos yet the backend returns upcoming/recent events
   /// instead, flagged via [EventGalleriesResponse.isFallback].
+  /// [search] matches the event's title or address, or the name the uploader
+  /// gave the gallery. With a search the response is only real galleries — it
+  /// is not padded with upcoming events, because a search returning things the
+  /// user did not ask for reads as broken.
   static Future<EventGalleriesResponse> getEventGalleries({
     int limit = 10,
+    String? search,
   }) async {
+    final query = <String, String>{'limit': '$limit'};
+    if (search != null && search.trim().isNotEmpty) {
+      query['search'] = search.trim();
+    }
+
     final uri = Uri.parse(
       '$_base/media-galleries',
-    ).replace(queryParameters: {'limit': '$limit'});
+    ).replace(queryParameters: query);
 
     try {
       final response = await http

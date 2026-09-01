@@ -124,26 +124,37 @@ class _VenuesScreenState extends State<VenuesScreen>
     }
   }
 
+  /// False once the featured call has come back, whatever it returned.
+  ///
+  /// Needed because "no banners yet" and "no banners at all" used to look
+  /// identical: the load only called setState when the result was non-empty,
+  /// so an empty response left the placeholder spinner turning forever.
+  bool _loadingBanners = true;
+
   Future<void> _loadFeaturedVenues() async {
     try {
       final result = await VenueApiService.getFeaturedVenues();
       if (!mounted) return;
 
-      if (result != null && result.isNotEmpty) {
-        setState(() {
-          _banners = result
-              .map<Map<String, String>>(
-                (venue) => {
-                  'image': venue['banner_image'] ?? '',
-                  'title': venue['name'] ?? '',
-                  'id': venue['id'].toString(),
-                },
-              )
-              .toList();
-        });
-      }
+      setState(() {
+        _banners = (result ?? [])
+            .map<Map<String, String>>(
+              (venue) => {
+                'image': venue['banner_image'] ?? '',
+                'title': venue['name'] ?? '',
+                'id': venue['id'].toString(),
+              },
+            )
+            // A banner with no image is just a grey box taking up 150pt.
+            .where((banner) => (banner['image'] ?? '').isNotEmpty)
+            .toList();
+        _loadingBanners = false;
+      });
     } catch (e) {
       print('Error loading featured venues: $e');
+      // A failed load is still a finished load — otherwise the spinner is
+      // permanent on any network hiccup.
+      if (mounted) setState(() => _loadingBanners = false);
     }
   }
 
@@ -584,8 +595,13 @@ class _VenuesScreenState extends State<VenuesScreen>
               ),
             ],
             
-            const SizedBox(height: 16),
-            _buildBanner(),
+            // Spacing rides with the banner: when there is nothing featured
+            // the whole block disappears, instead of leaving 32pt of padding
+            // wrapped around a zero-height widget.
+            if (_loadingBanners || _banners.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _buildBanner(),
+            ],
 
             const SizedBox(height: 16),
 
@@ -612,13 +628,21 @@ class _VenuesScreenState extends State<VenuesScreen>
   }
 
   Widget _buildBanner() {
-    // Add a check to see if banners are loaded
-    if (_banners.isEmpty) {
+    // Still waiting — a spinner is honest here.
+    if (_loadingBanners) {
       return const SizedBox(
         height: 150,
-        child: Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
+        child: Center(
+          child: CircularProgressIndicator(color: Color(0xFFAE9159)),
+        ),
       );
     }
+
+    // Loaded, and there is nothing featured. Take up no room rather than
+    // leaving a 150pt band — or, as before this, a spinner that never stopped
+    // because the empty case never finished loading. The spacing either side
+    // is dropped at the call site, since shrink() only collapses this widget.
+    if (_banners.isEmpty) return const SizedBox.shrink();
 
     return SizedBox(
       height: 150,

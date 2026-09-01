@@ -1,4 +1,6 @@
-# Miscellaneous
+
+
+php-api/# Miscellaneous
 *.class
 *.log
 *.pyc
@@ -47,3 +49,5 @@ app.*.map.json
 
 .env.*
 .env
+
+php-api/

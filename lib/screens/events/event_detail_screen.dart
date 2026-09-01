@@ -299,7 +299,15 @@ class _EventDetailScreenState extends State<EventDetailScreen>
 
     final eventId =
         _fullEventData?['id']?.toString() ?? widget.event?['id']?.toString();
-    final site = _fullEventData?['country'] ?? widget.event?['country'] ?? 'gb';
+    // `site` first: get-event now returns the blog the event was actually
+    // found on, which is authoritative. `country` is the older key some list
+    // responses use, kept as a fallback.
+    final site =
+        _fullEventData?['site'] ??
+        _fullEventData?['country'] ??
+        widget.event?['site'] ??
+        widget.event?['country'] ??
+        'gb';
 
     if (eventId == null) {
       setState(() => _isFavLoading = false);

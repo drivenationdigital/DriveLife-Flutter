@@ -128,6 +128,14 @@ class EventGallery {
   final String? dateLabel;
   final int photoCount;
 
+  /// Name the uploader gave the batch, when there is one. Null for photos
+  /// added from an event's own gallery tab, which has no name field.
+  final String? galleryName;
+
+  /// Which blog the event lives on - 3 UK, 1 US. An event id only means
+  /// anything within its own blog, so this is what makes opening it reliable.
+  final int? blogId;
+
   const EventGallery({
     required this.eventId,
     required this.title,
@@ -135,7 +143,17 @@ class EventGallery {
     this.locationName,
     this.dateLabel,
     this.photoCount = 0,
+    this.galleryName,
+    this.blogId,
   });
+
+  /// What to show as the card's heading: the gallery's own name when the
+  /// uploader gave one, otherwise the event it belongs to.
+  String get displayTitle =>
+      (galleryName != null && galleryName!.isNotEmpty) ? galleryName! : title;
+
+  /// 'GB' or 'US', for the calls that address events by site.
+  String get site => blogId == 1 ? 'US' : 'GB';
 
   /// "Hardwick Hall · 31/05/2026", dropping whichever half is missing.
   String get subtitle =>
@@ -148,6 +166,8 @@ class EventGallery {
     locationName: _str(json['location']),
     dateLabel: _str(json['date_label']),
     photoCount: _int(json['photo_count']),
+    galleryName: _str(json['gallery_name']),
+    blogId: json['blog_id'] == null ? null : _int(json['blog_id']),
   );
 }
 

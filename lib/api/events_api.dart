@@ -214,10 +214,20 @@ class EventsAPI {
           ? (lastLocation['country'] ?? 'GB')
           : 'GB';
 
+      // The event's own site wins over the user's country. `country` was
+      // accepted and then ignored, so a UK event opened by someone in Canada
+      // asked the US blog for that id and 404'd — post ids only mean anything
+      // within their own blog. The server treats this as a hint and falls back
+      // to the other blog, so a wrong guess is now recoverable rather than
+      // fatal, but sending the right one saves the second lookup.
+      final site = (country != null && country.trim().isNotEmpty)
+          ? country
+          : userCountry;
+
       final queryParams = {
         'event_id': eventId,
         'user_id': userId.toString(),
-        'site': userCountry,
+        'site': site,
       };
 
       final uri = Uri.parse(
@@ -745,6 +755,7 @@ class EventsAPI {
   static Future<Map<String, dynamic>?> registerCommunityGalleryMedia({
     required String eventId,
     required List<String> mediaIds,
+    String? galleryName,
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Not signed in');
@@ -760,6 +771,10 @@ class EventsAPI {
       body: jsonEncode({
         'event_id': int.parse(eventId),
         'media_ids': mediaIds,
+        // Omitted rather than sent empty, so the column stays null for photos
+        // added from an event's own gallery tab.
+        if (galleryName != null && galleryName.trim().isNotEmpty)
+          'gallery_name': galleryName.trim(),
       }),
     );
 

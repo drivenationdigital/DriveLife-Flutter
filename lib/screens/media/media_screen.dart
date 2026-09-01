@@ -5,6 +5,7 @@ import 'package:drivelife/models/media_models.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/media/images_of_you_screen.dart';
+import 'package:drivelife/screens/media/new_gallery_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -83,9 +84,33 @@ class _MediaScreenState extends State<MediaScreen>
     }
   }
 
-  Future<void> _loadGalleries() async {
+  /// What the search field currently holds. Empty means the normal feed.
+  String _gallerySearch = '';
+
+  /// Rising counter so a slow response for an earlier query cannot land on top
+  /// of a newer one.
+  int _searchRequestId = 0;
+
+  Future<void> _onSearchChanged(String value) async {
+    final query = value.trim();
+    if (query == _gallerySearch) return;
+
+    _gallerySearch = query;
+    final id = ++_searchRequestId;
+
+    setState(() => _loadingGalleries = true);
+    await _loadGalleries(requestId: id);
+  }
+
+  Future<void> _loadGalleries({int? requestId}) async {
     try {
-      final result = await MediaAPI.getEventGalleries(limit: 5);
+      final result = await MediaAPI.getEventGalleries(
+        limit: _gallerySearch.isEmpty ? 5 : 20,
+        search: _gallerySearch.isEmpty ? null : _gallerySearch,
+      );
+
+      // A superseded search must not overwrite the current one.
+      if (requestId != null && requestId != _searchRequestId) return;
       if (!mounted) return;
       setState(() {
         _galleries = result;
@@ -134,7 +159,9 @@ class _MediaScreenState extends State<MediaScreen>
       context,
       AppRoutes.eventDetail,
       arguments: {
-        'event': {'id': gallery.eventId, 'site': 'GB'},
+        // Was hardcoded 'GB', which opened US galleries against the wrong
+        // blog. blog_id now rides along on the card.
+        'event': {'id': gallery.eventId, 'site': gallery.site},
         'initialTabIndex': 2,
       },
     );
@@ -162,7 +189,10 @@ class _MediaScreenState extends State<MediaScreen>
           padding: const EdgeInsets.only(top: 8, bottom: 24),
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
-            const _SearchRow(),
+            _SearchRow(
+              onGalleryCreated: _loadAll,
+              onSearchChanged: _onSearchChanged,
+            ),
             ..._pendingSection(theme),
             ..._gallerySection(),
             ..._popularSection(),
@@ -221,7 +251,20 @@ class _MediaScreenState extends State<MediaScreen>
       ];
     }
 
-    if (_galleries.data.isEmpty) return const [];
+    if (_galleries.data.isEmpty) {
+      // With no search, an empty section just hides. Mid-search it has to say
+      // something — otherwise typing makes the whole row vanish and the user
+      // cannot tell the search from a broken screen.
+      if (_gallerySearch.isEmpty) return const [];
+
+      return [
+        const _SectionHeader(title: 'Event galleries'),
+        _SectionMessage(
+          message: 'No galleries match "$_gallerySearch".',
+        ),
+        const SizedBox(height: 28),
+      ];
+    }
 
     return [
       _SectionHeader(
@@ -273,9 +316,12 @@ class _MediaScreenState extends State<MediaScreen>
 /// come back empty, so without this a total outage renders as a blank page.
 class _SectionMessage extends StatelessWidget {
   final String message;
-  final VoidCallback onRetry;
 
-  const _SectionMessage({required this.message, required this.onRetry});
+  /// Null for a message that is not a failure — "no results" has nothing to
+  /// retry, and offering one implies something went wrong.
+  final VoidCallback? onRetry;
+
+  const _SectionMessage({required this.message, this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -288,7 +334,11 @@ class _SectionMessage extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline, size: 17, color: Colors.grey.shade500),
+          Icon(
+            onRetry == null ? Icons.search_off : Icons.error_outline,
+            size: 17,
+            color: Colors.grey.shade500,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -296,15 +346,16 @@ class _SectionMessage extends StatelessWidget {
               style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
             ),
           ),
-          TextButton(
-            onPressed: onRetry,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          if (onRetry != null)
+            TextButton(
+              onPressed: onRetry,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Retry', style: TextStyle(fontSize: 13)),
             ),
-            child: const Text('Retry', style: TextStyle(fontSize: 13)),
-          ),
         ],
       ),
     );
@@ -418,7 +469,17 @@ class _PopularGridSkeleton extends StatelessWidget {
 
 /// Search field paired with the primary "Add a gallery" action.
 class _SearchRow extends StatelessWidget {
-  const _SearchRow();
+  /// Called when a gallery was actually created, so the screen can refresh.
+  final Future<void> Function() onGalleryCreated;
+
+  /// Fires as the user types. Matches an event's title or address, or the name
+  /// the uploader gave a gallery.
+  final ValueChanged<String> onSearchChanged;
+
+  const _SearchRow({
+    required this.onGalleryCreated,
+    required this.onSearchChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -446,10 +507,12 @@ class _SearchRow extends StatelessWidget {
                   Expanded(
                     child: TextField(
                       textInputAction: TextInputAction.search,
+                      onChanged: onSearchChanged,
+                      onSubmitted: onSearchChanged,
                       decoration: InputDecoration(
                         isDense: true,
                         border: InputBorder.none,
-                        hintText: 'Search galleries, events',
+                        hintText: 'Search event or location',
                         hintStyle: TextStyle(
                           color: Colors.grey.shade600,
                           fontSize: 14,
@@ -467,7 +530,19 @@ class _SearchRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
-              onTap: () {},
+              onTap: () async {
+                final created = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    fullscreenDialog: true,
+                    builder: (_) => const NewGalleryScreen(),
+                  ),
+                );
+
+                // The upload runs in the background, so photos land over the
+                // next while — refresh so the galleries row picks up the new
+                // one rather than waiting for the next visit.
+                if (created == true) await onGalleryCreated();
+              },
               child: const SizedBox(
                 height: _MediaScreenState._controlHeight,
                 child: Padding(
@@ -720,15 +795,20 @@ class _GalleryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
+          // The gallery's own name when the uploader gave one, else the event.
           Text(
-            gallery.title,
+            gallery.displayTitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 3),
           Text(
-            gallery.subtitle,
+            // A named gallery keeps the event visible underneath, so it is
+            // still obvious what the photos are from.
+            gallery.galleryName == null || gallery.galleryName!.isEmpty
+                ? gallery.subtitle
+                : gallery.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
