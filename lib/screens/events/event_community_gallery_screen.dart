@@ -17,11 +17,16 @@ class EventCommunityGalleryScreen extends StatefulWidget {
   final String eventTitle;
   final String? eventCoverUrl;
 
+  /// 'event' or 'venue' — the same screen serves both, since a venue gallery
+  /// is the same thing hung off a different entity.
+  final String entityType;
+
   const EventCommunityGalleryScreen({
     super.key,
     required this.eventId,
     required this.eventTitle,
     this.eventCoverUrl,
+    this.entityType = 'event',
   });
 
   @override
@@ -115,6 +120,7 @@ class _EventCommunityGalleryScreenState
       eventId: widget.eventId,
       eventTitle: widget.eventTitle,
       files: files,
+      entityType: widget.entityType,
     );
 
     ScaffoldMessenger.of(context).showSnackBar(

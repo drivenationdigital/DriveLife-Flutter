@@ -11,7 +11,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 
-/// The Media tab: pending tag approvals, event galleries, and popular images.
+/// The Media tab: pending tag approvals, galleries (events and venues), and
+/// popular images.
 ///
 /// The three sections load independently so a slow or failing one never holds
 /// up the others. A section that comes back *empty* hides itself; one that
@@ -152,9 +153,25 @@ class _MediaScreenState extends State<MediaScreen>
     if (mounted) await _loadPending();
   }
 
-  /// Events open straight on their community gallery tab — that's the whole
-  /// point of the section, whether it's browsing photos or adding your own.
+  /// Opens whatever the gallery actually hangs off.
+  ///
+  /// Events go straight to their community gallery tab — that's the whole
+  /// point of the section. Venues have their own screen; sending one to the
+  /// event route is what produced "failed to load event", because the id was
+  /// looked up as an event post and no such event exists.
   void _openGallery(EventGallery gallery) {
+    if (gallery.isVenue) {
+      Navigator.pushNamed(
+        context,
+        AppRoutes.venueDetails,
+        arguments: {
+          'venueId': gallery.eventId.toString(),
+          'initialTabIndex': 3, // Gallery
+        },
+      );
+      return;
+    }
+
     Navigator.pushNamed(
       context,
       AppRoutes.eventDetail,
@@ -237,7 +254,7 @@ class _MediaScreenState extends State<MediaScreen>
   List<Widget> _gallerySection() {
     if (_loadingGalleries) {
       return const [
-        _SectionHeader(title: 'Event galleries'),
+        _SectionHeader(title: 'Galleries'),
         _GalleryRowSkeleton(),
         SizedBox(height: 28),
       ];
@@ -245,7 +262,7 @@ class _MediaScreenState extends State<MediaScreen>
 
     if (_galleriesError != null) {
       return [
-        const _SectionHeader(title: 'Event galleries'),
+        const _SectionHeader(title: 'Galleries'),
         _SectionMessage(message: _galleriesError!, onRetry: _loadGalleries),
         const SizedBox(height: 28),
       ];
@@ -258,7 +275,7 @@ class _MediaScreenState extends State<MediaScreen>
       if (_gallerySearch.isEmpty) return const [];
 
       return [
-        const _SectionHeader(title: 'Event galleries'),
+        const _SectionHeader(title: 'Galleries'),
         _SectionMessage(
           message: 'No galleries match "$_gallerySearch".',
         ),
@@ -268,7 +285,7 @@ class _MediaScreenState extends State<MediaScreen>
 
     return [
       _SectionHeader(
-        title: 'Event galleries',
+        title: 'Galleries',
         actionLabel: 'See all',
         // Events tab (bottom nav index 1), same target as the feed's pills.
         onAction: () => context.read<BottomNavProvider>().setIndex(1),

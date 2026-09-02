@@ -7,17 +7,21 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-/// An event the gallery is tagged to.
+/// What kind of thing a gallery hangs off.
+enum TaggedEntityType { event, venue }
+
+/// An event or venue the gallery is tagged to.
 ///
-/// Tagging is the point of this screen: the photos are attached to the event's
-/// community gallery, so the tag decides where they end up rather than being
-/// decoration.
+/// Tagging is the point of this screen: the photos are attached to that
+/// entity's community gallery, so the tag decides where they end up rather
+/// than being decoration.
 class TaggedEvent {
   final String id;
   final String name;
   final String location;
   final DateTime? date;
   final String thumbnail;
+  final TaggedEntityType type;
 
   const TaggedEvent({
     required this.id,
@@ -25,13 +29,23 @@ class TaggedEvent {
     this.location = '',
     this.date,
     this.thumbnail = '',
+    this.type = TaggedEntityType.event,
   });
 
-  factory TaggedEvent.fromSearchResult(Map<String, dynamic> json) {
+  /// Wire value for `entity_type`.
+  String get entityType => type == TaggedEntityType.venue ? 'venue' : 'event';
+
+  factory TaggedEvent.fromSearchResult(
+    Map<String, dynamic> json, {
+    TaggedEntityType type = TaggedEntityType.event,
+  }) {
     return TaggedEvent(
+      type: type,
       id: json['id']?.toString() ?? '',
       name: (json['name']?.toString() ?? '').replaceAll('&amp;', '&'),
-      location: json['location']?.toString() ?? '',
+      // Events call it `location`, venues `venue_location`.
+      location:
+          (json['location'] ?? json['venue_location'])?.toString() ?? '',
       date: _parseSearchDate(json['start_date']),
       thumbnail: json['thumbnail']?.toString() ?? '',
     );
@@ -58,9 +72,9 @@ class TaggedEvent {
   }
 
   /// "Event · Goodwood · 24/05/2026" — parts only when we have them, so a
-  /// location-less event doesn't render a trailing separator.
+  /// location-less entity doesn't render a trailing separator.
   String get subtitle {
-    final parts = <String>['Event'];
+    final parts = <String>[type == TaggedEntityType.venue ? 'Venue' : 'Event'];
     if (location.isNotEmpty) parts.add(location);
     if (date != null) parts.add(DateFormat('dd/MM/yyyy').format(date!));
     return parts.join(' · ');
@@ -146,6 +160,7 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
       eventTitle: event.name,
       files: List<File>.from(_photos),
       galleryName: _nameController.text.trim(),
+      entityType: event.entityType,
     );
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -220,7 +235,7 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
           ),
 
           const SizedBox(height: 26),
-          const _FieldLabel('Location or event'),
+          const _FieldLabel('Event or venue'),
           const SizedBox(height: 12),
           if (_taggedEvent == null)
             _EventPickerButton(onTap: _pickEvent)
@@ -328,7 +343,7 @@ class _EventPickerButton extends StatelessWidget {
             const SizedBox(width: 10),
             const Expanded(
               child: Text(
-                'Search for an event',
+                'Search events and venues',
                 style: TextStyle(
                   color: _NewGalleryScreenState._muted,
                   fontSize: 16,
@@ -367,8 +382,10 @@ class _TaggedEventCard extends StatelessWidget {
               color: Color(0xFFF6EEE0),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.location_on_outlined,
+            child: Icon(
+              event.type == TaggedEntityType.venue
+                  ? Icons.storefront_outlined
+                  : Icons.event_outlined,
               size: 21,
               color: _NewGalleryScreenState._gold,
             ),
@@ -622,6 +639,14 @@ class _EventSearchSheet extends StatefulWidget {
 class _EventSearchSheetState extends State<_EventSearchSheet> {
   final _controller = TextEditingController();
 
+  /// Which kind of thing to search.
+  ///
+  /// Searching both at once did not work: "The Motorist" returns 12 events and
+  /// 1 venue, so with events listed first the venue landed at position 13 and
+  /// looked missing. A toggle makes the choice explicit rather than making the
+  /// user scroll for it.
+  TaggedEntityType _searchType = TaggedEntityType.event;
+
   List<TaggedEvent> _results = [];
   bool _searching = false;
   String? _error;
@@ -654,17 +679,21 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
     });
 
     try {
+      final isVenue = _searchType == TaggedEntityType.venue;
+
+      // Narrower than 'all', which also spends time on users and vehicles the
+      // picker has no use for.
       final response = await EventsAPI.discoverSearch(
         search: trimmed,
-        type: 'events',
+        type: isVenue ? 'venues' : 'events',
         perPage: 20,
       );
 
       if (!mounted || id != _requestId) return;
 
       setState(() {
-        _results = _eventsFrom(response)
-            .map(TaggedEvent.fromSearchResult)
+        _results = _rowsFrom(response, isVenue ? 'venues' : 'events')
+            .map((r) => TaggedEvent.fromSearchResult(r, type: _searchType))
             .where((e) => e.id.isNotEmpty)
             .toList();
         _searching = false;
@@ -684,7 +713,7 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
     }
   }
 
-  /// Pulls the event rows out of a discover-search response.
+  /// Pulls rows of one type out of a discover-search response.
   ///
   /// The shape depends on `type`, which is the trap here:
   ///
@@ -695,10 +724,13 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
   /// Reading `top_results` as a Map therefore threw a TypeError on the very
   /// call this screen makes. Both shapes are handled so neither `type` breaks
   /// it again.
-  static List<Map<String, dynamic>> _eventsFrom(Map<String, dynamic>? json) {
+  static List<Map<String, dynamic>> _rowsFrom(
+    Map<String, dynamic>? json,
+    String key,
+  ) {
     if (json == null) return const [];
 
-    final events = json['events'];
+    final events = json[key];
     if (events is Map<String, dynamic>) {
       final data = events['data'];
       if (data is List) return data.whereType<Map<String, dynamic>>().toList();
@@ -707,7 +739,7 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
 
     final top = json['top_results'];
     if (top is Map<String, dynamic>) {
-      final nested = top['events'];
+      final nested = top[key];
       if (nested is List) {
         return nested.whereType<Map<String, dynamic>>().toList();
       }
@@ -762,11 +794,45 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
                   if (value.trim().length >= 3) _search(value);
                 },
                 decoration: InputDecoration(
-                  hintText: 'Search events',
+                  hintText: _searchType == TaggedEntityType.venue
+                      ? 'Search venues'
+                      : 'Search events',
                   prefixIcon: const Icon(Icons.search),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
+                ),
+              ),
+            ),
+            // Toggle sits under the field, so switching re-runs whatever has
+            // already been typed rather than making the user retype it.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<TaggedEntityType>(
+                  segments: const [
+                    ButtonSegment(
+                      value: TaggedEntityType.event,
+                      icon: Icon(Icons.event_outlined, size: 17),
+                      label: Text('Events'),
+                    ),
+                    ButtonSegment(
+                      value: TaggedEntityType.venue,
+                      icon: Icon(Icons.storefront_outlined, size: 17),
+                      label: Text('Venues'),
+                    ),
+                  ],
+                  selected: {_searchType},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (selection) {
+                    setState(() {
+                      _searchType = selection.first;
+                      _results = [];
+                    });
+                    // Re-run against the text already in the box.
+                    _search(_controller.text);
+                  },
                 ),
               ),
             ),
@@ -790,14 +856,14 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
     }
 
     if (_controller.text.trim().isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(32),
+          padding: const EdgeInsets.all(32),
           child: Text(
             'Search for the event these photos are from.\nTagging it adds them '
             'to that event’s gallery.',
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: _NewGalleryScreenState._muted,
               height: 1.4,
             ),
@@ -807,10 +873,12 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
     }
 
     if (_results.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
-          'No events found',
-          style: TextStyle(color: _NewGalleryScreenState._muted),
+          _searchType == TaggedEntityType.venue
+              ? 'No venues found'
+              : 'No events found',
+          style: const TextStyle(color: _NewGalleryScreenState._muted),
         ),
       );
     }
@@ -832,8 +900,10 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
               color: Color(0xFFF6EEE0),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.location_on_outlined,
+            child: Icon(
+              event.type == TaggedEntityType.venue
+                  ? Icons.storefront_outlined
+                  : Icons.event_outlined,
               size: 21,
               color: _NewGalleryScreenState._gold,
             ),

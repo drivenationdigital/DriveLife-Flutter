@@ -756,6 +756,7 @@ class EventsAPI {
     required String eventId,
     required List<String> mediaIds,
     String? galleryName,
+    String entityType = 'event',
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Not signed in');
@@ -769,7 +770,11 @@ class EventsAPI {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({
-        'event_id': int.parse(eventId),
+        // entity_* is what the server reads; event_id is still sent for an
+        // event so an older build of the API keeps working.
+        'entity_type': entityType,
+        'entity_id': int.parse(eventId),
+        if (entityType == 'event') 'event_id': int.parse(eventId),
         'media_ids': mediaIds,
         // Omitted rather than sent empty, so the column stays null for photos
         // added from an event's own gallery tab.
@@ -915,10 +920,78 @@ class EventsAPI {
         .toList();
   }
 
+  /// Sets the order of an event's community gallery. Event owner only.
+  ///
+  /// [imageIds] are row ids in the order they should appear. Ids left out keep
+  /// no position and fall in behind the ordered ones, so the owner does not
+  /// have to drag every photo in a large gallery to fix the top of it.
+  static Future<void> reorderCommunityGallery({
+    required String eventId,
+    required List<int> imageIds,
+    String entityType = 'event',
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/event-community-gallery/reorder',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'entity_type': entityType,
+        'entity_id': int.parse(eventId),
+        if (entityType == 'event') 'event_id': int.parse(eventId),
+        'image_ids': imageIds,
+      }),
+    );
+
+    if (response.statusCode == 200) return;
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    throw Exception(body['message']?.toString() ?? 'Could not save the order');
+  }
+
+  /// Picks the photo shown for this gallery in the media tab, replacing the
+  /// event's own image. Event owner only. Pass null to clear it.
+  static Future<void> setCommunityGalleryCover({
+    required String eventId,
+    required int? imageId,
+    String entityType = 'event',
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/event-community-gallery/set-cover',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'entity_type': entityType,
+        'entity_id': int.parse(eventId),
+        if (entityType == 'event') 'event_id': int.parse(eventId),
+        'image_id': imageId ?? 0,
+      }),
+    );
+
+    if (response.statusCode == 200) return;
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    throw Exception(body['message']?.toString() ?? 'Could not set the cover');
+  }
+
   static Future<Map<String, dynamic>?> fetchCommunityGallery({
     required String eventId,
     int page = 1,
     int perPage = 30,
+    String entityType = 'event',
   }) async {
     try {
       final token = await _authService.getToken();
@@ -936,7 +1009,9 @@ class EventsAPI {
           'Authorization': 'Bearer $token',
         },
         body: jsonEncode({
-          'event_id': int.parse(eventId),
+          'entity_type': entityType,
+          'entity_id': int.parse(eventId),
+          if (entityType == 'event') 'event_id': int.parse(eventId),
           'page': page,
           'per_page': perPage,
         }),

@@ -58,6 +58,9 @@ class GalleryUploadBatch {
   /// gallery tab (which has no name field).
   final String? galleryName;
 
+  /// 'event' or 'venue' — what these photos hang off.
+  final String entityType;
+
   final List<GalleryUploadItem> items;
 
   GalleryBatchStatus status;
@@ -69,6 +72,7 @@ class GalleryUploadBatch {
     required this.eventTitle,
     required this.items,
     this.galleryName,
+    this.entityType = 'event',
     this.status = GalleryBatchStatus.uploading,
     this.error,
   });
@@ -149,6 +153,7 @@ class GalleryUploadProvider with ChangeNotifier {
     required String eventTitle,
     required List<File> files,
     String? galleryName,
+    String entityType = 'event',
   }) {
     final batchId = '${eventId}_${DateTime.now().microsecondsSinceEpoch}';
 
@@ -157,6 +162,7 @@ class GalleryUploadProvider with ChangeNotifier {
       eventId: eventId,
       eventTitle: eventTitle,
       galleryName: galleryName,
+      entityType: entityType,
       items: [
         for (var i = 0; i < files.length; i++)
           GalleryUploadItem(id: '${batchId}_$i', file: files[i]),
@@ -326,6 +332,7 @@ class GalleryUploadProvider with ChangeNotifier {
         eventId: batch.eventId,
         mediaIds: mediaIds,
         galleryName: batch.galleryName,
+        entityType: batch.entityType,
       );
     } catch (e) {
       // The bytes are safely in Cloudflare; only the attach failed. Mark the

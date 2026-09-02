@@ -14,6 +14,18 @@ const _liveEvent = {
   'is_liked': false,
 };
 
+/// A real venue row from the same endpoint. Note the address arrives as
+/// `venue_location`, not `location` — reading only `location` left the
+/// subtitle blank for every venue.
+const _liveVenue = {
+  'id': '12246',
+  'name': 'The Motorist',
+  'title': 'The Motorist',
+  'thumbnail': 'https://example.com/DSC_1190-1-1024x683.jpg',
+  'cover_image': 'https://example.com/DSC_1190-1-1024x683.jpg',
+  'venue_location': 'Newcastle upon Tyne',
+};
+
 void main() {
   group('TaggedEvent.fromSearchResult', () {
     test('reads a live discover-search row', () {
@@ -64,6 +76,41 @@ void main() {
       });
 
       expect(event.name, 'Cars & Coffee');
+    });
+  });
+
+  group('TaggedEvent for venues', () {
+    test('reads a live venue row, including venue_location', () {
+      final venue = TaggedEvent.fromSearchResult(
+        Map<String, dynamic>.from(_liveVenue),
+        type: TaggedEntityType.venue,
+      );
+
+      expect(venue.id, '12246');
+      expect(venue.name, 'The Motorist');
+      expect(venue.location, 'Newcastle upon Tyne');
+      expect(venue.type, TaggedEntityType.venue);
+    });
+
+    test('labels itself a venue and carries no date', () {
+      final venue = TaggedEvent.fromSearchResult(
+        Map<String, dynamic>.from(_liveVenue),
+        type: TaggedEntityType.venue,
+      );
+
+      expect(venue.subtitle, startsWith('Venue'));
+      expect(venue.subtitle, contains('Newcastle upon Tyne'));
+      expect(venue.date, isNull);
+      expect(venue.entityType, 'venue');
+    });
+
+    test('events still report themselves as events', () {
+      final event = TaggedEvent.fromSearchResult(
+        Map<String, dynamic>.from(_liveEvent),
+      );
+
+      expect(event.entityType, 'event');
+      expect(event.subtitle, startsWith('Event'));
     });
   });
 }

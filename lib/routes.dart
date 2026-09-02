@@ -264,7 +264,14 @@ class AppRoutes {
         );
       case venueDetails:
         final args = settings.arguments as Map<String, dynamic>;
-        return _slide(VenueDetailScreen(venueId: args['venueId']));
+        return _slide(
+          VenueDetailScreen(
+            venueId: args['venueId'],
+            initialTabIndex: args['initialTabIndex'] is int
+                ? args['initialTabIndex'] as int
+                : 0,
+          ),
+        );
       case search:
         return _slide(const SearchScreen());
       case viewProfile:

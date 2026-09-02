@@ -2,6 +2,7 @@ import 'package:drivelife/api/places_api.dart';
 import 'package:drivelife/components/post_card.dart';
 import 'package:drivelife/models/venue_view_model.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
+import 'package:drivelife/widgets/events/event_community_gallery_tab.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
@@ -24,7 +25,16 @@ const Color _chip = Color(0xFFEFEFEF);
 class VenueDetailScreen extends StatefulWidget {
   final String venueId;
 
-  const VenueDetailScreen({super.key, required this.venueId});
+  /// Which tab to open on: 0 Updates, 1 Events, 2 Posts, 3 Gallery, 4 About.
+  /// Lets the media tab deep-link a venue gallery card straight to its photos,
+  /// the way an event gallery card already does.
+  final int initialTabIndex;
+
+  const VenueDetailScreen({
+    super.key,
+    required this.venueId,
+    this.initialTabIndex = 0,
+  });
 
   @override
   State<VenueDetailScreen> createState() => _VenueDetailScreenState();
@@ -55,7 +65,13 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this); // was 3
+    // Updates, Events, Community, Gallery, About — keep in step with the
+    // TabBarView children and the segmented nav below.
+    _tabController = TabController(
+      length: 5,
+      vsync: this,
+      initialIndex: widget.initialTabIndex.clamp(0, 4),
+    );
     _updatesScrollController.addListener(_onUpdatesScroll);
     _loadVenue();
   }
@@ -400,6 +416,13 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
                         _VenueCommunityFeed(
                           venueId: widget.venueId,
                           onCompose: _handleCreateVenuePost,
+                        ),
+                        EventCommunityGalleryTab(
+                          eventId: widget.venueId,
+                          eventTitle: _venue?.title ?? 'This venue',
+                          eventCoverUrl: _venue?.coverPhoto.url,
+                          primaryColor: theme.primaryColor,
+                          entityType: 'venue',
                         ),
                         _buildAboutPanel(theme),
                       ],
@@ -1509,8 +1532,9 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
             children: [
               _segButton(label: 'Updates', index: 0),
               _segButton(label: 'Events', index: 1),
-              _segButton(label: 'Community', index: 2),
-              _segButton(label: 'About', index: 3),
+              _segButton(label: 'Posts', index: 2),
+              _segButton(label: 'Gallery', index: 3),
+              _segButton(label: 'About', index: 4),
             ],
           ),
         ),

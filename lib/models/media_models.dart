@@ -136,6 +136,11 @@ class EventGallery {
   /// anything within its own blog, so this is what makes opening it reliable.
   final int? blogId;
 
+  /// 'event' or 'venue'. A gallery can hang off either, and they open on
+  /// different screens - opening a venue as an event is what produced
+  /// "failed to load event".
+  final String entityType;
+
   const EventGallery({
     required this.eventId,
     required this.title,
@@ -145,7 +150,10 @@ class EventGallery {
     this.photoCount = 0,
     this.galleryName,
     this.blogId,
+    this.entityType = 'event',
   });
+
+  bool get isVenue => entityType == 'venue';
 
   /// What to show as the card's heading: the gallery's own name when the
   /// uploader gave one, otherwise the event it belongs to.
@@ -168,6 +176,8 @@ class EventGallery {
     photoCount: _int(json['photo_count']),
     galleryName: _str(json['gallery_name']),
     blogId: json['blog_id'] == null ? null : _int(json['blog_id']),
+    // Older API builds send no entity_type; those rows are all events.
+    entityType: _str(json['entity_type']) ?? 'event',
   );
 }
 

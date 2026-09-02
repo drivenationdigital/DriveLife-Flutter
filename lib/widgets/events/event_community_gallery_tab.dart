@@ -22,6 +22,10 @@ class CommunityPhoto {
   /// governs whether the control is offered.
   final bool canDelete;
 
+  /// The photo representing this gallery in the media tab, chosen by the event
+  /// owner. At most one per event.
+  final bool isCover;
+
   const CommunityPhoto({
     required this.id,
     required this.url,
@@ -30,6 +34,7 @@ class CommunityPhoto {
     required this.uploaderAvatar,
     this.takenAt,
     this.canDelete = false,
+    this.isCover = false,
   });
 
   factory CommunityPhoto.fromJson(Map<String, dynamic> json) {
@@ -50,6 +55,7 @@ class CommunityPhoto {
       // Absent on an older server build — default to no control rather than
       // offering a delete that would come back 403.
       canDelete: json['can_delete'] == true || json['can_delete'] == 1,
+      isCover: json['is_cover'] == true || json['is_cover'] == 1,
     );
   }
 
@@ -66,13 +72,20 @@ class EventCommunityGalleryTab extends StatefulWidget {
   final String? eventCoverUrl;
   final Color primaryColor;
 
+  /// 'event' or 'venue'. The gallery itself is identical either way; only the
+  /// entity it hangs off differs.
+  final String entityType;
+
   const EventCommunityGalleryTab({
     super.key,
     required this.eventId,
     required this.eventTitle,
     required this.primaryColor,
     this.eventCoverUrl,
+    this.entityType = 'event',
   });
+
+  bool get isVenue => entityType == 'venue';
 
   @override
   State<EventCommunityGalleryTab> createState() =>
@@ -89,6 +102,16 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
   bool _isLoading = true;
   bool _isLoadingMore = false;
   String? _errorMessage;
+
+  /// Server's answer to "can this viewer curate?" — event owner or admin. The
+  /// same flag the delete rule uses, so the UI cannot offer an action the
+  /// endpoint will refuse.
+  bool _isEventOwner = false;
+
+  /// Reorder is a mode rather than always-on: a long-press drag competes with
+  /// scrolling in a grid, and most visitors are only browsing.
+  bool _reordering = false;
+  bool _savingOrder = false;
 
   /// Batches whose completion has already triggered a reload.
   ///
@@ -172,6 +195,7 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
     final response = await EventsAPI.fetchCommunityGallery(
       eventId: widget.eventId,
       page: 1,
+      entityType: widget.entityType,
     );
 
     if (!mounted) return;
@@ -191,6 +215,7 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
       _photos
         ..clear()
         ..addAll(_parsePhotos(response));
+      _isEventOwner = response['is_event_owner'] == true;
       _page = 1;
       _total = int.tryParse('${response['total']}') ?? _photos.length;
       _totalPages = int.tryParse('${response['total_pages']}') ?? 1;
@@ -207,6 +232,7 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
     final response = await EventsAPI.fetchCommunityGallery(
       eventId: widget.eventId,
       page: nextPage,
+      entityType: widget.entityType,
     );
 
     if (!mounted) return;
@@ -241,6 +267,7 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
         eventId: widget.eventId,
         eventTitle: widget.eventTitle,
         eventCoverUrl: widget.eventCoverUrl,
+        entityType: widget.entityType,
       ),
     );
 
@@ -307,6 +334,148 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
     }
   }
 
+  /// Persists the current on-screen order.
+  ///
+  /// The grid is already showing the new arrangement — the drag moved it — so
+  /// a failure has to put it back, otherwise the user is looking at an order
+  /// the server does not have.
+  Future<void> _saveOrder(List<CommunityPhoto> previous) async {
+    setState(() => _savingOrder = true);
+
+    try {
+      await EventsAPI.reorderCommunityGallery(
+        eventId: widget.eventId,
+        imageIds: _photos.map((p) => p.id).toList(),
+        entityType: widget.entityType,
+      );
+
+      if (!mounted) return;
+      setState(() => _savingOrder = false);
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _photos
+          ..clear()
+          ..addAll(previous);
+        _savingOrder = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$e'.replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Chooses the photo that represents this gallery in the media tab.
+  Future<void> _setCover(CommunityPhoto photo) async {
+    final previous = List<CommunityPhoto>.from(_photos);
+
+    // Optimistic: exactly one cover, flipped locally so the badge moves at
+    // once rather than after a round trip.
+    setState(() {
+      for (var i = 0; i < _photos.length; i++) {
+        final p = _photos[i];
+        _photos[i] = CommunityPhoto(
+          id: p.id,
+          url: p.url,
+          thumb: p.thumb,
+          uploaderName: p.uploaderName,
+          uploaderAvatar: p.uploaderAvatar,
+          takenAt: p.takenAt,
+          canDelete: p.canDelete,
+          isCover: p.id == photo.id,
+        );
+      }
+    });
+
+    try {
+      await EventsAPI.setCommunityGalleryCover(
+        eventId: widget.eventId,
+        imageId: photo.id,
+        entityType: widget.entityType,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cover updated')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _photos
+          ..clear()
+          ..addAll(previous);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$e'.replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Owner actions for one photo.
+  Future<void> _showOwnerActions(CommunityPhoto photo) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            if (!photo.isCover)
+              ListTile(
+                leading: const Icon(Icons.star_outline),
+                title: const Text('Use as gallery cover'),
+                subtitle: const Text('Shown in the media tab for this event'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _setCover(photo);
+                },
+              )
+            else
+              const ListTile(
+                leading: Icon(Icons.star, color: Color(0xFFC4A062)),
+                title: Text('This is the gallery cover'),
+              ),
+            ListTile(
+              leading: const Icon(Icons.swap_vert),
+              title: const Text('Rearrange photos'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                setState(() => _reordering = true);
+              },
+            ),
+            if (photo.canDelete)
+              ListTile(
+                leading: Icon(Icons.delete_outline, color: Colors.red.shade400),
+                title: Text(
+                  'Delete photo',
+                  style: TextStyle(color: Colors.red.shade400),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _confirmDelete(photo);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _openViewer(int index) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -344,6 +513,52 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
         key: const PageStorageKey('event_community_gallery'),
         slivers: [
           SliverToBoxAdapter(child: _buildHeader()),
+
+          // Only while rearranging — an owner needs a clear way back out, and
+          // a banner is where they will look for it.
+          if (_reordering)
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFBF7EE),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: widget.primaryColor.withOpacity(0.25),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _savingOrder
+                            ? 'Saving order…'
+                            : 'Drag to rearrange. The order is saved as you go.',
+                        style: const TextStyle(fontSize: 12.5),
+                      ),
+                    ),
+                    if (_savingOrder)
+                      const SizedBox(
+                        width: 15,
+                        height: 15,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      TextButton(
+                        onPressed: () => setState(() => _reordering = false),
+                        child: Text(
+                          'Done',
+                          style: TextStyle(
+                            color: widget.primaryColor,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           SliverToBoxAdapter(
             child: _GalleryUploadStatus(
               eventId: widget.eventId,
@@ -354,6 +569,38 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
             SliverFillRemaining(
               hasScrollBody: false,
               child: _buildEmptyState(),
+            )
+          else if (_reordering)
+            // Reorder uses a LIST, not the grid: ReorderableListView is built
+            // into Flutter and handles the drag, autoscroll and accessibility
+            // properly, where a reorderable grid would mean a new dependency.
+            // One photo per row also makes the order unambiguous while
+            // dragging, which a 3-up grid does not.
+            SliverToBoxAdapter(
+              child: ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                itemCount: _photos.length,
+                onReorder: (oldIndex, newIndex) {
+                  final previous = List<CommunityPhoto>.from(_photos);
+
+                  setState(() {
+                    // ReorderableListView reports the drop index before the
+                    // item is removed, so anything moving down is off by one.
+                    if (newIndex > oldIndex) newIndex -= 1;
+                    final moved = _photos.removeAt(oldIndex);
+                    _photos.insert(newIndex, moved);
+                  });
+
+                  _saveOrder(previous);
+                },
+                itemBuilder: (context, index) => _buildReorderTile(
+                  _photos[index],
+                  index,
+                  key: ValueKey(_photos[index].id),
+                ),
+              ),
             )
           else
             SliverPadding(
@@ -442,12 +689,94 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
     );
   }
 
+  /// One row while rearranging: thumbnail, position, cover marker, handle.
+  Widget _buildReorderTile(CommunityPhoto photo, int index, {required Key key}) {
+    return Padding(
+      key: key,
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(10),
+          color: Colors.white,
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: CachedNetworkImage(
+                imageUrl: photo.thumb,
+                width: 54,
+                height: 54,
+                fit: BoxFit.cover,
+                memCacheWidth: 160,
+                placeholder: (_, __) =>
+                    Container(width: 54, height: 54, color: Colors.grey.shade200),
+                errorWidget: (_, __, ___) =>
+                    Container(width: 54, height: 54, color: Colors.grey.shade200),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${index + 1}. ${photo.uploaderName}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (photo.isCover) ...[
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Icon(Icons.star, size: 13, color: widget.primaryColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Gallery cover',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: widget.primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (!photo.isCover)
+              IconButton(
+                icon: const Icon(Icons.star_outline, size: 20),
+                tooltip: 'Use as cover',
+                onPressed: () => _setCover(photo),
+              ),
+            ReorderableDragStartListener(
+              index: index,
+              child: Icon(Icons.drag_handle, color: Colors.grey.shade500),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTile(CommunityPhoto photo, int index) {
     return GestureDetector(
       onTap: () => _openViewer(index),
-      // Long-press to delete, so the grid stays clean for the common case of
-      // just looking. The viewer carries an explicit button for discoverability.
-      onLongPress: photo.canDelete ? () => _confirmDelete(photo) : null,
+      // Long-press opens what the viewer is actually allowed to do: the full
+      // curation sheet for the event owner, a straight delete for a
+      // contributor on their own photo, nothing for anyone else.
+      onLongPress: _isEventOwner
+          ? () => _showOwnerActions(photo)
+          : (photo.canDelete ? () => _confirmDelete(photo) : null),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -469,6 +798,19 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
               ),
             ),
           ),
+          if (photo.isCover)
+            Positioned(
+              left: 4,
+              bottom: 4,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: widget.primaryColor,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.star, size: 11, color: Colors.white),
+              ),
+            ),
           if (photo.canDelete)
             Positioned(
               top: 4,
