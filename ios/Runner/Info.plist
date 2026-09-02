@@ -24,6 +24,16 @@
 		<string>????</string>
 		<key>CFBundleVersion</key>
 		<string>$(FLUTTER_BUILD_NUMBER)</string>
+		<!-- Export compliance. Answers the "App Encryption Documentation"
+		     questions at build time so they are not asked on every TestFlight
+		     upload. false asserts the app uses only encryption exempt from the
+		     declaration: HTTPS/TLS through the OS networking stack, and the
+		     iOS Keychain via flutter_secure_storage. The app implements no
+		     cryptography of its own.
+		     If that ever stops being true, this must change - see the note in
+		     the commit/PR that added it. -->
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false/>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
 		<key>NSAppleMusicUsageDescription</key>
