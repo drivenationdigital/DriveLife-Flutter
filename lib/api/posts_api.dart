@@ -174,10 +174,17 @@ class PostsAPI {
     return [];
   }
 
+  /// Searches for something to tag: users, vehicles (by registration) or
+  /// events.
+  ///
+  /// [excludeUserId] is left out of the results — the server uses it for the
+  /// "not yourself" rule. Omit it to exclude nobody, which is what a gallery
+  /// wants: the person who shot it may well be in the photos.
   static Future<List<Map<String, dynamic>>> fetchTaggableEntities({
     required String search,
     required String entityType,
     required List<TaggedEntity> taggedEntities,
+    int? excludeUserId,
   }) async {
     String endpoint;
 
@@ -200,7 +207,11 @@ class PostsAPI {
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'search': search,
-          'user_id': 'USER_ID', // Get from your auth
+          // The server casts this with %d, so 0 excludes nobody. It used to
+          // send the literal string 'USER_ID', which cast to 0 — meaning the
+          // "exclude yourself" rule has never actually applied. Kept as 0 by
+          // default so existing callers behave exactly as before.
+          'user_id': excludeUserId ?? 0,
           'tagged_entities': taggedEntities.map((e) => e.toJson()).toList(),
         }),
       );

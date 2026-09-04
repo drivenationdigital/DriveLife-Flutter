@@ -1,5 +1,4 @@
 import 'package:drivelife/config/feature_flags.dart';
-import 'package:drivelife/widgets/events/event_community_gallery_tab.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -8,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:drivelife/api/events_api.dart';
+import 'package:drivelife/widgets/media/entity_galleries_tab.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -1186,7 +1186,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                       const Tab(text: 'About Us'),
                       const Tab(text: 'Entry & Tickets'),
                       if (FeatureFlags.eventCommunityGallery)
-                        const Tab(text: 'Gallery'),
+                        const Tab(text: 'Media'),
                       // Tab(text: 'Map'),
                     ],
                   ),
@@ -1219,12 +1219,12 @@ class _EventDetailScreenState extends State<EventDetailScreen>
             ),
           ),
 
-          // Community Gallery Tab
+          // Media Tab — the galleries tagged to this event, not one merged
+          // pool of photos. Creating a gallery happens on the media tab, where
+          // it can be titled and tagged, so there is no add button here.
           if (FeatureFlags.eventCommunityGallery)
-            EventCommunityGalleryTab(
-              eventId: eventId,
-              eventTitle: eventTitle,
-              eventCoverUrl: eventImages.isNotEmpty ? eventImages.first : null,
+            EntityGalleriesTab(
+              entityId: eventId,
               primaryColor: theme.primaryColor,
             ),
 

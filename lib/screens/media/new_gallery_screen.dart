@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/providers/gallery_upload_provider.dart';
+import 'package:drivelife/screens/media/gallery_upload_progress_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -120,12 +121,13 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
     super.dispose();
   }
 
-  /// Next needs all three: a name to show, an event to attach to, and photos
-  /// to send. Without the event there is nowhere for the photos to go.
+  /// Next needs a title and at least one photo — the two things every gallery
+  /// must have, the first photo being its cover.
+  ///
+  /// An event or venue is deliberately NOT required: a gallery is its own
+  /// entity, and tagging one is optional metadata.
   bool get _canContinue =>
-      _nameController.text.trim().isNotEmpty &&
-      _taggedEvent != null &&
-      _photos.isNotEmpty;
+      _nameController.text.trim().isNotEmpty && _photos.isNotEmpty;
 
   Future<void> _addPhotos() async {
     final picked = await _picker.pickMultiImage();
@@ -151,29 +153,37 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
     if (event != null && mounted) setState(() => _taggedEvent = event);
   }
 
+  /// Starts the upload and moves to the progress step.
+  ///
+  /// Tagging needs photo ids, and a photo has none until it is uploaded and
+  /// registered — so step 2 cannot come straight after this. The progress page
+  /// covers that gap and hands over when the batch lands. The upload itself
+  /// runs in the provider, so backing out of either step does not cancel it.
   void _submit() {
-    final event = _taggedEvent;
-    if (!_canContinue || event == null) return;
+    if (!_canContinue) return;
 
-    context.read<GalleryUploadProvider>().startUpload(
-      eventId: event.id,
-      eventTitle: event.name,
+    final event = _taggedEvent;
+    final name = _nameController.text.trim();
+
+    final batchId = context.read<GalleryUploadProvider>().startUpload(
+      // Empty for an untagged gallery, which stands on its own.
+      eventId: event?.id ?? '',
+      eventTitle: event?.name ?? name,
       files: List<File>.from(_photos),
-      galleryName: _nameController.text.trim(),
-      entityType: event.entityType,
+      galleryName: name,
+      entityType: event?.entityType ?? 'none',
     );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Sharing ${_photos.length} photo${_photos.length == 1 ? '' : 's'} to '
-          '${event.name} — you can keep using the app',
+    // pushReplacement: going "back" from progress should return to the media
+    // tab, not to a picker whose photos are already uploading.
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => GalleryUploadProgressScreen(
+          batchId: batchId,
+          galleryName: name,
         ),
-        backgroundColor: Colors.green,
       ),
     );
-
-    Navigator.of(context).pop(true);
   }
 
   @override
@@ -235,7 +245,24 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
           ),
 
           const SizedBox(height: 26),
-          const _FieldLabel('Event or venue'),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              const _FieldLabel('Event or venue'),
+              const SizedBox(width: 8),
+              // Said plainly, because the field looked mandatory before and
+              // people would hunt for something to put in it.
+              Text(
+                'Optional',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade500,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           if (_taggedEvent == null)
             _EventPickerButton(onTap: _pickEvent)

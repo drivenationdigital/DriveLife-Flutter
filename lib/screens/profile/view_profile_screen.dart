@@ -1,6 +1,8 @@
 import 'package:drivelife/main.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/screens/media/gallery_view_screen.dart';
+import 'package:drivelife/widgets/media/gallery_card.dart';
 import 'package:drivelife/screens/chat/ChatScreen.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
@@ -15,6 +17,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../api/events_api.dart';
 import '../../services/user_service.dart';
 import '../../providers/user_provider.dart';
 import '../../models/post_model.dart';
@@ -41,7 +44,7 @@ class ViewProfileScreen extends StatefulWidget {
 }
 
 class _ViewProfileScreenState extends State<ViewProfileScreen>
-    with SingleTickerProviderStateMixin, RouteAware  {
+    with SingleTickerProviderStateMixin, RouteAware {
   late TabController _tabController;
   final UserService _userService = UserService();
   final PostsService _postsService = PostsService();
@@ -60,6 +63,12 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   int _postsPage = 1;
   int _taggedPage = 1;
   bool _loadingPosts = false;
+
+  /// Galleries for the Galleries tab, loaded the first time it is opened —
+  /// there is no point fetching them for someone who never leaves Posts.
+  final List<Map<String, dynamic>> _galleries = [];
+  bool _loadingGalleries = false;
+  bool _galleriesLoaded = false;
   bool _loadingTagged = false;
   bool _hasMorePosts = true;
   bool _hasMoreTagged = true;
@@ -74,7 +83,9 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    // Posts, Garage, Galleries, Tags — keep in step with the tabs and
+    // _buildActiveTabContent below.
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_onTabChanged);
     _scrollController.addListener(_onScroll);
     _checkIfOwnProfile();
@@ -98,7 +109,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     super.dispose();
   }
 
-    @override
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
@@ -148,6 +159,104 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
       _loadPosts();
     } else if (index == 2) {
       _loadTaggedPosts();
+    }
+  }
+
+  /// Fetches this profile's galleries once.
+  ///
+  /// [EventsAPI.fetchGalleries] defaults to the signed-in user when given no
+  /// id, which is exactly right for one's own profile.
+  Future<void> _loadGalleries() async {
+    if (_loadingGalleries || _galleriesLoaded) return;
+
+    setState(() => _loadingGalleries = true);
+
+    try {
+      final galleries = await EventsAPI.fetchGalleries(userId: widget.userId);
+      if (!mounted) return;
+
+      setState(() {
+        _galleries
+          ..clear()
+          ..addAll(galleries);
+        _loadingGalleries = false;
+        _galleriesLoaded = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      // Marked loaded either way: an empty tab that retries on every rebuild
+      // is worse than one the user can pull to refresh.
+      setState(() {
+        _loadingGalleries = false;
+        _galleriesLoaded = true;
+      });
+    }
+  }
+
+  /// Deletes a whole gallery from its tile, after confirming.
+  ///
+  /// This lives on the tile rather than inside the gallery because that is
+  /// where you are looking at the gallery AS an object; inside it, a long
+  /// press is about the one photo under your finger.
+  Future<void> _deleteGallery(Map<String, dynamic> gallery) async {
+    final galleryId = int.tryParse('${gallery['gallery_id']}') ?? 0;
+    if (galleryId <= 0) return;
+
+    final title = '${gallery['title'] ?? ''}';
+    final count = int.tryParse('${gallery['photo_count']}') ?? 0;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this gallery?'),
+        content: Text(
+          count == 0
+              ? '"$title" will be removed. This cannot be undone.'
+              : '"$title" and all $count of its photos will be removed. '
+                    'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // Removed from the grid first so the tile does not sit there through the
+    // round trip; put back if the delete fails.
+    final previous = List<Map<String, dynamic>>.from(_galleries);
+    setState(() {
+      _galleries.removeWhere(
+        (g) => int.tryParse('${g['gallery_id']}') == galleryId,
+      );
+    });
+
+    try {
+      await EventsAPI.deleteGallery(galleryId);
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _galleries
+          ..clear()
+          ..addAll(previous);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$e'.replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -579,12 +688,9 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     final isExpired =
         DateTime.now().millisecondsSinceEpoch / 1000 > expiresAt - 60;
 
-      // Re-fetch token
-      final accountManager = Provider.of<AccountManager>(
-        context,
-        listen: false,
-      );
-      final currentAccount = accountManager.activeAccount;
+    // Re-fetch token
+    final accountManager = Provider.of<AccountManager>(context, listen: false);
+    final currentAccount = accountManager.activeAccount;
 
     if (token == null || isExpired) {
       if (currentAccount != null && currentAccount.token.isNotEmpty) {
@@ -805,6 +911,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                     tabs: const [
                       Tab(text: 'Posts'),
                       Tab(text: 'Garage'),
+                      Tab(text: 'Galleries'),
                       Tab(text: 'Tags'),
                     ],
                   ),
@@ -829,10 +936,117 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
       case 1:
         return _buildGarageContent(theme);
       case 2:
+        return _buildGalleriesGrid(theme);
+      case 3:
         return _buildPostsGrid(_taggedPosts, theme);
       default:
         return _buildPostsGrid(_posts, theme);
     }
+  }
+
+  /// Galleries this user has put together: cover image with the title over it.
+  ///
+  /// Two-up rather than the three-up posts grid — a gallery card has to carry a
+  /// title, and three across leaves no room to read one.
+  Widget _buildGalleriesGrid(ThemeProvider theme) {
+    // Kicked off from build rather than initState so it costs nothing until
+    // someone actually opens this tab.
+    if (!_galleriesLoaded && !_loadingGalleries) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadGalleries());
+    }
+
+    final galleries = _galleries;
+
+    if (_loadingGalleries && galleries.isEmpty) {
+      return const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 48),
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      );
+    }
+
+    if (galleries.isEmpty) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 32),
+          child: Column(
+            children: [
+              Icon(
+                Icons.photo_library_outlined,
+                size: 36,
+                color: theme.subtextColor,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'No galleries yet',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: theme.textColor,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Galleries this member shares will show up here.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13.5, color: theme.subtextColor),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SliverPadding(
+      padding: const EdgeInsets.all(12),
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 0.86,
+        ),
+        delegate: SliverChildBuilderDelegate((context, index) {
+          final gallery = galleries[index];
+          final title = '${gallery['title'] ?? ''}';
+          final count = int.tryParse('${gallery['photo_count']}') ?? 0;
+          final galleryId = int.tryParse('${gallery['gallery_id']}');
+
+          // Only where the server says this viewer owns it, so a card in
+          // someone else's profile offers nothing.
+          final canEdit = gallery['can_edit'] == true;
+
+          return GalleryCard(
+            title: title,
+            onLongPress: canEdit ? () => _deleteGallery(gallery) : null,
+            // Thumb rather than the full-size cover: these are grid tiles.
+            coverUrl: '${gallery['cover_thumb'] ?? gallery['cover'] ?? ''}',
+            subtitle: count == 0 ? '' : '$count photo${count == 1 ? '' : 's'}',
+            onTap: () async {
+              final changed = await Navigator.of(context).push<bool>(
+                MaterialPageRoute(
+                  // Opened by gallery id, so a gallery with nothing tagged
+                  // opens the same way as one tagged to an event.
+                  builder: (_) => GalleryViewScreen(
+                    galleryId: galleryId,
+                    entityTitle: title,
+                    galleryName: title,
+                  ),
+                ),
+              );
+
+              // A new cover, a reorder or a delete all change this grid, and
+              // covers are resolved server-side, so refetch rather than patch.
+              if (changed == true && mounted) {
+                setState(() => _galleriesLoaded = false);
+                await _loadGalleries();
+              }
+            },
+          );
+        }, childCount: galleries.length),
+      ),
+    );
   }
 
   Widget _buildPostsGrid(List<Post> posts, ThemeProvider theme) {
@@ -1586,7 +1800,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     );
   }
 
-Widget _buildOtherProfileButtons(ThemeProvider theme) {
+  Widget _buildOtherProfileButtons(ThemeProvider theme) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(

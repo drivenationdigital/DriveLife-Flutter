@@ -119,8 +119,16 @@ class PendingImagesResponse {
   }
 }
 
-/// An event with a community photo gallery.
+/// A gallery card in the media tab.
 class EventGallery {
+  /// The gallery itself. Null for a padded "no photos yet" card, which stands
+  /// for an event that has no gallery to open.
+  ///
+  /// Cards used to be addressed by entity, which meant permission resolved to
+  /// the EVENT owner — so a gallery's own owner could not curate their own
+  /// photos when they reached it from here.
+  final int? galleryId;
+
   final int eventId;
   final String title;
   final String? coverImageUrl;
@@ -142,6 +150,7 @@ class EventGallery {
   final String entityType;
 
   const EventGallery({
+    this.galleryId,
     required this.eventId,
     required this.title,
     this.coverImageUrl,
@@ -164,10 +173,16 @@ class EventGallery {
   String get site => blogId == 1 ? 'US' : 'GB';
 
   /// "Hardwick Hall · 31/05/2026", dropping whichever half is missing.
-  String get subtitle =>
-      [locationName, dateLabel].where((s) => s != null && s.isNotEmpty).join(' · ');
+  String get subtitle => [
+    locationName,
+    dateLabel,
+  ].where((s) => s != null && s.isNotEmpty).join(' · ');
+
+  /// A real gallery, as opposed to an upcoming-event placeholder.
+  bool get isGallery => galleryId != null && galleryId! > 0;
 
   factory EventGallery.fromJson(Map<String, dynamic> json) => EventGallery(
+    galleryId: json['gallery_id'] == null ? null : _int(json['gallery_id']),
     eventId: _int(json['event_id']),
     title: json['title']?.toString() ?? 'Event',
     coverImageUrl: _str(json['cover_image']),

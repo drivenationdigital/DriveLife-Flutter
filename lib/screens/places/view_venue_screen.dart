@@ -2,7 +2,6 @@ import 'package:drivelife/api/places_api.dart';
 import 'package:drivelife/components/post_card.dart';
 import 'package:drivelife/models/venue_view_model.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
-import 'package:drivelife/widgets/events/event_community_gallery_tab.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
@@ -15,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../widgets/media/entity_galleries_tab.dart';
 
 // ── Brand color constants (match club view) ────────────────────────────
 const Color _gold = Color(0xFFC4A062);
@@ -417,12 +417,10 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
                           venueId: widget.venueId,
                           onCompose: _handleCreateVenuePost,
                         ),
-                        EventCommunityGalleryTab(
-                          eventId: widget.venueId,
-                          eventTitle: _venue?.title ?? 'This venue',
-                          eventCoverUrl: _venue?.coverPhoto.url,
-                          primaryColor: theme.primaryColor,
+                        EntityGalleriesTab(
+                          entityId: widget.venueId,
                           entityType: 'venue',
+                          primaryColor: theme.primaryColor,
                         ),
                         _buildAboutPanel(theme),
                       ],
@@ -1533,7 +1531,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
               _segButton(label: 'Updates', index: 0),
               _segButton(label: 'Events', index: 1),
               _segButton(label: 'Posts', index: 2),
-              _segButton(label: 'Gallery', index: 3),
+              _segButton(label: 'Media', index: 3),
               _segButton(label: 'About', index: 4),
             ],
           ),

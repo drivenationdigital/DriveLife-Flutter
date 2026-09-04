@@ -752,14 +752,29 @@ class EventsAPI {
   ///
   /// Safe to call repeatedly with small batches — that is the point: an image
   /// registered as soon as it lands is not lost if the app dies mid-gallery.
+  /// Attaches uploaded Cloudflare images to a gallery.
+  ///
+  /// A gallery is its own thing now, so [eventId] is optional: pass nothing and
+  /// the photos land in a standalone gallery titled [galleryName].
+  ///
+  /// Photos arrive in chunks. The first call creates the gallery and returns
+  /// its `gallery_id`; pass that back as [galleryId] on later chunks so they
+  /// append to the same gallery instead of creating one each.
   static Future<Map<String, dynamic>?> registerCommunityGalleryMedia({
-    required String eventId,
+    String? eventId,
     required List<String> mediaIds,
     String? galleryName,
-    String entityType = 'event',
+    String? entityType = 'event',
+    int? galleryId,
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Not signed in');
+
+    // Tolerate a missing or unparseable id rather than throwing: an untagged
+    // gallery legitimately has no entity.
+    final entityId = int.tryParse(eventId ?? '') ?? 0;
+    final hasEntity =
+        entityId > 0 && entityType != null && entityType != 'none';
 
     final response = await http.post(
       Uri.parse(
@@ -772,12 +787,13 @@ class EventsAPI {
       body: jsonEncode({
         // entity_* is what the server reads; event_id is still sent for an
         // event so an older build of the API keeps working.
-        'entity_type': entityType,
-        'entity_id': int.parse(eventId),
-        if (entityType == 'event') 'event_id': int.parse(eventId),
+        if (hasEntity) 'entity_type': entityType,
+        if (hasEntity) 'entity_id': entityId,
+        if (hasEntity && entityType == 'event') 'event_id': entityId,
+        if (galleryId != null && galleryId > 0) 'gallery_id': galleryId,
         'media_ids': mediaIds,
-        // Omitted rather than sent empty, so the column stays null for photos
-        // added from an event's own gallery tab.
+        // Omitted rather than sent empty, so the server falls back to the
+        // event's own name for photos added from its gallery tab.
         if (galleryName != null && galleryName.trim().isNotEmpty)
           'gallery_name': galleryName.trim(),
       }),
@@ -790,13 +806,190 @@ class EventsAPI {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  /// Runs one pass of the vehicle scan over a gallery.
+  ///
+  /// Incremental by design: each photo is a model round trip, so the server
+  /// processes a handful per call. Keep calling while `done` is false. Every
+  /// response carries all suggestions found so far, so stopping early still
+  /// leaves something usable.
+  ///
+  /// `available` is false where the site has no AI library installed — the
+  /// caller should hide the section rather than show an error.
+  static Future<Map<String, dynamic>> scanGallery({
+    required int galleryId,
+    int limit = 4,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/galleries/scan'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'gallery_id': galleryId, 'limit': limit}),
+    );
+
+    // A 404 means this build of the API predates the scan endpoint. That is a
+    // deployment state, not a bug in the gallery, and it must be reported
+    // distinctly — it used to look identical to "found no cars".
+    if (response.statusCode == 404) {
+      throw Exception('Photo scanning is not available on the server yet');
+    }
+
+    if (response.statusCode != 200) {
+      throw Exception('Scan failed (${response.statusCode})');
+    }
+
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  /// Saves the tags on a gallery. Owner only.
+  ///
+  /// The list REPLACES what was stored for this gallery (and [mediaId]), so
+  /// the caller sends what it is showing rather than diffing adds and removes.
+  /// [mediaId] 0 tags the whole gallery; a photo row id tags that one photo.
+  ///
+  /// Each tag is `{entity_type: 'user'|'car', entity_id: int, registration?}`.
+  static Future<List<Map<String, dynamic>>> saveGalleryTags({
+    required int galleryId,
+    required List<Map<String, dynamic>> tags,
+    int mediaId = 0,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/galleries/tags'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'gallery_id': galleryId,
+        'media_id': mediaId,
+        'tags': tags,
+      }),
+    );
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+
+    if (response.statusCode != 200) {
+      throw Exception(body['message']?.toString() ?? 'Could not save the tags');
+    }
+
+    return (body['tags'] as List? ?? [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  /// The tags on a gallery.
+  static Future<List<Map<String, dynamic>>> fetchGalleryTags({
+    required int galleryId,
+    int? mediaId,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/galleries/tags').replace(
+        queryParameters: {
+          'gallery_id': '$galleryId',
+          if (mediaId != null) 'media_id': '$mediaId',
+        },
+      ),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode != 200) return const [];
+
+    final body = jsonDecode(response.body);
+    final list = (body is Map ? body['tags'] : null) as List? ?? const [];
+
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  /// Removes a whole gallery and every photo in it. Owner only.
+  ///
+  /// Irreversible on the Cloudflare side — the stored originals are purged —
+  /// so callers must confirm first.
+  static Future<void> deleteGallery(int galleryId) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/galleries/delete'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'gallery_id': galleryId}),
+    );
+
+    if (response.statusCode == 200) return;
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    throw Exception(
+      body['message']?.toString() ?? 'Could not delete the gallery',
+    );
+  }
+
+  /// Galleries for a profile tab, or for an event or venue.
+  ///
+  /// With no arguments this returns the signed-in user's own galleries, which
+  /// is what the profile Galleries tab needs.
+  static Future<List<Map<String, dynamic>>> fetchGalleries({
+    int? userId,
+    String? entityType,
+    int? entityId,
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final query = <String, String>{
+      'page': '$page',
+      'per_page': '$perPage',
+      if (userId != null && userId > 0) 'user_id': '$userId',
+      if (entityType != null && entityId != null && entityId > 0) ...{
+        'entity_type': entityType,
+        'entity_id': '$entityId',
+      },
+    };
+
+    final response = await http.get(
+      Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/galleries',
+      ).replace(queryParameters: query),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load galleries (${response.statusCode})');
+    }
+
+    final body = jsonDecode(response.body);
+    final list = (body is Map ? body['galleries'] : null) as List? ?? [];
+
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
   static Future<Map<String, dynamic>?> uploadCommunityGalleryImages({
     required String eventId,
     required List<ImageData> images,
     Function(double progress)? onProgress,
   }) async {
     try {
-       final token = await _authService.getToken();
+      final token = await _authService.getToken();
       if (token == null) {
         print('❌ [EventsAPI] No token available');
         return null;
@@ -814,7 +1007,10 @@ class EventsAPI {
           Uri.parse(
             '${ApiConfig.baseUrl}/wp-json/app/v2/event-community-gallery/create-upload',
           ),
-          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
         );
         if (urlResponse.statusCode != 200) {
           throw Exception('Failed to get upload URL');
@@ -851,7 +1047,9 @@ class EventsAPI {
         throw Exception('No images uploaded');
       }
 
-      print('✅ [EventsAPI] Uploaded ${uploadedIds.length} images, registering...');
+      print(
+        '✅ [EventsAPI] Uploaded ${uploadedIds.length} images, registering...',
+      );
       print('Uploaded IDs: $uploadedIds');
 
       // Step 3 — register the batch against the event
@@ -859,7 +1057,10 @@ class EventsAPI {
         Uri.parse(
           '${ApiConfig.baseUrl}/wp-json/app/v2/event-community-gallery/register',
         ),
-        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
         body: jsonEncode({
           'event_id': int.parse(eventId),
           'media_ids': uploadedIds,
@@ -925,13 +1126,25 @@ class EventsAPI {
   /// [imageIds] are row ids in the order they should appear. Ids left out keep
   /// no position and fall in behind the ordered ones, so the owner does not
   /// have to drag every photo in a large gallery to fix the top of it.
+  /// Saves the order of a gallery's photos, owner only.
+  ///
+  /// Scoped by [galleryId] when given — one gallery's order — otherwise by
+  /// entity, which orders the merged pool on that event or venue.
   static Future<void> reorderCommunityGallery({
-    required String eventId,
+    String? eventId,
+    int? galleryId,
     required List<int> imageIds,
     String entityType = 'event',
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Not signed in');
+
+    final entityId = int.tryParse(eventId ?? '') ?? 0;
+    final byGallery = galleryId != null && galleryId > 0;
+
+    if (!byGallery && entityId <= 0) {
+      throw Exception('Nothing to reorder');
+    }
 
     final response = await http.post(
       Uri.parse(
@@ -942,9 +1155,12 @@ class EventsAPI {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({
-        'entity_type': entityType,
-        'entity_id': int.parse(eventId),
-        if (entityType == 'event') 'event_id': int.parse(eventId),
+        if (byGallery) 'gallery_id': galleryId,
+        if (!byGallery) ...{
+          'entity_type': entityType,
+          'entity_id': entityId,
+          if (entityType == 'event') 'event_id': entityId,
+        },
         'image_ids': imageIds,
       }),
     );
@@ -955,15 +1171,26 @@ class EventsAPI {
     throw Exception(body['message']?.toString() ?? 'Could not save the order');
   }
 
-  /// Picks the photo shown for this gallery in the media tab, replacing the
-  /// event's own image. Event owner only. Pass null to clear it.
+  /// Picks the photo that represents this gallery — its cover, and what shows
+  /// for it in the media tab in place of the event's own image.
+  ///
+  /// Owner only. Pass null for [imageId] to clear it. Scoped by [galleryId]
+  /// when given, otherwise by entity.
   static Future<void> setCommunityGalleryCover({
-    required String eventId,
+    String? eventId,
+    int? galleryId,
     required int? imageId,
     String entityType = 'event',
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Not signed in');
+
+    final entityId = int.tryParse(eventId ?? '') ?? 0;
+    final byGallery = galleryId != null && galleryId > 0;
+
+    if (!byGallery && entityId <= 0) {
+      throw Exception('Nothing to set a cover on');
+    }
 
     final response = await http.post(
       Uri.parse(
@@ -974,9 +1201,12 @@ class EventsAPI {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({
-        'entity_type': entityType,
-        'entity_id': int.parse(eventId),
-        if (entityType == 'event') 'event_id': int.parse(eventId),
+        if (byGallery) 'gallery_id': galleryId,
+        if (!byGallery) ...{
+          'entity_type': entityType,
+          'entity_id': entityId,
+          if (entityType == 'event') 'event_id': entityId,
+        },
         'image_id': imageId ?? 0,
       }),
     );
@@ -987,8 +1217,14 @@ class EventsAPI {
     throw Exception(body['message']?.toString() ?? 'Could not set the cover');
   }
 
+  /// Photos in a gallery.
+  ///
+  /// Addressable two ways: by [galleryId] for one specific gallery — the only
+  /// way to reach one that is tagged to nothing — or by entity, which merges
+  /// every gallery on that event or venue as before.
   static Future<Map<String, dynamic>?> fetchCommunityGallery({
-    required String eventId,
+    String? eventId,
+    int? galleryId,
     int page = 1,
     int perPage = 30,
     String entityType = 'event',
@@ -997,6 +1233,14 @@ class EventsAPI {
       final token = await _authService.getToken();
       if (token == null) {
         print('❌ [EventsAPI] No token available');
+        return null;
+      }
+
+      final entityId = int.tryParse(eventId ?? '') ?? 0;
+      final byGallery = galleryId != null && galleryId > 0;
+
+      if (!byGallery && entityId <= 0) {
+        print('❌ [EventsAPI] fetchCommunityGallery needs a gallery or entity');
         return null;
       }
 
@@ -1009,9 +1253,12 @@ class EventsAPI {
           'Authorization': 'Bearer $token',
         },
         body: jsonEncode({
-          'entity_type': entityType,
-          'entity_id': int.parse(eventId),
-          if (entityType == 'event') 'event_id': int.parse(eventId),
+          if (byGallery) 'gallery_id': galleryId,
+          if (!byGallery) ...{
+            'entity_type': entityType,
+            'entity_id': entityId,
+            if (entityType == 'event') 'event_id': entityId,
+          },
           'page': page,
           'per_page': perPage,
         }),

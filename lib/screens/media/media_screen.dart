@@ -5,6 +5,7 @@ import 'package:drivelife/models/media_models.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/media/images_of_you_screen.dart';
+import 'package:drivelife/screens/media/gallery_view_screen.dart';
 import 'package:drivelife/screens/media/new_gallery_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
@@ -57,11 +58,7 @@ class _MediaScreenState extends State<MediaScreen>
   }
 
   Future<void> _loadAll() {
-    return Future.wait([
-      _loadPending(),
-      _loadGalleries(),
-      _loadPopular(),
-    ]);
+    return Future.wait([_loadPending(), _loadGalleries(), _loadPopular()]);
   }
 
   Future<void> _loadPending() async {
@@ -153,35 +150,30 @@ class _MediaScreenState extends State<MediaScreen>
     if (mounted) await _loadPending();
   }
 
-  /// Opens whatever the gallery actually hangs off.
+  /// Opens the gallery itself, not the event or venue behind it.
   ///
-  /// Events go straight to their community gallery tab — that's the whole
-  /// point of the section. Venues have their own screen; sending one to the
-  /// event route is what produced "failed to load event", because the id was
-  /// looked up as an event post and no such event exists.
-  void _openGallery(EventGallery gallery) {
-    if (gallery.isVenue) {
-      Navigator.pushNamed(
-        context,
-        AppRoutes.venueDetails,
-        arguments: {
-          'venueId': gallery.eventId.toString(),
-          'initialTabIndex': 3, // Gallery
-        },
-      );
-      return;
-    }
-
-    Navigator.pushNamed(
-      context,
-      AppRoutes.eventDetail,
-      arguments: {
-        // Was hardcoded 'GB', which opened US galleries against the wrong
-        // blog. blog_id now rides along on the card.
-        'event': {'id': gallery.eventId, 'site': gallery.site},
-        'initialTabIndex': 2,
-      },
+  /// These cards are galleries, so tapping one shows its photos — cover first,
+  /// then the grid. Getting to the entity is a step from there, rather than
+  /// the other way round.
+  Future<void> _openGallery(EventGallery gallery) async {
+    // By gallery id where there is one: that is what lets the gallery's owner
+    // curate it from here, and what keeps two galleries on one event apart.
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => GalleryViewScreen(
+          galleryId: gallery.galleryId,
+          entityId: gallery.eventId.toString(),
+          entityType: gallery.entityType,
+          entityTitle: gallery.title,
+          galleryName: gallery.galleryName,
+          dateLabel: gallery.dateLabel,
+        ),
+      ),
     );
+
+    // A new cover, a reorder or a deleted gallery all change these cards, and
+    // the covers are resolved server-side — so refetch rather than patch.
+    if (changed == true && mounted) await _loadGalleries();
   }
 
   void _openPost(PopularImage image) {
@@ -276,9 +268,7 @@ class _MediaScreenState extends State<MediaScreen>
 
       return [
         const _SectionHeader(title: 'Galleries'),
-        _SectionMessage(
-          message: 'No galleries match "$_gallerySearch".',
-        ),
+        _SectionMessage(message: 'No galleries match "$_gallerySearch".'),
         const SizedBox(height: 28),
       ];
     }

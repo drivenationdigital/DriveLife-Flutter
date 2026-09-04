@@ -48,18 +48,30 @@ class GalleryUploadItem {
   bool get isFailed => status == GalleryItemStatus.failed;
 }
 
-/// One gallery submission — the photos a user picked for a single event.
+/// One gallery submission — the photos a user picked for a single gallery.
 class GalleryUploadBatch {
   final String id;
+
+  /// The event or venue these photos are tagged to, or '' for a standalone
+  /// gallery. A gallery is its own thing now; a tag is optional.
   final String eventId;
+
   final String eventTitle;
 
   /// What the user called this batch, or null when it came from an event's own
-  /// gallery tab (which has no name field).
+  /// gallery tab (which has no name field) — the server then falls back to the
+  /// event's own name, because every gallery must end up with a title.
   final String? galleryName;
 
-  /// 'event' or 'venue' — what these photos hang off.
+  /// 'event', 'venue', or 'none' for a standalone gallery.
   final String entityType;
+
+  /// Assigned by the server when the first chunk creates the gallery, then
+  /// passed back on every later chunk so they all land in the same gallery.
+  int? galleryId;
+
+  /// True once photos are tagged to something, so the UI can say so.
+  bool get hasEntity => eventId.isNotEmpty && entityType != 'none';
 
   final List<GalleryUploadItem> items;
 
@@ -130,6 +142,28 @@ class GalleryUploadProvider with ChangeNotifier {
   /// when the batch ends.
   static const int _registerChunk = 5;
 
+  /// Serialises the register calls of a batch, keyed by batch id.
+  ///
+  /// Uploads run concurrently, so without this two chunks could be in flight
+  /// together — and since the FIRST chunk is what creates the gallery, that
+  /// would create two galleries and split the photos between them.
+  final Map<String, Future<void>> _registerChains = {};
+
+  /// Bumped per batch so two ids cannot collide.
+  static int _batchSeq = 0;
+
+  /// Id for a new batch. Visible for testing.
+  ///
+  /// A timestamp alone is not enough: two batches started in the same
+  /// microsecond would collide in [_batches], silently merging them. The
+  /// sequence number makes that impossible.
+  static String batchIdFor(String eventId) {
+    // 'gallery' keeps the id readable for a standalone batch, which has no
+    // event id to name itself after.
+    final prefix = eventId.isEmpty ? 'gallery' : eventId;
+    return '${prefix}_${DateTime.now().microsecondsSinceEpoch}_${_batchSeq++}';
+  }
+
   Map<String, GalleryUploadBatch> get batches => Map.unmodifiable(_batches);
 
   GalleryUploadBatch? batch(String id) => _batches[id];
@@ -149,13 +183,13 @@ class GalleryUploadProvider with ChangeNotifier {
   /// Starts a batch and returns its id immediately — the caller is expected to
   /// leave the screen rather than await this.
   String startUpload({
-    required String eventId,
-    required String eventTitle,
+    String eventId = '',
+    String eventTitle = '',
     required List<File> files,
     String? galleryName,
     String entityType = 'event',
   }) {
-    final batchId = '${eventId}_${DateTime.now().microsecondsSinceEpoch}';
+    final batchId = batchIdFor(eventId);
 
     final batch = GalleryUploadBatch(
       id: batchId,
@@ -204,6 +238,7 @@ class GalleryUploadProvider with ChangeNotifier {
     final batch = _batches[batchId];
     if (batch == null || !batch.isFinished) return;
     _batches.remove(batchId);
+    _registerChains.remove(batchId);
     notifyListeners();
   }
 
@@ -324,16 +359,39 @@ class GalleryUploadProvider with ChangeNotifier {
     return false;
   }
 
-  Future<void> _register(GalleryUploadBatch batch, List<String> mediaIds) async {
-    if (mediaIds.isEmpty) return;
+  /// Queues a chunk for registration behind any chunk already registering.
+  ///
+  /// Returns the chained future, so the caller still waits for its own chunk.
+  Future<void> _register(GalleryUploadBatch batch, List<String> mediaIds) {
+    if (mediaIds.isEmpty) return Future.value();
 
+    final chain = (_registerChains[batch.id] ?? Future.value()).then(
+      (_) => _registerNow(batch, mediaIds),
+    );
+
+    _registerChains[batch.id] = chain;
+    return chain;
+  }
+
+  Future<void> _registerNow(
+    GalleryUploadBatch batch,
+    List<String> mediaIds,
+  ) async {
     try {
-      await EventsAPI.registerCommunityGalleryMedia(
-        eventId: batch.eventId,
+      final result = await EventsAPI.registerCommunityGalleryMedia(
+        // Both omitted for a standalone gallery, which is tagged to nothing.
+        eventId: batch.hasEntity ? batch.eventId : null,
+        entityType: batch.hasEntity ? batch.entityType : null,
         mediaIds: mediaIds,
         galleryName: batch.galleryName,
-        entityType: batch.entityType,
+        galleryId: batch.galleryId,
       );
+
+      // The first chunk creates the gallery; hold its id for the rest.
+      final id = result?['gallery_id'];
+      if (batch.galleryId == null && id != null) {
+        batch.galleryId = id is int ? id : int.tryParse('$id');
+      }
     } catch (e) {
       // The bytes are safely in Cloudflare; only the attach failed. Mark the
       // photos failed so a retry re-runs them rather than reporting a success
@@ -343,7 +401,7 @@ class GalleryUploadProvider with ChangeNotifier {
       for (final item in batch.items) {
         if (item.mediaId != null && mediaIds.contains(item.mediaId)) {
           item.status = GalleryItemStatus.failed;
-          item.error = 'Uploaded but could not be attached to the event';
+          item.error = 'Uploaded but could not be added to the gallery';
         }
       }
       notifyListeners();
@@ -351,6 +409,9 @@ class GalleryUploadProvider with ChangeNotifier {
   }
 
   void _finish(GalleryUploadBatch batch) {
+    // The chain is per-run; a later retry starts a fresh one.
+    _registerChains.remove(batch.id);
+
     final failed = batch.failed;
 
     if (failed == 0) {
@@ -385,7 +446,8 @@ class GalleryUploadProvider with ChangeNotifier {
     _notificationsReady = true;
   }
 
-  int _notificationId(GalleryUploadBatch batch) => batch.id.hashCode & 0x7fffffff;
+  int _notificationId(GalleryUploadBatch batch) =>
+      batch.id.hashCode & 0x7fffffff;
 
   Future<void> _publishProgress(GalleryUploadBatch batch) async {
     notifyListeners();

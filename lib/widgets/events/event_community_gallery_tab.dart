@@ -37,6 +37,31 @@ class CommunityPhoto {
     this.isCover = false,
   });
 
+  /// Only [isCover] ever changes client-side — flipped optimistically so the
+  /// badge moves before the round trip lands — but the whole model is covered
+  /// so a new field cannot be silently dropped by a partial rebuild.
+  CommunityPhoto copyWith({
+    int? id,
+    String? url,
+    String? thumb,
+    String? uploaderName,
+    String? uploaderAvatar,
+    DateTime? takenAt,
+    bool? canDelete,
+    bool? isCover,
+  }) {
+    return CommunityPhoto(
+      id: id ?? this.id,
+      url: url ?? this.url,
+      thumb: thumb ?? this.thumb,
+      uploaderName: uploaderName ?? this.uploaderName,
+      uploaderAvatar: uploaderAvatar ?? this.uploaderAvatar,
+      takenAt: takenAt ?? this.takenAt,
+      canDelete: canDelete ?? this.canDelete,
+      isCover: isCover ?? this.isCover,
+    );
+  }
+
   factory CommunityPhoto.fromJson(Map<String, dynamic> json) {
     final uploader = json['uploader'] as Map<String, dynamic>? ?? const {};
     final url = _str(json['url']);
@@ -378,17 +403,7 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
     // once rather than after a round trip.
     setState(() {
       for (var i = 0; i < _photos.length; i++) {
-        final p = _photos[i];
-        _photos[i] = CommunityPhoto(
-          id: p.id,
-          url: p.url,
-          thumb: p.thumb,
-          uploaderName: p.uploaderName,
-          uploaderAvatar: p.uploaderAvatar,
-          takenAt: p.takenAt,
-          canDelete: p.canDelete,
-          isCover: p.id == photo.id,
-        );
+        _photos[i] = _photos[i].copyWith(isCover: _photos[i].id == photo.id);
       }
     });
 
@@ -480,7 +495,7 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (viewerContext) => _CommunityPhotoViewer(
+        builder: (viewerContext) => CommunityPhotoViewer(
           photos: List.of(_photos),
           initialIndex: index,
           onDelete: (photo) async {
@@ -945,26 +960,37 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
 }
 
 /// Full-screen, swipeable, pinch-zoomable viewer with uploader credit.
-class _CommunityPhotoViewer extends StatefulWidget {
+class CommunityPhotoViewer extends StatefulWidget {
   final List<CommunityPhoto> photos;
   final int initialIndex;
 
-  /// Deletion is owned by the tab, which holds the grid this viewer is a window
-  /// onto — so one confirm/API path serves both, and the grid updates whichever
-  /// place the delete was triggered from.
-  final Future<void> Function(CommunityPhoto photo) onDelete;
+  /// Deletion is owned by whoever holds the grid this viewer is a window onto,
+  /// so one confirm/API path serves both and the grid updates wherever the
+  /// delete was triggered from. Null where deleting is not offered — the
+  /// gallery view is read-only.
+  final Future<void> Function(CommunityPhoto photo)? onDelete;
 
-  const _CommunityPhotoViewer({
+  /// Tags on the photo being viewed, looked up per photo as it is shown.
+  ///
+  /// A callback rather than a map so the caller decides where they come from,
+  /// and so a viewer with no tags to show simply passes nothing. Without this
+  /// a per-photo tag was invisible everywhere except a count badge on the
+  /// tagging grid, which made tagging one photo look like it had failed.
+  final List<String> Function(CommunityPhoto photo)? tagsFor;
+
+  const CommunityPhotoViewer({
+    super.key,
     required this.photos,
     required this.initialIndex,
-    required this.onDelete,
+    this.onDelete,
+    this.tagsFor,
   });
 
   @override
-  State<_CommunityPhotoViewer> createState() => _CommunityPhotoViewerState();
+  State<CommunityPhotoViewer> createState() => CommunityPhotoViewerState();
 }
 
-class _CommunityPhotoViewerState extends State<_CommunityPhotoViewer> {
+class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
   late final PageController _controller;
   late int _index;
 
@@ -1037,13 +1063,13 @@ class _CommunityPhotoViewerState extends State<_CommunityPhotoViewer> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (photo.canDelete)
+                  if (photo.canDelete && widget.onDelete != null)
                     IconButton(
                       icon: const Icon(
                         Icons.delete_outline,
                         color: Colors.white,
                       ),
-                      onPressed: () => widget.onDelete(photo),
+                      onPressed: () => widget.onDelete!(photo),
                     )
                   else
                     const SizedBox(width: 12),
@@ -1051,6 +1077,52 @@ class _CommunityPhotoViewerState extends State<_CommunityPhotoViewer> {
               ),
             ),
           ),
+
+          // Tags on this photo, above the credit so they read as part of the
+          // photo rather than part of the uploader's name.
+          if (widget.tagsFor != null)
+            Builder(
+              builder: (context) {
+                final tags = widget.tagsFor!(photo);
+                if (tags.isEmpty) return const SizedBox.shrink();
+
+                return Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 96,
+                  child: SizedBox(
+                    height: 30,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: tags.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 6),
+                      itemBuilder: (context, i) => Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 11,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.25),
+                          ),
+                        ),
+                        child: Text(
+                          tags[i],
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
 
           // Uploader credit
           Positioned(
