@@ -991,8 +991,32 @@ class CommunityPhotoViewer extends StatefulWidget {
 }
 
 class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
+  /// How far the photo has to travel, or how fast it has to be moving, for a
+  /// release to close the viewer rather than spring back.
+  static const double _dismissDistance = 110;
+  static const double _dismissVelocity = 700;
+
   late final PageController _controller;
+
+  /// One zoom transform per page, so the drag can tell whether the photo on
+  /// screen is zoomed in and so paging away and back keeps that zoom.
+  final Map<int, TransformationController> _transforms = {};
+
   late int _index;
+
+  /// How far the current dismiss drag has travelled, in logical pixels. Signed,
+  /// because dragging up closes the viewer just as dragging down does.
+  double _dragOffset = 0;
+
+  /// Whether a finger is on the photo right now. Drives the follow-the-finger
+  /// duration: none while dragging, animated on release so a drag that falls
+  /// short of the threshold springs back rather than snapping.
+  bool _dragging = false;
+
+  /// Zoomed in, so a vertical drag should pan the photo instead of closing the
+  /// viewer. Nulling the drag callbacks leaves that gesture to the
+  /// InteractiveViewer rather than having the two fight over it.
+  bool _zoomed = false;
 
   @override
   void initState() {
@@ -1003,40 +1027,209 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
 
   @override
   void dispose() {
+    for (final transform in _transforms.values) {
+      transform.dispose();
+    }
     _controller.dispose();
     super.dispose();
+  }
+
+  TransformationController _transformFor(int index) =>
+      _transforms.putIfAbsent(index, TransformationController.new);
+
+  /// Keeps [_zoomed] in step with the photo on screen — after a pinch, and
+  /// after a page change onto a photo the user had already zoomed.
+  void _syncZoom() {
+    final zoomed = _transformFor(_index).value.getMaxScaleOnAxis() > 1.01;
+    if (zoomed != _zoomed) setState(() => _zoomed = zoomed);
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    final velocity = details.velocity.pixelsPerSecond.dy;
+
+    if (_dragOffset.abs() > _dismissDistance ||
+        velocity.abs() > _dismissVelocity) {
+      Navigator.pop(context);
+      return;
+    }
+
+    setState(() {
+      _dragging = false;
+      _dragOffset = 0;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final photo = widget.photos[_index];
 
+    // Ratio of the drag to a full screen height, which is what fades the
+    // chrome and shrinks the photo as it is pulled away.
+    final height = MediaQuery.sizeOf(context).height;
+    final progress = (_dragOffset.abs() / height).clamp(0.0, 1.0);
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          PageView.builder(
-            controller: _controller,
-            itemCount: widget.photos.length,
-            onPageChanged: (i) => setState(() => _index = i),
-            itemBuilder: (context, i) {
-              return InteractiveViewer(
-                minScale: 1,
-                maxScale: 4,
-                child: Center(
-                  child: CachedNetworkImage(
-                    imageUrl: widget.photos[i].url,
-                    fit: BoxFit.contain,
-                    placeholder: (context, url) => const Center(
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white54,
+          GestureDetector(
+            // Only while the photo sits at 1x: zoomed in, these are null and
+            // the pan belongs to the InteractiveViewer.
+            onVerticalDragStart: _zoomed
+                ? null
+                : (_) => setState(() => _dragging = true),
+            onVerticalDragUpdate: _zoomed
+                ? null
+                : (details) => setState(() => _dragOffset += details.delta.dy),
+            onVerticalDragEnd: _zoomed ? null : _onDragEnd,
+            child: AnimatedSlide(
+              offset: Offset(0, _dragOffset / height),
+              duration: _dragging
+                  ? Duration.zero
+                  : const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              child: AnimatedScale(
+                scale: 1 - progress * 0.3,
+                duration: _dragging
+                    ? Duration.zero
+                    : const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                child: PageView.builder(
+                  controller: _controller,
+                  itemCount: widget.photos.length,
+                  onPageChanged: (i) {
+                    setState(() => _index = i);
+                    _syncZoom();
+                  },
+                  itemBuilder: (context, i) {
+                    return InteractiveViewer(
+                      transformationController: _transformFor(i),
+                      minScale: 1,
+                      maxScale: 4,
+                      onInteractionUpdate: (_) => _syncZoom(),
+                      onInteractionEnd: (_) => _syncZoom(),
+                      child: Center(
+                        child: CachedNetworkImage(
+                          imageUrl: widget.photos[i].url,
+                          fit: BoxFit.contain,
+                          placeholder: (context, url) => const Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white54,
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => const Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white38,
+                            size: 48,
+                          ),
+                        ),
                       ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+
+          // The chrome fades out as the photo is pulled away, so the drag
+          // reads as the whole viewer leaving rather than the photo sliding
+          // out from under a fixed set of buttons.
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: _dragging,
+              child: AnimatedOpacity(
+                opacity: (1 - progress * 4).clamp(0.0, 1.0),
+                duration: _dragging
+                    ? Duration.zero
+                    : const Duration(milliseconds: 200),
+                child: _buildChrome(photo),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Close button, counter, per-photo tags and the uploader credit — the whole
+  /// overlay, kept together so the dismiss drag can fade it as one.
+  Widget _buildChrome(CommunityPhoto photo) {
+    return Stack(
+      children: [
+        // Close + counter
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const Spacer(),
+                Text(
+                  '${_index + 1} / ${widget.photos.length}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (photo.canDelete && widget.onDelete != null)
+                  IconButton(
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.white,
                     ),
-                    errorWidget: (context, url, error) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.white38,
-                      size: 48,
+                    onPressed: () => widget.onDelete!(photo),
+                  )
+                else
+                  const SizedBox(width: 12),
+              ],
+            ),
+          ),
+        ),
+
+        // Tags on this photo, above the credit so they read as part of the
+        // photo rather than part of the uploader's name.
+        if (widget.tagsFor != null)
+          Builder(
+            builder: (context) {
+              final tags = widget.tagsFor!(photo);
+              if (tags.isEmpty) return const SizedBox.shrink();
+
+              return Positioned(
+                left: 0,
+                right: 0,
+                bottom: 96,
+                child: SizedBox(
+                  height: 30,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: tags.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 6),
+                    itemBuilder: (context, i) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 11,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Text(
+                        tags[i],
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -1044,154 +1237,73 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
             },
           ),
 
-          // Close + counter
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        // Uploader credit
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 32, 20, 28),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
+              ),
+            ),
+            child: SafeArea(
+              top: false,
               child: Row(
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Colors.white24,
+                    backgroundImage: photo.uploaderAvatar.isNotEmpty
+                        ? CachedNetworkImageProvider(photo.uploaderAvatar)
+                        : null,
+                    child: photo.uploaderAvatar.isEmpty
+                        ? Text(
+                            photo.uploaderName.characters.first.toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          )
+                        : null,
                   ),
-                  const Spacer(),
-                  Text(
-                    '${_index + 1} / ${widget.photos.length}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          photo.uploaderName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (photo.takenAt != null)
+                          Text(
+                            DateFormat('d MMM yyyy').format(photo.takenAt!),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                  if (photo.canDelete && widget.onDelete != null)
-                    IconButton(
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.white,
-                      ),
-                      onPressed: () => widget.onDelete!(photo),
-                    )
-                  else
-                    const SizedBox(width: 12),
                 ],
               ),
             ),
           ),
-
-          // Tags on this photo, above the credit so they read as part of the
-          // photo rather than part of the uploader's name.
-          if (widget.tagsFor != null)
-            Builder(
-              builder: (context) {
-                final tags = widget.tagsFor!(photo);
-                if (tags.isEmpty) return const SizedBox.shrink();
-
-                return Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 96,
-                  child: SizedBox(
-                    height: 30,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: tags.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 6),
-                      itemBuilder: (context, i) => Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 11,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.25),
-                          ),
-                        ),
-                        child: Text(
-                          tags[i],
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-
-          // Uploader credit
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(20, 32, 20, 28),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
-                ),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: Colors.white24,
-                      backgroundImage: photo.uploaderAvatar.isNotEmpty
-                          ? CachedNetworkImageProvider(photo.uploaderAvatar)
-                          : null,
-                      child: photo.uploaderAvatar.isEmpty
-                          ? Text(
-                              photo.uploaderName.characters.first.toUpperCase(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            )
-                          : null,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            photo.uploaderName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if (photo.takenAt != null)
-                            Text(
-                              DateFormat('d MMM yyyy').format(photo.takenAt!),
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

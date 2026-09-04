@@ -1030,7 +1030,9 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
             coverUrl: '${gallery['cover_thumb'] ?? gallery['cover'] ?? ''}',
             subtitle: count == 0 ? '' : '$count photo${count == 1 ? '' : 's'}',
             onTap: () async {
-              final changed = await Navigator.of(context).push<bool>(
+              var changed = false;
+
+              await Navigator.of(context).push(
                 MaterialPageRoute(
                   // Opened by gallery id, so a gallery with nothing tagged
                   // opens the same way as one tagged to an event.
@@ -1038,13 +1040,14 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                     galleryId: galleryId,
                     entityTitle: title,
                     galleryName: title,
+                    onChanged: () => changed = true,
                   ),
                 ),
               );
 
               // A new cover, a reorder or a delete all change this grid, and
               // covers are resolved server-side, so refetch rather than patch.
-              if (changed == true && mounted) {
+              if (changed && mounted) {
                 setState(() => _galleriesLoaded = false);
                 await _loadGalleries();
               }

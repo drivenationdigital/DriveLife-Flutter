@@ -158,7 +158,9 @@ class _MediaScreenState extends State<MediaScreen>
   Future<void> _openGallery(EventGallery gallery) async {
     // By gallery id where there is one: that is what lets the gallery's owner
     // curate it from here, and what keeps two galleries on one event apart.
-    final changed = await Navigator.of(context).push<bool>(
+    var changed = false;
+
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => GalleryViewScreen(
           galleryId: gallery.galleryId,
@@ -167,13 +169,14 @@ class _MediaScreenState extends State<MediaScreen>
           entityTitle: gallery.title,
           galleryName: gallery.galleryName,
           dateLabel: gallery.dateLabel,
+          onChanged: () => changed = true,
         ),
       ),
     );
 
     // A new cover, a reorder or a deleted gallery all change these cards, and
     // the covers are resolved server-side — so refetch rather than patch.
-    if (changed == true && mounted) await _loadGalleries();
+    if (changed && mounted) await _loadGalleries();
   }
 
   void _openPost(PopularImage image) {
