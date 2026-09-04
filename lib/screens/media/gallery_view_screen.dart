@@ -443,7 +443,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       _stopWatchingUploads();
       if (!mounted) return;
 
-      setState(() => _dirty = true);
+      _markChanged();
       _load();
     }
 
@@ -640,14 +640,31 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     });
   }
 
+  /// The link that opens this gallery in the app.
+  ///
+  /// Same shape as the post, event and venue links the app already shares —
+  /// `/gallery/:id` — which DeepLinkHandler routes back to this screen.
+  /// Null for the entity-addressed view, which is a merged pool of several
+  /// galleries and has no single thing to link to.
+  String? get _shareUrl {
+    if (widget.shareUrl != null && widget.shareUrl!.isNotEmpty) {
+      return widget.shareUrl;
+    }
+
+    final galleryId = widget.galleryId;
+    if (galleryId == null || galleryId <= 0) return null;
+
+    return 'https://app.mydrivelife.com/gallery/$galleryId?ref=share';
+  }
+
   void _share() {
-    final url = widget.shareUrl;
+    final url = _shareUrl;
 
     // share_plus 12's API. The rest of the app still calls the deprecated
     // Share.share; this is the current form rather than matching that.
     SharePlus.instance.share(
       ShareParams(
-        text: url == null || url.isEmpty ? _title : '$_title\n$url',
+        text: url == null ? _title : '$_title\n$url',
         subject: _title,
       ),
     );

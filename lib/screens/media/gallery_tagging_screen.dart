@@ -40,7 +40,6 @@ class GalleryTaggingScreen extends StatefulWidget {
 class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
   static const Color _ink = Color(0xFF0B0B0B);
   static const Color _muted = Color(0xFF8A8A8A);
-  static const Color _gold = Color(0xFFC4A062);
 
   /// Tags for the whole gallery.
   List<GalleryTag> _tags = [];
@@ -119,13 +118,16 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
 
         done = result['done'] == true;
 
+        final found = (result['suggestions'] as List? ?? const [])
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+
         setState(() {
           _scanned = int.tryParse('${result['scanned']}') ?? _scanned;
           _scanTotal = int.tryParse('${result['total']}') ?? _scanTotal;
-          _suggestions = (result['suggestions'] as List? ?? const [])
-              .whereType<Map>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
+          _suggestions = found;
+          _autoTag(found);
         });
       }
     } catch (e) {
@@ -140,36 +142,60 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
     }
   }
 
-  /// Suggestions not already tagged or dismissed.
-  List<Map<String, dynamic>> get _openSuggestions => _suggestions.where((s) {
-    final plate = '${s['registration'] ?? ''}';
-    if (_dismissed.contains(plate)) return false;
+  /// Everything the scan found that has not been removed.
+  ///
+  /// These are all TAGGED — the section lists what will be saved, not what is
+  /// on offer.
+  List<Map<String, dynamic>> get _openSuggestions => _suggestions
+      .where((s) => !_dismissed.contains('${s['registration'] ?? ''}'))
+      .toList();
 
-    final entityId = int.tryParse('${s['entity_id']}') ?? 0;
-    return !_tags.any(
-      (t) =>
-          t.kind == TagKind.vehicle &&
-          (entityId > 0
-              ? t.entityId == entityId
-              : t.label.toUpperCase() == plate.toUpperCase()),
-    );
-  }).toList();
+  /// Tags everything the scan found, without being asked.
+  ///
+  /// A read plate is strong evidence the car was there, and confirming each one
+  /// by hand was pure friction on a gallery with a dozen cars in it. Removing a
+  /// wrong one is a single tap; adding twelve right ones was twelve.
+  ///
+  /// Called inside the caller's setState.
+  void _autoTag(List<Map<String, dynamic>> suggestions) {
+    for (final suggestion in suggestions) {
+      final plate = '${suggestion['registration'] ?? ''}';
+      if (plate.isEmpty || _dismissed.contains(plate)) continue;
 
-  void _acceptVehicle(Map<String, dynamic> suggestion) {
+      final tag = GalleryTag(
+        kind: TagKind.vehicle,
+        label: plate,
+        subtitle: '${suggestion['subtitle'] ?? ''}',
+        avatarUrl: '${suggestion['image'] ?? ''}',
+        entityId: int.tryParse('${suggestion['entity_id']}') ?? 0,
+        registration: plate,
+      );
+
+      // The scan is polled repeatedly and returns everything found so far, so
+      // without this every pass would re-add the same cars.
+      if (_tags.any((t) => t.matches(tag))) continue;
+
+      _tags = [..._tags, tag];
+    }
+  }
+
+  /// Removes a detected vehicle, and remembers not to re-add it on the next
+  /// poll of the same scan.
+  void _removeSuggestion(Map<String, dynamic> suggestion) {
     final plate = '${suggestion['registration'] ?? ''}';
+    final entityId = int.tryParse('${suggestion['entity_id']}') ?? 0;
 
     setState(() {
-      _tags = [
-        ..._tags,
-        GalleryTag(
-          kind: TagKind.vehicle,
-          label: plate,
-          subtitle: '${suggestion['subtitle'] ?? ''}',
-          avatarUrl: '${suggestion['image'] ?? ''}',
-          entityId: int.tryParse('${suggestion['entity_id']}') ?? 0,
-          registration: plate,
-        ),
-      ];
+      _dismissed.add(plate);
+      _tags = _tags
+          .where(
+            (t) =>
+                t.kind != TagKind.vehicle ||
+                (entityId > 0
+                    ? t.entityId != entityId
+                    : t.label.toUpperCase() != plate.toUpperCase()),
+          )
+          .toList();
     });
   }
 
@@ -232,6 +258,44 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
     }
   }
 
+  /// Back: leave without saving.
+  ///
+  /// The photos are already live, so this is not destructive — but detected
+  /// cars are tagged by default now, so leaving DOES throw work away. Worth one
+  /// question when there is something to lose, and silence when there is not.
+  Future<void> _leave() async {
+    if (_tags.isEmpty) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
+
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Leave without tagging?'),
+        content: Text(
+          '${_tags.length} tag${_tags.length == 1 ? '' : 's'} will not be '
+          'saved. Your photos stay published either way.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep tagging'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+
+    if (discard == true && mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+  }
+
   void _complain(Object error) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -270,30 +334,30 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
         surfaceTintColor: Colors.white,
         elevation: 0,
         titleSpacing: 0,
-        // No back arrow: the photos are already uploaded, so there is nothing
-        // to return to. Leaving happens through Skip or Publish.
-        automaticallyImplyLeading: false,
-        title: const Padding(
-          padding: EdgeInsets.only(left: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Tag users & vehicles',
-                style: TextStyle(
-                  color: _ink,
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                ),
+        // Same leading + unpadded title as step 1, so the two headings sit on
+        // the same line as you move between them.
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left, color: _ink, size: 30),
+          onPressed: _leave,
+        ),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Tag users & vehicles',
+              style: TextStyle(
+                color: _ink,
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
               ),
-              SizedBox(height: 2),
-              Text(
-                'Step 2 of 2',
-                style: TextStyle(color: _muted, fontSize: 13.5),
-              ),
-            ],
-          ),
+            ),
+            SizedBox(height: 2),
+            Text(
+              'Step 2 of 2',
+              style: TextStyle(color: _muted, fontSize: 13.5),
+            ),
+          ],
         ),
         actions: [
           Padding(
@@ -354,61 +418,9 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
               error: _scanError,
               onRetry: _runScan,
               suggestions: _openSuggestions,
-              onAcceptVehicle: _acceptVehicle,
-              onDismiss: (plate) => setState(() => _dismissed.add(plate)),
+              onRemove: _removeSuggestion,
             ),
             const SizedBox(height: 24),
-          ],
-
-          // Confirmed tags only — no search box.
-          //
-          // Manual tagging lives entirely in the per-photo flow below. Having
-          // a second search here meant two ways to tag from one screen, and
-          // the gallery-wide one was the easier of the two to reach by
-          // accident.
-          if (_tags.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Text(
-                  'Tagged',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: _ink,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _gold.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    '${_tags.length}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF8A6D2F),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            for (final tag in _tags) ...[
-              GalleryTagCard(
-                tag: tag,
-                onRemove: () => setState(
-                  () => _tags = _tags.where((t) => !identical(t, tag)).toList(),
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
           ],
 
           if (_hasGallery) ...[
@@ -482,8 +494,7 @@ class _ScanSection extends StatelessWidget {
   final VoidCallback onRetry;
 
   final List<Map<String, dynamic>> suggestions;
-  final ValueChanged<Map<String, dynamic>> onAcceptVehicle;
-  final ValueChanged<String> onDismiss;
+  final ValueChanged<Map<String, dynamic>> onRemove;
 
   const _ScanSection({
     required this.scanning,
@@ -492,8 +503,7 @@ class _ScanSection extends StatelessWidget {
     required this.error,
     required this.onRetry,
     required this.suggestions,
-    required this.onAcceptVehicle,
-    required this.onDismiss,
+    required this.onRemove,
   });
 
   @override
@@ -537,7 +547,7 @@ class _ScanSection extends StatelessWidget {
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    '${suggestions.length} found',
+                    '${suggestions.length} tagged',
                     style: const TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w800,
@@ -560,8 +570,8 @@ class _ScanSection extends StatelessWidget {
                 ? error!
                 : scanning
                 ? 'Looking for number plates… $scanned of $total photos'
-                : 'Tap Tag to confirm. Owners are notified when their car '
-                      'is tagged.',
+                : 'Tagged automatically. Remove any that are wrong — owners '
+                      'are notified when their car is tagged.',
             style: TextStyle(
               fontSize: 12.5,
               color: error != null ? Colors.red.shade700 : _muted,
@@ -593,8 +603,7 @@ class _ScanSection extends StatelessWidget {
           for (final suggestion in suggestions)
             _SuggestionRow(
               suggestion: suggestion,
-              onAcceptVehicle: () => onAcceptVehicle(suggestion),
-              onDismiss: () => onDismiss('${suggestion['registration'] ?? ''}'),
+              onRemove: () => onRemove(suggestion),
             ),
         ],
       ),
@@ -607,14 +616,9 @@ class _SuggestionRow extends StatelessWidget {
   static const Color _gold = Color(0xFFC4A062);
 
   final Map<String, dynamic> suggestion;
-  final VoidCallback onAcceptVehicle;
-  final VoidCallback onDismiss;
+  final VoidCallback onRemove;
 
-  const _SuggestionRow({
-    required this.suggestion,
-    required this.onAcceptVehicle,
-    required this.onDismiss,
-  });
+  const _SuggestionRow({required this.suggestion, required this.onRemove});
 
   @override
   Widget build(BuildContext context) {
@@ -691,16 +695,9 @@ class _SuggestionRow extends StatelessWidget {
               ],
             ),
           ),
-          TextButton(
-            onPressed: onAcceptVehicle,
-            child: const Text(
-              'Tag',
-              style: TextStyle(color: _gold, fontWeight: FontWeight.w800),
-            ),
-          ),
           IconButton(
-            icon: const Icon(Icons.close, size: 17),
-            onPressed: onDismiss,
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: onRemove,
             tooltip: 'Not in these photos',
           ),
         ],

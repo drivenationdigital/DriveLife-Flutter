@@ -66,6 +66,23 @@ class DeepLinkHandler {
     _isHandlingWarmStart = false;
   }
 
+  /// The gallery id in a link, or null if it is not a gallery link.
+  ///
+  /// Accepts both shapes the app uses: `/gallery/123` and `?dl-gallery=123`.
+  /// Pulled out as a pure function because deep links are otherwise only
+  /// testable by installing the app and tapping a link.
+  static String? galleryIdFrom(Uri uri) {
+    final param = uri.queryParameters['dl-gallery'];
+    if (param != null && param.trim().isNotEmpty) return param.trim();
+
+    final segments = uri.pathSegments;
+    if (segments.length != 2 || segments[0] != 'gallery') return null;
+
+    // A path can carry trailing params when the link was built by hand.
+    final id = segments[1].split('&').first.trim();
+    return id.isEmpty ? null : id;
+  }
+
   void _handleDeepLink(Uri uri) {
     final navContext = navigatorKey.currentContext;
     if (navContext == null) {
@@ -138,7 +155,8 @@ class DeepLinkHandler {
       }
 
       // EVENT — extend existing handler to also catch /event/:id
-      if (params.containsKey('dl-event') || (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'event')) {
+      if (params.containsKey('dl-event') ||
+          (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'event')) {
         var uriID =
             (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'event')
             ? uri.pathSegments[1]
@@ -163,8 +181,12 @@ class DeepLinkHandler {
       }
 
       // CLUB — new, /club/:id or ?dl-club=:id
-      if (params.containsKey('dl-club') || (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'club')) {
-        var uriID = (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'club') ? uri.pathSegments[1] : null;
+      if (params.containsKey('dl-club') ||
+          (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'club')) {
+        var uriID =
+            (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'club')
+            ? uri.pathSegments[1]
+            : null;
         uriID = uriID?.split('&').first;
         final clubId = params['dl-club'] ?? uriID;
         debugPrint('🔗 [DeepLink] Club ID: $clubId');
@@ -183,7 +205,8 @@ class DeepLinkHandler {
       }
 
       // VENUE — new, /venue/:id or ?dl-venue=:id
-      if (params.containsKey('dl-venue') || (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'venue')) {
+      if (params.containsKey('dl-venue') ||
+          (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'venue')) {
         var uriID =
             (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'venue')
             ? uri.pathSegments[1]
@@ -205,8 +228,29 @@ class DeepLinkHandler {
         return;
       }
 
+      // GALLERY — /gallery/:id or ?dl-gallery=:id
+      final galleryId = galleryIdFrom(uri);
+      if (galleryId != null) {
+        debugPrint('🔗 [DeepLink] Gallery ID: $galleryId');
+
+        if (currentUser == null) {
+          debugPrint('⚠️ [DeepLink] User not logged in');
+          navigatorKey.currentState?.pushNamed(AppRoutes.login);
+          return;
+        }
+
+        navigatorKey.currentState?.pushNamed(
+          AppRoutes.galleryDetail,
+          // The title is unknown from a link — the screen fetches the gallery
+          // and fills its own header in.
+          arguments: {'galleryId': galleryId},
+        );
+        return;
+      }
+
       // PROFILE — extend existing handler to also catch /user/:username
-      if (params.containsKey('dl-profile') || (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'profile')) {
+      if (params.containsKey('dl-profile') ||
+          (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'profile')) {
         var uriUsername =
             (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'user')
             ? uri.pathSegments[1]

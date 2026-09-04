@@ -39,6 +39,7 @@ import 'package:flutter/cupertino.dart';
 import 'screens/profile/edit_profile_settings_screen.dart';
 import 'screens/account-settings/manage_social_links_screen.dart';
 import 'screens/store/shop_screen.dart';
+import 'screens/media/gallery_view_screen.dart';
 
 class AppRoutes {
   static const String splash = '/';
@@ -74,6 +75,7 @@ class AppRoutes {
   static const String orderSuccess = '/order-success';
   static const String orderDetails = '/order-details';
   static const String venueDetails = '/venue-details';
+  static const String galleryDetail = '/gallery-detail';
   static const String createVenue = '/create-venue';
   static const String eventOwnerView = '/event-owner-view';
 
@@ -95,7 +97,16 @@ class AppRoutes {
     Route<dynamic> _slide(Widget page) =>
         CupertinoPageRoute(builder: (context) => page, settings: settings);
 
-    final seoDeepLinkRoutes = ['/post/', '/event/', '/profile/', '/venue/', '/club/'];
+    // A cold start arrives here as a raw path, so a pattern missing from this
+    // list is not recognised as a deep link at all and falls through.
+    final seoDeepLinkRoutes = [
+      '/post/',
+      '/event/',
+      '/profile/',
+      '/venue/',
+      '/club/',
+      '/gallery/',
+    ];
 
     // ⭐ Check if this is a deep link URL
     var isDeepLink =
@@ -108,7 +119,9 @@ class AppRoutes {
     if (!isDeepLink) {
       seoDeepLinkRoutes.forEach((seoRoute) {
         if (routeName.contains(seoRoute)) {
-          debugPrint('🔍 [AppRoutes] Detected SEO deep link pattern: $seoRoute in $routeName');
+          debugPrint(
+            '🔍 [AppRoutes] Detected SEO deep link pattern: $seoRoute in $routeName',
+          );
           // Treat as deep link
           isDeepLink = true;
         }
@@ -188,7 +201,7 @@ class AppRoutes {
       case clubDetail:
         final args = settings.arguments as Map<String, dynamic>;
         final clubId = int.parse(args['clubId'].toString());
-        
+
         return _slide(
           ClubViewScreen(
             clubPostId: clubId,
@@ -202,7 +215,8 @@ class AppRoutes {
         return _slide(
           AddEventScreen(
             eventId: args?['eventId'],
-            clubId: args?['clubId'], // Pass clubId for pre-selecting club events
+            clubId:
+                args?['clubId'], // Pass clubId for pre-selecting club events
           ),
         );
       // In routes.dart
@@ -261,6 +275,20 @@ class AppRoutes {
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(
           EventAdminPage(eventId: args['eventId'], site: args['site']),
+        );
+      case galleryDetail:
+        final args = settings.arguments as Map<String, dynamic>;
+
+        // Deep links arrive as strings; everything in-app passes an int.
+        final rawId = args['galleryId'];
+        final galleryId = rawId is int ? rawId : int.tryParse('$rawId');
+
+        return _slide(
+          GalleryViewScreen(
+            galleryId: galleryId,
+            entityTitle: '${args['title'] ?? 'Gallery'}',
+            galleryName: '${args['title'] ?? ''}',
+          ),
         );
       case venueDetails:
         final args = settings.arguments as Map<String, dynamic>;
