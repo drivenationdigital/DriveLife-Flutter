@@ -74,6 +74,14 @@ class GalleryViewScreen extends StatefulWidget {
   /// Public URL, for the share sheet.
   final String? shareUrl;
 
+  /// Called as soon as something here changes what a list showing this gallery
+  /// would render — a new cover, a reorder, a delete.
+  ///
+  /// A callback rather than a pop result because the iOS back-swipe pops with
+  /// no result of its own, and blocking the pop to supply one is what stopped
+  /// that swipe from working at all.
+  final VoidCallback? onChanged;
+
   const GalleryViewScreen({
     super.key,
     this.galleryId,
@@ -85,6 +93,7 @@ class GalleryViewScreen extends StatefulWidget {
     this.dateLabel,
     this.owner,
     this.shareUrl,
+    this.onChanged,
   });
 
   @override
@@ -112,11 +121,6 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// server-side: the gallery's own owner for a standalone gallery, the event
   /// or venue owner for one tagged to an entity.
   bool _canCurate = false;
-
-  /// Whether anything here changed what a list showing this gallery would
-  /// render — a new cover, a reorder, a delete. Popped as the route's result
-  /// so the caller refetches instead of showing a stale cover.
-  bool _dirty = false;
 
   /// The linked entity's image, when the gallery has a link and that entity
   /// has one. Null otherwise — the header then shows the name alone rather
@@ -357,7 +361,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     );
 
     if (changed == true && mounted) {
-      setState(() => _dirty = true);
+      _markChanged();
       await _load();
     }
   }
@@ -381,7 +385,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
         entityType: widget.entityType,
       );
 
-      if (mounted) setState(() => _dirty = true);
+      if (mounted) _markChanged();
     } catch (e) {
       if (!mounted) return;
 
@@ -436,8 +440,8 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       setState(() {
         _photos.removeWhere((p) => p.id == photo.id);
         if (_total > 0) _total -= 1;
-        _dirty = true;
       });
+      _markChanged();
 
       // Deleting the cover changes what every list shows for this gallery,
       // and the server picks the replacement — so take its answer.
@@ -565,22 +569,17 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     );
   }
 
+  /// Tells the caller its cover, order or count is now stale. Fires the moment
+  /// the change lands rather than on the way out, so every way of leaving —
+  /// the back arrow, the iOS edge swipe, the Android back button — carries it.
+  void _markChanged() => widget.onChanged?.call();
+
   @override
   Widget build(BuildContext context) {
-    // The back arrow pops _dirty, but a swipe or the Android back button would
-    // pop null and the list behind would keep showing the old cover. PopScope
-    // catches those and re-pops with the flag.
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop || !mounted) return;
-        Navigator.pop(context, _dirty);
-      },
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        appBar: _buildAppBar(),
-        body: _buildBody(),
-      ),
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: _buildAppBar(),
+      body: _buildBody(),
     );
   }
 
@@ -593,7 +592,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       leadingWidth: 40,
       leading: IconButton(
         icon: const Icon(Icons.chevron_left, color: _ink, size: 30),
-        onPressed: () => Navigator.pop(context, _dirty),
+        onPressed: () => Navigator.pop(context),
       ),
       title: Row(
         children: [

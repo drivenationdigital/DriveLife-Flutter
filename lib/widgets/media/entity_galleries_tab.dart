@@ -82,19 +82,22 @@ class _EntityGalleriesTabState extends State<EntityGalleriesTab> {
   Future<void> _open(Map<String, dynamic> gallery) async {
     final title = '${gallery['title'] ?? ''}';
 
-    final changed = await Navigator.of(context).push<bool>(
+    var changed = false;
+
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => GalleryViewScreen(
           galleryId: int.tryParse('${gallery['gallery_id']}'),
           entityTitle: title,
           galleryName: title,
+          onChanged: () => changed = true,
         ),
       ),
     );
 
     // A new cover, a reorder or a delete all change this list, and covers are
     // resolved server-side — so refetch rather than patch.
-    if (changed == true && mounted) await _load();
+    if (changed && mounted) await _load();
   }
 
   @override
