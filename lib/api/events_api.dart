@@ -766,6 +766,10 @@ class EventsAPI {
     String? galleryName,
     String? entityType = 'event',
     int? galleryId,
+    String placeId = '',
+    String placeLabel = '',
+    double? lat,
+    double? lng,
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Not signed in');
@@ -775,6 +779,10 @@ class EventsAPI {
     final entityId = int.tryParse(eventId ?? '') ?? 0;
     final hasEntity =
         entityId > 0 && entityType != null && entityType != 'none';
+
+    // A Google place has no post id, so it can never satisfy hasEntity — it
+    // travels as its own fields instead.
+    final hasPlace = entityType == 'location' && placeLabel.isNotEmpty;
 
     final response = await http.post(
       Uri.parse(
@@ -790,6 +798,13 @@ class EventsAPI {
         if (hasEntity) 'entity_type': entityType,
         if (hasEntity) 'entity_id': entityId,
         if (hasEntity && entityType == 'event') 'event_id': entityId,
+        if (hasPlace) ...{
+          'entity_type': 'location',
+          'place_id': placeId,
+          'place_label': placeLabel,
+          if (lat != null) 'lat': lat,
+          if (lng != null) 'lng': lng,
+        },
         if (galleryId != null && galleryId > 0) 'gallery_id': galleryId,
         'media_ids': mediaIds,
         // Omitted rather than sent empty, so the server falls back to the

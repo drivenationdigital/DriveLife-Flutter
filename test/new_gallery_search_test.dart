@@ -113,4 +113,46 @@ void main() {
       expect(event.subtitle, startsWith('Event'));
     });
   });
+
+  group('locations', () {
+    // A place comes from Google, not our API, so it is built directly rather
+    // than through fromSearchResult.
+    const place = TaggedEvent(
+      id: '',
+      name: 'Goodwood Motor Circuit, Chichester, UK',
+      type: TaggedEntityType.location,
+      placeId: 'ChIJdd4hrwug2EcRmSrV3Vo6llI',
+      lat: 50.8594,
+      lng: -0.7594,
+    );
+
+    test('sends entity_type location', () {
+      expect(place.entityType, 'location');
+    });
+
+    test('is a place, and events and venues are not', () {
+      expect(place.isPlace, isTrue);
+
+      const event = TaggedEvent(id: '42', name: 'Meet');
+      const venue = TaggedEvent(
+        id: '7',
+        name: 'The Motorist',
+        type: TaggedEntityType.venue,
+      );
+
+      expect(event.isPlace, isFalse);
+      expect(venue.isPlace, isFalse);
+    });
+
+    test('has no post id, which is what the place_id replaces', () {
+      // int.parse on this would throw — the register call must not treat a
+      // place as an entity.
+      expect(place.id, isEmpty);
+      expect(place.placeId, isNotEmpty);
+    });
+
+    test('labels itself Location in the subtitle', () {
+      expect(place.subtitle, startsWith('Location'));
+    });
+  });
 }

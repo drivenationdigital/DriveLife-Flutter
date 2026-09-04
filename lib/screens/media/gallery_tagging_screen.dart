@@ -173,27 +173,6 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
     });
   }
 
-  void _acceptOwner(Map<String, dynamic> owner) {
-    final entityId = int.tryParse('${owner['entity_id']}') ?? 0;
-    if (entityId <= 0) return;
-
-    if (_tags.any((t) => t.kind == TagKind.member && t.entityId == entityId)) {
-      return;
-    }
-
-    setState(() {
-      _tags = [
-        ..._tags,
-        GalleryTag(
-          kind: TagKind.member,
-          label: '${owner['label'] ?? ''}',
-          subtitle: '${owner['subtitle'] ?? ''}',
-          entityId: entityId,
-        ),
-      ];
-    });
-  }
-
   /// Writes the gallery-wide tags. Saving replaces the set, so calling this
   /// more than once is harmless.
   Future<void> _saveGalleryTags() async {
@@ -376,7 +355,6 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
               onRetry: _runScan,
               suggestions: _openSuggestions,
               onAcceptVehicle: _acceptVehicle,
-              onAcceptOwner: _acceptOwner,
               onDismiss: (plate) => setState(() => _dismissed.add(plate)),
             ),
             const SizedBox(height: 24),
@@ -505,7 +483,6 @@ class _ScanSection extends StatelessWidget {
 
   final List<Map<String, dynamic>> suggestions;
   final ValueChanged<Map<String, dynamic>> onAcceptVehicle;
-  final ValueChanged<Map<String, dynamic>> onAcceptOwner;
   final ValueChanged<String> onDismiss;
 
   const _ScanSection({
@@ -516,7 +493,6 @@ class _ScanSection extends StatelessWidget {
     required this.onRetry,
     required this.suggestions,
     required this.onAcceptVehicle,
-    required this.onAcceptOwner,
     required this.onDismiss,
   });
 
@@ -584,7 +560,8 @@ class _ScanSection extends StatelessWidget {
                 ? error!
                 : scanning
                 ? 'Looking for number plates… $scanned of $total photos'
-                : 'Found in your photos. Tap Tag to confirm.',
+                : 'Tap Tag to confirm. Owners are notified when their car '
+                      'is tagged.',
             style: TextStyle(
               fontSize: 12.5,
               color: error != null ? Colors.red.shade700 : _muted,
@@ -617,12 +594,6 @@ class _ScanSection extends StatelessWidget {
             _SuggestionRow(
               suggestion: suggestion,
               onAcceptVehicle: () => onAcceptVehicle(suggestion),
-              onAcceptOwner: () {
-                final owner = suggestion['owner'];
-                if (owner is Map) {
-                  onAcceptOwner(Map<String, dynamic>.from(owner));
-                }
-              },
               onDismiss: () => onDismiss('${suggestion['registration'] ?? ''}'),
             ),
         ],
@@ -637,13 +608,11 @@ class _SuggestionRow extends StatelessWidget {
 
   final Map<String, dynamic> suggestion;
   final VoidCallback onAcceptVehicle;
-  final VoidCallback onAcceptOwner;
   final VoidCallback onDismiss;
 
   const _SuggestionRow({
     required this.suggestion,
     required this.onAcceptVehicle,
-    required this.onAcceptOwner,
     required this.onDismiss,
   });
 
@@ -657,112 +626,83 @@ class _SuggestionRow extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              if (image.isEmpty)
-                const GalleryPlateBadge(size: 40)
-              else
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: CachedNetworkImage(
-                    imageUrl: image,
-                    width: 40,
-                    height: 40,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 120,
-                    placeholder: (_, __) => const GalleryPlateBadge(size: 40),
-                    errorWidget: (_, __, ___) =>
-                        const GalleryPlateBadge(size: 40),
-                  ),
-                ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            plate,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        if (count > 0) ...[
-                          const SizedBox(width: 7),
-                          Text(
-                            '$count photo${count == 1 ? '' : 's'}',
-                            style: const TextStyle(
-                              fontSize: 11.5,
-                              color: _muted,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${suggestion['subtitle'] ?? ''}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12.5, color: _muted),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton(
-                onPressed: onAcceptVehicle,
-                child: const Text(
-                  'Tag',
-                  style: TextStyle(color: _gold, fontWeight: FontWeight.w800),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close, size: 17),
-                onPressed: onDismiss,
-                tooltip: 'Not in these photos',
-              ),
-            ],
-          ),
-
-          // The owner is a separate offer: their car being here does not mean
-          // they are, so tagging them is a second, deliberate choice.
-          if (ownerHandle.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(left: 51, top: 2),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Owned by @$ownerHandle',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12.5, color: _muted),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: onAcceptOwner,
-                    child: const Text(
-                      'Tag them too',
-                      style: TextStyle(
-                        color: _gold,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12.5,
-                      ),
-                    ),
-                  ),
-                ],
+          if (image.isEmpty)
+            const GalleryPlateBadge(size: 40)
+          else
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CachedNetworkImage(
+                imageUrl: image,
+                width: 40,
+                height: 40,
+                fit: BoxFit.cover,
+                memCacheWidth: 120,
+                placeholder: (_, __) => const GalleryPlateBadge(size: 40),
+                errorWidget: (_, __, ___) => const GalleryPlateBadge(size: 40),
               ),
             ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        plate,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (count > 0) ...[
+                      const SizedBox(width: 7),
+                      Text(
+                        '$count photo${count == 1 ? '' : 's'}',
+                        style: const TextStyle(fontSize: 11.5, color: _muted),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${suggestion['subtitle'] ?? ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12.5, color: _muted),
+                ),
+                // Its own line, not appended to the model: a long model name
+                // and a long handle together would ellipsis away exactly the
+                // part that says whose car it is.
+                if (ownerHandle.isNotEmpty)
+                  Text(
+                    'Owned by @$ownerHandle',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12.5, color: _muted),
+                  ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onAcceptVehicle,
+            child: const Text(
+              'Tag',
+              style: TextStyle(color: _gold, fontWeight: FontWeight.w800),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 17),
+            onPressed: onDismiss,
+            tooltip: 'Not in these photos',
+          ),
         ],
       ),
     );

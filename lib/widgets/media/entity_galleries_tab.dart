@@ -162,6 +162,7 @@ class _EntityGalleriesTabState extends State<EntityGalleriesTab> {
     }
 
     return RefreshIndicator(
+      color: widget.primaryColor,
       onRefresh: _load,
       child: GridView.builder(
         padding: const EdgeInsets.all(12),

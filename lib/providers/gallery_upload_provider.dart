@@ -63,15 +63,26 @@ class GalleryUploadBatch {
   /// event's own name, because every gallery must end up with a title.
   final String? galleryName;
 
-  /// 'event', 'venue', or 'none' for a standalone gallery.
+  /// 'event', 'venue', 'location', or 'none' for a standalone gallery.
   final String entityType;
+
+  /// Set when the gallery is tagged to a place rather than a post. A place has
+  /// no id of ours, so it is carried by name and coordinates.
+  final String placeId;
+  final String placeLabel;
+  final double? lat;
+  final double? lng;
 
   /// Assigned by the server when the first chunk creates the gallery, then
   /// passed back on every later chunk so they all land in the same gallery.
   int? galleryId;
 
-  /// True once photos are tagged to something, so the UI can say so.
-  bool get hasEntity => eventId.isNotEmpty && entityType != 'none';
+  /// True once photos are tagged to an event or venue.
+  bool get hasEntity =>
+      eventId.isNotEmpty && entityType != 'none' && entityType != 'location';
+
+  /// True when tagged to a map location instead.
+  bool get hasPlace => entityType == 'location' && placeLabel.isNotEmpty;
 
   final List<GalleryUploadItem> items;
 
@@ -85,6 +96,11 @@ class GalleryUploadBatch {
     required this.items,
     this.galleryName,
     this.entityType = 'event',
+    this.placeId = '',
+    this.placeLabel = '',
+    this.lat,
+    this.lng,
+    this.galleryId,
     this.status = GalleryBatchStatus.uploading,
     this.error,
   });
@@ -188,6 +204,11 @@ class GalleryUploadProvider with ChangeNotifier {
     required List<File> files,
     String? galleryName,
     String entityType = 'event',
+    String placeId = '',
+    String placeLabel = '',
+    double? lat,
+    double? lng,
+    int? existingGalleryId,
   }) {
     final batchId = batchIdFor(eventId);
 
@@ -196,6 +217,14 @@ class GalleryUploadProvider with ChangeNotifier {
       eventId: eventId,
       eventTitle: eventTitle,
       galleryName: galleryName,
+      placeId: placeId,
+      placeLabel: placeLabel,
+      lat: lat,
+      lng: lng,
+      // Seeding the id makes every register call APPEND to that gallery
+      // instead of the first one creating a new gallery — which is the whole
+      // difference between adding photos and starting again.
+      galleryId: existingGalleryId,
       entityType: entityType,
       items: [
         for (var i = 0; i < files.length; i++)
@@ -381,10 +410,16 @@ class GalleryUploadProvider with ChangeNotifier {
       final result = await EventsAPI.registerCommunityGalleryMedia(
         // Both omitted for a standalone gallery, which is tagged to nothing.
         eventId: batch.hasEntity ? batch.eventId : null,
-        entityType: batch.hasEntity ? batch.entityType : null,
+        entityType: (batch.hasEntity || batch.hasPlace)
+            ? batch.entityType
+            : null,
         mediaIds: mediaIds,
         galleryName: batch.galleryName,
         galleryId: batch.galleryId,
+        placeId: batch.placeId,
+        placeLabel: batch.placeLabel,
+        lat: batch.lat,
+        lng: batch.lng,
       );
 
       // The first chunk creates the gallery; hold its id for the rest.

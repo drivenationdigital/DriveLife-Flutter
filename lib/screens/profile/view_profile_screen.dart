@@ -511,9 +511,13 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           _hasMorePosts = true;
           _hasMoreTagged = true;
           _garageLoaded = false;
+          // Cards are kept until the refetch lands, so pulling to refresh does
+          // not blank the grid on the way to redrawing the same thing.
+          _galleriesLoaded = false;
         });
 
         _loadTabContent();
+        _loadGalleries();
       }
     } else {
       // For other profiles, clear cache and refetch
@@ -532,9 +536,11 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
         _hasMorePosts = true;
         _hasMoreTagged = true;
         _garageLoaded = false;
+        _galleriesLoaded = false;
       });
 
       await _loadUserProfileOptimized();
+      await _loadGalleries();
     }
 
     print('✅ Profile refreshed');

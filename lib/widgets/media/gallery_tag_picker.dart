@@ -5,6 +5,9 @@ import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/gallery_tag.dart';
 import 'package:flutter/material.dart';
 
+/// Brand gold — matches ThemeProvider.PRIMARY_COLOR_CODE.
+const Color _kGold = Color(0xFFAE9159);
+
 /// Search-and-pick for members and vehicles.
 ///
 /// Shared by the gallery-wide step of the upload and by per-photo tagging, so
@@ -34,7 +37,7 @@ class GalleryTagPicker extends StatefulWidget {
 class _GalleryTagPickerState extends State<GalleryTagPicker> {
   static const Color _ink = Color(0xFF0B0B0B);
   static const Color _muted = Color(0xFF8A8A8A);
-  static const Color _gold = Color(0xFFC4A062);
+  static const Color _gold = _kGold;
 
   final _searchController = TextEditingController();
 
@@ -172,7 +175,7 @@ class _GalleryTagPickerState extends State<GalleryTagPicker> {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SegmentedButton<TagKind>(
           segments: const [
@@ -229,7 +232,7 @@ class _GalleryTagPickerState extends State<GalleryTagPicker> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: _ink, width: 1.5),
+              borderSide: const BorderSide(color: _gold, width: 1.6),
             ),
           ),
         ),
@@ -346,10 +349,7 @@ class _PlateOffer extends StatelessWidget {
             onPressed: onTag,
             child: const Text(
               'Tag',
-              style: TextStyle(
-                color: Color(0xFFC4A062),
-                fontWeight: FontWeight.w800,
-              ),
+              style: TextStyle(color: _kGold, fontWeight: FontWeight.w800),
             ),
           ),
         ],
@@ -416,10 +416,7 @@ class _ResultRow extends StatelessWidget {
             ),
             const Text(
               'Tag',
-              style: TextStyle(
-                color: Color(0xFFC4A062),
-                fontWeight: FontWeight.w800,
-              ),
+              style: TextStyle(color: _kGold, fontWeight: FontWeight.w800),
             ),
           ],
         ),
@@ -433,11 +430,7 @@ class GalleryTagCard extends StatelessWidget {
   final GalleryTag tag;
   final VoidCallback onRemove;
 
-  const GalleryTagCard({
-    super.key,
-    required this.tag,
-    required this.onRemove,
-  });
+  const GalleryTagCard({super.key, required this.tag, required this.onRemove});
 
   @override
   Widget build(BuildContext context) {
@@ -515,11 +508,7 @@ class GalleryTagAvatar extends StatelessWidget {
           : CircleAvatar(
               radius: size / 2,
               backgroundColor: Colors.grey.shade300,
-              child: Icon(
-                Icons.person,
-                size: size * 0.48,
-                color: Colors.white,
-              ),
+              child: Icon(Icons.person, size: size * 0.48, color: Colors.white),
             );
     }
 
@@ -535,11 +524,7 @@ class GalleryTagAvatar extends StatelessWidget {
             Container(width: size, height: size, color: Colors.grey.shade200),
         errorWidget: (_, __, ___) => isVehicle
             ? GalleryPlateBadge(size: size)
-            : Container(
-                width: size,
-                height: size,
-                color: Colors.grey.shade300,
-              ),
+            : Container(width: size, height: size, color: Colors.grey.shade300),
       ),
     );
   }

@@ -5,11 +5,13 @@ import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:drivelife/screens/media/gallery_upload_progress_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:google_places_flutter/google_places_flutter.dart';
+import 'package:google_places_flutter/model/prediction.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 /// What kind of thing a gallery hangs off.
-enum TaggedEntityType { event, venue }
+enum TaggedEntityType { event, venue, location }
 
 /// An event or venue the gallery is tagged to.
 ///
@@ -24,6 +26,12 @@ class TaggedEvent {
   final String thumbnail;
   final TaggedEntityType type;
 
+  /// Google's id for a place. Empty for an event or venue, which are posts.
+  final String placeId;
+
+  final double? lat;
+  final double? lng;
+
   const TaggedEvent({
     required this.id,
     required this.name,
@@ -31,10 +39,20 @@ class TaggedEvent {
     this.date,
     this.thumbnail = '',
     this.type = TaggedEntityType.event,
+    this.placeId = '',
+    this.lat,
+    this.lng,
   });
 
   /// Wire value for `entity_type`.
-  String get entityType => type == TaggedEntityType.venue ? 'venue' : 'event';
+  String get entityType => switch (type) {
+    TaggedEntityType.venue => 'venue',
+    TaggedEntityType.location => 'location',
+    TaggedEntityType.event => 'event',
+  };
+
+  /// A place has no post id, so it is linked by name and coordinates instead.
+  bool get isPlace => type == TaggedEntityType.location;
 
   factory TaggedEvent.fromSearchResult(
     Map<String, dynamic> json, {
@@ -45,8 +63,7 @@ class TaggedEvent {
       id: json['id']?.toString() ?? '',
       name: (json['name']?.toString() ?? '').replaceAll('&amp;', '&'),
       // Events call it `location`, venues `venue_location`.
-      location:
-          (json['location'] ?? json['venue_location'])?.toString() ?? '',
+      location: (json['location'] ?? json['venue_location'])?.toString() ?? '',
       date: _parseSearchDate(json['start_date']),
       thumbnail: json['thumbnail']?.toString() ?? '',
     );
@@ -75,7 +92,13 @@ class TaggedEvent {
   /// "Event · Goodwood · 24/05/2026" — parts only when we have them, so a
   /// location-less entity doesn't render a trailing separator.
   String get subtitle {
-    final parts = <String>[type == TaggedEntityType.venue ? 'Venue' : 'Event'];
+    final parts = <String>[
+      switch (type) {
+        TaggedEntityType.venue => 'Venue',
+        TaggedEntityType.location => 'Location',
+        TaggedEntityType.event => 'Event',
+      },
+    ];
     if (location.isNotEmpty) parts.add(location);
     if (date != null) parts.add(DateFormat('dd/MM/yyyy').format(date!));
     return parts.join(' · ');
@@ -166,22 +189,25 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
     final name = _nameController.text.trim();
 
     final batchId = context.read<GalleryUploadProvider>().startUpload(
-      // Empty for an untagged gallery, which stands on its own.
+      // Empty for an untagged gallery, which stands on its own, and for a
+      // place — which has no id of ours.
       eventId: event?.id ?? '',
       eventTitle: event?.name ?? name,
       files: List<File>.from(_photos),
       galleryName: name,
       entityType: event?.entityType ?? 'none',
+      placeId: event?.placeId ?? '',
+      placeLabel: (event != null && event.isPlace) ? event.name : '',
+      lat: event?.lat,
+      lng: event?.lng,
     );
 
     // pushReplacement: going "back" from progress should return to the media
     // tab, not to a picker whose photos are already uploading.
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => GalleryUploadProgressScreen(
-          batchId: batchId,
-          galleryName: name,
-        ),
+        builder: (_) =>
+            GalleryUploadProgressScreen(batchId: batchId, galleryName: name),
       ),
     );
   }
@@ -239,7 +265,7 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: _ink, width: 1.6),
+                borderSide: const BorderSide(color: _brandGold, width: 1.6),
               ),
             ),
           ),
@@ -324,9 +350,7 @@ class _NextButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: enabled
-          ? _NewGalleryScreenState._ink
-          : Colors.grey.shade200,
+      color: enabled ? _NewGalleryScreenState._ink : Colors.grey.shade200,
       borderRadius: BorderRadius.circular(22),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -663,6 +687,23 @@ class _EventSearchSheet extends StatefulWidget {
   State<_EventSearchSheet> createState() => _EventSearchSheetState();
 }
 
+/// Brand gold — matches ThemeProvider.PRIMARY_COLOR_CODE.
+const Color _brandGold = Color(0xFFAE9159);
+
+/// A rounded field border in one colour.
+///
+/// Setting only `border` leaves the focused state to the theme, which paints
+/// it with the Material primary — the blue these fields kept showing.
+OutlineInputBorder _goldFieldBorder(Color color, {double width = 1}) {
+  return OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: color, width: width),
+  );
+}
+
+/// Same key the event and club screens use.
+const String _googlePlacesKey = 'AIzaSyDqDMSFVfl-tOgqaj4ZqA5I3HnobrIK6jg';
+
 class _EventSearchSheetState extends State<_EventSearchSheet> {
   final _controller = TextEditingController();
 
@@ -673,6 +714,13 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
   /// looked missing. A toggle makes the choice explicit rather than making the
   /// user scroll for it.
   TaggedEntityType _searchType = TaggedEntityType.event;
+
+  /// Owned here, and passed to the places field.
+  ///
+  /// Without a node of our own the field makes one per build, so it lost focus
+  /// after every keystroke — which made editing what you had typed almost
+  /// impossible.
+  final FocusNode _placeFocus = FocusNode();
 
   List<TaggedEvent> _results = [];
   bool _searching = false;
@@ -685,6 +733,7 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
   @override
   void dispose() {
     _controller.dispose();
+    _placeFocus.dispose();
     super.dispose();
   }
 
@@ -762,7 +811,8 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
       final data = events['data'];
       if (data is List) return data.whereType<Map<String, dynamic>>().toList();
     }
-    if (events is List) return events.whereType<Map<String, dynamic>>().toList();
+    if (events is List)
+      return events.whereType<Map<String, dynamic>>().toList();
 
     final top = json['top_results'];
     if (top is Map<String, dynamic>) {
@@ -809,27 +859,76 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-              child: TextField(
-                controller: _controller,
-                autofocus: true,
-                textInputAction: TextInputAction.search,
-                onSubmitted: _search,
-                onChanged: (value) {
-                  // Search on submit or once there is enough to be worth a
-                  // request — a per-keystroke search on two letters returns
-                  // noise and burns requests.
-                  if (value.trim().length >= 3) _search(value);
-                },
-                decoration: InputDecoration(
-                  hintText: _searchType == TaggedEntityType.venue
-                      ? 'Search venues'
-                      : 'Search events',
-                  prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
+              // Places come from Google, events and venues from our own API,
+              // so this is genuinely a different widget rather than the same
+              // field with a different endpoint behind it.
+              child: _searchType == TaggedEntityType.location
+                  ? GooglePlaceAutoCompleteTextField(
+                      textEditingController: _controller,
+                      googleAPIKey: _googlePlacesKey,
+                      focusNode: _placeFocus,
+                      debounceTime: 400,
+                      // ── 3. UK and US only ──────────────────────────────
+                      // The app covers two blogs, so a place in neither is
+                      // something no gallery can usefully sit at.
+                      countries: const ['uk', 'us'],
+                      isLatLngRequired: true,
+                      isCrossBtnShown: true,
+                      inputDecoration: InputDecoration(
+                        hintText: 'Search for a place',
+                        prefixIcon: const Icon(Icons.place_outlined),
+                        border: _goldFieldBorder(Colors.grey.shade300),
+                        enabledBorder: _goldFieldBorder(Colors.grey.shade300),
+                        focusedBorder: _goldFieldBorder(_brandGold, width: 1.6),
+                      ),
+                      getPlaceDetailWithLatLng: (Prediction prediction) {
+                        // Fires after the coordinates come back, which is the
+                        // only point a place is complete enough to return.
+                        final name = prediction.description ?? '';
+                        if (name.isEmpty) return;
+
+                        Navigator.pop(
+                          context,
+                          TaggedEvent(
+                            type: TaggedEntityType.location,
+                            // No post id — a place is identified by Google's
+                            // place_id, carried separately.
+                            id: '',
+                            name: name,
+                            placeId: prediction.placeId ?? '',
+                            lat: double.tryParse(prediction.lat ?? ''),
+                            lng: double.tryParse(prediction.lng ?? ''),
+                          ),
+                        );
+                      },
+                      itemClick: (Prediction prediction) {
+                        _controller.text = prediction.description ?? '';
+                        _controller.selection = TextSelection.fromPosition(
+                          TextPosition(offset: _controller.text.length),
+                        );
+                      },
+                    )
+                  : TextField(
+                      controller: _controller,
+                      autofocus: true,
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: _search,
+                      onChanged: (value) {
+                        // Search on submit or once there is enough to be worth
+                        // a request — a per-keystroke search on two letters
+                        // returns noise and burns requests.
+                        if (value.trim().length >= 3) _search(value);
+                      },
+                      decoration: InputDecoration(
+                        hintText: _searchType == TaggedEntityType.venue
+                            ? 'Search venues'
+                            : 'Search events',
+                        prefixIcon: const Icon(Icons.search),
+                        border: _goldFieldBorder(Colors.grey.shade300),
+                        enabledBorder: _goldFieldBorder(Colors.grey.shade300),
+                        focusedBorder: _goldFieldBorder(_brandGold, width: 1.6),
+                      ),
+                    ),
             ),
             // Toggle sits under the field, so switching re-runs whatever has
             // already been typed rather than making the user retype it.
@@ -841,24 +940,48 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
                   segments: const [
                     ButtonSegment(
                       value: TaggedEntityType.event,
-                      icon: Icon(Icons.event_outlined, size: 17),
-                      label: Text('Events'),
+                      icon: Icon(Icons.event_outlined, size: 16),
+                      label: Text('Event'),
                     ),
                     ButtonSegment(
                       value: TaggedEntityType.venue,
-                      icon: Icon(Icons.storefront_outlined, size: 17),
-                      label: Text('Venues'),
+                      icon: Icon(Icons.storefront_outlined, size: 16),
+                      label: Text('Venue'),
+                    ),
+                    ButtonSegment(
+                      value: TaggedEntityType.location,
+                      icon: Icon(Icons.place_outlined, size: 16),
+                      label: Text('Location'),
                     ),
                   ],
                   selected: {_searchType},
                   showSelectedIcon: false,
+                  // Brand gold on ink, rather than the default lilac the
+                  // Material scheme picks — three segments make an unbranded
+                  // control much more noticeable than two did.
+                  style: SegmentedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: _NewGalleryScreenState._muted,
+                    selectedBackgroundColor: _brandGold,
+                    selectedForegroundColor: Colors.white,
+                    side: const BorderSide(color: _brandGold, width: 1.2),
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
                   onSelectionChanged: (selection) {
                     setState(() {
                       _searchType = selection.first;
                       _results = [];
+                      // Google's field keeps its own overlay of predictions,
+                      // so stale text from the other mode would sit there
+                      // looking like a result.
+                      _controller.clear();
                     });
-                    // Re-run against the text already in the box.
-                    _search(_controller.text);
                   },
                 ),
               ),
@@ -872,6 +995,21 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
   }
 
   Widget _buildResults() {
+    // Google draws its own prediction list under the field, so this pane would
+    // only ever be an empty state competing with it.
+    if (_searchType == TaggedEntityType.location) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Text(
+            'Start typing to find a place.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Color(0xFF8A8A8A)),
+          ),
+        ),
+      );
+    }
+
     if (_searching) {
       return const Center(child: CircularProgressIndicator());
     }

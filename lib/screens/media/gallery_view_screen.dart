@@ -1,14 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/models/gallery_tag.dart';
 import 'package:drivelife/providers/account_provider.dart';
+import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:drivelife/screens/media/gallery_arrange_screen.dart';
 import 'package:drivelife/widgets/media/gallery_tag_picker.dart';
 import 'package:drivelife/services/user_service.dart';
 import 'package:drivelife/widgets/events/event_community_gallery_tab.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -123,12 +126,20 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// than an empty box.
   String? _entityImage;
 
+  /// Where the gallery was taken, when it is linked to a place rather than to
+  /// an event or venue.
+  String? _placeName;
+
   /// Tags on the whole gallery. Per-photo tags are not shown here — they
   /// belong to their photo, not to the gallery as a whole.
   List<GalleryTag> _galleryTags = const [];
 
   /// Tags on individual photos, keyed by photo row id.
   Map<int, List<GalleryTag>> _photoTags = const {};
+
+  /// Provider listener for an in-flight "add photos" batch, if any.
+  GalleryUploadProvider? _watchedUploads;
+  VoidCallback? _uploadListener;
   bool _following = false;
   bool _followBusy = false;
   String? _error;
@@ -195,6 +206,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       // curate this gallery".
       _canCurate = response['is_event_owner'] == true;
       _entityImage = _firstLinkImage(response);
+      _placeName = _firstPlaceName(response);
       _loading = false;
 
       // No owner passed in — take it from the cover photo's uploader, which
@@ -230,6 +242,23 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       }
       _loadingMore = false;
     });
+  }
+
+  /// The linked place's name, if the gallery has one.
+  ///
+  /// A place is the only kind of link with no page to open, so it is shown as
+  /// plain text rather than something tappable.
+  String? _firstPlaceName(Map<String, dynamic> response) {
+    final links = response['links'] as List<dynamic>? ?? const [];
+
+    for (final link in links.whereType<Map>()) {
+      if ('${link['entity_type']}' != 'location') continue;
+
+      final title = '${link['title'] ?? ''}';
+      if (title.isNotEmpty) return title;
+    }
+
+    return null;
   }
 
   /// Tag labels to show over one photo: its own, plus the gallery's.
@@ -360,6 +389,79 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       setState(() => _dirty = true);
       await _load();
     }
+  }
+
+  /// Adds more photos to this gallery.
+  ///
+  /// The upload runs in [GalleryUploadProvider] exactly as a new gallery's
+  /// does, with one difference: the gallery id is seeded, so every registered
+  /// photo APPENDS here rather than the first one creating a second gallery.
+  ///
+  /// Tagging is not re-run — these photos join a gallery that has already been
+  /// tagged and published, and gallery-wide tags cover them automatically.
+  Future<void> _addPhotos() async {
+    final galleryId = widget.galleryId;
+    if (galleryId == null || galleryId <= 0) return;
+
+    final picked = await ImagePicker().pickMultiImage();
+    if (picked.isEmpty || !mounted) return;
+
+    final uploads = context.read<GalleryUploadProvider>();
+
+    final batchId = uploads.startUpload(
+      files: picked.map((x) => File(x.path)).toList(),
+      eventTitle: _title,
+      galleryName: _title,
+      entityType: 'none',
+      existingGalleryId: galleryId,
+    );
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Adding ${picked.length} photo${picked.length == 1 ? '' : 's'}…',
+        ),
+      ),
+    );
+
+    // Reload when the batch lands. The provider keeps uploading whether or not
+    // this screen is still here, so leaving does not cancel anything — this
+    // listener just refreshes the grid if it is.
+    // Only one add-batch is watched at a time; a second replaces the first.
+    _stopWatchingUploads();
+
+    void onProgress() {
+      final batch = uploads.batch(batchId);
+      if (batch == null || !batch.isFinished) return;
+
+      _stopWatchingUploads();
+      if (!mounted) return;
+
+      setState(() => _dirty = true);
+      _load();
+    }
+
+    _watchedUploads = uploads;
+    _uploadListener = onProgress;
+    uploads.addListener(onProgress);
+  }
+
+  void _stopWatchingUploads() {
+    if (_uploadListener != null) {
+      _watchedUploads?.removeListener(_uploadListener!);
+    }
+    _watchedUploads = null;
+    _uploadListener = null;
+  }
+
+  @override
+  void dispose() {
+    // The upload itself carries on in the provider; only this screen's
+    // interest in it ends here.
+    _stopWatchingUploads();
+    super.dispose();
   }
 
   /// Sets the cover straight from a tile, without a trip through arranging —
@@ -651,6 +753,16 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       ),
       actions: [
         // Only for whoever may curate; everyone else sees an unchanged bar.
+        if (_canCurate && widget.galleryId != null)
+          IconButton(
+            icon: const Icon(
+              Icons.add_photo_alternate_outlined,
+              color: _ink,
+              size: 23,
+            ),
+            tooltip: 'Add photos',
+            onPressed: _addPhotos,
+          ),
         if (_canCurate)
           IconButton(
             icon: const Icon(Icons.swap_vert, color: _ink, size: 23),
@@ -733,6 +845,10 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       },
       child: CustomScrollView(
         slivers: [
+          // Directly under the title, before anything else on the page.
+          if (_placeName != null)
+            SliverToBoxAdapter(child: _buildPlaceRow(_placeName!)),
+
           if (_owner != null) SliverToBoxAdapter(child: _buildOwnerRow()),
 
           if (_galleryTags.isNotEmpty)
@@ -794,6 +910,35 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
                       ),
                     )
                   : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Where the gallery was taken.
+  ///
+  /// Above the cover rather than in the header: the header already carries the
+  /// gallery name and the linked entity, and a long place name would push
+  /// either of those out.
+  Widget _buildPlaceRow(String place) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+      child: Row(
+        children: [
+          const Icon(Icons.place_outlined, size: 16, color: _gold),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              place,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13.5,
+                color: _muted,
+                height: 1.3,
+              ),
             ),
           ),
         ],

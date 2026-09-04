@@ -39,6 +39,13 @@ class ThemeProvider extends ChangeNotifier {
           selectedItemColor: Color(PRIMARY_COLOR_CODE),
           unselectedItemColor: Colors.grey,
         ),
+        // Spinners default to the Material primary, which is the stock blue —
+        // set once here so every loading state in the app is brand gold
+        // instead of each screen colouring its own.
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: Color(PRIMARY_COLOR_CODE),
+          circularTrackColor: Colors.transparent,
+        ),
       );
     } else {
       return ThemeData.light().copyWith(
@@ -52,6 +59,10 @@ class ThemeProvider extends ChangeNotifier {
           backgroundColor: Colors.white,
           selectedItemColor: Colors.black,
           unselectedItemColor: Colors.grey,
+        ),
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: Color(PRIMARY_COLOR_CODE),
+          circularTrackColor: Colors.transparent,
         ),
       );
     }
