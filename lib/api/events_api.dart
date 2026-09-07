@@ -964,9 +964,22 @@ class EventsAPI {
     int? entityId,
     int page = 1,
     int perPage = 20,
+    // ── Browse (scope: 'all') ────────────────────────────────────────────
+    // Omitted entirely unless asked for, so the profile and entity tabs keep
+    // the endpoint's original behaviour.
+    String? scope,
+    String? linkType,
+    String? search,
+    DateTime? from,
+    DateTime? to,
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Not signed in');
+
+    String day(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
 
     final query = <String, String>{
       'page': '$page',
@@ -976,6 +989,11 @@ class EventsAPI {
         'entity_type': entityType,
         'entity_id': '$entityId',
       },
+      if (scope != null && scope.isNotEmpty) 'scope': scope,
+      if (linkType != null && linkType.isNotEmpty) 'link_type': linkType,
+      if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+      if (from != null) 'from': day(from),
+      if (to != null) 'to': day(to),
     };
 
     final response = await http.get(

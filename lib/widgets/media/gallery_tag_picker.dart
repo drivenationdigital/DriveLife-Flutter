@@ -192,6 +192,23 @@ class _GalleryTagPickerState extends State<GalleryTagPicker> {
           ],
           selected: {_searching},
           showSelectedIcon: false,
+          // Brand gold, matching the Event/Venue/Location tabs on the new
+          // gallery screen. Left unstyled this took Material's default lilac,
+          // which is the one control in the flow that was not ours.
+          style: SegmentedButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: _muted,
+            selectedBackgroundColor: _gold,
+            selectedForegroundColor: Colors.white,
+            side: const BorderSide(color: _gold, width: 1.2),
+            textStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
           onSelectionChanged: (selection) {
             setState(() {
               _searching = selection.first;

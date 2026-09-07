@@ -221,6 +221,9 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
         elevation: 0,
         surfaceTintColor: Colors.white,
         titleSpacing: 0,
+        // iOS centres app bar titles by default, which centres this
+        // left-aligned block and leaves it looking off.
+        centerTitle: false,
         leading: IconButton(
           icon: const Icon(Icons.close, color: _ink, size: 26),
           onPressed: () => Navigator.pop(context),

@@ -708,6 +708,9 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       surfaceTintColor: Colors.white,
       elevation: 0,
       titleSpacing: 0,
+      // iOS centres app bar titles by default, which centres this
+      // left-aligned block and leaves it looking off.
+      centerTitle: false,
       leadingWidth: 40,
       leading: IconButton(
         icon: const Icon(Icons.chevron_left, color: _ink, size: 30),

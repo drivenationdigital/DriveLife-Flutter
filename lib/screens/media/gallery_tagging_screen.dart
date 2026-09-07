@@ -334,6 +334,10 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
         surfaceTintColor: Colors.white,
         elevation: 0,
         titleSpacing: 0,
+        // iOS centres app bar titles by default, which centres this
+        // whole two-line block and leaves it looking off against the
+        // back arrow. Every step of the flow pins it left.
+        centerTitle: false,
         // Same leading + unpadded title as step 1, so the two headings sit on
         // the same line as you move between them.
         leading: IconButton(

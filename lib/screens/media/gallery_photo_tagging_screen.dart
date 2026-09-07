@@ -160,6 +160,10 @@ class _GalleryPhotoTaggingScreenState extends State<GalleryPhotoTaggingScreen> {
         surfaceTintColor: Colors.white,
         elevation: 0,
         titleSpacing: 0,
+        // iOS centres app bar titles by default, which centres this
+        // whole two-line block and leaves it looking off against the
+        // back arrow. Every step of the flow pins it left.
+        centerTitle: false,
         leading: IconButton(
           icon: const Icon(Icons.chevron_left, color: _ink, size: 30),
           onPressed: () => Navigator.pop(context),
@@ -241,10 +245,7 @@ class _GalleryPhotoTaggingScreenState extends State<GalleryPhotoTaggingScreen> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(32),
-          child: Text(
-            'No photos to tag.',
-            style: TextStyle(color: _muted),
-          ),
+          child: Text('No photos to tag.', style: TextStyle(color: _muted)),
         ),
       );
     }

@@ -1,6 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/media_api.dart';
-import 'package:drivelife/main.dart';
 import 'package:drivelife/models/media_models.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
@@ -8,6 +7,7 @@ import 'package:drivelife/screens/media/images_of_you_screen.dart';
 import 'package:drivelife/screens/media/gallery_view_screen.dart';
 import 'package:drivelife/screens/media/new_gallery_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
+import 'package:drivelife/screens/media/all_galleries_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
@@ -280,8 +280,16 @@ class _MediaScreenState extends State<MediaScreen>
       _SectionHeader(
         title: 'Galleries',
         actionLabel: 'See all',
-        // Events tab (bottom nav index 1), same target as the feed's pills.
-        onAction: () => context.read<BottomNavProvider>().setIndex(1),
+        // Every gallery, newest first, with filters. This used to jump to the
+        // Events tab — a different thing entirely, and no way to browse
+        // galleries at all.
+        onAction: () async {
+          await Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const AllGalleriesScreen()));
+          // A cover, delete or new gallery there changes this row too.
+          if (mounted) await _loadGalleries();
+        },
       ),
       // Explain the cards with no badge, or their emptiness reads as broken
       // rather than as an invitation.
