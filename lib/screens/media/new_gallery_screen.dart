@@ -152,6 +152,20 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
   bool get _canContinue =>
       _nameController.text.trim().isNotEmpty && _photos.isNotEmpty;
 
+  /// What is still missing, for the hint beside a disabled Next.
+  ///
+  /// A greyed-out button with photos already picked reads as broken — the one
+  /// thing left to do is usually the title, and nothing said so.
+  String? get _blocker {
+    final needsName = _nameController.text.trim().isEmpty;
+    final needsPhotos = _photos.isEmpty;
+
+    if (needsName && needsPhotos) return 'Add a name and at least one photo';
+    if (needsName) return 'Add a name to continue';
+    if (needsPhotos) return 'Add at least one photo to continue';
+    return null;
+  }
+
   Future<void> _addPhotos() async {
     final picked = await _picker.pickMultiImage();
     if (picked.isEmpty || !mounted) return;
@@ -272,6 +286,25 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
               ),
             ),
           ),
+
+          if (_blocker != null) ...[
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Icon(Icons.info_outline, size: 15, color: Colors.grey.shade500),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    _blocker!,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
 
           const SizedBox(height: 26),
           Row(

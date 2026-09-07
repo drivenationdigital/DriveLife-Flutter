@@ -8,6 +8,7 @@ import 'package:drivelife/screens/media/gallery_view_screen.dart';
 import 'package:drivelife/screens/media/new_gallery_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/screens/media/all_galleries_screen.dart';
+import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
@@ -51,10 +52,54 @@ class _MediaScreenState extends State<MediaScreen>
   bool _loadingPopular = true;
   String? _popularError;
 
+  /// Batches already folded into the list, so one finished upload triggers one
+  /// refresh rather than one per notification.
+  final Set<String> _handledBatches = {};
+
+  GalleryUploadProvider? _uploads;
+
   @override
   void initState() {
     super.initState();
     _loadAll();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final provider = context.read<GalleryUploadProvider>();
+    if (identical(provider, _uploads)) return;
+
+    _uploads?.removeListener(_onUploadsChanged);
+    _uploads = provider..addListener(_onUploadsChanged);
+  }
+
+  @override
+  void dispose() {
+    _uploads?.removeListener(_onUploadsChanged);
+    super.dispose();
+  }
+
+  /// Refreshes the Galleries row when an upload lands.
+  ///
+  /// Publishing returns you to this tab, and without this the gallery you just
+  /// made is simply absent until you think to pull to refresh — which reads as
+  /// the upload having failed.
+  void _onUploadsChanged() {
+    final provider = _uploads;
+    if (provider == null || !mounted) return;
+
+    final finished = provider.batches.values
+        .where((b) => b.isFinished && b.uploaded > 0)
+        .map((b) => b.id)
+        .where((id) => !_handledBatches.contains(id))
+        .toList();
+
+    if (finished.isEmpty) return;
+
+    _handledBatches.addAll(finished);
+    _loadGalleries();
   }
 
   Future<void> _loadAll() {

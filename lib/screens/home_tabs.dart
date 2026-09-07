@@ -373,7 +373,9 @@ class _HomeTabsState extends State<HomeTabs> {
             onLongPress: () => _showAccountSwitcher(),
             child: hasUrl
                 ? CircleAvatar(
-                    radius: 16,
+                    // 12 = the 24px the SVG icons use. Anything taller makes
+                    // this item taller and its label drop out of line.
+                    radius: 12,
                     backgroundColor: Colors.transparent,
                     backgroundImage: CachedNetworkImageProvider(url),
                     onBackgroundImageError: (_, __) {},
@@ -395,7 +397,8 @@ class _HomeTabsState extends State<HomeTabs> {
           onLongPress: () => _showAccountSwitcher(),
           child: hasUrl
               ? CircleAvatar(
-                  radius: 13,
+                  // Matches the 24px of every other nav icon.
+                  radius: 12,
                   backgroundColor: Colors.transparent,
                   backgroundImage: CachedNetworkImageProvider(url),
                   onBackgroundImageError: (_, __) {},

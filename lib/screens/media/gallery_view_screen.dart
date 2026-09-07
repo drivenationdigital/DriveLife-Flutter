@@ -4,9 +4,12 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/models/gallery_tag.dart';
+import 'package:drivelife/routes.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:drivelife/screens/media/gallery_arrange_screen.dart';
+import 'package:drivelife/screens/media/gallery_tagging_screen.dart';
+import 'package:drivelife/screens/media/gallery_upload_progress_screen.dart';
 import 'package:drivelife/widgets/media/gallery_tag_picker.dart';
 import 'package:drivelife/services/user_service.dart';
 import 'package:drivelife/widgets/events/event_community_gallery_tab.dart';
@@ -141,9 +144,11 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// Tags on individual photos, keyed by photo row id.
   Map<int, List<GalleryTag>> _photoTags = const {};
 
-  /// Provider listener for an in-flight "add photos" batch, if any.
-  GalleryUploadProvider? _watchedUploads;
-  VoidCallback? _uploadListener;
+  /// Tags this gallery's owner has applied that the tagged member has not
+  /// answered yet. Owner-only — they are invisible to everyone else, which is
+  /// exactly why the owner needs telling they exist.
+  int _pendingTagCount = 0;
+
   bool _following = false;
   bool _followBusy = false;
   String? _error;
@@ -155,10 +160,17 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     _load();
   }
 
-  String get _title =>
-      (widget.galleryName != null && widget.galleryName!.isNotEmpty)
-      ? widget.galleryName!
-      : widget.entityTitle;
+  /// Set by a rename, which the widget's own fields cannot reflect.
+  String? _renamedTitle;
+
+  String get _title {
+    if (_renamedTitle != null && _renamedTitle!.isNotEmpty) {
+      return _renamedTitle!;
+    }
+    return (widget.galleryName != null && widget.galleryName!.isNotEmpty)
+        ? widget.galleryName!
+        : widget.entityTitle;
+  }
 
   /// The owner's chosen cover, else the first photo.
   CommunityPhoto? get _cover {
@@ -211,6 +223,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       _canCurate = response['is_event_owner'] == true;
       _entityImage = _firstLinkImage(response);
       _placeName = _firstPlaceName(response);
+      _unscannedCount = int.tryParse('${response['unscanned']}') ?? 0;
       _loading = false;
 
       // No owner passed in — take it from the cover photo's uploader, which
@@ -265,6 +278,52 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     return null;
   }
 
+  /// Photos the vehicle scan has not read yet, across the WHOLE gallery.
+  ///
+  /// Counted server-side rather than from [_photos]: only the first page is
+  /// loaded, so counting locally would say "30 photos" on a 60-photo gallery
+  /// where all 60 are unread.
+  int _unscannedCount = 0;
+
+  /// Runs the scan on this gallery, later.
+  ///
+  /// Opens the same tagging screen the upload flow uses: it scans, shows
+  /// progress, seeds itself from the tags already saved, and saves back. Doing
+  /// it here rather than inline means the results land somewhere you can
+  /// actually confirm or remove them.
+  Future<void> _scanForVehicles() async {
+    final galleryId = widget.galleryId;
+    if (galleryId == null || galleryId <= 0) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => GalleryTaggingScreen(
+          galleryId: galleryId,
+          galleryName: _title,
+          // Back to the gallery, not out to the feed — this is a detour from
+          // here, not the end of an upload.
+          returnToRoot: false,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    _markChanged();
+    await _load();
+  }
+
+  /// Opens a member's profile.
+  void _openProfile(int userId, String handle) {
+    if (userId <= 0) return;
+
+    Navigator.pushNamed(
+      context,
+      AppRoutes.viewProfile,
+      arguments: {'userId': userId, if (handle.isNotEmpty) 'username': handle},
+    );
+  }
+
   /// Tag labels to show over one photo: its own, plus the gallery's.
   List<String> _labelsForPhoto(CommunityPhoto photo) {
     String label(GalleryTag tag) =>
@@ -285,13 +344,26 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     if (galleryId == null || galleryId <= 0) return;
 
     try {
-      final tags = await EventsAPI.fetchGalleryTags(galleryId: galleryId);
+      // Pending rows come back only for the owner, and only they can act on
+      // this — for anyone else the request is none of their business.
+      final tags = await EventsAPI.fetchGalleryTags(
+        galleryId: galleryId,
+        includePending: _canCurate,
+      );
       if (!mounted) return;
 
       final wide = <GalleryTag>[];
       final perPhoto = <int, List<GalleryTag>>{};
+      var pending = 0;
 
       for (final raw in tags) {
+        // Absent on an older API build, where every tag was live.
+        if (raw['approved'] == false) {
+          pending++;
+          // Unanswered, so it is not part of the gallery yet.
+          continue;
+        }
+
         final mediaId = int.tryParse('${raw['media_id']}') ?? 0;
         final tag = GalleryTag.fromJson(raw);
 
@@ -305,6 +377,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       setState(() {
         _galleryTags = wide;
         _photoTags = perPhoto;
+        _pendingTagCount = pending;
       });
     } catch (_) {
       // Leave the row hidden.
@@ -395,6 +468,164 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     }
   }
 
+  /// Renames the gallery.
+  Future<void> _rename() async {
+    final galleryId = widget.galleryId;
+    if (galleryId == null || galleryId <= 0) return;
+
+    final controller = TextEditingController(text: _title);
+
+    final title = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Rename gallery'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'Gallery name'),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    // Empty is not a rename: every gallery has a title, and a blank one leaves
+    // a card with nothing but its cover.
+    if (title == null || title.isEmpty || title == _title || !mounted) return;
+
+    try {
+      await EventsAPI.renameGallery(galleryId: galleryId, title: title);
+      if (!mounted) return;
+
+      setState(() => _renamedTitle = title);
+      _markChanged();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$e'.replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// The owner's menu: everything that edits this gallery, in one place.
+  Future<void> _showGalleryMenu() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 6),
+            ListTile(
+              leading: const Icon(Icons.add_photo_alternate_outlined),
+              title: const Text('Add photos'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _addPhotos();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline),
+              title: const Text('Rename gallery'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _rename();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.swap_vert),
+              title: const Text('Arrange photos'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _openArrange();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text(
+                'Delete gallery',
+                style: TextStyle(color: Colors.red),
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _deleteGallery();
+              },
+            ),
+            const SizedBox(height: 6),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Deletes the whole gallery, after confirming.
+  Future<void> _deleteGallery() async {
+    final galleryId = widget.galleryId;
+    if (galleryId == null || galleryId <= 0) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this gallery?'),
+        content: Text(
+          '"$_title" and all ${_photos.length} of its photos will be removed. '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _loading = true);
+
+    try {
+      await EventsAPI.deleteGallery(galleryId);
+      if (!mounted) return;
+
+      _markChanged();
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$e'.replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   /// Adds more photos to this gallery.
   ///
   /// The upload runs in [GalleryUploadProvider] exactly as a new gallery's
@@ -410,61 +641,42 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     final picked = await ImagePicker().pickMultiImage();
     if (picked.isEmpty || !mounted) return;
 
-    final uploads = context.read<GalleryUploadProvider>();
-
-    final batchId = uploads.startUpload(
+    final batchId = context.read<GalleryUploadProvider>().startUpload(
       files: picked.map((x) => File(x.path)).toList(),
       eventTitle: _title,
       galleryName: _title,
       entityType: 'none',
+      // Seeded, so every photo appends here rather than the first one creating
+      // a second gallery.
       existingGalleryId: galleryId,
     );
 
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Adding ${picked.length} photo${picked.length == 1 ? '' : 's'}…',
+    // The same progress → tagging path a new gallery takes, rather than a
+    // toast and a listener. A toast showed no progress, said nothing when the
+    // upload failed, and — because tagging was pushed from a listener on THIS
+    // screen — silently skipped tagging altogether if you navigated away.
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => GalleryUploadProgressScreen(
+          batchId: batchId,
+          galleryName: _title,
+          isNewGallery: false,
         ),
       ),
     );
 
-    // Reload when the batch lands. The provider keeps uploading whether or not
-    // this screen is still here, so leaving does not cancel anything — this
-    // listener just refreshes the grid if it is.
-    // Only one add-batch is watched at a time; a second replaces the first.
-    _stopWatchingUploads();
+    if (!mounted) return;
 
-    void onProgress() {
-      final batch = uploads.batch(batchId);
-      if (batch == null || !batch.isFinished) return;
-
-      _stopWatchingUploads();
-      if (!mounted) return;
-
-      _markChanged();
-      _load();
-    }
-
-    _watchedUploads = uploads;
-    _uploadListener = onProgress;
-    uploads.addListener(onProgress);
-  }
-
-  void _stopWatchingUploads() {
-    if (_uploadListener != null) {
-      _watchedUploads?.removeListener(_uploadListener!);
-    }
-    _watchedUploads = null;
-    _uploadListener = null;
+    _markChanged();
+    await _load();
   }
 
   @override
   void dispose() {
-    // The upload itself carries on in the provider; only this screen's
-    // interest in it ends here.
-    _stopWatchingUploads();
+    // Nothing to unhook: the upload lives in the provider and the progress
+    // screen owns the waiting, so this screen holds no listener of its own.
     super.dispose();
   }
 
@@ -548,6 +760,11 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       // Deleting the cover changes what every list shows for this gallery,
       // and the server picks the replacement — so take its answer.
       if (wasCover && mounted) await _load();
+
+      // A gallery with no photos has no cover, so it renders as a blank card
+      // that cannot be fixed from a list. Offer to finish the job here, where
+      // the user is already deleting.
+      if (mounted && _photos.isEmpty) await _offerEmptyGalleryDelete();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -556,6 +773,63 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
           backgroundColor: Colors.red,
         ),
       );
+    }
+  }
+
+  /// Offers to delete a gallery whose last photo has just been removed.
+  ///
+  /// Not automatic: deleting the gallery is a bigger act than deleting a photo,
+  /// and doing it silently would surprise someone who meant to clear it out and
+  /// upload again.
+  Future<void> _offerEmptyGalleryDelete() async {
+    final galleryId = widget.galleryId;
+    if (galleryId == null || galleryId <= 0 || !_canCurate) return;
+
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Gallery is now empty'),
+        content: const Text(
+          'A gallery with no photos will show as a blank card. Add more '
+          'photos, or delete it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'keep'),
+            child: const Text('Keep'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'add'),
+            child: const Text('Add photos'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'delete'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (choice == 'add') {
+      await _addPhotos();
+    } else if (choice == 'delete') {
+      try {
+        await EventsAPI.deleteGallery(galleryId);
+        if (!mounted) return;
+        _markChanged();
+        Navigator.pop(context);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$e'.replaceFirst('Exception: ', '')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -771,27 +1045,27 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
         ],
       ),
       actions: [
-        // Only for whoever may curate; everyone else sees an unchanged bar.
+        // Share first, then the owner's menu — the menu is the rightmost thing
+        // because it is the one only some people see, so its absence does not
+        // shuffle the icon everyone uses.
+        IconButton(
+          icon: const Icon(Icons.ios_share, color: _ink, size: 23),
+          tooltip: 'Share',
+          onPressed: _share,
+        ),
         if (_canCurate && widget.galleryId != null)
           IconButton(
-            icon: const Icon(
-              Icons.add_photo_alternate_outlined,
-              color: _ink,
-              size: 23,
-            ),
-            tooltip: 'Add photos',
-            onPressed: _addPhotos,
-          ),
-        if (_canCurate)
+            icon: const Icon(Icons.more_vert, color: _ink, size: 22),
+            tooltip: 'Gallery options',
+            onPressed: _showGalleryMenu,
+          )
+        else if (_canCurate)
+          // Entity-addressed view: a merged pool, so only ordering applies.
           IconButton(
             icon: const Icon(Icons.swap_vert, color: _ink, size: 23),
             tooltip: 'Arrange photos',
             onPressed: _openArrange,
           ),
-        IconButton(
-          icon: const Icon(Icons.ios_share, color: _ink, size: 23),
-          onPressed: _share,
-        ),
         const SizedBox(width: 4),
       ],
       bottom: PreferredSize(
@@ -870,8 +1144,16 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
 
           if (_owner != null) SliverToBoxAdapter(child: _buildOwnerRow()),
 
-          if (_galleryTags.isNotEmpty)
+          // Members only — a gallery of unmatched plates has an empty strip.
+          if (_taggedMembers.isNotEmpty)
             SliverToBoxAdapter(child: _buildTagStrip()),
+
+          if (_canCurate && _pendingTagCount > 0)
+            SliverToBoxAdapter(child: _buildPendingTagNote()),
+
+          // Owner only, and only while there is something left to read.
+          if (_canCurate && !_loading && _unscannedCount > 0)
+            SliverToBoxAdapter(child: _buildScanPrompt()),
 
           // Cover runs edge to edge; the grid below is what it introduces.
           SliverToBoxAdapter(
@@ -892,6 +1174,10 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
               ),
             ),
           ),
+
+          // The same 2px the grid puts between thumbnails, so the cover reads
+          // as part of the same set rather than butted against it.
+          const SliverToBoxAdapter(child: SizedBox(height: 2)),
 
           SliverGrid(
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -970,7 +1256,108 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// Horizontal rather than wrapped: a gallery from a big meet can carry a
   /// dozen tags, and letting them wrap would push the cover off the screen —
   /// the cover is what the page is for.
+  /// The members in this gallery, deduped.
+  ///
+  /// People, not plates: a car tag is really about its owner, and a plate
+  /// matching no garage is about nobody — so it is left out rather than shown
+  /// as a chip that leads nowhere. Two of one person's cars make one chip.
+  List<GalleryTag> get _taggedMembers {
+    final seen = <int>{};
+    final members = <GalleryTag>[];
+
+    for (final tag in _galleryTags) {
+      if (!tag.hasMember || !seen.add(tag.ownerId)) continue;
+      members.add(tag);
+    }
+
+    return members;
+  }
+
+  /// Offers to look for vehicles in photos the scan has not read.
+  ///
+  /// The point of this living here is that scanning need not hold up an
+  /// upload: skip it at the time, come back when it suits, and only the
+  /// unread photos cost anything.
+  Widget _buildScanPrompt() {
+    final count = _unscannedCount;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      child: InkWell(
+        onTap: _scanForVehicles,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: _gold.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _gold.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.auto_awesome, size: 19, color: _gold),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Scan $count photo${count == 1 ? '' : 's'} for vehicles',
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                        color: _ink,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Finds number plates and tags the owners.',
+                      style: TextStyle(fontSize: 12.5, color: _muted),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 20, color: _gold),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Explains why a tag the owner added is not showing.
+  ///
+  /// Without this the owner tags someone, sees nothing appear, and reasonably
+  /// concludes it failed — when it is simply waiting on the other person.
+  Widget _buildPendingTagNote() {
+    final count = _pendingTagCount;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Row(
+        children: [
+          Icon(Icons.schedule, size: 15, color: Colors.grey.shade500),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '$count tag${count == 1 ? '' : 's'} waiting to be accepted. '
+              '${count == 1 ? 'It' : 'They'} will show here once confirmed.',
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: _muted,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTagStrip() {
+    final members = _taggedMembers;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -992,41 +1379,47 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _galleryTags.length,
+              itemCount: members.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (context, index) {
-                final tag = _galleryTags[index];
-                final isVehicle = tag.kind == TagKind.vehicle;
+                final tag = members[index];
+                final handle = tag.ownerHandle.isNotEmpty
+                    ? tag.ownerHandle
+                    : tag.label;
 
-                return Container(
-                  padding: const EdgeInsets.only(
-                    left: 4,
-                    right: 12,
-                    top: 4,
-                    bottom: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      GalleryTagAvatar(
-                        imageUrl: tag.avatarUrl,
-                        isVehicle: isVehicle,
-                        size: 26,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        isVehicle ? tag.label : '@${tag.label}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: _ink,
+                return InkWell(
+                  onTap: () => _openProfile(tag.ownerId, handle),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    padding: const EdgeInsets.only(
+                      left: 4,
+                      right: 12,
+                      top: 4,
+                      bottom: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        GalleryTagAvatar(
+                          imageUrl: tag.ownerAvatar,
+                          isVehicle: false,
+                          size: 26,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        Text(
+                          '@$handle',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _ink,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               },
@@ -1045,40 +1438,49 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: Colors.grey.shade200,
-            backgroundImage: owner.avatarUrl.isEmpty
-                ? null
-                : CachedNetworkImageProvider(owner.avatarUrl),
-            child: owner.avatarUrl.isEmpty
-                ? Icon(Icons.person, color: Colors.grey.shade500)
-                : null,
+          GestureDetector(
+            onTap: () => _openProfile(owner.userId, owner.handle),
+            child: CircleAvatar(
+              radius: 22,
+              backgroundColor: Colors.grey.shade200,
+              backgroundImage: owner.avatarUrl.isEmpty
+                  ? null
+                  : CachedNetworkImageProvider(owner.avatarUrl),
+              child: owner.avatarUrl.isEmpty
+                  ? Icon(Icons.person, color: Colors.grey.shade500)
+                  : null,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  owner.displayHandle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: _ink,
+            child: GestureDetector(
+              onTap: () => _openProfile(owner.userId, owner.handle),
+              // Transparent, not null: without a colour the empty space beside
+              // a short name does not register a tap.
+              behavior: HitTestBehavior.opaque,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    owner.displayHandle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: _ink,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  owner.name.isEmpty ? 'Gallery' : 'Gallery by ${owner.name}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 14, color: _muted),
-                ),
-              ],
+                  const SizedBox(height: 2),
+                  Text(
+                    owner.name.isEmpty ? 'Gallery' : 'Gallery by ${owner.name}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14, color: _muted),
+                  ),
+                ],
+              ),
             ),
           ),
           if (canFollow)

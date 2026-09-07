@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/screens/events/event_community_gallery_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
+import 'package:drivelife/routes.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -15,6 +16,10 @@ class CommunityPhoto {
   final String thumb; // smaller crop — grid tiles
   final String uploaderName;
   final String uploaderAvatar;
+
+  /// Who uploaded it. 0 where the API predates sending it, which is why the
+  /// credit is only tappable when this is set.
+  final int uploaderId;
   final DateTime? takenAt;
 
   /// Whether the signed-in viewer may remove this photo — their own upload, or
@@ -26,15 +31,21 @@ class CommunityPhoto {
   /// owner. At most one per event.
   final bool isCover;
 
+  /// Whether the vehicle scan has read this photo. False on an older API build
+  /// that does not send it, which reads the same as "not yet scanned".
+  final bool scanned;
+
   const CommunityPhoto({
     required this.id,
     required this.url,
     required this.thumb,
     required this.uploaderName,
     required this.uploaderAvatar,
+    this.uploaderId = 0,
     this.takenAt,
     this.canDelete = false,
     this.isCover = false,
+    this.scanned = false,
   });
 
   /// Only [isCover] ever changes client-side — flipped optimistically so the
@@ -46,9 +57,11 @@ class CommunityPhoto {
     String? thumb,
     String? uploaderName,
     String? uploaderAvatar,
+    int? uploaderId,
     DateTime? takenAt,
     bool? canDelete,
     bool? isCover,
+    bool? scanned,
   }) {
     return CommunityPhoto(
       id: id ?? this.id,
@@ -56,9 +69,11 @@ class CommunityPhoto {
       thumb: thumb ?? this.thumb,
       uploaderName: uploaderName ?? this.uploaderName,
       uploaderAvatar: uploaderAvatar ?? this.uploaderAvatar,
+      uploaderId: uploaderId ?? this.uploaderId,
       takenAt: takenAt ?? this.takenAt,
       canDelete: canDelete ?? this.canDelete,
       isCover: isCover ?? this.isCover,
+      scanned: scanned ?? this.scanned,
     );
   }
 
@@ -75,12 +90,15 @@ class CommunityPhoto {
           ? 'DriveLife member'
           : _str(uploader['name']),
       uploaderAvatar: _str(uploader['avatar']),
-      takenAt: DateTime.tryParse(_str(json['taken_at'])) ??
+      uploaderId: int.tryParse(_str(uploader['user_id'])) ?? 0,
+      takenAt:
+          DateTime.tryParse(_str(json['taken_at'])) ??
           DateTime.tryParse(_str(json['created_at'])),
       // Absent on an older server build — default to no control rather than
       // offering a delete that would come back 403.
       canDelete: json['can_delete'] == true || json['can_delete'] == 1,
       isCover: json['is_cover'] == true || json['is_cover'] == 1,
+      scanned: json['scanned'] == true || json['scanned'] == 1,
     );
   }
 
@@ -307,9 +325,7 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Delete this photo?'),
         content: const Text(
           'It will be removed from the event gallery. This cannot be undone.',
@@ -344,9 +360,9 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
           _photos.removeWhere((p) => p.id == photo.id);
           if (_total > 0) _total--;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Photo deleted')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Photo deleted')));
       }
     } catch (e) {
       if (!mounted) return;
@@ -415,9 +431,9 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cover updated')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Cover updated')));
     } catch (e) {
       if (!mounted) return;
 
@@ -581,10 +597,7 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
             ),
           ),
           if (_photos.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: _buildEmptyState(),
-            )
+            SliverFillRemaining(hasScrollBody: false, child: _buildEmptyState())
           else if (_reordering)
             // Reorder uses a LIST, not the grid: ReorderableListView is built
             // into Flutter and handles the drag, autoscroll and accessibility
@@ -621,8 +634,7 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
               sliver: SliverGrid(
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
                   crossAxisSpacing: 6,
                   mainAxisSpacing: 6,
@@ -705,7 +717,11 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
   }
 
   /// One row while rearranging: thumbnail, position, cover marker, handle.
-  Widget _buildReorderTile(CommunityPhoto photo, int index, {required Key key}) {
+  Widget _buildReorderTile(
+    CommunityPhoto photo,
+    int index, {
+    required Key key,
+  }) {
     return Padding(
       key: key,
       padding: const EdgeInsets.only(bottom: 8),
@@ -726,10 +742,16 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
                 height: 54,
                 fit: BoxFit.cover,
                 memCacheWidth: 160,
-                placeholder: (_, __) =>
-                    Container(width: 54, height: 54, color: Colors.grey.shade200),
-                errorWidget: (_, __, ___) =>
-                    Container(width: 54, height: 54, color: Colors.grey.shade200),
+                placeholder: (_, __) => Container(
+                  width: 54,
+                  height: 54,
+                  color: Colors.grey.shade200,
+                ),
+                errorWidget: (_, __, ___) => Container(
+                  width: 54,
+                  height: 54,
+                  color: Colors.grey.shade200,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -1178,10 +1200,7 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
                 ),
                 if (photo.canDelete && widget.onDelete != null)
                   IconButton(
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.white,
-                    ),
+                    icon: const Icon(Icons.delete_outline, color: Colors.white),
                     onPressed: () => widget.onDelete!(photo),
                   )
                 else
@@ -1190,52 +1209,6 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
             ),
           ),
         ),
-
-        // Tags on this photo, above the credit so they read as part of the
-        // photo rather than part of the uploader's name.
-        if (widget.tagsFor != null)
-          Builder(
-            builder: (context) {
-              final tags = widget.tagsFor!(photo);
-              if (tags.isEmpty) return const SizedBox.shrink();
-
-              return Positioned(
-                left: 0,
-                right: 0,
-                bottom: 96,
-                child: SizedBox(
-                  height: 30,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: tags.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 6),
-                    itemBuilder: (context, i) => Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 11,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.25),
-                        ),
-                      ),
-                      child: Text(
-                        tags[i],
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
 
         // Uploader credit
         Positioned(
@@ -1253,48 +1226,120 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
             ),
             child: SafeArea(
               top: false,
-              child: Row(
+              // Tags share this block with the credit, so the gap between them
+              // is a real gap — not a guess at how tall the credit and the
+              // home indicator happen to be, which is what bottom: 96 was.
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: Colors.white24,
-                    backgroundImage: photo.uploaderAvatar.isNotEmpty
-                        ? CachedNetworkImageProvider(photo.uploaderAvatar)
-                        : null,
-                    child: photo.uploaderAvatar.isEmpty
-                        ? Text(
-                            photo.uploaderName.characters.first.toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
+                  if (widget.tagsFor != null)
+                    // photo rather than part of the uploader's name.
+                    if (widget.tagsFor != null)
+                      Builder(
+                        builder: (context) {
+                          final tags = widget.tagsFor!(photo);
+                          if (tags.isEmpty) return const SizedBox.shrink();
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: SizedBox(
+                              height: 30,
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: tags.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(width: 6),
+                                itemBuilder: (context, i) => Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 11,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.55),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.25,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    tags[i],
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
+                          );
+                        },
+                      ),
+                  GestureDetector(
+                    // Only where the id is known; an older API build sends no
+                    // user_id, and a dead tap is worse than none.
+                    onTap: photo.uploaderId > 0
+                        ? () => Navigator.pushNamed(
+                            context,
+                            AppRoutes.viewProfile,
+                            arguments: {
+                              'userId': photo.uploaderId,
+                              'username': photo.uploaderName,
+                            },
                           )
                         : null,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    behavior: HitTestBehavior.opaque,
+                    child: Row(
                       children: [
-                        Text(
-                          photo.uploaderName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: Colors.white24,
+                          backgroundImage: photo.uploaderAvatar.isNotEmpty
+                              ? CachedNetworkImageProvider(photo.uploaderAvatar)
+                              : null,
+                          child: photo.uploaderAvatar.isEmpty
+                              ? Text(
+                                  photo.uploaderName.characters.first
+                                      .toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                photo.uploaderName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              if (photo.takenAt != null)
+                                Text(
+                                  DateFormat(
+                                    'd MMM yyyy',
+                                  ).format(photo.takenAt!),
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                        if (photo.takenAt != null)
-                          Text(
-                            DateFormat('d MMM yyyy').format(photo.takenAt!),
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                          ),
                       ],
                     ),
                   ),
@@ -1446,10 +1491,7 @@ class _GalleryUploadStatus extends StatelessWidget {
           onPressed: () => provider.retryFailed(batch.id),
           child: Text(
             'Retry',
-            style: TextStyle(
-              color: primaryColor,
-              fontWeight: FontWeight.w800,
-            ),
+            style: TextStyle(color: primaryColor, fontWeight: FontWeight.w800),
           ),
         ),
         IconButton(

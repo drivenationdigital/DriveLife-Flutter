@@ -27,10 +27,19 @@ class GalleryTaggingScreen extends StatefulWidget {
 
   final String galleryName;
 
+  /// Whether finishing should drop back to the feed.
+  ///
+  /// True for a new gallery, where everything behind this screen is the
+  /// composer. False when adding photos to an existing gallery — there the
+  /// screen behind is the gallery itself, and throwing the user to the feed
+  /// loses their place for no reason.
+  final bool returnToRoot;
+
   const GalleryTaggingScreen({
     super.key,
     required this.galleryId,
     required this.galleryName,
+    this.returnToRoot = true,
   });
 
   @override
@@ -68,6 +77,9 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
   int _scanned = 0;
   int _scanTotal = 0;
 
+  /// True once every photo has been read.
+  bool _scanDone = false;
+
   /// Why the scan could not run. Shown rather than swallowed: a silent failure
   /// made "the endpoint is missing" and "no cars found" look the same, which
   /// is exactly how a missing deployment went unnoticed.
@@ -81,7 +93,40 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
   @override
   void initState() {
     super.initState();
-    if (_hasGallery) _runScan();
+    if (!_hasGallery) return;
+
+    // Existing tags first: saving REPLACES the set, so opening this screen on
+    // a gallery that already has tags and saving would otherwise delete them.
+    // Pending requests are included for the same reason.
+    _loadExistingTags().whenComplete(_runScan);
+  }
+
+  Future<void> _loadExistingTags() async {
+    try {
+      final existing = await EventsAPI.fetchGalleryTags(
+        galleryId: widget.galleryId!,
+        includePending: true,
+      );
+
+      if (_disposed || !mounted) return;
+
+      final tags = existing
+          .where((t) => (int.tryParse('${t['media_id']}') ?? 0) == 0)
+          .map(GalleryTag.fromJson)
+          .toList();
+
+      if (tags.isEmpty) return;
+
+      setState(() {
+        _tags = tags;
+        // Already tagged, so the scan must not offer them again.
+        for (final tag in tags) {
+          if (tag.registration.isNotEmpty) _dismissed.remove(tag.registration);
+        }
+      });
+    } catch (_) {
+      // Start empty; the scan still runs.
+    }
   }
 
   @override
@@ -90,7 +135,12 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
     super.dispose();
   }
 
-  /// Drives the scan to completion, a few photos at a time.
+  /// Runs the scan over the whole gallery.
+  ///
+  /// It goes a few photos per request — each one is a model round trip — and
+  /// the progress meter is what makes that legible. It used to stop part-way
+  /// and wait to be asked, which read as "these photos matter more" rather
+  /// than "this is how far we have got".
   Future<void> _runScan() async {
     setState(() {
       _scanning = true;
@@ -102,8 +152,10 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
 
       // Bounded so a server that never reports done cannot spin forever.
       for (var pass = 0; pass < 200 && !done; pass++) {
+        // The server caps a pass at 8; more per request risks its timeout.
         final result = await EventsAPI.scanGallery(
           galleryId: widget.galleryId!,
+          limit: 8,
         );
 
         if (_disposed || !mounted) return;
@@ -126,6 +178,7 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
         setState(() {
           _scanned = int.tryParse('${result['scanned']}') ?? _scanned;
           _scanTotal = int.tryParse('${result['total']}') ?? _scanTotal;
+          _scanDone = done;
           _suggestions = found;
           _autoTag(found);
         });
@@ -265,7 +318,7 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
   /// question when there is something to lose, and silence when there is not.
   Future<void> _leave() async {
     if (_tags.isEmpty) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      _finish();
       return;
     }
 
@@ -292,7 +345,11 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
     );
 
     if (discard == true && mounted) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      if (widget.returnToRoot) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      } else {
+        Navigator.of(context).pop();
+      }
     }
   }
 
@@ -311,7 +368,11 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
     final count = _tags.length;
     final messenger = ScaffoldMessenger.of(context);
 
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    if (widget.returnToRoot) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } else {
+      Navigator.of(context).pop();
+    }
 
     messenger.showSnackBar(
       SnackBar(
@@ -344,11 +405,11 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
           icon: const Icon(Icons.chevron_left, color: _ink, size: 30),
           onPressed: _leave,
         ),
-        title: const Column(
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
+            const Text(
               'Tag users & vehicles',
               style: TextStyle(
                 color: _ink,
@@ -356,10 +417,14 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
                 fontWeight: FontWeight.w800,
               ),
             ),
-            SizedBox(height: 2),
+            const SizedBox(height: 2),
             Text(
-              'Step 2 of 2',
-              style: TextStyle(color: _muted, fontSize: 13.5),
+              // Only part of a two-step flow when it follows an upload. Opened
+              // later from the gallery itself, it is just tagging.
+              widget.returnToRoot ? 'Step 2 of 2' : widget.galleryName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted, fontSize: 13.5),
             ),
           ],
         ),
@@ -414,18 +479,17 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
           ),
           const SizedBox(height: 20),
 
-          if (_hasGallery && _scanAvailable) ...[
+          if (_hasGallery && _scanAvailable)
             _ScanSection(
               scanning: _scanning,
               scanned: _scanned,
               total: _scanTotal,
+              finished: _scanDone,
               error: _scanError,
               onRetry: _runScan,
               suggestions: _openSuggestions,
               onRemove: _removeSuggestion,
             ),
-            const SizedBox(height: 24),
-          ],
 
           if (_hasGallery) ...[
             const SizedBox(height: 28),
@@ -492,6 +556,9 @@ class _ScanSection extends StatelessWidget {
   final int scanned;
   final int total;
 
+  /// Whether the scan has been all the way through the gallery.
+  final bool finished;
+
   /// Set when the scan could not run at all.
   final String? error;
 
@@ -504,6 +571,7 @@ class _ScanSection extends StatelessWidget {
     required this.scanning,
     required this.scanned,
     required this.total,
+    required this.finished,
     required this.error,
     required this.onRetry,
     required this.suggestions,
@@ -512,12 +580,20 @@ class _ScanSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Nothing running, nothing found and nothing wrong: stay out of the way.
-    if (!scanning && suggestions.isEmpty && error == null) {
-      return const SizedBox.shrink();
-    }
+    // Only truly nothing to say before the scan has told us anything — a
+    // gallery with no photos, or a scan that has not started.
+    final silent =
+        !scanning && !finished && suggestions.isEmpty && error == null;
+
+    if (silent) return const SizedBox.shrink();
+
+    // A finished scan with no results is a RESULT, not an absence. Reporting
+    // it beats collapsing the section and leaving a hole where it was.
+    final foundNothing = finished && suggestions.isEmpty && error == null;
 
     return Container(
+      // The spacing lives here so a collapsed section takes no room at all.
+      margin: const EdgeInsets.only(bottom: 24),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
@@ -529,11 +605,15 @@ class _ScanSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.auto_awesome, size: 17, color: _gold),
+              Icon(
+                foundNothing ? Icons.search_off : Icons.auto_awesome,
+                size: 17,
+                color: foundNothing ? _muted : _gold,
+              ),
               const SizedBox(width: 7),
-              const Text(
-                'Auto-detected',
-                style: TextStyle(
+              Text(
+                foundNothing ? 'No vehicles found' : 'Auto-detected',
+                style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                   color: _ink,
@@ -573,7 +653,15 @@ class _ScanSection extends StatelessWidget {
             error != null
                 ? error!
                 : scanning
-                ? 'Looking for number plates… $scanned of $total photos'
+                ? 'Reading photos…'
+                : foundNothing
+                // Says what was actually looked at, so "nothing found" cannot
+                // be mistaken for "nothing ran".
+                ? 'We read all $total photo${total == 1 ? '' : 's'} and could '
+                      'not make out a number plate. Use "Tag more users" below '
+                      'to tag people and vehicles yourself.'
+                : suggestions.isEmpty
+                ? 'No number plates so far.'
                 : 'Tagged automatically. Remove any that are wrong — owners '
                       'are notified when their car is tagged.',
             style: TextStyle(
@@ -582,6 +670,33 @@ class _ScanSection extends StatelessWidget {
               height: 1.4,
             ),
           ),
+
+          // Plain progress through the gallery. This is what replaces "the
+          // first five" — the user sees how far the scan has got and how much
+          // is left, with no implication that some photos count for more.
+          if (error == null && total > 0) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: total == 0 ? null : scanned / total,
+                minHeight: 6,
+                backgroundColor: Colors.grey.shade300,
+                color: _gold,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              finished
+                  ? 'All $total photo${total == 1 ? '' : 's'} checked'
+                  : '$scanned of $total photo${total == 1 ? '' : 's'} checked',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: _muted,
+              ),
+            ),
+          ],
 
           if (error != null)
             Align(

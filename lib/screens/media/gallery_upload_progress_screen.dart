@@ -23,10 +23,18 @@ class GalleryUploadProgressScreen extends StatefulWidget {
   /// Shown on the tagging step and in the heading.
   final String galleryName;
 
+  /// False when photos are being added to a gallery that already exists.
+  ///
+  /// Changes two things: the heading stops claiming to be step 1 of 2, and
+  /// finishing returns to the gallery rather than all the way to the feed —
+  /// which is where you were, and where you expect to end up.
+  final bool isNewGallery;
+
   const GalleryUploadProgressScreen({
     super.key,
     required this.batchId,
     required this.galleryName,
+    this.isNewGallery = true,
   });
 
   @override
@@ -93,6 +101,7 @@ class _GalleryUploadProgressScreenState
           builder: (_) => GalleryTaggingScreen(
             galleryId: batch.galleryId,
             galleryName: widget.galleryName,
+            returnToRoot: widget.isNewGallery,
           ),
         ),
       );
@@ -126,22 +135,24 @@ class _GalleryUploadProgressScreenState
               icon: const Icon(Icons.chevron_left, color: _ink, size: 30),
               onPressed: () => Navigator.pop(context),
             ),
-            title: const Column(
+            title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Uploading images',
-                  style: TextStyle(
+                  widget.isNewGallery ? 'Uploading images' : 'Adding photos',
+                  style: const TextStyle(
                     color: _ink,
                     fontSize: 19,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
-                  'Step 1 of 2',
-                  style: TextStyle(color: _muted, fontSize: 13.5),
+                  widget.isNewGallery ? 'Step 1 of 2' : widget.galleryName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _muted, fontSize: 13.5),
                 ),
               ],
             ),

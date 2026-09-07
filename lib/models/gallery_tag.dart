@@ -28,6 +28,17 @@ class GalleryTag {
   /// The plate as typed, for a vehicle. The server normalises it.
   final String registration;
 
+  /// The member behind the tag: the tagged user, or a vehicle's owner.
+  ///
+  /// Null for a plate matching no garage — a real case, and what tells the app
+  /// this tag is about no registered person.
+  final int ownerId;
+  final String ownerHandle;
+  final String ownerAvatar;
+
+  /// Whether this tag points at a member whose profile can be opened.
+  bool get hasMember => ownerId > 0;
+
   const GalleryTag({
     required this.kind,
     required this.label,
@@ -35,6 +46,9 @@ class GalleryTag {
     this.avatarUrl = '',
     this.entityId = 0,
     this.registration = '',
+    this.ownerId = 0,
+    this.ownerHandle = '',
+    this.ownerAvatar = '',
   });
 
   /// 'user' or 'car', matching the tag table's entity_type.
@@ -50,6 +64,8 @@ class GalleryTag {
   /// removed the same way as one just added.
   factory GalleryTag.fromJson(Map<String, dynamic> json) {
     final isVehicle = '${json['entity_type']}' == 'car';
+    final owner = json['owner'];
+    final hasOwner = owner is Map;
 
     return GalleryTag(
       kind: isVehicle ? TagKind.vehicle : TagKind.member,
@@ -58,6 +74,9 @@ class GalleryTag {
       avatarUrl: '${json['image'] ?? ''}',
       entityId: int.tryParse('${json['entity_id']}') ?? 0,
       registration: '${json['registration'] ?? ''}',
+      ownerId: hasOwner ? (int.tryParse('${owner['user_id']}') ?? 0) : 0,
+      ownerHandle: hasOwner ? '${owner['name'] ?? ''}' : '',
+      ownerAvatar: hasOwner ? '${owner['avatar'] ?? ''}' : '',
     );
   }
 

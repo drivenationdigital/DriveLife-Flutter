@@ -52,6 +52,11 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
   bool _scanning = false;
   bool _saving = false;
   bool _scanStarted = false;
+
+  /// Whether the scan read every image. A finished scan that found nothing is
+  /// a result worth reporting, not a reason to vanish.
+  bool _scanFinished = false;
+
   String? _scanError;
 
   /// Stops the scan loop if the screen goes away mid-run.
@@ -122,6 +127,7 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
 
         setState(() {
           _suggestions = found;
+          _scanFinished = done;
           _autoTag(found);
         });
       }
@@ -363,9 +369,13 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
               style: const TextStyle(fontSize: 13, color: _muted),
             ),
           ] else ...[
-            if (_scanning || _openSuggestions.isNotEmpty || _scanError != null)
+            if (_scanning ||
+                _scanFinished ||
+                _openSuggestions.isNotEmpty ||
+                _scanError != null) ...[
               _PostScanSection(
                 scanning: _scanning,
+                finished: _scanFinished,
                 error: _scanError,
                 suggestions: _openSuggestions,
                 onRemove: _removeSuggestion,
@@ -374,8 +384,8 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
                   if (postId != null) _runScan(postId);
                 },
               ),
-            if (_scanning || _openSuggestions.isNotEmpty || _scanError != null)
               const SizedBox(height: 24),
+            ],
 
             GalleryTagPicker(
               tags: _tags,
@@ -395,6 +405,10 @@ class _PostScanSection extends StatelessWidget {
   static const Color _gold = Color(0xFFAE9159);
 
   final bool scanning;
+
+  /// Whether the scan read every image.
+  final bool finished;
+
   final String? error;
   final List<Map<String, dynamic>> suggestions;
   final ValueChanged<Map<String, dynamic>> onRemove;
@@ -402,6 +416,7 @@ class _PostScanSection extends StatelessWidget {
 
   const _PostScanSection({
     required this.scanning,
+    required this.finished,
     required this.error,
     required this.suggestions,
     required this.onRemove,
@@ -410,6 +425,10 @@ class _PostScanSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A finished scan with no results is a result. Reporting it beats leaving
+    // the user unsure whether the scan ever ran.
+    final foundNothing = finished && suggestions.isEmpty && error == null;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -422,11 +441,15 @@ class _PostScanSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.auto_awesome, size: 17, color: _gold),
+              Icon(
+                foundNothing ? Icons.search_off : Icons.auto_awesome,
+                size: 17,
+                color: foundNothing ? _muted : _gold,
+              ),
               const SizedBox(width: 7),
-              const Text(
-                'Auto-detected',
-                style: TextStyle(
+              Text(
+                foundNothing ? 'No vehicles found' : 'Auto-detected',
+                style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                   color: _ink,
@@ -467,6 +490,9 @@ class _PostScanSection extends StatelessWidget {
                 ? error!
                 : scanning
                 ? 'Looking for number plates…'
+                : foundNothing
+                ? 'We could not make out a number plate in these photos. Tag '
+                      'people and vehicles yourself below.'
                 : 'Tagged automatically. Remove any that are wrong — owners '
                       'are notified when their car is tagged.',
             style: TextStyle(

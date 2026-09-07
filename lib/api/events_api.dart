@@ -950,10 +950,38 @@ class EventsAPI {
         .toList();
   }
 
+  /// Renames a gallery. Owner only.
+  static Future<void> renameGallery({
+    required int galleryId,
+    required String title,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/galleries/rename'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'gallery_id': galleryId, 'title': title.trim()}),
+    );
+
+    if (response.statusCode == 200) return;
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    throw Exception(body['message']?.toString() ?? 'Could not rename');
+  }
+
   /// The tags on a gallery.
+  ///
+  /// [includePending] is for the owner EDITING: saving replaces the whole set,
+  /// so an editor that could not see pending requests would delete them just by
+  /// saving. Ignored for anyone else.
   static Future<List<Map<String, dynamic>>> fetchGalleryTags({
     required int galleryId,
     int? mediaId,
+    bool includePending = false,
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Not signed in');
@@ -963,6 +991,7 @@ class EventsAPI {
         queryParameters: {
           'gallery_id': '$galleryId',
           if (mediaId != null) 'media_id': '$mediaId',
+          if (includePending) 'include_pending': '1',
         },
       ),
       headers: {'Authorization': 'Bearer $token'},
