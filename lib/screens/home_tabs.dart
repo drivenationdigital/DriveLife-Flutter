@@ -505,14 +505,14 @@ class _HomeTabsState extends State<HomeTabs> {
         ),
         if (FeatureFlags.mediaTab)
           BottomNavigationBarItem(
-            icon: Icon(
-              // No SVG in the icon set for this yet.
-              Icons.photo_library_outlined,
-              color: _currentIndex == _mediaIndex
-                  ? theme.primaryColor
-                  : Colors.grey,
+            icon: iconSvg(
+              // Lowercase p: this must match the file on disk exactly, since
+              // the asset bundle is case-sensitive on device.
+              'assets/app-icons/06-photo.svg',
+              theme,
+              isActive: _currentIndex == _mediaIndex,
             ),
-            label: 'Media',
+            label: 'Photos',
           ),
         BottomNavigationBarItem(icon: _buildProfileIcon(), label: 'Profile'),
 

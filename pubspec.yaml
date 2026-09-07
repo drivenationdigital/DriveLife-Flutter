@@ -141,6 +141,7 @@ flutter:
     - assets/app-icons/04-Basket.svg
     - assets/app-icons/05-User.svg
     - assets/app-icons/06-Clubs.svg
+    - assets/app-icons/06-photo.svg
     - assets/app-icons/header-notification.svg
     - assets/app-icons/header-plus.svg
     - assets/app-icons/header-qr.svg
