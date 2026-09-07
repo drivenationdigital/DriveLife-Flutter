@@ -238,7 +238,7 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
         ),
         actions: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(0, 8, 12, 8),
+            padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
             child: _NextButton(enabled: _canContinue, onPressed: _submit),
           ),
         ],
@@ -359,7 +359,7 @@ class _NextButton extends StatelessWidget {
       child: InkWell(
         onTap: enabled ? onPressed : null,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 10),
           child: Text(
             'Next',
             style: TextStyle(
