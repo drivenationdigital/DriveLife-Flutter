@@ -8,6 +8,9 @@ import 'package:drivelife/screens/garage/mods/add_mods_screen.dart';
 import 'package:drivelife/screens/garage/view_reminders.dart';
 import 'package:drivelife/services/qr_scanner.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
+import 'package:drivelife/api/events_api.dart';
+import 'package:drivelife/screens/media/gallery_view_screen.dart';
+import 'package:drivelife/widgets/media/gallery_card.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../api/garage_api.dart';
@@ -494,10 +497,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
               clipBehavior: Clip.none,
               children: [
                 IconButton(
-                  icon: Icon(
-                    Icons.notifications_outlined,
-                    color: Colors.black,
-                  ),
+                  icon: Icon(Icons.notifications_outlined, color: Colors.black),
                   onPressed: () async {
                     final result = await Navigator.of(context).push(
                       PageRouteBuilder(
@@ -781,7 +781,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
               onModsChanged: _loadVehicle,
               isOwner: isVehiclePublisher(),
             ),
-            _GaragePostsGrid(garageId: widget.garageId, tagged: true),
+            _GarageTaggedTab(garageId: widget.garageId),
           ],
         ),
       ),
@@ -833,6 +833,194 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     );
   }
 }
+
+/// The Tagged tab on a vehicle: galleries it appears in, then tagged posts.
+///
+/// Galleries are a separate fetch because they are a different thing from a
+/// post — somebody else's set of photos that happens to contain this car,
+/// usually because the scan read its plate.
+class _GarageTaggedTab extends StatefulWidget {
+  final String garageId;
+
+  const _GarageTaggedTab({required this.garageId});
+
+  @override
+  State<_GarageTaggedTab> createState() => _GarageTaggedTabState();
+}
+
+class _GarageTaggedTabState extends State<_GarageTaggedTab> {
+  List<Map<String, dynamic>> _galleries = const [];
+  List<dynamic> _posts = const [];
+
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final garageId = int.tryParse(widget.garageId) ?? 0;
+
+    // Both at once: neither depends on the other, and the tab should not wait
+    // for two round trips in series.
+    final results = await Future.wait([
+      GarageAPI.getPostsForGarage(
+        widget.garageId,
+        tagged: true,
+      ).catchError((_) => <String, dynamic>{}),
+      garageId > 0
+          ? EventsAPI.fetchGalleries(
+              taggedGarageId: garageId,
+            ).catchError((_) => <Map<String, dynamic>>[])
+          : Future.value(<Map<String, dynamic>>[]),
+    ]);
+
+    if (!mounted) return;
+
+    final postData = results[0] as Map<String, dynamic>?;
+
+    setState(() {
+      _posts = (postData?['data'] as List<dynamic>?) ?? const [];
+      _galleries = results[1] as List<Map<String, dynamic>>;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
+    if (_loading) {
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
+      );
+    }
+
+    if (_posts.isEmpty && _galleries.isEmpty) {
+      return Center(
+        child: Text(
+          'No tagged posts',
+          style: TextStyle(color: Colors.grey.shade600),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      color: theme.primaryColor,
+      onRefresh: _load,
+      child: CustomScrollView(
+        slivers: [
+          if (_galleries.isNotEmpty) ...[
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(14, 16, 14, 10),
+                child: Text(
+                  'In galleries',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 0.86,
+                ),
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final gallery = _galleries[index];
+                  final title = '${gallery['title'] ?? ''}';
+                  final count = int.tryParse('${gallery['photo_count']}') ?? 0;
+                  final owner = gallery['owner'];
+                  final ownerName = owner is Map
+                      ? '${owner['name'] ?? ''}'
+                      : '';
+
+                  return GalleryCard(
+                    title: title,
+                    coverUrl:
+                        '${gallery['cover_thumb'] ?? gallery['cover'] ?? ''}',
+                    subtitle: [
+                      if (ownerName.isNotEmpty) ownerName,
+                      if (count > 0) '$count photo${count == 1 ? '' : 's'}',
+                    ].join(' · '),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => GalleryViewScreen(
+                          galleryId: int.tryParse('${gallery['gallery_id']}'),
+                          entityTitle: title,
+                          galleryName: title,
+                        ),
+                      ),
+                    ),
+                  );
+                }, childCount: _galleries.length),
+              ),
+            ),
+          ],
+
+          if (_posts.isNotEmpty) ...[
+            if (_galleries.isNotEmpty)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(14, 22, 14, 10),
+                  child: Text(
+                    'In posts',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+            SliverPadding(
+              padding: const EdgeInsets.all(2),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 2,
+                  mainAxisSpacing: 2,
+                ),
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final post = _posts[index];
+                  final media = post['media'];
+                  String? imageUrl;
+
+                  if (media != null && media is List && media.isNotEmpty) {
+                    imageUrl = media[0]['media_url'];
+                  }
+
+                  return GestureDetector(
+                    onTap: () => Navigator.pushNamed(
+                      context,
+                      '/post-detail',
+                      arguments: {'postId': post['id'].toString()},
+                    ),
+                    child: Container(
+                      color: Colors.grey.shade300,
+                      child: imageUrl != null
+                          ? Image.network(
+                              imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const Icon(Icons.image, color: Colors.grey),
+                            )
+                          : const Icon(Icons.image, color: Colors.grey),
+                    ),
+                  );
+                }, childCount: _posts.length),
+              ),
+            ),
+          ],
+
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
+      ),
+    );
+  }
+}
+
 class _GaragePostsGrid extends StatelessWidget {
   final String garageId;
   final bool tagged;
@@ -978,7 +1166,10 @@ class _GarageModsListState extends State<GarageModsList> {
                 ],
               ),
             ),
-            ...typeMods.map((mod) => _buildModCard(mod, widget.isOwner && widget.showEditActions)),
+            ...typeMods.map(
+              (mod) =>
+                  _buildModCard(mod, widget.isOwner && widget.showEditActions),
+            ),
             const SizedBox(height: 16),
           ],
         );
@@ -1083,24 +1274,27 @@ class _GarageModsListState extends State<GarageModsList> {
                 ),
               ),
             ],
-          
-            if ( isOwner && widget.showEditActions ) ...[
+
+            if (isOwner && widget.showEditActions) ...[
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerRight,
                 child: Text(
                   'Tap to edit',
-                  style: TextStyle(fontSize: 12, color: Colors.black, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.black,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-            ]
+            ],
           ],
         ),
       ),
     );
   }
 }
-
 
 class GarageModsPage extends StatefulWidget {
   final String garageId;
@@ -1136,11 +1330,11 @@ class _GarageModsPageState extends State<GarageModsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-         leading: IconButton(
+        leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-         title: const Text(
+        title: const Text(
           'Upgrades',
           style: TextStyle(
             color: Colors.black,
@@ -1149,7 +1343,7 @@ class _GarageModsPageState extends State<GarageModsPage> {
           ),
         ),
         centerTitle: true,
-         actions: [
+        actions: [
           IconButton(
             icon: Icon(Icons.add, color: Colors.black),
             onPressed: _openAddScreen,

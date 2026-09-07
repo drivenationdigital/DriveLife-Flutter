@@ -1,0 +1,600 @@
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/api/posts_api.dart';
+import 'package:drivelife/models/gallery_tag.dart';
+import 'package:drivelife/models/tagged_entity.dart';
+import 'package:drivelife/providers/upload_post_provider.dart';
+import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/widgets/media/gallery_tag_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+/// Step 2 of posting — who and what is in the post.
+///
+/// The same shape as the gallery flow, and for the same reason: a tag needs the
+/// post to exist and its media to be registered, and neither is true until the
+/// background upload finishes. So this screen waits, then tags.
+///
+/// Nothing here is required. The post is already published by the time the
+/// tagging UI appears, so leaving simply means an untagged post — which is why
+/// the button reads Skip until something is tagged.
+class PostTaggingScreen extends StatefulWidget {
+  /// The background upload to follow, as passed to [UploadPostProvider].
+  final String uploadId;
+
+  const PostTaggingScreen({super.key, required this.uploadId});
+
+  @override
+  State<PostTaggingScreen> createState() => _PostTaggingScreenState();
+}
+
+class _PostTaggingScreenState extends State<PostTaggingScreen> {
+  static const Color _ink = Color(0xFF0B0B0B);
+  static const Color _muted = Color(0xFF8A8A8A);
+  static const Color _gold = Color(0xFFAE9159);
+
+  /// Tags that will be saved.
+  List<GalleryTag> _tags = [];
+
+  /// Which image in the post each auto-detected tag was found in.
+  ///
+  /// Post tags are per-image — the server maps `index` positionally onto the
+  /// post's media — so a detected car is tagged in the photo it was actually
+  /// seen in. Manual tags have no such evidence and go on the first image.
+  final Map<String, int> _indexFor = {};
+
+  List<Map<String, dynamic>> _suggestions = const [];
+  final Set<String> _dismissed = {};
+
+  int? _postId;
+
+  bool _scanning = false;
+  bool _saving = false;
+  bool _scanStarted = false;
+  String? _scanError;
+
+  /// Stops the scan loop if the screen goes away mid-run.
+  bool _disposed = false;
+
+  UploadPostProvider? _uploads;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final provider = context.read<UploadPostProvider>();
+    if (identical(provider, _uploads)) return;
+
+    _uploads?.removeListener(_onUploadChanged);
+    _uploads = provider..addListener(_onUploadChanged);
+
+    // A short post on wifi can finish before this screen's first frame.
+    _onUploadChanged();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _uploads?.removeListener(_onUploadChanged);
+    super.dispose();
+  }
+
+  void _onUploadChanged() {
+    if (_scanStarted || _disposed || !mounted) return;
+
+    final upload = _uploads?.getUpload(widget.uploadId);
+    if (upload == null || upload.status != UploadStatus.completed) return;
+
+    final postId = int.tryParse('${upload.result?['post_id']}');
+    if (postId == null || postId <= 0) return;
+
+    _scanStarted = true;
+    setState(() => _postId = postId);
+    _runScan(postId);
+  }
+
+  Future<void> _runScan(int postId) async {
+    setState(() {
+      _scanning = true;
+      _scanError = null;
+    });
+
+    try {
+      var done = false;
+
+      // Bounded so a server that never reports done cannot spin forever.
+      for (var pass = 0; pass < 100 && !done; pass++) {
+        final result = await PostsAPI.scanPost(postId: postId);
+        if (_disposed || !mounted) return;
+
+        if (result['available'] == false) {
+          setState(() => _scanning = false);
+          return;
+        }
+
+        done = result['done'] == true;
+
+        final found = (result['suggestions'] as List? ?? const [])
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+
+        setState(() {
+          _suggestions = found;
+          _autoTag(found);
+        });
+      }
+    } catch (e) {
+      // A failed scan is not a failed post — it is already published — so this
+      // is reported in place rather than as an error over the top of it.
+      if (!_disposed && mounted) {
+        setState(() => _scanError = '$e'.replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (!_disposed && mounted) setState(() => _scanning = false);
+    }
+  }
+
+  /// Tags every detected plate without being asked, as the gallery flow does.
+  /// Called inside the caller's setState.
+  void _autoTag(List<Map<String, dynamic>> suggestions) {
+    for (final suggestion in suggestions) {
+      final plate = '${suggestion['registration'] ?? ''}';
+      if (plate.isEmpty || _dismissed.contains(plate)) continue;
+
+      final tag = GalleryTag(
+        kind: TagKind.vehicle,
+        label: plate,
+        subtitle: '${suggestion['subtitle'] ?? ''}',
+        avatarUrl: '${suggestion['image'] ?? ''}',
+        entityId: int.tryParse('${suggestion['entity_id']}') ?? 0,
+        registration: plate,
+      );
+
+      // The scan is polled and returns everything found so far, so without
+      // this every pass would re-add the same cars.
+      if (_tags.any((t) => t.matches(tag))) continue;
+
+      _indexFor[plate] = int.tryParse('${suggestion['index']}') ?? 0;
+      _tags = [..._tags, tag];
+    }
+  }
+
+  List<Map<String, dynamic>> get _openSuggestions => _suggestions
+      .where((s) => !_dismissed.contains('${s['registration'] ?? ''}'))
+      .toList();
+
+  void _removeSuggestion(Map<String, dynamic> suggestion) {
+    final plate = '${suggestion['registration'] ?? ''}';
+    final entityId = int.tryParse('${suggestion['entity_id']}') ?? 0;
+
+    setState(() {
+      _dismissed.add(plate);
+      _tags = _tags
+          .where(
+            (t) =>
+                t.kind != TagKind.vehicle ||
+                (entityId > 0
+                    ? t.entityId != entityId
+                    : t.label.toUpperCase() != plate.toUpperCase()),
+          )
+          .toList();
+    });
+  }
+
+  Future<void> _publish() async {
+    final postId = _postId;
+
+    // Still uploading, or it failed — either way there is nothing to attach
+    // tags to, so let them out rather than trapping them here.
+    if (postId == null || _tags.isEmpty) {
+      _finish();
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    try {
+      final userId = context.read<UserProvider>().user?.id ?? 0;
+
+      await PostsAPI.addTagsForPost(
+        userId: userId,
+        postId: postId,
+        tags: _tags.map((tag) {
+          return TaggedEntity(
+            // Where it was seen for a detected car; the first image for a
+            // manual tag, which carries no evidence of its own.
+            index: _indexFor[tag.label] ?? 0,
+            id: '${tag.entityId}',
+            type: tag.kind == TagKind.vehicle ? 'car' : 'user',
+            label: tag.label,
+            imageUrl: tag.avatarUrl.isEmpty ? null : tag.avatarUrl,
+          );
+        }).toList(),
+      );
+
+      if (!mounted) return;
+      _finish();
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$e'.replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _finish() {
+    final count = _tags.length;
+    final messenger = ScaffoldMessenger.of(context);
+
+    Navigator.of(context).popUntil((route) => route.isFirst);
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          count == 0
+              ? 'Post published'
+              : 'Post published with $count tag${count == 1 ? '' : 's'}',
+        ),
+        backgroundColor: _gold,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Watched rather than read: the upload's progress drives the top of this
+    // screen while it is still going.
+    final upload = context.watch<UploadPostProvider>().getUpload(
+      widget.uploadId,
+    );
+
+    final publishing =
+        upload != null &&
+        upload.status != UploadStatus.completed &&
+        upload.status != UploadStatus.failed;
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+        titleSpacing: 0,
+        centerTitle: false,
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left, color: _ink, size: 30),
+          onPressed: _finish,
+        ),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Tag users & vehicles',
+              style: TextStyle(
+                color: _ink,
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            SizedBox(height: 2),
+            Text(
+              'Step 2 of 2',
+              style: TextStyle(color: _muted, fontSize: 13.5),
+            ),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(0, 8, 16, 8),
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: _ink,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 22),
+              ),
+              onPressed: _saving ? null : _publish,
+              child: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(_tags.isEmpty ? 'Skip' : 'Done'),
+            ),
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: Colors.grey.shade200),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
+        children: [
+          const Text(
+            'Who is in this post?',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: _ink,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            publishing
+                ? 'Your post is publishing. Tagging opens as soon as it lands '
+                      '— you can leave, it carries on without this screen.'
+                : 'Tagged members and vehicles are linked to your post so '
+                      'people can find it. This is optional.',
+            style: const TextStyle(fontSize: 13.5, color: _muted, height: 1.45),
+          ),
+          const SizedBox(height: 20),
+
+          if (publishing) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: upload.progress > 0 ? upload.progress : null,
+                minHeight: 8,
+                backgroundColor: Colors.grey.shade200,
+                color: _gold,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              upload.statusMessage.isEmpty
+                  ? 'Publishing…'
+                  : upload.statusMessage,
+              style: const TextStyle(fontSize: 13, color: _muted),
+            ),
+          ] else ...[
+            if (_scanning || _openSuggestions.isNotEmpty || _scanError != null)
+              _PostScanSection(
+                scanning: _scanning,
+                error: _scanError,
+                suggestions: _openSuggestions,
+                onRemove: _removeSuggestion,
+                onRetry: () {
+                  final postId = _postId;
+                  if (postId != null) _runScan(postId);
+                },
+              ),
+            if (_scanning || _openSuggestions.isNotEmpty || _scanError != null)
+              const SizedBox(height: 24),
+
+            GalleryTagPicker(
+              tags: _tags,
+              onChanged: (tags) => setState(() => _tags = tags),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Detected vehicles, tagged by default with a control to remove each.
+class _PostScanSection extends StatelessWidget {
+  static const Color _ink = Color(0xFF0B0B0B);
+  static const Color _muted = Color(0xFF8A8A8A);
+  static const Color _gold = Color(0xFFAE9159);
+
+  final bool scanning;
+  final String? error;
+  final List<Map<String, dynamic>> suggestions;
+  final ValueChanged<Map<String, dynamic>> onRemove;
+  final VoidCallback onRetry;
+
+  const _PostScanSection({
+    required this.scanning,
+    required this.error,
+    required this.suggestions,
+    required this.onRemove,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, size: 17, color: _gold),
+              const SizedBox(width: 7),
+              const Text(
+                'Auto-detected',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: _ink,
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (suggestions.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _gold.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${suggestions.length} tagged',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF8A6D2F),
+                    ),
+                  ),
+                ),
+              const Spacer(),
+              if (scanning)
+                const SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            error != null
+                ? error!
+                : scanning
+                ? 'Looking for number plates…'
+                : 'Tagged automatically. Remove any that are wrong — owners '
+                      'are notified when their car is tagged.',
+            style: TextStyle(
+              fontSize: 12.5,
+              color: error != null ? Colors.red.shade700 : _muted,
+              height: 1.4,
+            ),
+          ),
+
+          if (error != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: onRetry,
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  'Try again',
+                  style: TextStyle(
+                    color: _gold,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+
+          for (final suggestion in suggestions)
+            _PostSuggestionRow(
+              suggestion: suggestion,
+              onRemove: () => onRemove(suggestion),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PostSuggestionRow extends StatelessWidget {
+  static const Color _muted = Color(0xFF8A8A8A);
+
+  final Map<String, dynamic> suggestion;
+  final VoidCallback onRemove;
+
+  const _PostSuggestionRow({required this.suggestion, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    final plate = '${suggestion['registration'] ?? ''}';
+    final image = '${suggestion['image'] ?? ''}';
+    final count = int.tryParse('${suggestion['photo_count']}') ?? 0;
+    final owner = suggestion['owner'];
+    final ownerHandle = owner is Map ? '${owner['label'] ?? ''}' : '';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        children: [
+          if (image.isEmpty)
+            const GalleryPlateBadge(size: 40)
+          else
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CachedNetworkImage(
+                imageUrl: image,
+                width: 40,
+                height: 40,
+                fit: BoxFit.cover,
+                memCacheWidth: 120,
+                placeholder: (_, __) => const GalleryPlateBadge(size: 40),
+                errorWidget: (_, __, ___) => const GalleryPlateBadge(size: 40),
+              ),
+            ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        plate,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (count > 0) ...[
+                      const SizedBox(width: 7),
+                      Text(
+                        '$count photo${count == 1 ? '' : 's'}',
+                        style: const TextStyle(fontSize: 11.5, color: _muted),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${suggestion['subtitle'] ?? ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12.5, color: _muted),
+                ),
+                if (ownerHandle.isNotEmpty)
+                  Text(
+                    'Owned by @$ownerHandle',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12.5, color: _muted),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: onRemove,
+            tooltip: 'Not in this post',
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -9,6 +9,7 @@ import 'package:drivelife/screens/search_user.dart';
 import 'package:drivelife/screens/create-post/tag_entities_screen.dart';
 import 'package:drivelife/services/media_compressor.dart';
 import 'package:drivelife/services/upload_quality_prefs.dart';
+import 'package:drivelife/screens/create-post/post_tagging_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -209,9 +210,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFFFBF7EE),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: const Color(0xFFC4A062).withOpacity(0.15),
-          ),
+          border: Border.all(color: const Color(0xFFC4A062).withOpacity(0.15)),
         ),
         child: Row(
           children: [
@@ -685,22 +684,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       ).startUpload(uploadData, userProvider);
     }
 
-    // Close screen immediately
+    // On to tagging. pushReplacement, not push: going back from step 2 should
+    // return to the feed, not to a composer whose post is already uploading.
+    //
+    // The upload runs in the provider either way, so leaving step 2 — or never
+    // reaching it — still publishes the post.
     if (mounted) {
-      Navigator.pop(context, true);
-
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Uploading post in background...'),
-          backgroundColor: const Color(0xFFAE9159),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-          duration: const Duration(seconds: 2),
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => PostTaggingScreen(uploadId: uploadId),
         ),
       );
+      return;
     }
   }
 
@@ -967,16 +962,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 label: 'Event',
                 onTap: () => _handleTagEntity('events'),
               ),
-              _ToolButton(
-                icon: Icons.directions_car_outlined,
-                label: 'Car',
-                onTap: () => _handleTagEntity('car'),
-              ),
-              _ToolButton(
-                icon: Icons.person_outline,
-                label: 'People',
-                onTap: () => _handleTagEntity('users'),
-              ),
+              // Car and People moved to step 2, after posting: a plate can
+              // only be read once the images are uploaded, so tagging them
+              // here meant doing by hand what the scan now does. Event stays —
+              // there is nothing to detect about an event.
+              //
+              // _handleTagEntity still serves 'events', and TagEntitiesScreen
+              // is untouched, so restoring these is a matter of putting the
+              // two buttons back.
+
               // ],
               _ToolButton(
                 icon: Icons.link,
@@ -1228,7 +1222,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                             // ),
                             overlay: const SizedBox.shrink(),
                             builder: (context, textFieldKey) {
-                            return TapRegion(
+                              return TapRegion(
                                 onTapOutside: (event) {
                                   FocusScope.of(context).unfocus();
                                   captionSearchViewModel.activeView.value =

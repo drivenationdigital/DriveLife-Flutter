@@ -860,6 +860,56 @@ class EventsAPI {
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
 
+  /// Gallery tags waiting on this user's answer.
+  ///
+  /// A tag on someone else's car is a request, not a fact, until they accept
+  /// it — so these are not visible on the gallery yet.
+  static Future<List<Map<String, dynamic>>> fetchPendingGalleryTags() async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/galleries/tags/pending'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode != 200) return const [];
+
+    final body = jsonDecode(response.body);
+    final list = (body is Map ? body['requests'] : null) as List? ?? const [];
+
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  /// Accepts or declines one gallery tag.
+  ///
+  /// Declining removes it outright rather than remembering a refusal, so the
+  /// same plate can be detected again on a different gallery.
+  static Future<void> respondToGalleryTag({
+    required int tagId,
+    required bool accept,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/galleries/tags/respond'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'tag_id': tagId, 'accept': accept}),
+    );
+
+    if (response.statusCode == 200) return;
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    throw Exception(body['message']?.toString() ?? 'Could not answer the tag');
+  }
+
   /// Saves the tags on a gallery. Owner only.
   ///
   /// The list REPLACES what was stored for this gallery (and [mediaId]), so
@@ -972,6 +1022,11 @@ class EventsAPI {
     String? search,
     DateTime? from,
     DateTime? to,
+    // ── Tagged in ────────────────────────────────────────────────────────
+    // Galleries someone appears IN, rather than ones they made. A user match
+    // also covers galleries where one of their vehicles is tagged.
+    int? taggedUserId,
+    int? taggedGarageId,
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Not signed in');
@@ -994,6 +1049,10 @@ class EventsAPI {
       if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
       if (from != null) 'from': day(from),
       if (to != null) 'to': day(to),
+      if (taggedUserId != null && taggedUserId > 0)
+        'tagged_user_id': '$taggedUserId',
+      if (taggedGarageId != null && taggedGarageId > 0)
+        'tagged_garage_id': '$taggedGarageId',
     };
 
     final response = await http.get(

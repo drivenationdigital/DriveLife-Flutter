@@ -1,6 +1,7 @@
 import 'package:drivelife/main.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/screens/media/gallery_tag_requests_screen.dart';
 import 'package:drivelife/screens/media/gallery_view_screen.dart';
 import 'package:drivelife/widgets/media/gallery_card.dart';
 import 'package:drivelife/screens/chat/ChatScreen.dart';
@@ -60,6 +61,16 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   // Posts data
   List<Post> _posts = [];
   List<Post> _taggedPosts = [];
+
+  /// Galleries this person is tagged in — directly, or because one of their
+  /// vehicles is. Kept apart from [_taggedPosts] because a gallery is not a
+  /// post and does not render as one.
+  List<Map<String, dynamic>> _taggedGalleries = const [];
+  bool _taggedGalleriesLoaded = false;
+
+  /// Gallery tags waiting on this user's answer. Own profile only — nobody
+  /// else can act on them, so showing the count elsewhere would just be noise.
+  int _pendingTagCount = 0;
   int _postsPage = 1;
   int _taggedPage = 1;
   bool _loadingPosts = false;
@@ -148,8 +159,9 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     } else if (index == 1 && !_garageLoaded) {
       // ✅ Only load garage if not loaded before
       _loadGarage();
-    } else if (index == 3 && _taggedPosts.isEmpty) {
-      _loadTaggedPosts();
+    } else if (index == 3) {
+      if (_taggedPosts.isEmpty) _loadTaggedPosts();
+      _loadTaggedGalleries();
     }
   }
 
@@ -290,6 +302,59 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
       }
     } catch (e) {
       if (mounted) setState(() => _loadingPosts = false);
+    }
+  }
+
+  /// Galleries this person appears in.
+  ///
+  /// Quiet on failure: the Tagged tab still has its posts, and an error banner
+  /// over them for a supporting section would be worse than showing nothing.
+  Future<void> _loadTaggedGalleries() async {
+    if (_taggedGalleriesLoaded || _userProfile == null) return;
+
+    final userId = int.tryParse('${_userProfile!['id']}') ?? 0;
+    if (userId <= 0) return;
+
+    _taggedGalleriesLoaded = true;
+
+    try {
+      final galleries = await EventsAPI.fetchGalleries(taggedUserId: userId);
+      if (!mounted) return;
+
+      setState(() => _taggedGalleries = galleries);
+    } catch (_) {
+      // Leave the section hidden.
+    }
+
+    if (_isOwnProfile) await _loadPendingTags();
+  }
+
+  /// How many tag requests are waiting. Quiet on failure — the banner simply
+  /// does not appear.
+  Future<void> _loadPendingTags() async {
+    try {
+      final pending = await EventsAPI.fetchPendingGalleryTags();
+      if (!mounted) return;
+
+      setState(() => _pendingTagCount = pending.length);
+    } catch (_) {
+      // Leave the banner hidden.
+    }
+  }
+
+  Future<void> _openTagRequests() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const GalleryTagRequestsScreen()),
+    );
+
+    if (!mounted) return;
+
+    // An accepted tag becomes a gallery on this very tab, so both refetch.
+    if (changed == true) {
+      _taggedGalleriesLoaded = false;
+      await _loadTaggedGalleries();
+    } else {
+      await _loadPendingTags();
     }
   }
 
@@ -514,6 +579,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           // Cards are kept until the refetch lands, so pulling to refresh does
           // not blank the grid on the way to redrawing the same thing.
           _galleriesLoaded = false;
+          _taggedGalleriesLoaded = false;
         });
 
         _loadTabContent();
@@ -537,6 +603,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
         _hasMoreTagged = true;
         _garageLoaded = false;
         _galleriesLoaded = false;
+        _taggedGalleriesLoaded = false;
       });
 
       await _loadUserProfileOptimized();
@@ -944,7 +1011,15 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
       case 2:
         return _buildGalleriesGrid(theme);
       case 3:
-        return _buildPostsGrid(_taggedPosts, theme);
+        // Two slivers in one tab: galleries this person is in, then the posts.
+        return SliverMainAxisGroup(
+          slivers: [
+            if (_isOwnProfile && _pendingTagCount > 0)
+              SliverToBoxAdapter(child: _buildTagRequestsBanner(theme)),
+            if (_taggedGalleries.isNotEmpty) _buildTaggedGalleries(theme),
+            _buildPostsGrid(_taggedPosts, theme),
+          ],
+        );
       default:
         return _buildPostsGrid(_posts, theme);
     }
@@ -1054,6 +1129,122 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
             },
           );
         }, childCount: galleries.length),
+      ),
+    );
+  }
+
+  /// Prompt to review pending tag requests.
+  ///
+  /// On the Tagged tab because that is where the result lands: accepting one
+  /// puts that gallery into the list directly below.
+  Widget _buildTagRequestsBanner(ThemeProvider theme) {
+    final count = _pendingTagCount;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 2),
+      child: InkWell(
+        onTap: _openTagRequests,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: theme.primaryColor.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: theme.primaryColor.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.local_offer_outlined,
+                size: 20,
+                color: theme.primaryColor,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$count tag request${count == 1 ? '' : 's'}',
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Someone tagged your vehicle in a gallery.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Color(0xFF8A8A8A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, size: 20, color: theme.primaryColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Galleries this person is tagged in, above their tagged posts.
+  ///
+  /// Its own heading because the two are different things: a gallery is
+  /// somebody else's set of photos that happens to contain you or your car.
+  Widget _buildTaggedGalleries(ThemeProvider theme) {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
+      sliver: SliverMainAxisGroup(
+        slivers: [
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.only(left: 4, bottom: 10),
+              child: Text(
+                'In galleries',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+          SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 0.86,
+            ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final gallery = _taggedGalleries[index];
+              final title = '${gallery['title'] ?? ''}';
+              final count = int.tryParse('${gallery['photo_count']}') ?? 0;
+              final owner = gallery['owner'];
+              final ownerName = owner is Map ? '${owner['name'] ?? ''}' : '';
+
+              return GalleryCard(
+                title: title,
+                coverUrl: '${gallery['cover_thumb'] ?? gallery['cover'] ?? ''}',
+                subtitle: [
+                  if (ownerName.isNotEmpty) ownerName,
+                  if (count > 0) '$count photo${count == 1 ? '' : 's'}',
+                ].join(' · '),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => GalleryViewScreen(
+                      galleryId: int.tryParse('${gallery['gallery_id']}'),
+                      entityTitle: title,
+                      galleryName: title,
+                    ),
+                  ),
+                ),
+              );
+            }, childCount: _taggedGalleries.length),
+          ),
+        ],
       ),
     );
   }

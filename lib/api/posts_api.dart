@@ -174,6 +174,43 @@ class PostsAPI {
     return [];
   }
 
+  /// Runs one pass of the vehicle scan over a post's images.
+  ///
+  /// Incremental: each image is a model round trip, so the server does a
+  /// handful per call. Keep calling while `done` is false. Every response
+  /// carries all suggestions found so far, so stopping early still leaves
+  /// something usable.
+  ///
+  /// `available` is false where the site has no AI library installed.
+  static Future<Map<String, dynamic>> scanPost({
+    required int postId,
+    int limit = 4,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/wp-json/app/v2/posts/scan'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode({'post_id': postId, 'limit': limit}),
+    );
+
+    // A 404 means this build of the API predates the endpoint — a deployment
+    // state, not a failure of the post, and reported as its own thing.
+    if (response.statusCode == 404) {
+      throw Exception('Photo scanning is not available on the server yet');
+    }
+
+    if (response.statusCode != 200) {
+      throw Exception('Scan failed (${response.statusCode})');
+    }
+
+    return Map<String, dynamic>.from(json.decode(response.body) as Map);
+  }
+
   /// Searches for something to tag: users, vehicles (by registration) or
   /// events.
   ///
