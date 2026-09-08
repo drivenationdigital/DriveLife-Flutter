@@ -489,6 +489,31 @@ class GalleryTagCard extends StatelessWidget {
                     ),
                   ),
                 ],
+                // A tag on someone else is a request. Saying so is the
+                // difference between "waiting" and "it did not work" — and
+                // only the owner ever sees this row.
+                if (!tag.approved) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.schedule,
+                        size: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Waiting for them to accept',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

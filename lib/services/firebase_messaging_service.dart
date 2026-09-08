@@ -1,3 +1,4 @@
+import 'package:drivelife/screens/media/gallery_tag_requests_screen.dart';
 import 'dart:io';
 
 import 'package:drivelife/routes.dart';
@@ -164,7 +165,7 @@ class FirebaseMessagingService {
         >()
         ?.createNotificationChannel(channel);
 
-        // Handle case where app was launched by tapping a local notification
+    // Handle case where app was launched by tapping a local notification
     final launchDetails = await _localNotifications
         .getNotificationAppLaunchDetails();
     if (launchDetails?.didNotificationLaunchApp ?? false) {
@@ -246,6 +247,25 @@ class FirebaseMessagingService {
         break;
       case 'club-view':
         nav.pushNamed(AppRoutes.clubDetail, arguments: {'clubId': id});
+        break;
+      case 'gallery':
+        // Carries ?photo= for a comment on one photo, so the viewer opens on
+        // it with the gallery behind.
+        final photo = int.tryParse(uri.queryParameters['photo'] ?? '');
+        nav.pushNamed(
+          AppRoutes.galleryDetail,
+          arguments: {
+            'galleryId': int.tryParse(id ?? ''),
+            if (photo != null) 'photoId': photo,
+          },
+        );
+        break;
+      case 'gallery-tag':
+        // A gallery tag request. The gallery id is in the URL for context,
+        // but the screen lists every pending request, so it needs no argument.
+        nav.push(
+          MaterialPageRoute(builder: (_) => const GalleryTagRequestsScreen()),
+        );
         break;
       default:
         print('Unknown deep link type: $type');
@@ -340,9 +360,7 @@ class FirebaseMessagingService {
     // ── Build messaging style ──
     final person = Person(
       name: senderName,
-      icon: largeIcon != null
-          ? ByteArrayAndroidIcon(largeIcon.data) 
-          : null,
+      icon: largeIcon != null ? ByteArrayAndroidIcon(largeIcon.data) : null,
       key: senderId,
     );
 

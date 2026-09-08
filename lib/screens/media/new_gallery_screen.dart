@@ -74,11 +74,22 @@ class TaggedEvent {
   /// `DateTime.tryParse` returns null on it, which silently dropped the date
   /// from the tag card. Parsed explicitly, with tryParse kept as a fallback in
   /// case another caller feeds this an ISO string.
+  ///
+  /// The time half is whatever the ACF time picker stored, so it arrives as
+  /// `19:30`, `7:30 pm`, `19:30:00` or nothing at all — and a strict parse
+  /// against one pattern failed on the rest, dropping the date for the whole
+  /// row. Only the date half is ever displayed, so on a total miss the leading
+  /// `MM/dd/yyyy` is taken on its own rather than giving up.
   static DateTime? _parseSearchDate(dynamic value) {
     final raw = value?.toString().trim() ?? '';
     if (raw.isEmpty) return null;
 
-    for (final pattern in const ['MM/dd/yyyy HH:mm', 'MM/dd/yyyy']) {
+    for (final pattern in const [
+      'MM/dd/yyyy HH:mm:ss',
+      'MM/dd/yyyy HH:mm',
+      'MM/dd/yyyy h:mm a',
+      'MM/dd/yyyy',
+    ]) {
       try {
         return DateFormat(pattern).parseStrict(raw);
       } catch (_) {
@@ -86,22 +97,105 @@ class TaggedEvent {
       }
     }
 
-    return DateTime.tryParse(raw);
+    final datePart = raw.split(' ').first;
+    try {
+      return DateFormat('MM/dd/yyyy').parseStrict(datePart);
+    } catch (_) {
+      return DateTime.tryParse(raw);
+    }
   }
+
+  /// Midnight on the event's day, for comparing against today without the
+  /// time of day deciding that this morning's event is already over.
+  DateTime? get _day =>
+      date == null ? null : DateTime(date!.year, date!.month, date!.day);
+
+  /// True for an event that has not happened yet. Today counts as upcoming.
+  bool get isUpcoming {
+    final day = _day;
+    if (day == null) return false;
+
+    final now = DateTime.now();
+    return !day.isBefore(DateTime(now.year, now.month, now.day));
+  }
+
+  /// How far back an event may be and still be worth tagging a gallery to.
+  ///
+  /// Sent to the server, which does the real filtering, and applied again in
+  /// [orderForPicker] so the boundary holds even against a server that has not
+  /// been updated yet.
+  static const int pastWindowMonths = 6;
+
+  /// Orders search results the way the gallery picker is actually used.
+  ///
+  /// Upcoming first, soonest to furthest, then past ones most recent first —
+  /// so the next event and the one you were just at sit together at the top,
+  /// which between them is almost every gallery. Plain chronological order
+  /// would have buried both in the middle.
+  ///
+  /// Anything older than [pastWindowMonths] is dropped. Undated rows are kept
+  /// and put last: a date can be missing because the event has none or because
+  /// we failed to read it, and hiding a real event over a parsing miss is the
+  /// worse failure.
+  static List<TaggedEvent> orderForPicker(List<TaggedEvent> events) {
+    final floor = DateTime.now().subtract(
+      const Duration(days: 31 * pastWindowMonths),
+    );
+
+    final upcoming = <TaggedEvent>[];
+    final past = <TaggedEvent>[];
+    final undated = <TaggedEvent>[];
+
+    for (final event in events) {
+      final date = event.date;
+      if (date == null) {
+        undated.add(event);
+      } else if (event.isUpcoming) {
+        upcoming.add(event);
+      } else if (date.isAfter(floor)) {
+        past.add(event);
+      }
+    }
+
+    upcoming.sort((a, b) => a.date!.compareTo(b.date!));
+    past.sort((a, b) => b.date!.compareTo(a.date!));
+
+    return [...upcoming, ...past, ...undated];
+  }
+
+  /// The word for this kind of thing, for a line that has to say which.
+  String get typeLabel => switch (type) {
+    TaggedEntityType.venue => 'Venue',
+    TaggedEntityType.location => 'Location',
+    TaggedEntityType.event => 'Event',
+  };
 
   /// "Event · Goodwood · 24/05/2026" — parts only when we have them, so a
   /// location-less entity doesn't render a trailing separator.
+  ///
+  /// Used on the chosen-entity card, where nothing else on screen says what
+  /// kind of thing was picked.
   String get subtitle {
-    final parts = <String>[
-      switch (type) {
-        TaggedEntityType.venue => 'Venue',
-        TaggedEntityType.location => 'Location',
-        TaggedEntityType.event => 'Event',
-      },
-    ];
+    final parts = <String>[typeLabel];
     if (location.isNotEmpty) parts.add(location);
     if (date != null) parts.add(DateFormat('dd/MM/yyyy').format(date!));
     return parts.join(' · ');
+  }
+
+  /// The same line for a search result: date first, and no type word.
+  ///
+  /// In the results list the toggle above already says you are looking at
+  /// events, so leading every row with "Event" spent the one line available on
+  /// something the user had just chosen — while the date, which is how you
+  /// tell this year's Goodwood from last year's, was pushed off the end.
+  String get searchSubtitle {
+    final parts = <String>[
+      if (date != null) DateFormat('d MMM yyyy').format(date!),
+      if (location.isNotEmpty) location,
+    ];
+
+    // Never an empty line: with neither, the type is all there is to say.
+    return parts.isEmpty ? typeLabel : parts.join(' · ');
   }
 }
 
@@ -401,11 +495,11 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
                         ],
                       )
                     else
+                      // Always "n of 50", never a bare count. The cap was only
+                      // mentioned once it had been reached, which is the one
+                      // moment it is too late to be useful.
                       Text(
-                        _atLimit
-                            ? '$kGalleryPickLimit photos (max)'
-                            : '${_photos.length} photo'
-                                  '${_photos.length == 1 ? '' : 's'}',
+                        '${_photos.length} of $kGalleryPickLimit',
                         style: TextStyle(
                           fontSize: 15,
                           color: _atLimit ? _brandGold : _muted,
@@ -943,15 +1037,21 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
         search: trimmed,
         type: isVenue ? 'venues' : 'events',
         perPage: 20,
+        // Without this the search floor is today, so a gallery could only ever
+        // be tagged to an event that had not happened yet — the opposite of
+        // what a gallery is. Venues have no dates, so it is not sent for them.
+        pastMonths: isVenue ? null : TaggedEvent.pastWindowMonths,
       );
 
       if (!mounted || id != _requestId) return;
 
+      final rows = _rowsFrom(response, isVenue ? 'venues' : 'events')
+          .map((r) => TaggedEvent.fromSearchResult(r, type: _searchType))
+          .where((e) => e.id.isNotEmpty)
+          .toList();
+
       setState(() {
-        _results = _rowsFrom(response, isVenue ? 'venues' : 'events')
-            .map((r) => TaggedEvent.fromSearchResult(r, type: _searchType))
-            .where((e) => e.id.isNotEmpty)
-            .toList();
+        _results = isVenue ? rows : TaggedEvent.orderForPicker(rows);
         _searching = false;
       });
     } catch (e, stack) {
@@ -1260,7 +1360,7 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           subtitle: Text(
-            event.subtitle,
+            event.searchSubtitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),

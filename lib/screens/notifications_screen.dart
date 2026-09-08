@@ -1,3 +1,5 @@
+import 'package:drivelife/screens/media/gallery_view_screen.dart';
+import 'package:drivelife/screens/media/gallery_tag_requests_screen.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/services/user_service.dart';
@@ -108,15 +110,56 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final initiatorId = initiatorData['id'];
     final entityPostId = initiatorData['entity_post_id'];
 
+    if (entityType == 'gallery_photo') {
+      final data = entity?['entity_data'];
+      final map = data is Map ? Map<String, dynamic>.from(data) : const {};
+      final galleryId = int.tryParse('${map['gallery_id']}') ?? 0;
+      final photoId = int.tryParse('${map['photo_id']}') ?? 0;
+      final title = '${map['gallery_name'] ?? ''}';
+
+      if (galleryId > 0) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => GalleryViewScreen(
+              galleryId: galleryId,
+              entityTitle: title,
+              galleryName: title,
+              initialPhotoId: photoId > 0 ? photoId : null,
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Straight to the requests screen. The tag is pending, so the gallery
+    // itself would not show it — answering is the only thing to do, and
+    // landing anywhere else is what made these impossible to action.
+    if (entityType == 'gallery' || entityType == 'gallery_car') {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const GalleryTagRequestsScreen()),
+      );
+      return;
+    }
+
     if ((entityType == 'post' || entityType == 'comment') && entityId != null) {
-      final postId = entityType == 'post' ? entityId : entity?['entity_data']?['post_id'];
+      final postId = entityType == 'post'
+          ? entityId
+          : entity?['entity_data']?['post_id'];
       Navigator.pushNamed(
         context,
         '/post-detail',
-        arguments: {'postId': postId.toString(), 'highlightCommentId': entityType == 'comment' ? entityId.toString() : null},
+        arguments: {
+          'postId': postId.toString(),
+          'highlightCommentId': entityType == 'comment'
+              ? entityId.toString()
+              : null,
+        },
       );
-    } else if (notification['type'] == 'follow' || entityType == 'user' ||
-        entityType == 'club' || entityType == 'venue') {
+    } else if (notification['type'] == 'follow' ||
+        entityType == 'user' ||
+        entityType == 'club' ||
+        entityType == 'venue') {
       // ✅ Route to club or user profile based on who initiated
       if (initiatorEntityType == 'club' && entityPostId != null) {
         Navigator.pushNamed(
@@ -475,7 +518,11 @@ class _NotificationTile extends StatelessWidget {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => ClubInviteModal(clubName: clubName, inviteId: inviteId, notificationId: notificationId),
+      builder: (_) => ClubInviteModal(
+        clubName: clubName,
+        inviteId: inviteId,
+        notificationId: notificationId,
+      ),
     );
   }
 
@@ -495,7 +542,9 @@ class _NotificationTile extends StatelessWidget {
     final timeAgo = _formatTimeAgo(notification['date'] ?? '');
     final isRead = notification['is_read'] == '1';
     final isFollow = notification['type'] == 'follow';
-    final postMedia = entityData['media'];
+    // Gallery notifications carry media_url rather than a social post's
+    // media, so without the fallback their rows rendered with no thumbnail.
+    final postMedia = entityData['media'] ?? entityData['media_url'];
 
     final initiatorEntityType = initiatorData['entity_type'] ?? 'user';
     final isClub = initiatorEntityType == 'club';
@@ -515,6 +564,16 @@ class _NotificationTile extends StatelessWidget {
 
     final clubJoinRequest = notification['type'] == 'join_request';
     final clubId = entityData['club_id']?.toString() ?? '';
+
+    // A tag you may still have to answer. Gallery tags always land pending,
+    // and a tag with no post behind it has nowhere else to go — for both, the
+    // requests screen is the only place anything can be done about it.
+    final entityType = entity['entity_type']?.toString() ?? '';
+    final showTagReview =
+        notification['type'] == 'tag' &&
+        (entityType == 'gallery' ||
+            entityType == 'gallery_car' ||
+            (entityData['post_id'] == null && entityData['media'] == null));
 
     return InkWell(
       onTap: onTap,
@@ -552,12 +611,20 @@ class _NotificationTile extends StatelessWidget {
                     timeAgo,
                     style: const TextStyle(color: Colors.grey, fontSize: 12),
                   ),
+
+                  // Below the message rather than beside it: the row's right
+                  // side is a fixed-width slot, and a button in there pushes
+                  // the text past the overflow line on narrow screens.
+                  if (showTagReview) ...[
+                    const SizedBox(height: 8),
+                    _TagReviewButton(color: theme.primaryColor),
+                  ],
                 ],
               ),
             ),
             const SizedBox(width: 12),
             _buildRightWidget(isFollow, following, userId, postMedia),
-            if (isInvite ) ...[
+            if (isInvite) ...[
               const SizedBox(width: 8),
               _buildInviteAcceptButton(
                 clubName,
@@ -572,7 +639,7 @@ class _NotificationTile extends StatelessWidget {
               const SizedBox(width: 8),
               ElevatedButton(
                 onPressed: () {
-                 final id = int.tryParse(clubId);
+                  final id = int.tryParse(clubId);
                   if (id == null) {
                     // handle bad ID — show snackbar, return early, etc.
                     return;
@@ -588,8 +655,10 @@ class _NotificationTile extends StatelessWidget {
                   backgroundColor: theme.primaryColor,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 3,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(6),
                   ),
@@ -599,7 +668,7 @@ class _NotificationTile extends StatelessWidget {
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
               ),
-            ]
+            ],
           ],
         ),
       ),
@@ -619,11 +688,15 @@ class _NotificationTile extends StatelessWidget {
     String clubName,
     String inviteId,
     BuildContext context,
-      String notificationId,
+    String notificationId,
   ) {
     return ElevatedButton(
-      onPressed: () =>
-          _showInviteModal(context, clubName, inviteId, notificationId), // ← was empty
+      onPressed: () => _showInviteModal(
+        context,
+        clubName,
+        inviteId,
+        notificationId,
+      ), // ← was empty
       style: ElevatedButton.styleFrom(
         backgroundColor: theme.primaryColor,
         foregroundColor: Colors.white,
@@ -747,7 +820,6 @@ class _NotificationTile extends StatelessWidget {
     int userId,
     dynamic postMedia,
   ) {
-
     if (isFollow && !following) {
       return ElevatedButton(
         onPressed: () => onFollowBack(userId, following),
@@ -828,6 +900,13 @@ class _NotificationTile extends StatelessWidget {
             : base;
 
       case 'comment':
+        if (entityType == 'gallery_photo') {
+          final gallery = entityData['gallery_name']?.toString().trim() ?? '';
+          return gallery.isEmpty
+              ? '$name commented on your photo'
+              : '$name commented on your photo in "$gallery"';
+        }
+
         final comment = entityData['comment']?.toString() ?? '';
         final snippet = ellipsis(comment, 50);
         return snippet.isEmpty
@@ -849,6 +928,28 @@ class _NotificationTile extends StatelessWidget {
         return '$name has tagged $taggedTarget in a post';
 
       case 'tag':
+        if (entityType == 'gallery' || entityType == 'gallery_car') {
+          final gallery = entityData['gallery_name']?.toString().trim() ?? '';
+          final what = entityType == 'gallery_car' ? 'your vehicle' : 'you';
+
+          return gallery.isEmpty
+              ? '$name tagged $what in a gallery'
+              : '$name tagged $what in "$gallery"';
+        }
+        // "in a post" is only true when there IS a post behind it. A genuine
+        // post tag always carries post_id and media (see the 'user' and 'car'
+        // cases in get_notification_entity_data); a gallery tag written before
+        // gallery notifications existed carries neither, and claiming a post
+        // sent people looking for one that was never there.
+        final hasPost =
+            entityData['post_id'] != null || entityData['media'] != null;
+
+        if (!hasPost) {
+          return entityType == 'car'
+              ? '$name tagged your vehicle'
+              : '$name tagged you';
+        }
+
         return entityType == 'car'
             ? '$name tagged your car in a post'
             : '$name tagged you in a post';
@@ -912,5 +1013,45 @@ class _NotificationTile extends StatelessWidget {
     } catch (e) {
       return '';
     }
+  }
+}
+
+/// "Review tag" under a tag notification.
+///
+/// A gallery tag is a request that does nothing until it is answered, and the
+/// notification was the only sign it existed — with no way from it to the one
+/// screen where it can be accepted or declined.
+class _TagReviewButton extends StatelessWidget {
+  final Color color;
+
+  const _TagReviewButton({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 30,
+      child: OutlinedButton.icon(
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const GalleryTagRequestsScreen()),
+        ),
+        icon: Icon(Icons.local_offer_outlined, size: 14, color: color),
+        label: Text(
+          'Review tag',
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          visualDensity: VisualDensity.compact,
+          side: BorderSide(color: color.withValues(alpha: 0.5)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(999),
+          ),
+        ),
+      ),
+    );
   }
 }

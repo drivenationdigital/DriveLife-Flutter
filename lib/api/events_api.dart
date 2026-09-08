@@ -1203,6 +1203,50 @@ class EventsAPI {
         .toList();
   }
 
+  /// The individual photos a person or a vehicle is tagged in.
+  ///
+  /// Different from [fetchGalleries] with `taggedUserId`, which returns whole
+  /// galleries: being in 2 photos of a 200-photo gallery is a tag on 2 photos,
+  /// not on the gallery. Each row carries its `gallery_id`, so tapping one can
+  /// open the gallery with that photo on top.
+  static Future<List<Map<String, dynamic>>> fetchTaggedPhotos({
+    int? taggedUserId,
+    int? taggedGarageId,
+    int page = 1,
+    int perPage = 30,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final query = <String, String>{
+      'page': '$page',
+      'per_page': '$perPage',
+      if (taggedUserId != null && taggedUserId > 0)
+        'tagged_user_id': '$taggedUserId',
+      if (taggedGarageId != null && taggedGarageId > 0)
+        'tagged_garage_id': '$taggedGarageId',
+    };
+
+    final response = await http.get(
+      Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/galleries/tagged-photos',
+      ).replace(queryParameters: query),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load tagged photos (${response.statusCode})');
+    }
+
+    final body = jsonDecode(response.body);
+    final list = (body is Map ? body['photos'] : null) as List? ?? [];
+
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
   static Future<Map<String, dynamic>?> uploadCommunityGalleryImages({
     required String eventId,
     required List<ImageData> images,
@@ -1601,11 +1645,15 @@ class EventsAPI {
   }
 
   /// Search for events, users, venues
+  /// [pastMonths] opens an event search into the past by that many months.
+  /// Left null it is not sent at all, and the server keeps its upcoming-only
+  /// default — which is what every caller but the gallery picker wants.
   static Future<Map<String, dynamic>?> discoverSearch({
     required String search,
     required String type, // 'users', 'events', 'venues', 'all'
     int page = 1,
     int perPage = 20,
+    int? pastMonths,
   }) async {
     try {
       final user = await _authService.getUser();
@@ -1632,6 +1680,7 @@ class EventsAPI {
           'type': type,
           'per_page': perPage,
           'site': site,
+          if (pastMonths != null) 'past_months': pastMonths,
         }),
       );
 

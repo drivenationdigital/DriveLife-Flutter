@@ -36,6 +36,17 @@ class GalleryTag {
   final String ownerHandle;
   final String ownerAvatar;
 
+  /// False while the tagged person has yet to accept.
+  ///
+  /// Tagging someone else is a request, not a statement, so it lands pending
+  /// and stays invisible to everyone but the gallery's owner until they answer.
+  /// Without this the owner had no way to tell a tag that was waiting from one
+  /// that had failed — and it looked like failure.
+  ///
+  /// Defaults to true: a tag just built from a search result has not been near
+  /// the server yet, and showing it as pending would be guessing.
+  final bool approved;
+
   /// Whether this tag points at a member whose profile can be opened.
   bool get hasMember => ownerId > 0;
 
@@ -49,6 +60,7 @@ class GalleryTag {
     this.ownerId = 0,
     this.ownerHandle = '',
     this.ownerAvatar = '',
+    this.approved = true,
   });
 
   /// 'user' or 'car', matching the tag table's entity_type.
@@ -77,6 +89,8 @@ class GalleryTag {
       ownerId: hasOwner ? (int.tryParse('${owner['user_id']}') ?? 0) : 0,
       ownerHandle: hasOwner ? '${owner['name'] ?? ''}' : '',
       ownerAvatar: hasOwner ? '${owner['avatar'] ?? ''}' : '',
+      // Absent means an older response that only ever returned approved rows.
+      approved: json['approved'] == null || json['approved'] == true,
     );
   }
 

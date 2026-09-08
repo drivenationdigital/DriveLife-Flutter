@@ -132,4 +132,50 @@ void main() {
       });
     });
   });
+
+  group('approval', () {
+    test('a pending tag comes back marked pending', () {
+      // The owner tagging anyone but themselves creates a request, and this
+      // flag is the only thing that tells "waiting" from "it did not work".
+      final tag = GalleryTag.fromJson({
+        'entity_type': 'user',
+        'entity_id': 7,
+        'label': 'shaun',
+        'approved': false,
+      });
+
+      expect(tag.approved, isFalse);
+    });
+
+    test('an accepted tag comes back approved', () {
+      final tag = GalleryTag.fromJson({
+        'entity_type': 'user',
+        'entity_id': 7,
+        'label': 'shaun',
+        'approved': true,
+      });
+
+      expect(tag.approved, isTrue);
+    });
+
+    test('a response with no approval field is treated as approved', () {
+      // An older server only ever returned approved rows, so absent means
+      // approved. Defaulting the other way would mark every tag as waiting.
+      final tag = GalleryTag.fromJson({
+        'entity_type': 'user',
+        'entity_id': 7,
+        'label': 'shaun',
+      });
+
+      expect(tag.approved, isTrue);
+    });
+
+    test('a tag built locally is not shown as pending', () {
+      // It has not been near the server yet, so claiming it is waiting would
+      // be a guess.
+      const tag = GalleryTag(kind: TagKind.member, label: 'shaun');
+
+      expect(tag.approved, isTrue);
+    });
+  });
 }

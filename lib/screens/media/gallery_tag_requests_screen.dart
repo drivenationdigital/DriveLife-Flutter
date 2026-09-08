@@ -5,9 +5,13 @@ import 'package:flutter/material.dart';
 
 /// Gallery tags waiting on you.
 ///
-/// Someone else's gallery claiming your car — usually because the scan read its
-/// plate — is a request until you answer it. Nothing here is visible on the
-/// gallery yet, which is the point: accepting is what publishes the link.
+/// Two kinds land here and they are NOT the same thing: someone claiming your
+/// car — usually because the scan read its plate — and someone claiming you
+/// are in a photo. Accepting a vehicle tag publishes it on that vehicle's own
+/// Tags tab; accepting a personal one publishes it on yours. The row says
+/// which, because the answer differs.
+///
+/// Nothing here is visible on the gallery yet. Accepting is what publishes it.
 class GalleryTagRequestsScreen extends StatefulWidget {
   const GalleryTagRequestsScreen({super.key});
 
@@ -103,10 +107,15 @@ class _GalleryTagRequestsScreenState extends State<GalleryTagRequestsScreen> {
     }
   }
 
-  /// Opens the gallery, so a request can be judged on the photos rather than
-  /// on a plate and a name.
+  /// Opens the photo the tag is on, with the gallery behind it.
+  ///
+  /// Landing on the gallery meant hunting for the photo you were being asked
+  /// about among everything else — the one thing you need to see to answer.
+  /// A gallery-wide tag names no photo, so that one opens the gallery, which
+  /// is genuinely what it is about.
   void _preview(Map<String, dynamic> request) {
     final title = '${request['gallery_title'] ?? ''}';
+    final photoId = int.tryParse('${request['media_id']}') ?? 0;
 
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -114,6 +123,7 @@ class _GalleryTagRequestsScreenState extends State<GalleryTagRequestsScreen> {
           galleryId: int.tryParse('${request['gallery_id']}'),
           entityTitle: title,
           galleryName: title,
+          initialPhotoId: photoId > 0 ? photoId : null,
         ),
       ),
     );
@@ -203,7 +213,7 @@ class _GalleryTagRequestsScreenState extends State<GalleryTagRequestsScreen> {
               ),
               const SizedBox(height: 6),
               const Text(
-                'Tags on your vehicles will show up here.',
+                'Tags on you and your vehicles will show up here.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13.5, color: _muted),
               ),
@@ -226,10 +236,18 @@ class _GalleryTagRequestsScreenState extends State<GalleryTagRequestsScreen> {
           final busy = _busy.contains(tagId);
 
           final cover = '${request['cover'] ?? ''}';
-          final label = '${request['label'] ?? ''}';
           final gallery = '${request['gallery_title'] ?? ''}';
           final by = request['tagged_by'];
           final byName = by is Map ? '${by['name'] ?? ''}' : '';
+
+          final isVehicle = '${request['entity_type']}' == 'car';
+          final subtitle = '${request['subtitle'] ?? ''}';
+
+          // Falls back rather than rendering an empty heading: a personal tag
+          // carried no label at all, which is what left these rows titleless.
+          final label = '${request['label'] ?? ''}'.trim().isNotEmpty
+              ? '${request['label']}'
+              : (isVehicle ? 'Your vehicle' : 'You');
 
           return Container(
             padding: const EdgeInsets.all(12),
@@ -280,20 +298,33 @@ class _GalleryTagRequestsScreenState extends State<GalleryTagRequestsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                              ),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                _KindChip(isVehicle: isVehicle),
+                              ],
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              byName.isEmpty
-                                  ? 'Tagged in "$gallery"'
-                                  : '@$byName tagged this in "$gallery"',
+                              // Names the thing being claimed, so a vehicle
+                              // request cannot be mistaken for a personal one.
+                              _requestLine(
+                                byName: byName,
+                                gallery: gallery,
+                                isVehicle: isVehicle,
+                                subtitle: subtitle,
+                              ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -353,6 +384,70 @@ class _GalleryTagRequestsScreenState extends State<GalleryTagRequestsScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// The sentence under a request's title.
+///
+/// It names what is being claimed. "@shaun tagged this in X" was the same line
+/// for a car and for a person, so the two kinds read identically — and only
+/// one of them ends up on your own profile.
+String _requestLine({
+  required String byName,
+  required String gallery,
+  required bool isVehicle,
+  required String subtitle,
+}) {
+  final who = byName.isEmpty ? 'Someone' : '@$byName';
+  final what = isVehicle
+      ? (subtitle.isEmpty ? 'your vehicle' : 'your $subtitle')
+      : 'you';
+
+  return '$who tagged $what in "$gallery"';
+}
+
+/// Marks a request as being about a vehicle or about you.
+///
+/// The two go to different places once accepted — a vehicle tag to that
+/// vehicle's Tags tab, a personal one to your profile — so telling them apart
+/// before answering matters.
+class _KindChip extends StatelessWidget {
+  final bool isVehicle;
+
+  const _KindChip({required this.isVehicle});
+
+  @override
+  Widget build(BuildContext context) {
+    const gold = Color(0xFFAE9159);
+    final color = isVehicle ? gold : const Color(0xFF3F6DB0);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isVehicle ? Icons.directions_car_filled : Icons.person,
+            size: 11,
+            color: color,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            isVehicle ? 'Vehicle' : 'You',
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }

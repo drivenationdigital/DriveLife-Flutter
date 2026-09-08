@@ -496,7 +496,7 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
             Container(height: 1, color: Colors.grey.shade200),
             const SizedBox(height: 20),
             const Text(
-              'Only in some photos?',
+              'Tag more users',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,

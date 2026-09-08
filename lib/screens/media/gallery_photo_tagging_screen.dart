@@ -83,8 +83,13 @@ class _GalleryPhotoTaggingScreenState extends State<GalleryPhotoTaggingScreen> {
         page++;
       }
 
+      // Pending ones included, and this is not cosmetic. Tagging anyone
+      // but yourself lands pending, so without this the tag just made came
+      // back missing — and because saving a photo REPLACES its whole set, the
+      // next save of that photo then deleted it for real.
       final existing = await EventsAPI.fetchGalleryTags(
         galleryId: widget.galleryId,
+        includePending: true,
       );
 
       if (!mounted) return;
@@ -353,14 +358,22 @@ class _PhotoTagSheetState extends State<_PhotoTagSheet> {
     setState(() => _saving = true);
 
     try {
-      await EventsAPI.saveGalleryTags(
+      final saved = await EventsAPI.saveGalleryTags(
         galleryId: widget.galleryId,
         mediaId: widget.photoId,
         tags: _tags.map((t) => t.toJson()).toList(),
       );
 
       if (!mounted) return;
-      Navigator.pop(context, _tags);
+
+      // The server's version, so a tag that landed pending says so straight
+      // away rather than only once the screen is reopened.
+      //
+      // Empty falls back to the local list: an older server that still hides
+      // pending rows would otherwise report a saved tag as no tag at all.
+      // Clearing every tag leaves both empty, which is the same answer.
+      final settled = saved.map(GalleryTag.fromJson).toList();
+      Navigator.pop(context, settled.isNotEmpty ? settled : _tags);
     } catch (e) {
       if (!mounted) return;
 

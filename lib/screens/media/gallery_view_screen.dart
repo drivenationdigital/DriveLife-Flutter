@@ -241,7 +241,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     // never hold up the gallery itself.
     unawaited(_loadTags());
 
-    _openInitialPhoto();
+    unawaited(_openInitialPhoto());
   }
 
   Future<void> _loadMore() async {
@@ -336,21 +336,33 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// gallery has drawn underneath it.
   bool _openedInitial = false;
 
-  void _openInitialPhoto() {
+  Future<void> _openInitialPhoto() async {
     final wanted = widget.initialPhotoId;
     if (_openedInitial || wanted == null || wanted <= 0) return;
 
-    final photo = _photos.where((p) => p.id == wanted).firstOrNull;
-    // Not on this page. The link may point at a photo further in; leaving it
-    // on the gallery is a better outcome than an error.
-    if (photo == null) return;
-
+    // Claimed up front: paging below is async, and a second load finishing in
+    // the meantime must not open the viewer twice.
     _openedInitial = true;
+
+    var photo = _photos.where((p) => p.id == wanted).firstOrNull;
+
+    if (photo == null) {
+      // Not on the first page. The Tagged tab links straight at photos deep
+      // inside large galleries, so paging forward is the common case here —
+      // not an edge one — and giving up would strand most of those links.
+      if (!await _loadAllPhotos()) return;
+      photo = _photos.where((p) => p.id == wanted).firstOrNull;
+    }
+
+    // Genuinely not here: deleted since the link was made. Leaving the gallery
+    // open is a better outcome than an error over the rest of it.
+    final target = photo;
+    if (target == null || !mounted) return;
 
     // After this frame, so the gallery is on screen behind the viewer and
     // closing it has somewhere to land.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _openViewer(photo);
+      if (mounted) _openViewer(target);
     });
   }
 

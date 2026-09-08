@@ -1,3 +1,4 @@
+import 'package:drivelife/widgets/media/tagged_photos_grid.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/garage_reminders_service.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -849,7 +850,7 @@ class _GarageTaggedTab extends StatefulWidget {
 }
 
 class _GarageTaggedTabState extends State<_GarageTaggedTab> {
-  List<Map<String, dynamic>> _galleries = const [];
+  List<Map<String, dynamic>> _taggedPhotos = const [];
   List<dynamic> _posts = const [];
 
   bool _loading = true;
@@ -871,7 +872,7 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
         tagged: true,
       ).catchError((_) => <String, dynamic>{}),
       garageId > 0
-          ? EventsAPI.fetchGalleries(
+          ? EventsAPI.fetchTaggedPhotos(
               taggedGarageId: garageId,
             ).catchError((_) => <Map<String, dynamic>>[])
           : Future.value(<Map<String, dynamic>>[]),
@@ -883,7 +884,7 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
 
     setState(() {
       _posts = (postData?['data'] as List<dynamic>?) ?? const [];
-      _galleries = results[1] as List<Map<String, dynamic>>;
+      _taggedPhotos = results[1] as List<Map<String, dynamic>>;
       _loading = false;
     });
   }
@@ -898,7 +899,7 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
       );
     }
 
-    if (_posts.isEmpty && _galleries.isEmpty) {
+    if (_posts.isEmpty && _taggedPhotos.isEmpty) {
       return Center(
         child: Text(
           'No tagged posts',
@@ -912,7 +913,7 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
       onRefresh: _load,
       child: CustomScrollView(
         slivers: [
-          if (_galleries.isNotEmpty) ...[
+          if (_taggedPhotos.isNotEmpty) ...[
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(14, 16, 14, 10),
@@ -924,47 +925,17 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
             ),
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  childAspectRatio: 0.86,
-                ),
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final gallery = _galleries[index];
-                  final title = '${gallery['title'] ?? ''}';
-                  final count = int.tryParse('${gallery['photo_count']}') ?? 0;
-                  final owner = gallery['owner'];
-                  final ownerName = owner is Map
-                      ? '${owner['name'] ?? ''}'
-                      : '';
-
-                  return GalleryCard(
-                    title: title,
-                    coverUrl:
-                        '${gallery['cover_thumb'] ?? gallery['cover'] ?? ''}',
-                    subtitle: [
-                      if (ownerName.isNotEmpty) ownerName,
-                      if (count > 0) '$count photo${count == 1 ? '' : 's'}',
-                    ].join(' · '),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => GalleryViewScreen(
-                          galleryId: int.tryParse('${gallery['gallery_id']}'),
-                          entityTitle: title,
-                          galleryName: title,
-                        ),
-                      ),
-                    ),
-                  );
-                }, childCount: _galleries.length),
+              sliver: TaggedPhotosGrid(
+                photos: _taggedPhotos,
+                // Every photo here is this vehicle's, so a plate on each one
+                // would label the obvious and cover the picture.
+                markVehicleTags: false,
               ),
             ),
           ],
 
           if (_posts.isNotEmpty) ...[
-            if (_galleries.isNotEmpty)
+            if (_taggedPhotos.isNotEmpty)
               const SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(14, 22, 14, 10),

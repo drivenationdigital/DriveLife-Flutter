@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:drivelife/widgets/media/tagged_photos_grid.dart';
 import 'package:drivelife/main.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -65,8 +67,8 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   /// Galleries this person is tagged in — directly, or because one of their
   /// vehicles is. Kept apart from [_taggedPosts] because a gallery is not a
   /// post and does not render as one.
-  List<Map<String, dynamic>> _taggedGalleries = const [];
-  bool _taggedGalleriesLoaded = false;
+  List<Map<String, dynamic>> _taggedPhotos = const [];
+  bool _taggedPhotosLoaded = false;
 
   /// Gallery tags waiting on this user's answer. Own profile only — nobody
   /// else can act on them, so showing the count elsewhere would just be noise.
@@ -305,23 +307,26 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     }
   }
 
-  /// Galleries this person appears in.
+  /// The gallery photos this person appears in.
+  ///
+  /// Photos rather than whole galleries: a tag on 2 photos of a 200-photo
+  /// gallery is not a claim on the gallery, and a card for it read as one.
   ///
   /// Quiet on failure: the Tagged tab still has its posts, and an error banner
   /// over them for a supporting section would be worse than showing nothing.
   Future<void> _loadTaggedGalleries() async {
-    if (_taggedGalleriesLoaded || _userProfile == null) return;
+    if (_taggedPhotosLoaded || _userProfile == null) return;
 
     final userId = int.tryParse('${_userProfile!['id']}') ?? 0;
     if (userId <= 0) return;
 
-    _taggedGalleriesLoaded = true;
+    _taggedPhotosLoaded = true;
 
     try {
-      final galleries = await EventsAPI.fetchGalleries(taggedUserId: userId);
+      final photos = await EventsAPI.fetchTaggedPhotos(taggedUserId: userId);
       if (!mounted) return;
 
-      setState(() => _taggedGalleries = galleries);
+      setState(() => _taggedPhotos = photos);
     } catch (_) {
       // Leave the section hidden.
     }
@@ -351,7 +356,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
 
     // An accepted tag becomes a gallery on this very tab, so both refetch.
     if (changed == true) {
-      _taggedGalleriesLoaded = false;
+      _taggedPhotosLoaded = false;
       await _loadTaggedGalleries();
     } else {
       await _loadPendingTags();
@@ -439,6 +444,11 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           currentUser.id == widget.userId ||
           currentUser.username == widget.username;
     }
+
+    // Fetched up front rather than with the Tagged tab's contents. The badge
+    // is what tells you to go there, so loading the count only once you had
+    // arrived meant it could never bring you.
+    if (_isOwnProfile) unawaited(_loadPendingTags());
   }
 
   Future<void> _preloadCoverImage(String? url) async {
@@ -579,7 +589,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           // Cards are kept until the refetch lands, so pulling to refresh does
           // not blank the grid on the way to redrawing the same thing.
           _galleriesLoaded = false;
-          _taggedGalleriesLoaded = false;
+          _taggedPhotosLoaded = false;
         });
 
         _loadTabContent();
@@ -603,7 +613,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
         _hasMoreTagged = true;
         _garageLoaded = false;
         _galleriesLoaded = false;
-        _taggedGalleriesLoaded = false;
+        _taggedPhotosLoaded = false;
       });
 
       await _loadUserProfileOptimized();
@@ -981,11 +991,19 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
-                    tabs: const [
-                      Tab(text: 'Posts'),
-                      Tab(text: 'Garage'),
-                      Tab(text: 'Galleries'),
-                      Tab(text: 'Tags'),
+                    tabs: [
+                      const Tab(text: 'Posts'),
+                      const Tab(text: 'Garage'),
+                      const Tab(text: 'Galleries'),
+                      Tab(
+                        child: _TabLabel(
+                          text: 'Tags',
+                          // Only your own requests, and only when there are
+                          // any: a permanent 0 would be noise.
+                          badge: _isOwnProfile ? _pendingTagCount : 0,
+                          color: theme.primaryColor,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1016,8 +1034,17 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           slivers: [
             if (_isOwnProfile && _pendingTagCount > 0)
               SliverToBoxAdapter(child: _buildTagRequestsBanner(theme)),
-            if (_taggedGalleries.isNotEmpty) _buildTaggedGalleries(theme),
-            _buildPostsGrid(_taggedPosts, theme),
+            if (_taggedPhotos.isNotEmpty) _buildTaggedPhotos(theme),
+            _buildPostsGrid(
+              _taggedPosts,
+              theme,
+              // SliverFillRemaining takes the whole viewport whatever is above
+              // it, so with tagged photos already drawn the empty-posts
+              // placeholder was laid over them and overflowed the tab. It may
+              // only fill when it IS the whole tab.
+              emptyFillsViewport: _taggedPhotos.isEmpty,
+              emptyLabel: 'No tagged posts yet',
+            ),
           ],
         );
       default:
@@ -1193,11 +1220,11 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     );
   }
 
-  /// Galleries this person is tagged in, above their tagged posts.
+  /// Gallery photos this person is tagged in, above their tagged posts.
   ///
-  /// Its own heading because the two are different things: a gallery is
-  /// somebody else's set of photos that happens to contain you or your car.
-  Widget _buildTaggedGalleries(ThemeProvider theme) {
+  /// Its own heading because the two are different things: these are photos
+  /// from somebody else's gallery that happen to contain you or your car.
+  Widget _buildTaggedPhotos(ThemeProvider theme) {
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
       sliver: SliverMainAxisGroup(
@@ -1211,45 +1238,18 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
               ),
             ),
           ),
-          SliverGrid(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 0.86,
-            ),
-            delegate: SliverChildBuilderDelegate((context, index) {
-              final gallery = _taggedGalleries[index];
-              final title = '${gallery['title'] ?? ''}';
-              final count = int.tryParse('${gallery['photo_count']}') ?? 0;
-              final owner = gallery['owner'];
-              final ownerName = owner is Map ? '${owner['name'] ?? ''}' : '';
-
-              return GalleryCard(
-                title: title,
-                coverUrl: '${gallery['cover_thumb'] ?? gallery['cover'] ?? ''}',
-                subtitle: [
-                  if (ownerName.isNotEmpty) ownerName,
-                  if (count > 0) '$count photo${count == 1 ? '' : 's'}',
-                ].join(' · '),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => GalleryViewScreen(
-                      galleryId: int.tryParse('${gallery['gallery_id']}'),
-                      entityTitle: title,
-                      galleryName: title,
-                    ),
-                  ),
-                ),
-              );
-            }, childCount: _taggedGalleries.length),
-          ),
+          TaggedPhotosGrid(photos: _taggedPhotos),
         ],
       ),
     );
   }
 
-  Widget _buildPostsGrid(List<Post> posts, ThemeProvider theme) {
+  Widget _buildPostsGrid(
+    List<Post> posts,
+    ThemeProvider theme, {
+    bool emptyFillsViewport = true,
+    String emptyLabel = 'No posts yet',
+  }) {
     // ✅ Show skeleton loading when initially loading posts
     if (posts.isEmpty && (_loadingPosts || _loadingTagged || _isLoading)) {
       return SliverPadding(
@@ -1270,22 +1270,31 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     }
 
     if (posts.isEmpty && !_loadingPosts && !_loadingTagged) {
-      return SliverFillRemaining(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.photo_library_outlined,
-                size: 64,
-                color: theme.subtextColor,
-              ),
-              const SizedBox(height: 16),
-              Text('No posts yet', style: TextStyle(color: theme.subtextColor)),
-            ],
-          ),
+      final empty = Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.photo_library_outlined,
+              // Smaller when it is sharing the tab: a 64pt icon reads as the
+              // whole tab being empty when there is content right above it.
+              size: emptyFillsViewport ? 64 : 34,
+              color: theme.subtextColor,
+            ),
+            SizedBox(height: emptyFillsViewport ? 16 : 10),
+            Text(emptyLabel, style: TextStyle(color: theme.subtextColor)),
+          ],
         ),
       );
+
+      return emptyFillsViewport
+          ? SliverFillRemaining(child: empty)
+          : SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 34),
+                child: empty,
+              ),
+            );
     }
 
     return SliverPadding(
@@ -2211,5 +2220,56 @@ extension StringExtension on String {
   String capitalize() {
     if (isEmpty) return this;
     return '${this[0].toUpperCase()}${substring(1)}';
+  }
+}
+
+/// A tab label with an optional count beside it.
+///
+/// The count is the whole point of this widget: a pending tag request is
+/// something waiting on YOU, and with nothing on the tab there was no way to
+/// know it existed short of opening the tab on the off-chance.
+class _TabLabel extends StatelessWidget {
+  final String text;
+  final int badge;
+  final Color color;
+
+  const _TabLabel({
+    required this.text,
+    required this.badge,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(text),
+        if (badge > 0) ...[
+          const SizedBox(width: 6),
+          Container(
+            constraints: const BoxConstraints(minWidth: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              // Past a point the exact number stops mattering and the badge
+              // just needs to stay the size of a badge.
+              badge > 9 ? '9+' : '$badge',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 11,
+                height: 1.25,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 }
