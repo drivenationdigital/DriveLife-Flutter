@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:drivelife/screens/media/gallery_upload_progress_screen.dart';
+import 'package:drivelife/utils/gallery_photo_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
 import 'package:google_places_flutter/model/prediction.dart';
 import 'package:intl/intl.dart';
@@ -125,7 +125,6 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
   static const double _hPadding = 20;
 
   final _nameController = TextEditingController();
-  final _picker = ImagePicker();
 
   TaggedEvent? _taggedEvent;
   final List<File> _photos = [];
@@ -166,13 +165,47 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
     return null;
   }
 
-  Future<void> _addPhotos() async {
-    final picked = await _picker.pickMultiImage();
-    if (picked.isEmpty || !mounted) return;
+  /// True while the picker is copying what was chosen.
+  ///
+  /// image_picker copies every chosen file into the app's cache before it
+  /// returns, and gives no per-file callback while it does — so this is the
+  /// one honest thing we can show for that stretch. Without it the screen just
+  /// looked frozen.
+  bool _picking = false;
 
-    setState(() {
-      _photos.addAll(picked.map((x) => File(x.path)));
-    });
+  bool get _atLimit => _photos.length >= kGalleryPickLimit;
+
+  Future<void> _addPhotos() async {
+    if (_picking) return;
+
+    setState(() => _picking = true);
+
+    try {
+      final result = await pickGalleryPhotos(alreadyPicked: _photos.length);
+      if (!mounted) return;
+
+      setState(() {
+        _photos.addAll(result.files);
+        _picking = false;
+      });
+
+      final notice = result.notice;
+      if (notice != null) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(notice)));
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => _picking = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$e'.replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _pickEvent() async {
@@ -261,97 +294,142 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
           child: Container(height: 1, color: Colors.grey.shade200),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(_hPadding, 22, _hPadding, 40),
-        children: [
-          const _FieldLabel('Gallery name'),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _nameController,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-              hintText: 'e.g. Sunday Scramble, May 2026',
-              hintStyle: const TextStyle(color: _muted, fontSize: 16),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 18,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: _brandGold, width: 1.6),
-              ),
-            ),
-          ),
-
-          if (_blocker != null) ...[
-            const SizedBox(height: 18),
-            Row(
+      body: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(_hPadding, 22, _hPadding, 0),
+            sliver: SliverList.list(
               children: [
-                Icon(Icons.info_outline, size: 15, color: Colors.grey.shade500),
-                const SizedBox(width: 7),
-                Expanded(
-                  child: Text(
-                    _blocker!,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: Colors.grey.shade600,
+                const _FieldLabel('Gallery name'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _nameController,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: InputDecoration(
+                    hintText: 'e.g. Sunday Scramble, May 2026',
+                    hintStyle: const TextStyle(color: _muted, fontSize: 16),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 18,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: _brandGold,
+                        width: 1.6,
+                      ),
                     ),
                   ),
                 ),
+
+                if (_blocker != null) ...[
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 15,
+                        color: Colors.grey.shade500,
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          _blocker!,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+
+                const SizedBox(height: 26),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    const _FieldLabel('Event or venue'),
+                    const SizedBox(width: 8),
+                    // Said plainly, because the field looked mandatory before and
+                    // people would hunt for something to put in it.
+                    Text(
+                      'Optional',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade500,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (_taggedEvent == null)
+                  _EventPickerButton(onTap: _pickEvent)
+                else
+                  _TaggedEventCard(
+                    event: _taggedEvent!,
+                    onClear: () => setState(() => _taggedEvent = null),
+                  ),
+
+                const SizedBox(height: 26),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    const _FieldLabel('Photos'),
+                    const Spacer(),
+                    if (_picking)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          SizedBox(
+                            width: 13,
+                            height: 13,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Preparing photos…',
+                            style: TextStyle(fontSize: 15, color: _muted),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        _atLimit
+                            ? '$kGalleryPickLimit photos (max)'
+                            : '${_photos.length} photo'
+                                  '${_photos.length == 1 ? '' : 's'}',
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: _atLimit ? _brandGold : _muted,
+                          fontWeight: _atLimit
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
               ],
             ),
-          ],
-
-          const SizedBox(height: 26),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              const _FieldLabel('Event or venue'),
-              const SizedBox(width: 8),
-              // Said plainly, because the field looked mandatory before and
-              // people would hunt for something to put in it.
-              Text(
-                'Optional',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey.shade500,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
           ),
-          const SizedBox(height: 12),
-          if (_taggedEvent == null)
-            _EventPickerButton(onTap: _pickEvent)
-          else
-            _TaggedEventCard(
-              event: _taggedEvent!,
-              onClear: () => setState(() => _taggedEvent = null),
+
+          // Its own sliver, so it stays lazy no matter how many were picked.
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(_hPadding, 0, _hPadding, 40),
+            sliver: _PhotoGrid(
+              photos: _photos,
+              atLimit: _atLimit,
+              onAdd: _addPhotos,
+              onRemove: (index) => setState(() => _photos.removeAt(index)),
             ),
-
-          const SizedBox(height: 26),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              const _FieldLabel('Photos'),
-              const Spacer(),
-              Text(
-                '${_photos.length} photo${_photos.length == 1 ? '' : 's'}',
-                style: const TextStyle(fontSize: 15, color: _muted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _PhotoGrid(
-            photos: _photos,
-            onAdd: _addPhotos,
-            onRemove: (index) => setState(() => _photos.removeAt(index)),
           ),
         ],
       ),
@@ -522,31 +600,38 @@ class _TaggedEventCard extends StatelessWidget {
 /// worth labelling because it is decided by order rather than by choosing.
 class _PhotoGrid extends StatelessWidget {
   final List<File> photos;
+  final bool atLimit;
   final VoidCallback onAdd;
   final ValueChanged<int> onRemove;
 
   const _PhotoGrid({
     required this.photos,
+    required this.atLimit,
     required this.onAdd,
     required this.onRemove,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+    return SliverGrid.builder(
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
       ),
+      // Scrolled-past tiles are let go rather than kept alive, so the bitmaps
+      // behind them can be collected. With fifty photos that is the difference
+      // between holding a handful of decodes and holding all fifty.
+      addAutomaticKeepAlives: false,
       itemCount: photos.length + 1,
       itemBuilder: (context, index) {
-        if (index == 0) return _AddTile(onTap: onAdd);
+        if (index == 0) return _AddTile(onTap: onAdd, atLimit: atLimit);
 
         final photoIndex = index - 1;
         return _PhotoTile(
+          // Keyed by path, so removing one photo does not leave every tile
+          // after it decoding a different file into the same element.
+          key: ValueKey(photos[photoIndex].path),
           file: photos[photoIndex],
           isCover: photoIndex == 0,
           onRemove: () => onRemove(photoIndex),
@@ -558,26 +643,37 @@ class _PhotoGrid extends StatelessWidget {
 
 class _AddTile extends StatelessWidget {
   final VoidCallback onTap;
+  final bool atLimit;
 
-  const _AddTile({required this.onTap});
+  const _AddTile({required this.onTap, this.atLimit = false});
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      onTap: atLimit ? null : onTap,
       borderRadius: BorderRadius.circular(12),
       child: DottedBorderBox(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add, size: 30, color: Colors.grey.shade600),
+            Icon(
+              atLimit ? Icons.check_circle_outline : Icons.add,
+              size: 30,
+              color: atLimit ? Colors.grey.shade400 : Colors.grey.shade600,
+            ),
             const SizedBox(height: 6),
-            Text(
-              'Add photos',
-              style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade700,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                // A greyed-out tile with no reason given reads as broken, so
+                // the tile carries the reason.
+                atLimit ? '$kGalleryPickLimit max' : 'Add photos',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: atLimit ? Colors.grey.shade500 : Colors.grey.shade700,
+                ),
               ),
             ),
           ],
@@ -648,12 +744,39 @@ class _DashedBorderPainter extends CustomPainter {
       oldDelegate.color != color;
 }
 
+/// A grey tile with a spinner, shown while a photo is still being read off
+/// disk and decoded.
+///
+/// The picker hands back files faster than they can be turned into pictures,
+/// so without this the grid fills with blank squares and looks broken.
+class _TileSkeleton extends StatelessWidget {
+  const _TileSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Center(
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2, color: _brandGold),
+        ),
+      ),
+    );
+  }
+}
+
 class _PhotoTile extends StatelessWidget {
   final File file;
   final bool isCover;
   final VoidCallback onRemove;
 
   const _PhotoTile({
+    super.key,
     required this.file,
     required this.isCover,
     required this.onRemove,
@@ -661,17 +784,38 @@ class _PhotoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ratio = MediaQuery.devicePixelRatioOf(context);
+
     return Stack(
       fit: StackFit.expand,
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Image.file(
-            file,
-            fit: BoxFit.cover,
-            // Tile-sized decode: a full-resolution photo behind a ~120pt tile
-            // is tens of megabytes for nothing, and a gallery has many.
-            cacheWidth: 400,
+          child: LayoutBuilder(
+            builder: (context, constraints) => Image.file(
+              file,
+              fit: BoxFit.cover,
+              // Decoded to the width this tile actually got, rather than a
+              // guessed 400. A 12MP photo behind a thumbnail costs about a
+              // tenth of a megabyte instead of forty-eight — which, times
+              // fifty, is the difference between browsing a pick and running
+              // out of memory in it.
+              cacheWidth: (constraints.maxWidth * ratio).round().clamp(64, 600),
+              // Nothing to show until the first frame decodes.
+              frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
+                  (wasSynchronouslyLoaded || frame != null)
+                  ? child
+                  : const _TileSkeleton(),
+              // A file the picker copied but we cannot read is worth showing
+              // as broken — silently blank looks like the app lost it.
+              errorBuilder: (context, error, stack) => ColoredBox(
+                color: Colors.grey.shade200,
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ),
           ),
         ),
         Positioned(

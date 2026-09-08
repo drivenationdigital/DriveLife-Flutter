@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/events_api.dart';
@@ -14,7 +13,7 @@ import 'package:drivelife/widgets/media/gallery_tag_picker.dart';
 import 'package:drivelife/services/user_service.dart';
 import 'package:drivelife/widgets/events/event_community_gallery_tab.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:drivelife/utils/gallery_photo_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -80,6 +79,12 @@ class GalleryViewScreen extends StatefulWidget {
   /// Public URL, for the share sheet.
   final String? shareUrl;
 
+  /// A photo to open the viewer on once the gallery loads.
+  ///
+  /// Set by a shared link. The gallery loads underneath first, so closing the
+  /// viewer lands there rather than on whatever the recipient had open.
+  final int? initialPhotoId;
+
   /// Called as soon as something here changes what a list showing this gallery
   /// would render — a new cover, a reorder, a delete.
   ///
@@ -99,6 +104,7 @@ class GalleryViewScreen extends StatefulWidget {
     this.dateLabel,
     this.owner,
     this.shareUrl,
+    this.initialPhotoId,
     this.onChanged,
   });
 
@@ -234,6 +240,8 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     // After the photos, not before: tags are supporting detail and should
     // never hold up the gallery itself.
     unawaited(_loadTags());
+
+    _openInitialPhoto();
   }
 
   Future<void> _loadMore() async {
@@ -324,15 +332,56 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     );
   }
 
-  /// Tag labels to show over one photo: its own, plus the gallery's.
-  List<String> _labelsForPhoto(CommunityPhoto photo) {
-    String label(GalleryTag tag) =>
-        tag.kind == TagKind.vehicle ? tag.label : '@${tag.label}';
+  /// Opens the viewer on the photo a shared link named, once, after the
+  /// gallery has drawn underneath it.
+  bool _openedInitial = false;
 
-    return [
-      ...(_photoTags[photo.id] ?? const <GalleryTag>[]).map(label),
-      ..._galleryTags.map(label),
-    ];
+  void _openInitialPhoto() {
+    final wanted = widget.initialPhotoId;
+    if (_openedInitial || wanted == null || wanted <= 0) return;
+
+    final photo = _photos.where((p) => p.id == wanted).firstOrNull;
+    // Not on this page. The link may point at a photo further in; leaving it
+    // on the gallery is a better outcome than an error.
+    if (photo == null) return;
+
+    _openedInitial = true;
+
+    // After this frame, so the gallery is on screen behind the viewer and
+    // closing it has somewhere to land.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _openViewer(photo);
+    });
+  }
+
+  /// Replaces one photo in the grid, in place.
+  void _updatePhoto(CommunityPhoto photo) {
+    final at = _photos.indexWhere((p) => p.id == photo.id);
+    if (at < 0 || !mounted) return;
+
+    setState(() => _photos[at] = photo);
+  }
+
+  /// Tag labels to show over one photo: its own, plus the gallery's.
+  /// The members over one photo: its own tags, plus the gallery's.
+  ///
+  /// Registrations are deliberately left out. A plate is not something you can
+  /// open, so a chip for one leads nowhere — and where the plate DOES match a
+  /// garage, the person it belongs to is the useful thing to show.
+  List<GalleryTag> _membersForPhoto(CommunityPhoto photo) {
+    final seen = <int>{};
+    final members = <GalleryTag>[];
+
+    for (final tag in [
+      ...(_photoTags[photo.id] ?? const <GalleryTag>[]),
+      ..._galleryTags,
+    ]) {
+      // Two of one person's cars in the same photo is one chip.
+      if (!tag.hasMember || !seen.add(tag.ownerId)) continue;
+      members.add(tag);
+    }
+
+    return members;
   }
 
   /// Loads the gallery-wide tags.
@@ -638,11 +687,23 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     final galleryId = widget.galleryId;
     if (galleryId == null || galleryId <= 0) return;
 
-    final picked = await ImagePicker().pickMultiImage();
-    if (picked.isEmpty || !mounted) return;
+    // Capped like a new gallery's pick, and for the same reason: the picker
+    // copies every file before it returns, and a few hundred at once is what
+    // took the app down.
+    final result = await pickGalleryPhotos();
+    if (!mounted) return;
+
+    final notice = result.notice;
+    if (notice != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(notice)));
+    }
+
+    if (result.files.isEmpty) return;
 
     final batchId = context.read<GalleryUploadProvider>().startUpload(
-      files: picked.map((x) => File(x.path)).toList(),
+      files: result.files,
       eventTitle: _title,
       galleryName: _title,
       entityType: 'none',
@@ -931,6 +992,27 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     return 'https://app.mydrivelife.com/gallery/$galleryId?ref=share';
   }
 
+  /// Shares a single photo.
+  ///
+  /// The link carries the gallery AND the photo, so opening it shows that
+  /// photo with the gallery behind it — closing lands on the gallery rather
+  /// than throwing the recipient out to the feed.
+  void _sharePhoto(CommunityPhoto photo) {
+    final galleryId = widget.galleryId;
+
+    final url = (galleryId == null || galleryId <= 0)
+        ? null
+        : 'https://app.mydrivelife.com/gallery/$galleryId'
+              '?photo=${photo.id}&ref=share';
+
+    SharePlus.instance.share(
+      ShareParams(
+        text: url == null ? _title : '$_title\n$url',
+        subject: _title,
+      ),
+    );
+  }
+
   void _share() {
     final url = _shareUrl;
 
@@ -956,7 +1038,15 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
           initialIndex: index,
           // Gallery-wide tags apply to every photo, so they show alongside
           // whatever is tagged on this one specifically.
-          tagsFor: _labelsForPhoto,
+          tagsFor: _membersForPhoto,
+          onTagTap: (tag) => _openProfile(
+            tag.ownerId,
+            tag.ownerHandle.isNotEmpty ? tag.ownerHandle : tag.label,
+          ),
+          onShare: _sharePhoto,
+          // A like or comment in the viewer updates the grid behind it, so
+          // closing the viewer does not show stale counts.
+          onPhotoChanged: _updatePhoto,
         ),
       ),
     );
@@ -1185,22 +1275,40 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
               crossAxisSpacing: 2,
               mainAxisSpacing: 2,
             ),
-            delegate: SliverChildBuilderDelegate(
-              (context, index) => GestureDetector(
-                onTap: () => _openViewer(rest[index]),
-                onLongPress: () => _showCurateActions(rest[index]),
-                child: CachedNetworkImage(
-                  imageUrl: rest[index].thumb,
-                  fit: BoxFit.cover,
-                  memCacheWidth: 400,
-                  placeholder: (_, __) =>
-                      Container(color: Colors.grey.shade200),
-                  errorWidget: (_, __, ___) =>
-                      Container(color: Colors.grey.shade200),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final photo = rest[index];
+
+              return GestureDetector(
+                onTap: () => _openViewer(photo),
+                onLongPress: () => _showCurateActions(photo),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CachedNetworkImage(
+                      imageUrl: photo.thumb,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 400,
+                      placeholder: (_, __) =>
+                          Container(color: Colors.grey.shade200),
+                      errorWidget: (_, __, ___) =>
+                          Container(color: Colors.grey.shade200),
+                    ),
+
+                    // Only where there is something to say. A "0" on every
+                    // tile is noise over the photos themselves.
+                    if (photo.likeCount > 0 || photo.commentCount > 0)
+                      Positioned(
+                        left: 5,
+                        bottom: 5,
+                        child: _TileCounts(
+                          likes: photo.likeCount,
+                          comments: photo.commentCount,
+                        ),
+                      ),
+                  ],
                 ),
-              ),
-              childCount: rest.length,
-            ),
+              );
+            }, childCount: rest.length),
           ),
 
           SliverToBoxAdapter(
@@ -1558,6 +1666,50 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
           itemBuilder: (_, __) => Container(color: Colors.grey.shade200),
         ),
       ],
+    );
+  }
+}
+
+/// Like and comment counts over a grid tile.
+class _TileCounts extends StatelessWidget {
+  final int likes;
+  final int comments;
+
+  const _TileCounts({required this.likes, required this.comments});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget pill(IconData icon, int count) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 11, color: Colors.white),
+        const SizedBox(width: 3),
+        Text(
+          '$count',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        // A scrim, because a white count over a bright photo is unreadable.
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (likes > 0) pill(Icons.favorite, likes),
+          if (likes > 0 && comments > 0) const SizedBox(width: 7),
+          if (comments > 0) pill(Icons.mode_comment, comments),
+        ],
+      ),
     );
   }
 }

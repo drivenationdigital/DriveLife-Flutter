@@ -55,4 +55,41 @@ void main() {
       });
     });
   });
+
+  group('galleryPhotoIdFrom', () {
+    String? photoFrom(String url) =>
+        DeepLinkHandler.galleryPhotoIdFrom(Uri.parse(url));
+
+    test('reads the photo a shared image link names', () {
+      expect(
+        photoFrom('https://app.mydrivelife.com/gallery/12?photo=345&ref=share'),
+        '345',
+      );
+    });
+
+    test('is null for a plain gallery link', () {
+      expect(photoFrom('https://app.mydrivelife.com/gallery/12'), isNull);
+      expect(
+        photoFrom('https://app.mydrivelife.com/gallery/12?ref=share'),
+        isNull,
+      );
+    });
+
+    test('is null for an empty value', () {
+      expect(
+        photoFrom('https://app.mydrivelife.com/gallery/12?photo='),
+        isNull,
+      );
+    });
+
+    test('the gallery still resolves alongside it', () {
+      // Both are needed: the gallery loads underneath, the photo opens on top.
+      final uri = Uri.parse(
+        'https://app.mydrivelife.com/gallery/12?photo=345&ref=share',
+      );
+
+      expect(DeepLinkHandler.galleryIdFrom(uri), '12');
+      expect(DeepLinkHandler.galleryPhotoIdFrom(uri), '345');
+    });
+  });
 }

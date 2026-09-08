@@ -4,6 +4,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/screens/events/event_community_gallery_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
+import 'package:drivelife/widgets/media/photo_comments_sheet.dart';
+import 'package:drivelife/models/gallery_tag.dart';
+import 'package:drivelife/widgets/media/gallery_tag_picker.dart';
 import 'package:drivelife/routes.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -35,6 +38,10 @@ class CommunityPhoto {
   /// that does not send it, which reads the same as "not yet scanned".
   final bool scanned;
 
+  final int likeCount;
+  final bool liked;
+  final int commentCount;
+
   const CommunityPhoto({
     required this.id,
     required this.url,
@@ -46,6 +53,9 @@ class CommunityPhoto {
     this.canDelete = false,
     this.isCover = false,
     this.scanned = false,
+    this.likeCount = 0,
+    this.liked = false,
+    this.commentCount = 0,
   });
 
   /// Only [isCover] ever changes client-side — flipped optimistically so the
@@ -62,6 +72,9 @@ class CommunityPhoto {
     bool? canDelete,
     bool? isCover,
     bool? scanned,
+    int? likeCount,
+    bool? liked,
+    int? commentCount,
   }) {
     return CommunityPhoto(
       id: id ?? this.id,
@@ -74,6 +87,9 @@ class CommunityPhoto {
       canDelete: canDelete ?? this.canDelete,
       isCover: isCover ?? this.isCover,
       scanned: scanned ?? this.scanned,
+      likeCount: likeCount ?? this.likeCount,
+      liked: liked ?? this.liked,
+      commentCount: commentCount ?? this.commentCount,
     );
   }
 
@@ -99,6 +115,9 @@ class CommunityPhoto {
       canDelete: json['can_delete'] == true || json['can_delete'] == 1,
       isCover: json['is_cover'] == true || json['is_cover'] == 1,
       scanned: json['scanned'] == true || json['scanned'] == 1,
+      likeCount: int.tryParse(_str(json['like_count'])) ?? 0,
+      liked: json['liked'] == true || json['liked'] == 1,
+      commentCount: int.tryParse(_str(json['comment_count'])) ?? 0,
     );
   }
 
@@ -998,7 +1017,22 @@ class CommunityPhotoViewer extends StatefulWidget {
   /// and so a viewer with no tags to show simply passes nothing. Without this
   /// a per-photo tag was invisible everywhere except a count badge on the
   /// tagging grid, which made tagging one photo look like it had failed.
-  final List<String> Function(CommunityPhoto photo)? tagsFor;
+  /// The members shown over a photo.
+  ///
+  /// People rather than plates: a registration is not something you can open,
+  /// and a chip that leads nowhere is worse than no chip. A car tag arrives
+  /// here as its owner, which is who the tag is really about.
+  final List<GalleryTag> Function(CommunityPhoto photo)? tagsFor;
+
+  /// Opens a member's profile from one of those chips.
+  final void Function(GalleryTag tag)? onTagTap;
+
+  /// Shares this one photo. Null where there is nothing to link to.
+  final void Function(CommunityPhoto photo)? onShare;
+
+  /// Called when a like or comment changes a photo, so the grid behind can
+  /// keep its own copy in step without refetching the gallery.
+  final void Function(CommunityPhoto photo)? onPhotoChanged;
 
   const CommunityPhotoViewer({
     super.key,
@@ -1006,6 +1040,9 @@ class CommunityPhotoViewer extends StatefulWidget {
     required this.initialIndex,
     this.onDelete,
     this.tagsFor,
+    this.onTagTap,
+    this.onShare,
+    this.onPhotoChanged,
   });
 
   @override
@@ -1040,11 +1077,83 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
   /// InteractiveViewer rather than having the two fight over it.
   bool _zoomed = false;
 
+  /// A local copy, because liking updates a photo and the list passed in
+  /// belongs to the caller. Changes are reported back through onPhotoChanged.
+  late List<CommunityPhoto> _photos;
+
+  /// Likes in flight, so a rapid double-tap cannot send two conflicting calls.
+  final Set<int> _liking = {};
+
   @override
   void initState() {
     super.initState();
     _index = widget.initialIndex;
     _controller = PageController(initialPage: widget.initialIndex);
+    _photos = List<CommunityPhoto>.from(widget.photos);
+  }
+
+  void _replace(CommunityPhoto photo) {
+    final at = _photos.indexWhere((p) => p.id == photo.id);
+    if (at < 0) return;
+
+    setState(() => _photos[at] = photo);
+    widget.onPhotoChanged?.call(photo);
+  }
+
+  Future<void> _toggleLike(CommunityPhoto photo) async {
+    if (_liking.contains(photo.id)) return;
+    _liking.add(photo.id);
+
+    final wanted = !photo.liked;
+
+    // Optimistic: a like should feel instant, and the server's count replaces
+    // this the moment it answers.
+    _replace(
+      photo.copyWith(
+        liked: wanted,
+        likeCount: (photo.likeCount + (wanted ? 1 : -1)).clamp(0, 1 << 30),
+      ),
+    );
+
+    try {
+      final result = await EventsAPI.likeGalleryPhoto(
+        imageId: photo.id,
+        like: wanted,
+      );
+
+      if (!mounted) return;
+
+      _replace(
+        photo.copyWith(
+          liked: result['liked'] == true,
+          likeCount: int.tryParse('${result['like_count']}') ?? photo.likeCount,
+        ),
+      );
+    } catch (_) {
+      // Put the original back rather than leaving a like that did not happen.
+      if (mounted) _replace(photo);
+    } finally {
+      _liking.remove(photo.id);
+    }
+  }
+
+  Future<void> _openComments(CommunityPhoto photo) async {
+    final count = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) => PhotoCommentsSheet(
+        imageId: photo.id,
+        initialCount: photo.commentCount,
+      ),
+    );
+
+    if (count == null || !mounted) return;
+    _replace(photo.copyWith(commentCount: count));
   }
 
   @override
@@ -1083,7 +1192,7 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
 
   @override
   Widget build(BuildContext context) {
-    final photo = widget.photos[_index];
+    final photo = _photos[_index];
 
     // Ratio of the drag to a full screen height, which is what fades the
     // chrome and shrinks the photo as it is pulled away.
@@ -1132,7 +1241,7 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
                       onInteractionEnd: (_) => _syncZoom(),
                       child: Center(
                         child: CachedNetworkImage(
-                          imageUrl: widget.photos[i].url,
+                          imageUrl: _photos[i].url,
                           fit: BoxFit.contain,
                           placeholder: (context, url) => const Center(
                             child: CircularProgressIndicator(
@@ -1198,6 +1307,12 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (widget.onShare != null)
+                  IconButton(
+                    icon: const Icon(Icons.ios_share, color: Colors.white),
+                    tooltip: 'Share photo',
+                    onPressed: () => widget.onShare!(photo),
+                  ),
                 if (photo.canDelete && widget.onDelete != null)
                   IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.white),
@@ -1233,51 +1348,99 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (widget.tagsFor != null)
-                    // photo rather than part of the uploader's name.
-                    if (widget.tagsFor != null)
-                      Builder(
-                        builder: (context) {
-                          final tags = widget.tagsFor!(photo);
-                          if (tags.isEmpty) return const SizedBox.shrink();
+                  // Like and comment, above the tags and the credit — the
+                  // actions come first because they are what you reach for.
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        _ViewerAction(
+                          icon: photo.liked
+                              ? Icons.favorite
+                              : Icons.favorite_border,
+                          colour: photo.liked ? Colors.red : Colors.white,
+                          count: photo.likeCount,
+                          onTap: () => _toggleLike(photo),
+                        ),
+                        const SizedBox(width: 18),
+                        _ViewerAction(
+                          icon: Icons.mode_comment_outlined,
+                          colour: Colors.white,
+                          count: photo.commentCount,
+                          onTap: () => _openComments(photo),
+                        ),
+                      ],
+                    ),
+                  ),
 
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 14),
-                            child: SizedBox(
-                              height: 30,
-                              child: ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: tags.length,
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(width: 6),
-                                itemBuilder: (context, i) => Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 11,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.55),
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.25,
+                  if (widget.tagsFor != null)
+                    Builder(
+                      builder: (context) {
+                        final tags = widget.tagsFor!(photo);
+                        if (tags.isEmpty) return const SizedBox.shrink();
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: SizedBox(
+                            height: 30,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: tags.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(width: 6),
+                              itemBuilder: (context, i) {
+                                final tag = tags[i];
+                                final handle = tag.ownerHandle.isNotEmpty
+                                    ? tag.ownerHandle
+                                    : tag.label;
+
+                                return GestureDetector(
+                                  onTap: () => widget.onTagTap?.call(tag),
+                                  child: Container(
+                                    padding: const EdgeInsets.only(
+                                      left: 4,
+                                      right: 11,
+                                      top: 4,
+                                      bottom: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.55,
+                                      ),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.25,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  child: Text(
-                                    tags[i],
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w700,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        GalleryTagAvatar(
+                                          imageUrl: tag.ownerAvatar,
+                                          isVehicle: false,
+                                          size: 22,
+                                        ),
+                                        const SizedBox(width: 7),
+                                        Text(
+                                          '@$handle',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ),
-                              ),
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
+                    ),
                   GestureDetector(
                     // Only where the id is known; an older API build sends no
                     // user_id, and a dead tap is worse than none.
@@ -1500,6 +1663,48 @@ class _GalleryUploadStatus extends StatelessWidget {
           onPressed: () => provider.dismiss(batch.id),
         ),
       ],
+    );
+  }
+}
+
+/// One action over a photo: an icon, and its count when there is one.
+class _ViewerAction extends StatelessWidget {
+  final IconData icon;
+  final Color colour;
+  final int count;
+  final VoidCallback onTap;
+
+  const _ViewerAction({
+    required this.icon,
+    required this.colour,
+    required this.count,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      // Opaque so the gap beside the icon is tappable too — a bare icon is a
+      // small target over a photo.
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 24, color: colour),
+          if (count > 0) ...[
+            const SizedBox(width: 6),
+            Text(
+              '$count',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

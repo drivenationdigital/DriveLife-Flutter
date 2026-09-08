@@ -283,11 +283,18 @@ class AppRoutes {
         final rawId = args['galleryId'];
         final galleryId = rawId is int ? rawId : int.tryParse('$rawId');
 
+        // Deep links arrive as strings here too.
+        final rawPhoto = args['photoId'];
+        final photoId = rawPhoto is int
+            ? rawPhoto
+            : int.tryParse('${rawPhoto ?? ''}');
+
         return _slide(
           GalleryViewScreen(
             galleryId: galleryId,
             entityTitle: '${args['title'] ?? 'Gallery'}',
             galleryName: '${args['title'] ?? ''}',
+            initialPhotoId: photoId,
           ),
         );
       case venueDetails:

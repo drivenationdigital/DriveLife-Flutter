@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/services/media_compressor.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:drivelife/services/upload_quality_prefs.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -210,6 +211,9 @@ class GalleryUploadProvider with ChangeNotifier {
     double? lng,
     int? existingGalleryId,
   }) {
+    // Housekeeping first, unawaited — it must not delay the upload.
+    unawaited(_sweepStaleTemp());
+
     final batchId = batchIdFor(eventId);
 
     final batch = GalleryUploadBatch(
@@ -314,6 +318,52 @@ class GalleryUploadProvider with ChangeNotifier {
   }
 
   /// Compress (if the tier calls for it), upload, retry on failure.
+  /// Whether the stale-file sweep has run this session.
+  bool _sweptTemp = false;
+
+  /// Clears compressed copies left behind by a previous run.
+  ///
+  /// Normal operation deletes each one as it finishes, but a crash or a kill
+  /// mid-upload skips that — and this feature is exactly where a crash was
+  /// reported. Anything older than a day cannot belong to an upload in flight.
+  Future<void> _sweepStaleTemp() async {
+    if (_sweptTemp) return;
+    _sweptTemp = true;
+
+    try {
+      final dir = await getTemporaryDirectory();
+      if (!await dir.exists()) return;
+
+      final cutoff = DateTime.now().subtract(const Duration(days: 1));
+
+      await for (final entry in dir.list()) {
+        if (entry is! File) continue;
+        if (!entry.path.contains('dl_upload_')) continue;
+
+        final stat = await entry.stat();
+        if (stat.modified.isBefore(cutoff)) await entry.delete();
+      }
+    } catch (_) {
+      // Housekeeping: never worth failing an upload over.
+    }
+  }
+
+  /// Deletes a file the compressor produced, once it is no longer needed.
+  ///
+  /// Only ever ours: the check on the name is what stops this touching the
+  /// picker's copy of the user's original, which is still shown in the
+  /// composer's grid and must survive.
+  Future<void> _discardTemp(File file, File original) async {
+    if (identical(file, original) || file.path == original.path) return;
+    if (!file.path.contains('dl_upload_')) return;
+
+    try {
+      if (await file.exists()) await file.delete();
+    } catch (_) {
+      // Best effort — the OS clears its cache directory eventually.
+    }
+  }
+
   Future<bool> _processItem(
     GalleryUploadBatch batch,
     GalleryUploadItem item,
@@ -366,6 +416,11 @@ class GalleryUploadProvider with ChangeNotifier {
         item.status = GalleryItemStatus.uploaded;
         item.progress = 1;
         notifyListeners();
+
+        // The compressed copy has served its purpose. Left behind, a
+        // 200-photo gallery strands 200 files in the cache directory — every
+        // upload, for as long as the OS chooses to keep them.
+        await _discardTemp(file, item.file);
         return true;
       } catch (e) {
         item.error = e.toString();
@@ -385,6 +440,10 @@ class GalleryUploadProvider with ChangeNotifier {
     item.status = GalleryItemStatus.failed;
     item.progress = 0;
     notifyListeners();
+
+    // Out of attempts. A retry re-compresses from the original, so this copy
+    // is dead weight either way.
+    await _discardTemp(file, item.file);
     return false;
   }
 

@@ -950,6 +950,105 @@ class EventsAPI {
         .toList();
   }
 
+  /// Likes or unlikes one gallery photo.
+  ///
+  /// Returns the server's count, so the caller can settle on the real number
+  /// rather than keeping the one it guessed while the request was in flight.
+  static Future<Map<String, dynamic>> likeGalleryPhoto({
+    required int imageId,
+    required bool like,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/galleries/photo/like'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'image_id': imageId, 'like': like}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Could not save that');
+    }
+
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  /// Comments on one gallery photo, oldest first.
+  static Future<List<Map<String, dynamic>>> fetchGalleryPhotoComments(
+    int imageId,
+  ) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.get(
+      Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/galleries/photo/comments',
+      ).replace(queryParameters: {'image_id': '$imageId'}),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Could not load comments');
+    }
+
+    final body = jsonDecode(response.body);
+    final list = (body is Map ? body['comments'] : null) as List? ?? const [];
+
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  /// Adds a comment to a gallery photo.
+  static Future<void> addGalleryPhotoComment({
+    required int imageId,
+    required String body,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/galleries/photo/comment'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'image_id': imageId, 'body': body.trim()}),
+    );
+
+    if (response.statusCode == 200) return;
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    throw Exception(decoded['message']?.toString() ?? 'Could not comment');
+  }
+
+  /// Removes a comment: your own, or any on a gallery you own.
+  static Future<void> deleteGalleryPhotoComment(int commentId) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/galleries/photo/comment/delete',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'comment_id': commentId}),
+    );
+
+    if (response.statusCode == 200) return;
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    throw Exception(decoded['message']?.toString() ?? 'Could not delete');
+  }
+
   /// Renames a gallery. Owner only.
   static Future<void> renameGallery({
     required int galleryId,

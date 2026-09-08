@@ -83,6 +83,18 @@ class DeepLinkHandler {
     return id.isEmpty ? null : id;
   }
 
+  /// The photo a gallery link points at, if it names one.
+  ///
+  /// `/gallery/12?photo=345` opens the gallery AND that photo, so closing the
+  /// photo lands on the gallery rather than wherever the recipient started.
+  static String? galleryPhotoIdFrom(Uri uri) {
+    final photo = uri.queryParameters['photo'];
+    if (photo == null) return null;
+
+    final id = photo.trim();
+    return id.isEmpty ? null : id;
+  }
+
   void _handleDeepLink(Uri uri) {
     final navContext = navigatorKey.currentContext;
     if (navContext == null) {
@@ -239,11 +251,16 @@ class DeepLinkHandler {
           return;
         }
 
+        final photoId = galleryPhotoIdFrom(uri);
+
         navigatorKey.currentState?.pushNamed(
           AppRoutes.galleryDetail,
           // The title is unknown from a link — the screen fetches the gallery
           // and fills its own header in.
-          arguments: {'galleryId': galleryId},
+          arguments: {
+            'galleryId': galleryId,
+            if (photoId != null) 'photoId': photoId,
+          },
         );
         return;
       }
