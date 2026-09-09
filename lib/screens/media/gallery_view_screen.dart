@@ -1477,25 +1477,54 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     return members;
   }
 
-  /// How many people the OWNER has tagged, waiting ones included.
+  /// Every tag on this gallery from the OWNER's point of view.
   ///
-  /// Different from [_taggedMembers], which is what everybody sees and so may
-  /// only contain accepted tags. This strip is owner-only, and telling someone
-  /// "0 users tagged" about a person they just tagged themselves is wrong from
-  /// where they are standing — the note above it is what explains that some are
-  /// still to be accepted.
-  int get _ownerTaggedCount {
-    final seen = <int>{};
+  /// Waiting ones included, unlike [_taggedMembers], which is what everybody
+  /// sees and so holds only accepted tags. This strip is owner-only, and
+  /// telling someone "0 tagged" about something they just tagged themselves is
+  /// wrong from where they are standing — the note above it is what explains
+  /// that some are still to be accepted.
+  List<GalleryTag> get _ownerTags => [
+    ..._galleryTags,
+    for (final tags in _photoTags.values) ...tags,
+    ..._pendingTags,
+  ];
 
-    for (final tag in [
-      ..._galleryTags,
-      for (final tags in _photoTags.values) ...tags,
-      ..._pendingTags,
-    ]) {
-      if (tag.hasMember) seen.add(tag.ownerId);
+  /// What the strip says has been tagged.
+  ///
+  /// Counted by REGISTRATION for vehicles, not by owner. A read plate that
+  /// matches nobody's garage is still a car this gallery has tagged, and
+  /// counting owners reported "0 users tagged" over a plate the scan had
+  /// just found — the plate belongs to no account here, so there was no user
+  /// to count.
+  ///
+  /// People are counted separately rather than folded in, because a car tag
+  /// already implies its owner and adding them again would double-count one
+  /// tag as two things.
+  String get _taggedSummary {
+    final plates = <String>{};
+    final members = <int>{};
+
+    for (final tag in _ownerTags) {
+      if (tag.kind == TagKind.vehicle) {
+        final plate = tag.registration.isNotEmpty
+            ? tag.registration
+            : tag.label;
+        if (plate.isNotEmpty) plates.add(plate.toUpperCase());
+      } else if (tag.hasMember) {
+        members.add(tag.ownerId);
+      }
     }
 
-    return seen.length;
+    final parts = [
+      if (plates.isNotEmpty)
+        '${plates.length} vehicle${plates.length == 1 ? '' : 's'}',
+      if (members.isNotEmpty)
+        '${members.length} user${members.length == 1 ? '' : 's'}',
+    ];
+
+    // Nothing yet: still says what this strip is for rather than going blank.
+    return parts.isEmpty ? 'No tags yet' : '${parts.join(', ')} tagged';
   }
 
   /// What the scan is doing, or what it found.
@@ -1507,11 +1536,11 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// read it becomes the way in to adding more tags by hand.
   Widget _buildScanPrompt() {
     final scanning = _unscannedCount > 0;
-    final count = scanning ? _unscannedCount : _ownerTaggedCount;
 
     final title = scanning
-        ? 'Scanning $count photo${count == 1 ? '' : 's'}'
-        : '$count user${count == 1 ? '' : 's'} tagged';
+        ? 'Scanning $_unscannedCount photo'
+              '${_unscannedCount == 1 ? '' : 's'}'
+        : _taggedSummary;
 
     final subtitle = scanning
         ? 'Finding number plates and tagging the owners.'

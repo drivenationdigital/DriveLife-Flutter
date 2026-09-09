@@ -413,12 +413,23 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       if (choice == null) return;
 
       if (choice == 'images') {
+        // Nothing is shown before this call. The platform picker covers the
+        // app while it runs, so an overlay put up beforehand is invisible
+        // underneath it and only surfaces in the moment before the picker
+        // opens — claiming to prepare photos nobody has chosen yet.
+        //
         // Picked at full fidelity on purpose. image_picker's own imageQuality
         // and maxWidth re-encode every image on the platform encoder, which
-        // costs a generation even when nothing needed resizing — MediaCompressor
-        // decides what actually needs touching.
+        // costs a generation even when nothing needed resizing —
+        // MediaCompressor decides what actually needs touching.
+        //
+        // The platform interface throws on a limit below 2, so the last free
+        // slot has to go through uncapped and be trimmed on the way back —
+        // with 9 already picked, this threw.
+        final remainingSlots = 10 - _selectedMedia.length;
+
         final List<XFile> images = await _picker.pickMultiImage(
-          limit: 10 - _selectedMedia.length, // limit to remaining slots
+          limit: remainingSlots >= 2 ? remainingSlots : null,
         );
 
         if (images.isNotEmpty) {
@@ -535,6 +546,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       }
     } catch (e) {
       print('Error picking media: $e');
+
+      // Whatever went wrong, the overlay comes down with it — it used to sit
+      // over the screen for good, looking like a hang.
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+          _uploadStatus = '';
+        });
+      }
+
       _showMessage('Failed to pick media: $e', isError: true);
     }
   }
@@ -1150,8 +1172,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                               color: Colors.white,
                             ),
                           )
+                        // "Next", not "Post": this opens the tagging step,
+                        // and calling it Post implied the tagging that
+                        // follows had already been skipped.
                         : const Text(
-                            'Post',
+                            'Next',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 14,
@@ -1480,6 +1505,26 @@ class _MediaTile extends StatelessWidget {
                   // Decode to roughly tile size. Without this a 4096px source
                   // is decoded in full for a thumbnail — ~67MB per image.
                   cacheWidth: 512,
+                  // Reading and decoding a photo takes long enough to see, and
+                  // a row of blank grey squares reads as a failed pick.
+                  frameBuilder:
+                      (context, child, frame, wasSynchronouslyLoaded) =>
+                          (wasSynchronouslyLoaded || frame != null)
+                          ? child
+                          : const Center(
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFFAE9159),
+                                ),
+                              ),
+                            ),
+                  errorBuilder: (context, error, stack) => Icon(
+                    Icons.broken_image_outlined,
+                    color: Colors.grey.shade500,
+                  ),
                 ),
         ),
 

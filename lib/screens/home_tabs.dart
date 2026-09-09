@@ -20,6 +20,7 @@ import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/profile/my_club_profile_view.dart';
 import 'package:drivelife/screens/news/create_news_post_screen.dart';
 import 'package:drivelife/config/feature_flags.dart';
+import 'package:drivelife/screens/media/new_gallery_screen.dart';
 import 'package:drivelife/screens/media/media_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/firebase_messaging_service.dart';
@@ -173,7 +174,11 @@ class _HomeTabsState extends State<HomeTabs> {
     await accountManager.loadManagedEntities(user.id, token);
   }
 
-  // Show add menu popup
+  /// The Create sheet behind the header's plus button.
+  ///
+  /// A grid of cards rather than a list of rows: these are six equal choices
+  /// made a few times a week, and a stacked list made them read as a settings
+  /// menu — the eye has to travel the whole column to find the one it wants.
   void _showAddMenu(ThemeProvider theme) {
     final accountManager = Provider.of<AccountManager>(context, listen: false);
 
@@ -183,128 +188,209 @@ class _HomeTabsState extends State<HomeTabs> {
     showModalBottomSheet(
       context: context,
       backgroundColor: theme.cardColor,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) {
+      builder: (sheetContext) {
+        // Club and vehicle belong to a person, not to a club or venue account;
+        // an event or a venue can be made by either.
+        final actions = <_CreateAction>[
+          if (isUser)
+            _CreateAction(
+              label: 'Add Post',
+              icon: Icons.image_outlined,
+              onTap: () => NavigationHelper.navigateTo(
+                context,
+                const CreatePostScreen(),
+              ),
+            ),
+          if (isUser)
+            _CreateAction(
+              label: 'Add Gallery',
+              icon: Icons.collections_outlined,
+              onTap: () => NavigationHelper.navigateTo(
+                context,
+                const NewGalleryScreen(),
+              ),
+            ),
+          if (isUser)
+            _CreateAction(
+              label: 'Add Club',
+              svg: 'assets/app-icons/06-Clubs.svg',
+              onTap: _createClub,
+            ),
+          if (isUser)
+            _CreateAction(
+              label: 'Add Vehicle',
+              icon: Icons.directions_car_outlined,
+              onTap: () => NavigationHelper.navigateTo(
+                context,
+                const AddVehicleScreen(),
+              ),
+            ),
+          _CreateAction(
+            label: 'Add Event',
+            icon: Icons.calendar_today_outlined,
+            onTap: () =>
+                NavigationHelper.navigateTo(context, const AddEventScreen()),
+          ),
+          _CreateAction(
+            label: 'Add Venue',
+            icon: Icons.place_outlined,
+            onTap: () =>
+                NavigationHelper.navigateTo(context, const CreateVenueScreen()),
+          ),
+          if (isUser && isAdmin)
+            _CreateAction(
+              label: 'Add News',
+              icon: Icons.article_outlined,
+              onTap: () => NavigationHelper.navigateTo(
+                context,
+                const CreateNewsScreen(),
+              ),
+            ),
+        ];
+
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (isUser) ...[
-                  ListTile(
-                    leading: Icon(Icons.photo, color: theme.primaryColor),
-                    title: const Text('Add Post'),
-                    onTap: () {
-                      Navigator.pop(context); // Close bottom sheet
-                      NavigationHelper.navigateTo(
-                        context,
-                        const CreatePostScreen(),
-                      );
-                    },
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 18),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                  if (isAdmin) ...[
-                    ListTile(
-                      leading: Icon(Icons.photo, color: theme.primaryColor),
-                      title: const Text('Add News Blog'),
-                      onTap: () {
-                        Navigator.pop(context); // Close bottom sheet
-                        NavigationHelper.navigateTo(
-                          context,
-                          const CreateNewsScreen(),
-                        );
-                      },
+                ),
+
+                Row(
+                  children: [
+                    Text(
+                      'Create',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: theme.textColor,
+                      ),
+                    ),
+                    const Spacer(),
+                    InkWell(
+                      onTap: () => Navigator.pop(sheetContext),
+                      customBorder: const CircleBorder(),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          size: 20,
+                          color: theme.textColor,
+                        ),
+                      ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 18),
 
-                  ListTile(
-                    leading: iconSvg(
-                      'assets/app-icons/06-Clubs.svg',
-                      theme,
-                      size: 18,
-                      isActive: true,
-                    ),
-                    title: const Text('Add Club'),
-                    onTap: () async {
-                      Navigator.pop(context);
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Two per row, worked out from the width actually
+                    // available so an odd number of actions leaves a
+                    // half-width gap rather than stretching the last card.
+                    const gap = 12.0;
+                    final cardWidth = (constraints.maxWidth - gap) / 2;
 
-                      // Show bottom sheet first
-                      final result =
-                          await showModalBottomSheet<Map<String, dynamic>>(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (context) =>
-                                const ClubTypeSelectionSheet(),
-                          );
-
-                      // If club was created, navigate to edit screen
-                      if (result != null && result['clubId'] != null) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => CreateClubScreen(
-                              existingClubId: result['clubId'],
+                    return Wrap(
+                      spacing: gap,
+                      runSpacing: gap,
+                      children: [
+                        for (final action in actions)
+                          SizedBox(
+                            width: cardWidth,
+                            child: _CreateCard(
+                              action: action,
+                              theme: theme,
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                action.onTap();
+                              },
                             ),
                           ),
-                        );
-                      }
-                    },
-                  ),
-                  ListTile(
-                    leading: Icon(
-                      Icons.directions_car,
-                      color: theme.primaryColor,
+                      ],
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 18),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0B0B0B),
+                      minimumSize: const Size.fromHeight(58),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
-                    title: const Text('Add Vehicle'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      NavigationHelper.navigateTo(
-                        context,
-                        const AddVehicleScreen(),
-                      );
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      SharedHeaderIcons.scanQrCode(context);
                     },
+                    icon: SvgPicture.asset(
+                      'assets/app-icons/header-qr.svg',
+                      width: 22,
+                      height: 22,
+                      colorFilter: const ColorFilter.mode(
+                        Colors.white,
+                        BlendMode.srcIn,
+                      ),
+                    ),
+                    label: const Text(
+                      'Scan QR Code',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
-                ],
-                ListTile(
-                  leading: Icon(Icons.event, color: theme.primaryColor),
-                  title: const Text('Add Event'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    NavigationHelper.navigateTo(
-                      context,
-                      const AddEventScreen(),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.place_outlined,
-                    color: theme.primaryColor,
-                  ),
-                  title: const Text('Add Venue'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    NavigationHelper.navigateTo(
-                      context,
-                      const CreateVenueScreen(),
-                    );
-                  },
-                ),
-                SharedHeaderIcons.qrCodeIconWLabel(
-                  iconColor: theme.primaryColor,
-                  onSuccess: (data) {
-                    // Handle QR code scan result here
-                    print('QR Code scanned: $data');
-                  },
                 ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  /// Picking a club type comes first, and only then the edit screen.
+  Future<void> _createClub() async {
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const ClubTypeSelectionSheet(),
+    );
+
+    if (!mounted || result == null || result['clubId'] == null) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            CreateClubScreen(existingClubId: result['clubId']),
+      ),
     );
   }
 
@@ -596,6 +682,89 @@ class _HomeTabsState extends State<HomeTabs> {
         appBar: _buildAppBar(theme),
         body: IndexedStack(index: _currentIndex, children: _screens),
         bottomNavigationBar: _buildBottomNav(theme),
+      ),
+    );
+  }
+}
+
+/// One choice in the Create sheet.
+class _CreateAction {
+  final String label;
+
+  /// A Material icon, or [svg] for one of the app's own.
+  final IconData? icon;
+  final String? svg;
+
+  final VoidCallback onTap;
+
+  const _CreateAction({
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.svg,
+  });
+}
+
+class _CreateCard extends StatelessWidget {
+  final _CreateAction action;
+  final ThemeProvider theme;
+  final VoidCallback onTap;
+
+  const _CreateCard({
+    required this.action,
+    required this.theme,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: theme.isDarkMode ? Colors.white10 : const Color(0xFFF4F4F4),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: theme.isDarkMode ? Colors.white12 : Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Center(
+                  child: action.svg != null
+                      ? SvgPicture.asset(
+                          action.svg!,
+                          width: 22,
+                          height: 22,
+                          colorFilter: ColorFilter.mode(
+                            theme.primaryColor,
+                            BlendMode.srcIn,
+                          ),
+                        )
+                      : Icon(action.icon, size: 24, color: theme.primaryColor),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                action.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: theme.textColor,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'package:drivelife/screens/create-post/edit_post_tags_screen.dart';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -89,8 +90,7 @@ class _PostCardState extends State<PostCard>
 
     // Curated posts show "Featured" in place of the timestamp, so a post the
     // team picked weeks ago doesn't read as stale in the For You tab.
-    if (widget.post['is_event'] == true ||
-        widget.post['is_featured'] == true) {
+    if (widget.post['is_event'] == true || widget.post['is_featured'] == true) {
       _formattedDate = 'Featured';
     } else {
       // ✅ Cache values that don't change
@@ -449,6 +449,37 @@ class _PostCardState extends State<PostCard>
                       backgroundColor: Colors.green,
                     ),
                   );
+                  widget.onEdit?.call();
+                }
+              },
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(
+                Icons.local_offer_outlined,
+                color: Colors.black,
+              ),
+              title: const Text('Edit tags'),
+              // Tagging used to be available only while composing, so a wrong
+              // tag or a missed person stayed that way for good.
+              onTap: () async {
+                Navigator.pop(context);
+
+                final changed = await Navigator.push(
+                  scaffoldContext,
+                  MaterialPageRoute(
+                    builder: (_) => EditPostTagsScreen(
+                      postId: int.tryParse('${widget.post['id']}') ?? 0,
+                      authorId: int.tryParse('${widget.post['user_id']}') ?? 0,
+                    ),
+                  ),
+                );
+
+                if (changed == true) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(
+                    scaffoldContext,
+                  ).showSnackBar(const SnackBar(content: Text('Tags updated')));
                   widget.onEdit?.call();
                 }
               },

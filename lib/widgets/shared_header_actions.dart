@@ -117,6 +117,16 @@ class SharedHeaderIcons {
     );
   }
 
+  /// Opens the scanner from anywhere, not just the header's own icon.
+  ///
+  /// The Create sheet needs the same behaviour behind its own button, and the
+  /// careful part — holding a navigator that outlives the widget that started
+  /// the scan — is worth sharing rather than repeating.
+  static Future<void> scanQrCode(
+    BuildContext context, [
+    Function(Map<String, dynamic>)? onSuccess,
+  ]) => _handleQrScan(context, onSuccess);
+
   /// Handle QR code scanning
   static Future<void> _handleQrScan(
     BuildContext context,

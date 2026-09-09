@@ -216,6 +216,7 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
             type: tag.kind == TagKind.vehicle ? 'car' : 'user',
             label: tag.label,
             imageUrl: tag.avatarUrl.isEmpty ? null : tag.avatarUrl,
+            registration: tag.registration,
           );
         }).toList(),
       );

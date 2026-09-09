@@ -298,7 +298,9 @@ class UploadPostProvider with ChangeNotifier {
           userId: data.userId,
           onProgress: (current, total, percentage) {
             final progress = (percentage * 100).toInt();
-            final message = 'Uploading ${current + 1}/$total items';
+            // "Processing", because most of this is compressing and
+            // registering rather than sending bytes.
+            final message = 'Processing ${current + 1}/$total items';
 
             _uploads[data.id] = _uploads[data.id]!.copyWith(
               progress: percentage,

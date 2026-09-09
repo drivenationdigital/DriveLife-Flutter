@@ -76,8 +76,8 @@ class PostsAPI {
         uri,
         headers: {'Content-Type': 'application/json'},
       );
-        final data = jsonDecode(response.body);
-        print("API response for hashtag '$hashtag': $data");
+      final data = jsonDecode(response.body);
+      print("API response for hashtag '$hashtag': $data");
 
       if (response.statusCode == 200) {
         return {
@@ -109,11 +109,7 @@ class PostsAPI {
       await Future.delayed(const Duration(seconds: 2));
 
       // Fetch the user's most recent post and check if it's within last 2 minutes
-      final posts = await getPosts(
-        token: token,
-        userId: user['id'],
-        limit: 1,
-      );
+      final posts = await getPosts(token: token, userId: user['id'], limit: 1);
 
       if (posts.isNotEmpty) {
         final latest = posts.first;
@@ -253,8 +249,8 @@ class PostsAPI {
         }),
       );
 
-        final data = json.decode(response.body);
-        print(data);
+      final data = json.decode(response.body);
+      print(data);
       if (response.statusCode == 200) {
         return List<Map<String, dynamic>>.from(data);
       }
@@ -276,7 +272,7 @@ class PostsAPI {
     if (Platform.isIOS) {
       taskId = await _backgroundChannel.invokeMethod('beginBackgroundTask');
     }
-    
+
     try {
       final user = await _authService.getParentUser();
       if (user == null) {
@@ -494,7 +490,8 @@ class PostsAPI {
         print('Error uploading media $i: $e');
         await AppLogger.logError(
           error: e.toString(),
-          context: 'PostsAPI.uploadMediaFiles - failed to upload media ${i + 1} of ${mediaList.length}',
+          context:
+              'PostsAPI.uploadMediaFiles - failed to upload media ${i + 1} of ${mediaList.length}',
           meta: {
             'media_index': i,
             'total_media': mediaList.length,
@@ -502,7 +499,7 @@ class PostsAPI {
             'file_size': await media.file.length(),
           },
         );
-        
+
         final errorStr = e.toString();
 
         // Bad file descriptor = app was backgrounded/killed mid-request
@@ -651,6 +648,9 @@ class PostsAPI {
               'label': tag.label,
               'type': tag.type,
               'id': tag.id,
+              // Always present, empty for a person: the server indexes this
+              // key for car tags whether or not it holds anything.
+              'registration': tag.registration,
             },
           )
           .toList();
@@ -672,6 +672,65 @@ class PostsAPI {
     } catch (e) {
       print('Error adding tags: $e');
       return null;
+    }
+  }
+
+  /// The tags currently on a post.
+  ///
+  /// Each row carries its own `tag_id`, which is what [removePostTag] takes —
+  /// listing tags without it meant they could be read but never removed.
+  static Future<List<Map<String, dynamic>>> fetchPostTags({
+    required int postId,
+  }) async {
+    // GET, not POST. The route is registered for GET only, and WordPress
+    // answers a method it does not have on a path with a 404 — which reads as
+    // "no such endpoint" rather than "wrong verb".
+    final response = await http.get(
+      Uri.parse(
+        '$_baseUrl/wp-json/app/v1/get-post-tags',
+      ).replace(queryParameters: {'post_id': '$postId'}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Could not load tags (${response.statusCode})');
+    }
+
+    final body = json.decode(response.body);
+
+    // A post with no tags answers with an object rather than a list, which is
+    // a shape difference rather than a failure.
+    if (body is! List) return const [];
+
+    return body
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  /// Removes one tag from a post.
+  ///
+  /// The server allows this for the post's author and for the person the tag
+  /// is about, and nobody else.
+  static Future<void> removePostTag({required int tagId}) async {
+    final token = await AuthService().getToken();
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/wp-json/app/v1/remove-post-tag'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+      body: json.encode({'tag_id': tagId}),
+    );
+
+    final body = response.body.isEmpty ? null : json.decode(response.body);
+
+    if (response.statusCode != 200 ||
+        (body is Map && body['success'] == false)) {
+      throw Exception(
+        (body is Map ? body['message']?.toString() : null) ??
+            'Could not remove the tag',
+      );
     }
   }
 

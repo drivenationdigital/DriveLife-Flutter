@@ -913,38 +913,12 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
       onRefresh: _load,
       child: CustomScrollView(
         slivers: [
-          if (_taggedPhotos.isNotEmpty) ...[
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(14, 16, 14, 10),
-                child: Text(
-                  'In galleries',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              sliver: TaggedPhotosGrid(
-                photos: _taggedPhotos,
-                // Every photo here is this vehicle's, so a plate on each one
-                // would label the obvious and cover the picture.
-                markVehicleTags: false,
-              ),
-            ),
-          ],
-
-          if (_posts.isNotEmpty) ...[
-            if (_taggedPhotos.isNotEmpty)
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(14, 22, 14, 10),
-                  child: Text(
-                    'In posts',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
+          // One grid for both, and no headings. Being tagged is one idea;
+          // two sections made a gallery photo of this car look like a
+          // different kind of thing from a post of it, and left a half-empty
+          // row between them whenever the first count was not a multiple of
+          // three. The small gallery mark on a tile is what tells them apart.
+          if (_taggedPhotos.isNotEmpty || _posts.isNotEmpty)
             SliverPadding(
               padding: const EdgeInsets.all(2),
               sliver: SliverGrid(
@@ -954,7 +928,16 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
                   mainAxisSpacing: 2,
                 ),
                 delegate: SliverChildBuilderDelegate((context, index) {
-                  final post = _posts[index];
+                  if (index < _taggedPhotos.length) {
+                    return TaggedPhotoTile(
+                      photo: _taggedPhotos[index],
+                      // Every photo here is this vehicle's, so a plate on each
+                      // one would label the obvious and cover the picture.
+                      markVehicleTags: false,
+                    );
+                  }
+
+                  final post = _posts[index - _taggedPhotos.length];
                   final media = post['media'];
                   String? imageUrl;
 
@@ -980,10 +963,9 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
                           : const Icon(Icons.image, color: Colors.grey),
                     ),
                   );
-                }, childCount: _posts.length),
+                }, childCount: _taggedPhotos.length + _posts.length),
               ),
             ),
-          ],
 
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],

@@ -11,7 +11,6 @@ import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/profile/edit_profile_settings_screen.dart';
 import 'package:drivelife/screens/profile/followers_screen.dart';
-import 'package:drivelife/services/qr_scanner.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:drivelife/widgets/profile/profile_avatar.dart';
 import 'package:flutter/material.dart';
@@ -914,37 +913,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
               centerTitle: true,
               title: Image.asset('assets/logo-dark.png', height: 18),
               actions: [
-                // In AppBar actions
-                IconButton(
-                  onPressed: () async {
-                    final result = await QrScannerService.showScanner(context);
-                    if (result != null && mounted) {
-                      QrScannerService.handleScanResult(
-                        context,
-                        result,
-                        onSuccess: (data) {
-                          // Navigate based on entity type
-                          if (data['entity_type'] == 'profile') {
-                            Navigator.pushNamed(
-                              context,
-                              '/view-profile',
-                              arguments: {'userId': data['entity_id']},
-                            );
-                          } else if (data['entity_type'] == 'vehicle') {
-                            Navigator.pushNamed(
-                              context,
-                              '/vehicle-detail',
-                              arguments: {
-                                'garageId': data['entity_id'].toString(),
-                              },
-                            );
-                          }
-                        },
-                      );
-                    }
-                  },
-                  icon: Icon(Icons.qr_code),
-                ),
                 IconButton(
                   onPressed: _showMoreOptions,
                   icon: Icon(Icons.more_horiz, color: theme.textColor),
@@ -1029,21 +997,26 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
       case 2:
         return _buildGalleriesGrid(theme);
       case 3:
-        // Two slivers in one tab: galleries this person is in, then the posts.
         return SliverMainAxisGroup(
           slivers: [
             if (_isOwnProfile && _pendingTagCount > 0)
               SliverToBoxAdapter(child: _buildTagRequestsBanner(theme)),
-            if (_taggedPhotos.isNotEmpty) _buildTaggedPhotos(theme),
+
+            // Gallery photos and posts share ONE grid rather than sitting under
+            // separate headings. Being tagged is one idea, and two sections
+            // made a photo of you look like a different kind of thing from a
+            // post of you — as well as leaving a half-empty row between them
+            // whenever the first count was not a multiple of three.
             _buildPostsGrid(
               _taggedPosts,
               theme,
+              galleryPhotos: _taggedPhotos,
               // SliverFillRemaining takes the whole viewport whatever is above
-              // it, so with tagged photos already drawn the empty-posts
-              // placeholder was laid over them and overflowed the tab. It may
-              // only fill when it IS the whole tab.
+              // it, so with tagged photos already drawn the empty placeholder
+              // was laid over them and overflowed the tab. It may only fill
+              // when it IS the whole tab.
               emptyFillsViewport: _taggedPhotos.isEmpty,
-              emptyLabel: 'No tagged posts yet',
+              emptyLabel: 'Nothing tagged yet',
             ),
           ],
         );
@@ -1219,38 +1192,17 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     );
   }
 
-  /// Gallery photos this person is tagged in, above their tagged posts.
-  ///
-  /// Its own heading because the two are different things: these are photos
-  /// from somebody else's gallery that happen to contain you or your car.
-  Widget _buildTaggedPhotos(ThemeProvider theme) {
-    return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
-      sliver: SliverMainAxisGroup(
-        slivers: [
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.only(left: 4, bottom: 10),
-              child: Text(
-                'In galleries',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-              ),
-            ),
-          ),
-          TaggedPhotosGrid(photos: _taggedPhotos),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPostsGrid(
     List<Post> posts,
     ThemeProvider theme, {
     bool emptyFillsViewport = true,
     String emptyLabel = 'No posts yet',
+    List<Map<String, dynamic>> galleryPhotos = const [],
   }) {
     // ✅ Show skeleton loading when initially loading posts
-    if (posts.isEmpty && (_loadingPosts || _loadingTagged || _isLoading)) {
+    if (posts.isEmpty &&
+        galleryPhotos.isEmpty &&
+        (_loadingPosts || _loadingTagged || _isLoading)) {
       return SliverPadding(
         padding: const EdgeInsets.all(2),
         sliver: SliverGrid(
@@ -1268,7 +1220,10 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
       );
     }
 
-    if (posts.isEmpty && !_loadingPosts && !_loadingTagged) {
+    if (posts.isEmpty &&
+        galleryPhotos.isEmpty &&
+        !_loadingPosts &&
+        !_loadingTagged) {
       final empty = Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1307,14 +1262,23 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) {
-            if (index < posts.length) {
-              return _buildPostTile(posts[index], theme);
+            // Gallery photos lead, then posts, in one continuous run of tiles.
+            if (index < galleryPhotos.length) {
+              return TaggedPhotoTile(photo: galleryPhotos[index]);
             }
+
+            final postIndex = index - galleryPhotos.length;
+            if (postIndex < posts.length) {
+              return _buildPostTile(posts[postIndex], theme);
+            }
+
             // ✅ Show loading skeleton at bottom when loading more
             return _buildSkeletonTile(theme);
           },
           childCount:
-              posts.length + ((_loadingPosts || _loadingTagged) ? 3 : 0),
+              galleryPhotos.length +
+              posts.length +
+              ((_loadingPosts || _loadingTagged) ? 3 : 0),
         ),
       ),
     );
