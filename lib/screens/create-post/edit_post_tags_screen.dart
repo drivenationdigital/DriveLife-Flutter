@@ -183,7 +183,7 @@ class _EditPostTagsScreenState extends State<EditPostTagsScreen> {
           onPressed: () => Navigator.pop(context, false),
         ),
         title: const Text(
-          'Edit tags',
+          'Edit User Tags',
           style: TextStyle(
             color: _ink,
             fontSize: 19,
