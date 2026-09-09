@@ -1,5 +1,6 @@
 import 'package:drivelife/providers/gallery_upload_provider.dart';
-import 'package:drivelife/screens/media/gallery_tagging_screen.dart';
+import 'package:drivelife/api/events_api.dart';
+import 'package:drivelife/screens/media/gallery_processing_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -89,19 +90,30 @@ class _GalleryUploadProgressScreenState
 
     _advanced = true;
 
+    final galleryId = batch.galleryId;
+
     // Out of the notification callback — this runs during the provider's
     // notifyListeners, and navigating inside that is asking for trouble.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+
+      // Adding to a gallery that already exists returns to it. There is no
+      // step to show: the photos are live and the scan runs on the server.
+      if (!widget.isNewGallery) {
+        if (galleryId != null && galleryId > 0) {
+          EventsAPI.processGallery(galleryId: galleryId);
+        }
+        Navigator.of(context).pop();
+        return;
+      }
+
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           // The gallery id comes back from the first register chunk, so it is
-          // known by the time the batch finishes — which is what step 2 needs
-          // to attach tags to.
-          builder: (_) => GalleryTaggingScreen(
-            galleryId: batch.galleryId,
+          // known by the time the batch finishes.
+          builder: (_) => GalleryProcessingScreen(
+            galleryId: galleryId ?? 0,
             galleryName: widget.galleryName,
-            returnToRoot: widget.isNewGallery,
           ),
         ),
       );

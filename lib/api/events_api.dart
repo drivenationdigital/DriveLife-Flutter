@@ -760,6 +760,29 @@ class EventsAPI {
   /// Photos arrive in chunks. The first call creates the gallery and returns
   /// its `gallery_id`; pass that back as [galleryId] on later chunks so they
   /// append to the same gallery instead of creating one each.
+  /// The two-letter country the signed-in account reports.
+  ///
+  /// Read from the same `last_location.country` the rest of this file uses to
+  /// pick a site, so a gallery is recorded where everything else already
+  /// believes the user is.
+  ///
+  /// Empty rather than 'GB' when there is nothing to go on: the server records
+  /// an absent country as absent, and defaulting here would launder a guess
+  /// into a stored fact.
+  static Future<String> _userCountry() async {
+    try {
+      final user = await _authService.getUser();
+      final location = user?['last_location'];
+
+      if (location is! Map) return '';
+
+      final country = '${location['country'] ?? ''}'.trim().toUpperCase();
+      return country.length == 2 ? country : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   static Future<Map<String, dynamic>?> registerCommunityGalleryMedia({
     String? eventId,
     required List<String> mediaIds,
@@ -784,6 +807,11 @@ class EventsAPI {
     // travels as its own fields instead.
     final hasPlace = entityType == 'location' && placeLabel.isNotEmpty;
 
+    // Never sent before. Without it the server fell back to 'GB' for anything
+    // with no event or venue behind it, so every standalone gallery — now the
+    // common kind — was recorded as British whoever made it.
+    final country = await _userCountry();
+
     final response = await http.post(
       Uri.parse(
         '${ApiConfig.baseUrl}/wp-json/app/v2/event-community-gallery/register',
@@ -806,6 +834,13 @@ class EventsAPI {
           if (lng != null) 'lng': lng,
         },
         if (galleryId != null && galleryId > 0) 'gallery_id': galleryId,
+        if (country.isNotEmpty) ...{
+          'country': country,
+          // The blog to file it under. Sent alongside rather than derived
+          // server-side from the country, because that mapping is the
+          // server's to make and it already has one.
+          'site': country,
+        },
         'media_ids': mediaIds,
         // Omitted rather than sent empty, so the server falls back to the
         // event's own name for photos added from its gallery tab.
@@ -830,6 +865,10 @@ class EventsAPI {
   ///
   /// `available` is false where the site has no AI library installed — the
   /// caller should hide the section rather than show an error.
+  /// Scans the next batch of a gallery's photos.
+  ///
+  /// [limit] 0 asks for progress only and scans nothing — see
+  /// [galleryScanStatus].
   static Future<Map<String, dynamic>> scanGallery({
     required int galleryId,
     int limit = 4,
@@ -859,6 +898,45 @@ class EventsAPI {
 
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
+
+  /// Asks the server to work through a gallery's unscanned photos.
+  ///
+  /// Returns as soon as the first batch is under way — the server carries on
+  /// by itself, so nothing here has to stay open for the minutes a large
+  /// gallery takes. Safe to call whenever: a gallery already being processed
+  /// is left alone rather than started twice.
+  ///
+  /// Quiet on failure by design. This is a nudge, not a transaction: the next
+  /// time the owner opens the gallery it will be sent again, and a visible
+  /// error for something the user did not ask for would be noise.
+  static Future<bool> processGallery({required int galleryId}) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return false;
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/galleries/process'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'gallery_id': galleryId}),
+      );
+
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// How far the scan has got, without scanning anything.
+  ///
+  /// `limit: 0` is the server's status mode. Used to poll while the background
+  /// pass runs, and to read what it has found without starting a pass of our
+  /// own.
+  static Future<Map<String, dynamic>> galleryScanStatus({
+    required int galleryId,
+  }) => scanGallery(galleryId: galleryId, limit: 0);
 
   /// Gallery tags waiting on this user's answer.
   ///

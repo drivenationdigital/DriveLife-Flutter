@@ -141,22 +141,52 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
   /// the progress meter is what makes that legible. It used to stop part-way
   /// and wait to be asked, which read as "these photos matter more" rather
   /// than "this is how far we have got".
+  /// How many photos to ask for per request.
+  ///
+  /// The server analyses a batch concurrently, so this is a batch size rather
+  /// than a queue depth — sixteen costs roughly what one does.
+  static const int _scanBatch = 16;
+
+  /// Consecutive failures tolerated before the scan gives up on itself.
+  ///
+  /// A pass that dies costs nothing already done: the server marks each photo
+  /// as it reads it, so a retry resumes rather than restarts. That makes a
+  /// blip worth riding out instead of surfacing as a dead end.
+  static const int _scanRetries = 2;
+
   Future<void> _runScan() async {
     setState(() {
       _scanning = true;
       _scanError = null;
     });
 
+    var failures = 0;
+
     try {
       var done = false;
 
       // Bounded so a server that never reports done cannot spin forever.
       for (var pass = 0; pass < 200 && !done; pass++) {
-        // The server caps a pass at 8; more per request risks its timeout.
-        final result = await EventsAPI.scanGallery(
-          galleryId: widget.galleryId!,
-          limit: 8,
-        );
+        final Map<String, dynamic> result;
+
+        try {
+          result = await EventsAPI.scanGallery(
+            galleryId: widget.galleryId!,
+            limit: _scanBatch,
+          );
+          failures = 0;
+        } catch (e) {
+          if (_disposed || !mounted) return;
+
+          // Everything read so far is kept, so stopping here loses only what
+          // is left — and that can be picked up from the gallery later.
+          if (++failures > _scanRetries) {
+            setState(() => _scanError = _resumableError(e));
+            return;
+          }
+
+          continue;
+        }
 
         if (_disposed || !mounted) return;
 
@@ -188,11 +218,29 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
       // tagging still works — so this is reported in place rather than as an
       // error dialog. But it IS reported.
       if (!_disposed && mounted) {
-        setState(() => _scanError = '$e'.replaceFirst('Exception: ', ''));
+        setState(() => _scanError = _resumableError(e));
       }
     } finally {
       if (!_disposed && mounted) setState(() => _scanning = false);
     }
+  }
+
+  /// The message for a scan that stopped early.
+  ///
+  /// "Scan failed (524)" was true and useless: it read as everything being
+  /// lost, when in fact every photo already read is saved and the rest can be
+  /// run from the gallery whenever. 524 is the host's own timeout, which says
+  /// nothing a person can act on, so it is not repeated back at them.
+  String _resumableError(Object error) {
+    final raw = '$error'.replaceFirst('Exception: ', '');
+    final timedOut = raw.contains('524') || raw.contains('504');
+
+    final reason = timedOut
+        ? 'The scan is taking longer than the server allows.'
+        : raw;
+
+    return '$reason What it found so far is saved — '
+        'you can finish the rest from the gallery at any time.';
   }
 
   /// Everything the scan found that has not been removed.
@@ -449,9 +497,13 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
                         color: Colors.white,
                       ),
                     )
-                  // Tagging is optional, and "Skip" is honest about that —
-                  // "Publish" on an empty list implies work is still pending.
-                  : Text(_tags.isEmpty ? 'Skip' : 'Publish'),
+                  // Always "Done". "Skip" belonged to this being the last
+                  // step of an upload, which it no longer is — the gallery is
+                  // already published and this is reached from it. It was also
+                  // reading the wrong list: tags added photo by photo never
+                  // land in _tags, so tagging three people by hand and coming
+                  // back still offered to "Skip".
+                  : const Text('Done'),
             ),
           ),
         ],

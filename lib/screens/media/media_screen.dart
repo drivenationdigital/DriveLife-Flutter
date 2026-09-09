@@ -867,11 +867,10 @@ class _GalleryCard extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            // A named gallery keeps the event visible underneath, so it is
-            // still obvious what the photos are from.
-            gallery.galleryName == null || gallery.galleryName!.isEmpty
-                ? gallery.subtitle
-                : gallery.title,
+            // Who made it. The event underneath used to go here, but the title
+            // above already names the gallery and the card said nothing about
+            // whose it was.
+            gallery.ownerLabel,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600),

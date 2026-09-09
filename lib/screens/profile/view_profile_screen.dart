@@ -1118,7 +1118,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
         delegate: SliverChildBuilderDelegate((context, index) {
           final gallery = galleries[index];
           final title = '${gallery['title'] ?? ''}';
-          final count = int.tryParse('${gallery['photo_count']}') ?? 0;
           final galleryId = int.tryParse('${gallery['gallery_id']}');
 
           // Only where the server says this viewer owns it, so a card in
@@ -1130,7 +1129,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
             onLongPress: canEdit ? () => _deleteGallery(gallery) : null,
             // Thumb rather than the full-size cover: these are grid tiles.
             coverUrl: '${gallery['cover_thumb'] ?? gallery['cover'] ?? ''}',
-            subtitle: count == 0 ? '' : '$count photo${count == 1 ? '' : 's'}',
+            subtitle: galleryOwnerLabel(gallery['owner']),
             onTap: () async {
               var changed = false;
 

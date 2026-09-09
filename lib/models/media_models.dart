@@ -149,6 +149,12 @@ class EventGallery {
   /// "failed to load event".
   final String entityType;
 
+  /// The handle of whoever made the gallery, without the @.
+  ///
+  /// Empty on an older API build, and on the placeholder cards that stand for
+  /// an event with nothing uploaded — neither has an owner to credit.
+  final String ownerUsername;
+
   const EventGallery({
     this.galleryId,
     required this.eventId,
@@ -160,6 +166,7 @@ class EventGallery {
     this.galleryName,
     this.blogId,
     this.entityType = 'event',
+    this.ownerUsername = '',
   });
 
   bool get isVenue => entityType == 'venue';
@@ -178,6 +185,10 @@ class EventGallery {
     dateLabel,
   ].where((s) => s != null && s.isNotEmpty).join(' · ');
 
+  /// Who the card credits: the owner's handle, falling back to where the
+  /// photos were taken when there is no owner to name.
+  String get ownerLabel => ownerUsername.isEmpty ? subtitle : '@$ownerUsername';
+
   /// A real gallery, as opposed to an upcoming-event placeholder.
   bool get isGallery => galleryId != null && galleryId! > 0;
 
@@ -193,6 +204,7 @@ class EventGallery {
     blogId: json['blog_id'] == null ? null : _int(json['blog_id']),
     // Older API builds send no entity_type; those rows are all events.
     entityType: _str(json['entity_type']) ?? 'event',
+    ownerUsername: _str(json['owner_username']) ?? '',
   );
 }
 

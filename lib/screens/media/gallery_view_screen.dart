@@ -155,6 +155,12 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// exactly why the owner needs telling they exist.
   int _pendingTagCount = 0;
 
+  /// Tags the owner has made that their subject has yet to accept.
+  ///
+  /// Held apart from [_galleryTags] and [_photoTags] because they are not part
+  /// of the gallery yet — nobody but the owner should see them listed.
+  List<GalleryTag> _pendingTags = const [];
+
   bool _following = false;
   bool _followBusy = false;
   String? _error;
@@ -240,6 +246,8 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     // After the photos, not before: tags are supporting detail and should
     // never hold up the gallery itself.
     unawaited(_loadTags());
+
+    _watchProcessing();
 
     unawaited(_openInitialPhoto());
   }
@@ -332,6 +340,71 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     );
   }
 
+  Timer? _pollTimer;
+
+  /// Follows the server's progress through the unread photos.
+  ///
+  /// Also nudges it: processing is handed off request to request on the
+  /// server, and a chain that dies — a fatal in one batch, a host restart —
+  /// leaves the rest unread with nothing to restart it. Asking on every visit
+  /// makes that self-healing, and costs a wasted call when a run is already
+  /// going, since the server ignores a second start.
+  void _watchProcessing() {
+    final galleryId = widget.galleryId;
+
+    if (!_canCurate || galleryId == null || galleryId <= 0) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+      return;
+    }
+
+    if (_unscannedCount <= 0) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+      return;
+    }
+
+    unawaited(EventsAPI.processGallery(galleryId: galleryId));
+
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      try {
+        final status = await EventsAPI.galleryScanStatus(galleryId: galleryId);
+        if (!mounted) return;
+
+        final remaining =
+            (int.tryParse('${status['total']}') ?? 0) -
+            (int.tryParse('${status['scanned']}') ?? 0);
+
+        setState(() => _unscannedCount = remaining > 0 ? remaining : 0);
+
+        if (remaining <= 0) {
+          timer.cancel();
+          _pollTimer = null;
+
+          // The tags the scan produced are only visible once they are read
+          // back — without this the strip flips to "0 users tagged".
+          unawaited(_loadTags());
+          return;
+        }
+
+        // The chain stopped without finishing. Start another rather than
+        // watching a number that will not move again.
+        if (status['running'] == false) {
+          unawaited(EventsAPI.processGallery(galleryId: galleryId));
+        }
+      } catch (_) {
+        // A failed poll is not worth reporting: the next one is five seconds
+        // away and the strip simply holds its last number.
+      }
+    });
+  }
+
   /// Opens the viewer on the photo a shared link named, once, after the
   /// gallery has drawn underneath it.
   bool _openedInitial = false;
@@ -415,18 +488,21 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
 
       final wide = <GalleryTag>[];
       final perPhoto = <int, List<GalleryTag>>{};
-      var pending = 0;
+      final waiting = <GalleryTag>[];
 
       for (final raw in tags) {
+        final tag = GalleryTag.fromJson(raw);
+
         // Absent on an older API build, where every tag was live.
         if (raw['approved'] == false) {
-          pending++;
-          // Unanswered, so it is not part of the gallery yet.
+          // Not part of the gallery until it is answered, so it stays out of
+          // the lists everyone sees — but it is kept, because the owner's own
+          // count of who they have tagged should include it.
+          waiting.add(tag);
           continue;
         }
 
         final mediaId = int.tryParse('${raw['media_id']}') ?? 0;
-        final tag = GalleryTag.fromJson(raw);
 
         if (mediaId == 0) {
           wide.add(tag);
@@ -438,7 +514,8 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       setState(() {
         _galleryTags = wide;
         _photoTags = perPhoto;
-        _pendingTagCount = pending;
+        _pendingTags = waiting;
+        _pendingTagCount = waiting.length;
       });
     } catch (_) {
       // Leave the row hidden.
@@ -748,8 +825,9 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
 
   @override
   void dispose() {
-    // Nothing to unhook: the upload lives in the provider and the progress
-    // screen owns the waiting, so this screen holds no listener of its own.
+    _pollTimer?.cancel();
+    // Otherwise nothing to unhook: the upload lives in the provider and the
+    // progress screen owns the waiting.
     super.dispose();
   }
 
@@ -1254,7 +1332,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
             SliverToBoxAdapter(child: _buildPendingTagNote()),
 
           // Owner only, and only while there is something left to read.
-          if (_canCurate && !_loading && _unscannedCount > 0)
+          if (_canCurate && !_loading && widget.galleryId != null)
             SliverToBoxAdapter(child: _buildScanPrompt()),
 
           // Cover runs edge to edge; the grid below is what it introduces.
@@ -1385,7 +1463,13 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     final seen = <int>{};
     final members = <GalleryTag>[];
 
-    for (final tag in _galleryTags) {
+    // Both kinds. A tag made on one photo is still a person in this gallery,
+    // and counting only the gallery-wide ones reported "0 users tagged" to
+    // someone looking at a tag they had just made by hand.
+    for (final tag in [
+      ..._galleryTags,
+      for (final tags in _photoTags.values) ...tags,
+    ]) {
       if (!tag.hasMember || !seen.add(tag.ownerId)) continue;
       members.add(tag);
     }
@@ -1393,56 +1477,105 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     return members;
   }
 
-  /// Offers to look for vehicles in photos the scan has not read.
+  /// How many people the OWNER has tagged, waiting ones included.
   ///
-  /// The point of this living here is that scanning need not hold up an
-  /// upload: skip it at the time, come back when it suits, and only the
-  /// unread photos cost anything.
+  /// Different from [_taggedMembers], which is what everybody sees and so may
+  /// only contain accepted tags. This strip is owner-only, and telling someone
+  /// "0 users tagged" about a person they just tagged themselves is wrong from
+  /// where they are standing — the note above it is what explains that some are
+  /// still to be accepted.
+  int get _ownerTaggedCount {
+    final seen = <int>{};
+
+    for (final tag in [
+      ..._galleryTags,
+      for (final tags in _photoTags.values) ...tags,
+      ..._pendingTags,
+    ]) {
+      if (tag.hasMember) seen.add(tag.ownerId);
+    }
+
+    return seen.length;
+  }
+
+  /// What the scan is doing, or what it found.
+  ///
+  /// Two states in one strip, because they are the same thing at two points in
+  /// its life. While photos are unread it reports progress and is not a button
+  /// — the work is already happening on the server, and offering to start it
+  /// invited people to trigger what was under way. Once everything has been
+  /// read it becomes the way in to adding more tags by hand.
   Widget _buildScanPrompt() {
-    final count = _unscannedCount;
+    final scanning = _unscannedCount > 0;
+    final count = scanning ? _unscannedCount : _ownerTaggedCount;
+
+    final title = scanning
+        ? 'Scanning $count photo${count == 1 ? '' : 's'}'
+        : '$count user${count == 1 ? '' : 's'} tagged';
+
+    final subtitle = scanning
+        ? 'Finding number plates and tagging the owners.'
+        : 'Click to add some more';
+
+    final strip = Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: _gold.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _gold.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 19,
+            height: 19,
+            child: scanning
+                // A spinner rather than the old stars: this is work in
+                // progress, and a static icon read as a button to press.
+                ? const CircularProgressIndicator(strokeWidth: 2, color: _gold)
+                : const Icon(
+                    Icons.local_offer_outlined,
+                    size: 19,
+                    color: _gold,
+                  ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                    color: _ink,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(fontSize: 12.5, color: _muted),
+                ),
+              ],
+            ),
+          ),
+          if (!scanning)
+            const Icon(Icons.chevron_right, size: 20, color: _gold),
+        ],
+      ),
+    );
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-      child: InkWell(
-        onTap: _scanForVehicles,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(
-            color: _gold.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: _gold.withValues(alpha: 0.35)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.auto_awesome, size: 19, color: _gold),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Scan $count photo${count == 1 ? '' : 's'} for vehicles',
-                      style: const TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w800,
-                        color: _ink,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Finds number plates and tags the owners.',
-                      style: TextStyle(fontSize: 12.5, color: _muted),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, size: 20, color: _gold),
-            ],
-          ),
-        ),
-      ),
+      child: scanning
+          ? strip
+          : InkWell(
+              onTap: _scanForVehicles,
+              borderRadius: BorderRadius.circular(14),
+              child: strip,
+            ),
     );
   }
 

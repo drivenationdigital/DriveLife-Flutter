@@ -180,18 +180,14 @@ class _EntityGalleriesTabState extends State<EntityGalleriesTab> {
         itemCount: _galleries.length,
         itemBuilder: (context, index) {
           final gallery = _galleries[index];
-          final count = int.tryParse('${gallery['photo_count']}') ?? 0;
           final owner = gallery['owner'];
-          final ownerName = owner is Map ? '${owner['name'] ?? ''}' : '';
+          final ownerName = galleryOwnerLabel(owner);
 
           return GalleryCard(
             title: '${gallery['title'] ?? ''}',
             // Thumb rather than the full-size cover: these are grid tiles.
             coverUrl: '${gallery['cover_thumb'] ?? gallery['cover'] ?? ''}',
-            subtitle: [
-              if (ownerName.isNotEmpty) ownerName,
-              if (count > 0) '$count photo${count == 1 ? '' : 's'}',
-            ].join(' · '),
+            subtitle: ownerName,
             onTap: () => _open(gallery),
           );
         },

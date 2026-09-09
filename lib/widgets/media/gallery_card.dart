@@ -1,6 +1,22 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+/// Who a gallery belongs to, as a card credits them.
+///
+/// The handle rather than the display name: display names are not unique, and
+/// two people called "Dave" reads as the same person having made both. Falls
+/// back to the display name where the handle is missing — an older API build
+/// sends no username, and no credit at all is worse than an ambiguous one.
+String galleryOwnerLabel(dynamic owner) {
+  if (owner is! Map) return '';
+
+  final username = '${owner['username'] ?? ''}'.trim();
+  if (username.isNotEmpty) return '@$username';
+
+  final name = '${owner['name'] ?? ''}'.trim();
+  return name;
+}
+
 /// A gallery in a list: cover image with the title over it.
 ///
 /// Shared by the profile Galleries tab and the event/venue gallery tabs, so a

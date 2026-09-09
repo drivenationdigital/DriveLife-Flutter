@@ -428,17 +428,15 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
           }
 
           final gallery = _galleries[index];
-          final count = int.tryParse('${gallery['photo_count']}') ?? 0;
           final owner = gallery['owner'];
-          final ownerName = owner is Map ? '${owner['name'] ?? ''}' : '';
+          final ownerName = galleryOwnerLabel(owner);
 
           return GalleryCard(
             title: '${gallery['title'] ?? ''}',
             coverUrl: '${gallery['cover_thumb'] ?? gallery['cover'] ?? ''}',
-            subtitle: [
-              if (ownerName.isNotEmpty) ownerName,
-              if (count > 0) '$count photo${count == 1 ? '' : 's'}',
-            ].join(' · '),
+            // The owner's handle alone. The photo count was already on
+            // the card, so spending the line on it twice said nothing.
+            subtitle: ownerName,
             onTap: () => _open(gallery),
           );
         },
