@@ -76,17 +76,33 @@ class _EditPostTagsScreenState extends State<EditPostTagsScreen> {
         final entity = raw['entity'];
         final map = entity is Map ? Map<String, dynamic>.from(entity) : {};
 
+        final isVehicle = type != 'user';
+        final owner = map['owner'];
+        final ownerMap = owner is Map ? Map<String, dynamic>.from(owner) : null;
+
+        final registration = '${map['registration'] ?? ''}'.trim();
+        final make = '${map['make'] ?? ''}'.trim();
+        final model = '${map['model'] ?? ''}'.trim();
+
+        // Shaped like a gallery tag: the plate is the heading and the car is
+        // the line underneath, rather than one string with the plate in
+        // brackets that the card then has to show whole.
         _existing[tagId] = GalleryTag(
-          kind: type == 'user' ? TagKind.member : TagKind.vehicle,
-          label:
-              '${map['username'] ?? map['registration'] ?? map['name'] ?? ''}',
-          subtitle: '${map['name'] ?? ''}',
+          kind: isVehicle ? TagKind.vehicle : TagKind.member,
+          label: isVehicle
+              ? (registration.isNotEmpty
+                    ? registration
+                    : '${map['name'] ?? 'Unknown vehicle'}')
+              : '${map['name'] ?? ''}',
+          subtitle: isVehicle
+              ? [make, model].where((s) => s.isNotEmpty).join(' ')
+              : '',
           avatarUrl: '${map['image'] ?? ''}',
           entityId: int.tryParse('${raw['entity_id']}') ?? 0,
-          registration: type == 'user' ? '' : '${map['registration'] ?? ''}',
-          ownerId: type == 'user'
-              ? (int.tryParse('${raw['entity_id']}') ?? 0)
-              : (int.tryParse('${map['owner_id'] ?? 0}') ?? 0),
+          registration: isVehicle ? registration : '',
+          ownerId: isVehicle
+              ? (int.tryParse('${ownerMap?['id'] ?? 0}') ?? 0)
+              : (int.tryParse('${raw['entity_id']}') ?? 0),
         );
       }
 

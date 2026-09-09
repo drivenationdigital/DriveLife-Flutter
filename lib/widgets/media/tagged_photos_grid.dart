@@ -15,18 +15,7 @@ class TaggedPhotoTile extends StatelessWidget {
   /// One row from `EventsAPI.fetchTaggedPhotos`.
   final Map<String, dynamic> photo;
 
-  /// Whether to show the registration that put this photo here.
-  ///
-  /// On a profile it tells "you are in this photo" from "your car is". On a
-  /// vehicle's own Tags tab every photo is that vehicle's, so a plate on all
-  /// of them says nothing and just covers the picture.
-  final bool markVehicleTags;
-
-  const TaggedPhotoTile({
-    super.key,
-    required this.photo,
-    this.markVehicleTags = true,
-  });
+  const TaggedPhotoTile({super.key, required this.photo});
 
   @override
   Widget build(BuildContext context) {
@@ -34,11 +23,6 @@ class TaggedPhotoTile extends StatelessWidget {
     final photoId = int.tryParse('${photo['id']}') ?? 0;
     final title = '${photo['gallery_title'] ?? ''}';
     final thumb = '${photo['thumb'] ?? photo['url'] ?? ''}';
-
-    // 'car' or 'both' means one of your vehicles is why this photo is here.
-    final via = '${photo['via'] ?? 'user'}';
-    final registration = '${photo['registration'] ?? ''}'.trim();
-    final plate = (!markVehicleTags || via == 'user') ? '' : registration;
 
     final placeholder = ColoredBox(color: Colors.grey.shade300);
 
@@ -76,10 +60,11 @@ class TaggedPhotoTile extends StatelessWidget {
           // Bottom left, mirroring the multi-image mark posts carry top right,
           // so the two kinds of tile are told apart at a glance without either
           // looking like the odd one out.
+          //
+          // The mark alone. A plate over the corner as well said which of your
+          // vehicles put the photo there, which is detail for the vehicle's own
+          // tab rather than something worth covering the picture for.
           const Positioned(left: 4, bottom: 4, child: _GalleryMark()),
-
-          if (plate.isNotEmpty)
-            Positioned(right: 4, bottom: 4, child: _PlateTag(plate: plate)),
         ],
       ),
     );
@@ -102,39 +87,6 @@ class _GalleryMark extends StatelessWidget {
         Icons.photo_library_outlined,
         color: Colors.white,
         size: 14,
-      ),
-    );
-  }
-}
-
-/// The registration over a thumbnail, saying this photo is here because of a
-/// vehicle rather than because you are in it.
-class _PlateTag extends StatelessWidget {
-  final String plate;
-
-  const _PlateTag({required this.plate});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-      decoration: BoxDecoration(
-        // Solid rather than translucent: it sits over a photograph, and a
-        // washed-out plate on a bright shot is unreadable.
-        color: Colors.black.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        plate,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          fontSize: 9,
-          height: 1.3,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.3,
-          color: Colors.white,
-        ),
       ),
     );
   }

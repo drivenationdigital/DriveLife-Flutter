@@ -929,12 +929,7 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
                 ),
                 delegate: SliverChildBuilderDelegate((context, index) {
                   if (index < _taggedPhotos.length) {
-                    return TaggedPhotoTile(
-                      photo: _taggedPhotos[index],
-                      // Every photo here is this vehicle's, so a plate on each
-                      // one would label the obvious and cover the picture.
-                      markVehicleTags: false,
-                    );
+                    return TaggedPhotoTile(photo: _taggedPhotos[index]);
                   }
 
                   final post = _posts[index - _taggedPhotos.length];

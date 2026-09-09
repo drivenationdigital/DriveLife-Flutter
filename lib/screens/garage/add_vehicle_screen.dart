@@ -1,3 +1,4 @@
+import 'package:drivelife/widgets/garage/photo_matches_sheet.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:drivelife/api/garage_api.dart';
@@ -512,6 +513,21 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
       final vehicleId = (res is Map) ? res['id'] : widget.vehicle?['id'];
 
+      // Photos of this plate may already be on the site — the scan records
+      // every registration it reads, matched to a garage or not, so a car
+      // added today can turn up in galleries uploaded months ago. Asked before
+      // leaving, because this screen is the only moment the answer is a
+      // surprise worth having.
+      //
+      // New vehicles only: an edit has been through this once already.
+      if (!_isEditMode) {
+        final garageId = int.tryParse('$vehicleId') ?? 0;
+        if (garageId > 0) {
+          await PhotoMatchesSheet.show(context, garageId);
+          if (!mounted) return;
+        }
+      }
+
       Navigator.pop(context, _isEditMode ? 'updated' : vehicleId);
     } catch (e) {
       if (!mounted) return;
@@ -617,10 +633,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                 children: [
                   Text(
                     label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -662,10 +675,10 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
             height: 36,
             child: _lookingUp
                 ? CircularProgressIndicator(
-                      padding: EdgeInsets.all(14),
-                      strokeWidth: 2,
-                      color: gold,
-                    )
+                    padding: EdgeInsets.all(14),
+                    strokeWidth: 2,
+                    color: gold,
+                  )
                 : const Icon(
                     Icons.auto_fix_high_rounded,
                     size: 18,
@@ -936,7 +949,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
     final model = _titleCase(range);
     final colour = _titleCase(colourRaw);
-    final fuel = isElectric && fuelRaw.isEmpty ? 'Electric' : _titleCase(fuelRaw);
+    final fuel = isElectric && fuelRaw.isEmpty
+        ? 'Electric'
+        : _titleCase(fuelRaw);
 
     // Engine size, e.g. "1.4L". Electric cars have none.
     final engine = isElectric

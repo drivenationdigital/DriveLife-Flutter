@@ -8,7 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class GarageAPI {
   static const String _apiUrl = 'https://www.carevents.com/uk';
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
-    static final AuthService _authService = AuthService();
+  static final AuthService _authService = AuthService();
 
   /// Get authorization headers
   static Future<Map<String, String>> _getHeaders() async {
@@ -24,6 +24,63 @@ class GarageAPI {
     }
 
     return headers;
+  }
+
+  /// Photos already on the site showing this vehicle's plate.
+  ///
+  /// The scan records every plate it reads whether or not a garage matched at
+  /// the time, so a car added today may already appear in photos taken months
+  /// ago. Read-only: [claimPhotoMatches] is what attaches them.
+  ///
+  /// Quiet on failure — this is a bonus offered after adding a vehicle, and an
+  /// error over it would make a successful add look like it went wrong.
+  static Future<Map<String, dynamic>> fetchPhotoMatches({
+    required int garageId,
+  }) async {
+    try {
+      final headers = await _getHeaders();
+
+      final response = await http.get(
+        Uri.parse(
+          '$_apiUrl/wp-json/app/v2/garage/photo-matches',
+        ).replace(queryParameters: {'garage_id': '$garageId'}),
+        headers: headers,
+      );
+
+      if (response.statusCode != 200) return const {'total': 0};
+
+      final body = jsonDecode(response.body);
+      return body is Map ? Map<String, dynamic>.from(body) : const {'total': 0};
+    } catch (_) {
+      return const {'total': 0};
+    }
+  }
+
+  /// Attaches those photos to the vehicle.
+  ///
+  /// Separate from the count because a registration typed into a form is not
+  /// proof of ownership — appearing in other people's photos has to be asked
+  /// for, not done automatically to whoever's plate was entered.
+  static Future<int> claimPhotoMatches({required int garageId}) async {
+    final headers = await _getHeaders();
+
+    final response = await http.post(
+      Uri.parse('$_apiUrl/wp-json/app/v2/garage/claim-photos'),
+      headers: headers,
+      body: jsonEncode({'garage_id': garageId}),
+    );
+
+    final body = jsonDecode(response.body);
+
+    if (response.statusCode != 200 ||
+        (body is Map && body['success'] != true)) {
+      throw Exception(
+        (body is Map ? body['message']?.toString() : null) ??
+            'Could not add these photos',
+      );
+    }
+
+    return int.tryParse('${body['claimed']}') ?? 0;
   }
 
   static Future<List<dynamic>?> getUserGarage(int userId) async {

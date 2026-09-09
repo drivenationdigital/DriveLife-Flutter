@@ -681,6 +681,17 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.local_offer_outlined),
+              title: const Text('Edit user tags'),
+              // The same screen the "add some more" strip opens. Reachable
+              // from the menu too, because that strip only appears once the
+              // scan has finished and this is the obvious place to look.
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _scanForVehicles();
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.drive_file_rename_outline),
               title: const Text('Rename gallery'),
               onTap: () {

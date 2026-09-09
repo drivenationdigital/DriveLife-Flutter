@@ -28,6 +28,17 @@ class MediaItem {
   final Duration? duration;
   VideoPlayerController? videoController;
 
+  /// The file as the picker handed it over, before compression.
+  ///
+  /// A picked photo goes into the grid straight away and is compressed
+  /// afterwards, so this is what identifies it in between — the compressed
+  /// copy has a different path, and the grid is free to be reordered or have
+  /// items removed while the work is going on.
+  final String sourcePath;
+
+  /// True until compression has finished with it.
+  final bool preparing;
+
   MediaItem({
     required this.file,
     required this.isVideo,
@@ -35,7 +46,9 @@ class MediaItem {
     this.width = 0,
     this.duration,
     this.videoController,
-  });
+    String? sourcePath,
+    this.preparing = false,
+  }) : sourcePath = sourcePath ?? file.path;
 
   void dispose() {
     videoController?.dispose();
@@ -435,50 +448,28 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         if (images.isNotEmpty) {
           final remaining = 10 - _selectedMedia.length;
           final imagesToAdd = images.take(remaining).toList();
-          final quality = await UploadQualityPrefs.current();
 
-          setState(() {
-            _isUploading = true;
-            _uploadProgress = 0.0;
-            _uploadStatus = 'Preparing photos...';
-          });
-
-          final List<MediaItem> mediaItems = [];
-          for (var i = 0; i < imagesToAdd.length; i++) {
-            if (mounted) {
-              setState(() {
-                _uploadProgress = i / imagesToAdd.length;
-                _uploadStatus =
-                    'Preparing photo ${i + 1} of ${imagesToAdd.length}...';
-              });
-            }
-
-            final result = await MediaCompressor.compressImage(
-              File(imagesToAdd[i].path),
-              quality: quality,
-            );
-
-            mediaItems.add(
-              MediaItem(
-                file: result.file,
-                isVideo: false,
-                height: result.size?.height ?? 0,
-                width: result.size?.width ?? 0,
-              ),
-            );
-          }
-
+          // Into the grid immediately, as picked. Compression follows in the
+          // background, and each tile says it is still working — ten large
+          // photos used to sit behind a blocking overlay that took its time
+          // even appearing, with nothing to show it had registered the pick.
           if (!mounted) return;
           setState(() {
-            _selectedMedia.addAll(mediaItems);
-            _isUploading = false;
-            _uploadProgress = 0.0;
-            _uploadStatus = '';
+            _selectedMedia.addAll([
+              for (final image in imagesToAdd)
+                MediaItem(
+                  file: File(image.path),
+                  isVideo: false,
+                  preparing: true,
+                ),
+            ]);
           });
 
           if (images.length > remaining) {
             _showMessage('Maximum 10 items allowed');
           }
+
+          await _prepareImages(imagesToAdd.map((x) => x.path).toList());
         }
       } else {
         final XFile? video = await _picker.pickVideo(
@@ -560,6 +551,63 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       _showMessage('Failed to pick media: $e', isError: true);
     }
   }
+
+  /// Compresses freshly picked photos, replacing each tile as it finishes.
+  ///
+  /// Matched back by [MediaItem.sourcePath] rather than by index: the grid is
+  /// live while this runs, so the photo at position 3 when it started may not
+  /// be the photo at position 3 when it lands — or may have been removed.
+  Future<void> _prepareImages(List<String> paths) async {
+    final quality = await UploadQualityPrefs.current();
+
+    for (final path in paths) {
+      if (!mounted) return;
+
+      // Removed while waiting. Nothing to compress, and nothing to put back.
+      if (!_selectedMedia.any((m) => m.sourcePath == path)) continue;
+
+      try {
+        final result = await MediaCompressor.compressImage(
+          File(path),
+          quality: quality,
+        );
+
+        if (!mounted) return;
+
+        final at = _selectedMedia.indexWhere((m) => m.sourcePath == path);
+        if (at < 0) continue;
+
+        setState(() {
+          _selectedMedia[at] = MediaItem(
+            file: result.file,
+            isVideo: false,
+            height: result.size?.height ?? 0,
+            width: result.size?.width ?? 0,
+            sourcePath: path,
+          );
+        });
+      } catch (e) {
+        if (!mounted) return;
+
+        // The original uploads perfectly well; it is only larger. Dropping the
+        // photo over a failed compression would lose the user's pick for a
+        // reason that does not stop the post.
+        final at = _selectedMedia.indexWhere((m) => m.sourcePath == path);
+        if (at < 0) continue;
+
+        setState(() {
+          _selectedMedia[at] = MediaItem(
+            file: File(path),
+            isVideo: false,
+            sourcePath: path,
+          );
+        });
+      }
+    }
+  }
+
+  /// True while any picked photo is still being compressed.
+  bool get _preparing => _selectedMedia.any((m) => m.preparing);
 
   void _removeMedia(int index) {
     final media = _selectedMedia[index];
@@ -1149,21 +1197,24 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   ),
                 ),
 
-                // Post — gold pill right
+                // Next — gold pill right
                 GestureDetector(
-                  onTap: _isPosting ? null : _createPost,
+                  // Held while photos are still compressing: going on would
+                  // upload the originals, which is what the compression is
+                  // there to avoid.
+                  onTap: (_isPosting || _preparing) ? null : _createPost,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: _isPosting
+                      color: (_isPosting || _preparing)
                           ? Colors.grey.shade300
                           : const Color(0xFFC4A062),
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: _isPosting
+                    child: (_isPosting || _preparing)
                         ? const SizedBox(
                             width: 16,
                             height: 16,
@@ -1489,6 +1540,8 @@ class _MediaTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
+        // Placed first so everything below draws over it; the veil comes after
+        // the image itself further down.
         Container(
           width: 140,
           height: 140,
@@ -1527,6 +1580,30 @@ class _MediaTile extends StatelessWidget {
                   ),
                 ),
         ),
+
+        // Dimmed while the photo is being compressed. It is already in the
+        // grid and already removable — this only says the work is not finished,
+        // rather than blocking the screen the way the old overlay did.
+        if (item.preparing)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                alignment: Alignment.center,
+                child: const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
 
         // Remove button
         Positioned(
