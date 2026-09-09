@@ -1,3 +1,4 @@
+import 'package:drivelife/routes.dart';
 import 'dart:async';
 
 import 'package:drivelife/api/events_api.dart';
@@ -1014,7 +1015,7 @@ class _SearchScreenState extends State<SearchScreen>
       onVenueTap: (venue) {
         Navigator.pushNamed(
           context,
-          '/venue-detail',
+          AppRoutes.venueDetails,
           arguments: {'venueId': venue['id']},
         );
       },
@@ -1254,7 +1255,7 @@ class _SearchScreenState extends State<SearchScreen>
         onTap: () {
           Navigator.pushNamed(
             context,
-            '/venue-detail',
+            AppRoutes.venueDetails,
             arguments: {'venueId': venue['id']},
           );
         },

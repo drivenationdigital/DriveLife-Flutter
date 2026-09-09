@@ -1,3 +1,4 @@
+import 'package:drivelife/routes.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/widgets/formatted_text.dart';
 import 'package:flutter/material.dart';
@@ -117,7 +118,7 @@ class _CommentItemState extends State<CommentItem> {
     } else if (entityType == 'venue' && entityPostId != null) {
       Navigator.pushNamed(
         context,
-        '/venue-detail',
+        AppRoutes.venueDetails,
         arguments: {'venueId': entityPostId},
       );
     } else {

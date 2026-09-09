@@ -1,3 +1,4 @@
+import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/media/gallery_view_screen.dart';
 import 'package:drivelife/screens/media/gallery_tag_requests_screen.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -170,7 +171,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       } else if (initiatorEntityType == 'venue' && entityPostId != null) {
         Navigator.pushNamed(
           context,
-          '/venue-detail',
+          AppRoutes.venueDetails,
           arguments: {'venueId': entityPostId},
         );
       } else {
@@ -493,7 +494,7 @@ class _NotificationTile extends StatelessWidget {
     } else if (initiatorEntityType == 'venue' && entityPostId != null) {
       Navigator.pushNamed(
         context,
-        '/venue-detail',
+        AppRoutes.venueDetails,
         arguments: {'venueId': entityPostId},
       );
     } else {

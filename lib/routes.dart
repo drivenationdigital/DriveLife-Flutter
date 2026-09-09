@@ -301,7 +301,10 @@ class AppRoutes {
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(
           VenueDetailScreen(
-            venueId: args['venueId'],
+            // Search hands over whatever the JSON held, which is an int as
+            // often as a string; the screen takes a String and a mismatch
+            // fails at the point of navigation rather than anywhere useful.
+            venueId: '${args['venueId'] ?? ''}',
             initialTabIndex: args['initialTabIndex'] is int
                 ? args['initialTabIndex'] as int
                 : 0,

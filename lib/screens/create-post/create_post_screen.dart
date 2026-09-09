@@ -441,9 +441,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         // with 9 already picked, this threw.
         final remainingSlots = 10 - _selectedMedia.length;
 
+        setState(() => _picking = true);
+
         final List<XFile> images = await _picker.pickMultiImage(
           limit: remainingSlots >= 2 ? remainingSlots : null,
         );
+
+        if (!mounted) return;
+        setState(() => _picking = false);
 
         if (images.isNotEmpty) {
           final remaining = 10 - _selectedMedia.length;
@@ -538,10 +543,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     } catch (e) {
       print('Error picking media: $e');
 
-      // Whatever went wrong, the overlay comes down with it — it used to sit
-      // over the screen for good, looking like a hang.
+      // Whatever went wrong, the busy state comes down with it — it used to
+      // sit over the screen for good, looking like a hang.
       if (mounted) {
         setState(() {
+          _picking = false;
           _isUploading = false;
           _uploadProgress = 0.0;
           _uploadStatus = '';
@@ -606,8 +612,24 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
   }
 
+  /// True from opening the picker until it hands the files over.
+  ///
+  /// image_picker copies every chosen file before it returns, and no Dart runs
+  /// while it does — so this has to be set BEFORE the call to be on screen
+  /// when the picker dismisses. On Android the picker closes the moment you
+  /// tap Done and the copying happens after, which is the stretch where
+  /// nothing at all said the tap had registered.
+  ///
+  /// Inline in the media heading rather than the full-screen overlay this
+  /// replaced: a modal thrown up before the picker even opens claims to be
+  /// preparing photos nobody has chosen yet.
+  bool _picking = false;
+
   /// True while any picked photo is still being compressed.
   bool get _preparing => _selectedMedia.any((m) => m.preparing);
+
+  /// How many of the strip are ready to post.
+  int get _preparedCount => _selectedMedia.where((m) => !m.preparing).length;
 
   void _removeMedia(int index) {
     final media = _selectedMedia[index];
@@ -813,22 +835,51 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     letterSpacing: 0.5,
                   ),
                 ),
-                Text.rich(
-                  TextSpan(
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF8A8A8A),
-                    ),
+                if (_picking || _preparing)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      TextSpan(
-                        text: '${_selectedMedia.length}',
-                        style: const TextStyle(color: Color(0xFF0B0B0B)),
+                      const SizedBox(
+                        width: 13,
+                        height: 13,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFFAE9159),
+                        ),
                       ),
-                      const TextSpan(text: ' / 10'),
+                      const SizedBox(width: 8),
+                      Text(
+                        // Before the picker hands anything over there is no
+                        // count to give, so it says what it is doing instead.
+                        _picking
+                            ? 'Preparing photos…'
+                            : 'Processing $_preparedCount'
+                                  ' of ${_selectedMedia.length}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8A8A8A),
+                        ),
+                      ),
                     ],
+                  )
+                else
+                  Text.rich(
+                    TextSpan(
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8A8A),
+                      ),
+                      children: [
+                        TextSpan(
+                          text: '${_selectedMedia.length}',
+                          style: const TextStyle(color: Color(0xFF0B0B0B)),
+                        ),
+                        const TextSpan(text: ' / 10'),
+                      ],
+                    ),
                   ),
-                ),
               ],
             ),
           ),
