@@ -106,6 +106,7 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
       final existing = await EventsAPI.fetchGalleryTags(
         galleryId: widget.galleryId!,
         includePending: true,
+        includeUnmatched: true,
       );
 
       if (_disposed || !mounted) return;
@@ -298,16 +299,40 @@ class _GalleryTaggingScreenState extends State<GalleryTaggingScreen> {
           )
           .toList();
     });
+
+    // The scan has already written these, one per photo the car was seen in,
+    // so taking it out of the list on screen is not enough — the tags outlive
+    // this screen and would still be on the gallery.
+    final galleryId = widget.galleryId;
+    if (galleryId != null && galleryId > 0 && plate.isNotEmpty) {
+      unawaited(
+        EventsAPI.untagPlate(
+          galleryId: galleryId,
+          registration: plate,
+        ).catchError((_) {
+          // The row is gone from the list either way; a failed delete comes
+          // back on the next load rather than as an error over a screen the
+          // user has finished with.
+        }),
+      );
+    }
   }
 
   /// Writes the gallery-wide tags. Saving replaces the set, so calling this
   /// more than once is harmless.
+  ///
+  /// People only. A detected car belongs to the photo it was seen in and the
+  /// scan has already tagged it there — saving it again gallery-wide is what
+  /// put all nine cars from a meet on all twelve photos of it.
   Future<void> _saveGalleryTags() async {
     if (!_hasGallery) return;
 
     await EventsAPI.saveGalleryTags(
       galleryId: widget.galleryId!,
-      tags: _tags.map((t) => t.toJson()).toList(),
+      tags: _tags
+          .where((t) => t.kind != TagKind.vehicle)
+          .map((t) => t.toJson())
+          .toList(),
     );
   }
 

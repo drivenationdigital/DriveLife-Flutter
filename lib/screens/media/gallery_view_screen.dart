@@ -453,20 +453,54 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// Registrations are deliberately left out. A plate is not something you can
   /// open, so a chip for one leads nowhere — and where the plate DOES match a
   /// garage, the person it belongs to is the useful thing to show.
-  List<GalleryTag> _membersForPhoto(CommunityPhoto photo) {
-    final seen = <int>{};
-    final members = <GalleryTag>[];
+  List<GalleryTag> _tagsForPhoto(CommunityPhoto photo) {
+    final seenPeople = <int>{};
+    final seenPlates = <String>{};
+    final shown = <GalleryTag>[];
 
     for (final tag in [
       ...(_photoTags[photo.id] ?? const <GalleryTag>[]),
       ..._galleryTags,
     ]) {
-      // Two of one person's cars in the same photo is one chip.
-      if (!tag.hasMember || !seen.add(tag.ownerId)) continue;
-      members.add(tag);
+      if (tag.kind == TagKind.vehicle) {
+        // Kept whether or not the plate matches a garage. A car nobody has
+        // registered here is still the car in the photo, and dropping those
+        // left the picture with no chip at all — or worse, resolved to an
+        // owner and captioned somebody else's McLaren with their handle.
+        final plate =
+            (tag.registration.isNotEmpty ? tag.registration : tag.label)
+                .toUpperCase();
+        if (plate.isEmpty || !seenPlates.add(plate)) continue;
+        shown.add(tag);
+        continue;
+      }
+
+      if (!tag.hasMember || !seenPeople.add(tag.ownerId)) continue;
+      shown.add(tag);
     }
 
-    return members;
+    return shown;
+  }
+
+  /// Opens whatever a chip is about.
+  void _openTag(GalleryTag tag) {
+    if (tag.kind == TagKind.vehicle) {
+      // A plate matching no garage has no page to open, so the chip is a
+      // label rather than a dead link.
+      if (tag.entityId <= 0) return;
+
+      Navigator.pushNamed(
+        context,
+        AppRoutes.vehicleDetail,
+        arguments: {'garageId': '${tag.entityId}'},
+      );
+      return;
+    }
+
+    _openProfile(
+      tag.ownerId,
+      tag.ownerHandle.isNotEmpty ? tag.ownerHandle : tag.label,
+    );
   }
 
   /// Loads the gallery-wide tags.
@@ -483,6 +517,10 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       final tags = await EventsAPI.fetchGalleryTags(
         galleryId: galleryId,
         includePending: _canCurate,
+        // Plates matching no garage come back for the owner alone. They are
+        // what the strip counts and what the owner removes; to a visitor they
+        // are somebody else's registration over a photo, opening nothing.
+        includeUnmatched: _canCurate,
       );
       if (!mounted) return;
 
@@ -1139,11 +1177,8 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
           initialIndex: index,
           // Gallery-wide tags apply to every photo, so they show alongside
           // whatever is tagged on this one specifically.
-          tagsFor: _membersForPhoto,
-          onTagTap: (tag) => _openProfile(
-            tag.ownerId,
-            tag.ownerHandle.isNotEmpty ? tag.ownerHandle : tag.label,
-          ),
+          tagsFor: _tagsForPhoto,
+          onTagTap: _openTag,
           onShare: _sharePhoto,
           // A like or comment in the viewer updates the grid behind it, so
           // closing the viewer does not show stale counts.

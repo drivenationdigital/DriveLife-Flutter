@@ -1390,9 +1390,17 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
                                   const SizedBox(width: 6),
                               itemBuilder: (context, i) {
                                 final tag = tags[i];
-                                final handle = tag.ownerHandle.isNotEmpty
-                                    ? tag.ownerHandle
-                                    : tag.label;
+                                final isVehicle = tag.kind == TagKind.vehicle;
+
+                                // A car chip names the CAR. Resolving it to
+                                // whoever owns it put a person's handle over a
+                                // photo of a car that was not theirs — the
+                                // subtitle, not the subject.
+                                final label = isVehicle
+                                    ? (tag.subtitle.isNotEmpty
+                                          ? tag.subtitle
+                                          : tag.label)
+                                    : '@${tag.ownerHandle.isNotEmpty ? tag.ownerHandle : tag.label}';
 
                                 return GestureDetector(
                                   onTap: () => widget.onTagTap?.call(tag),
@@ -1418,13 +1426,15 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         GalleryTagAvatar(
-                                          imageUrl: tag.ownerAvatar,
-                                          isVehicle: false,
+                                          imageUrl: isVehicle
+                                              ? tag.avatarUrl
+                                              : tag.ownerAvatar,
+                                          isVehicle: isVehicle,
                                           size: 22,
                                         ),
                                         const SizedBox(width: 7),
                                         Text(
-                                          '@$handle',
+                                          label,
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 12.5,

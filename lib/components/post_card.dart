@@ -1603,16 +1603,29 @@ class _MediaCarousel extends StatelessWidget {
     if (type == 'user') {
       subtitle = entity['username'] != null ? '@${entity['username']}' : null;
     } else if (type == 'car') {
-      subtitle = 'Vehicle';
+      // The plate under the car, where there is a car to put it under. On a
+      // tag that is only ever a plate, the plate is already the title and
+      // repeating it says nothing.
+      final registration = '${entity['registration'] ?? ''}'.trim();
+      subtitle = (registration.isEmpty || registration == name)
+          ? 'Vehicle'
+          : registration;
     } else if (type == 'event') {
       subtitle = 'Event';
     }
 
+    // A plate matching no garage has no page behind it, so the row is shown
+    // but not tappable rather than opening an empty vehicle screen.
+    final entityId = int.tryParse('${entity['id']}') ?? 0;
+    final opens = type != 'car' || entityId > 0;
+
     return InkWell(
-      onTap: () {
-        Navigator.pop(context);
-        _navigateToEntity(context, type, entity);
-      },
+      onTap: opens
+          ? () {
+              Navigator.pop(context);
+              _navigateToEntity(context, type, entity);
+            }
+          : null,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Row(

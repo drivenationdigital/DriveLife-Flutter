@@ -682,6 +682,11 @@ class PostsAPI {
   static Future<List<Map<String, dynamic>>> fetchPostTags({
     required int postId,
   }) async {
+    // Signed, because the answer depends on who is asking: a plate matching
+    // no garage comes back only for the post's own author, who is the only
+    // person able to do anything about it.
+    final token = await AuthService().getToken();
+
     // GET, not POST. The route is registered for GET only, and WordPress
     // answers a method it does not have on a path with a 404 — which reads as
     // "no such endpoint" rather than "wrong verb".
@@ -689,6 +694,7 @@ class PostsAPI {
       Uri.parse(
         '$_baseUrl/wp-json/app/v1/get-post-tags',
       ).replace(queryParameters: {'post_id': '$postId'}),
+      headers: {if (token != null) 'Authorization': 'Bearer $token'},
     );
 
     if (response.statusCode != 200) {

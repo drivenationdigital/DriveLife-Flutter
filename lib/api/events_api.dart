@@ -938,6 +938,33 @@ class EventsAPI {
     required int galleryId,
   }) => scanGallery(galleryId: galleryId, limit: 0);
 
+  /// Removes a registration from a gallery entirely.
+  ///
+  /// The scan tags each photo the plate was read in, so dismissing a suggestion
+  /// is not a matter of leaving it out of a list — the tags already exist,
+  /// across however many photos the car appeared in. The detections go with
+  /// them, or the next read offers the plate straight back.
+  static Future<void> untagPlate({
+    required int galleryId,
+    required String registration,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/galleries/untag-plate'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'gallery_id': galleryId, 'registration': registration}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Could not remove that tag (${response.statusCode})');
+    }
+  }
+
   /// Gallery tags waiting on this user's answer.
   ///
   /// A tag on someone else's car is a request, not a fact, until they accept
@@ -1159,6 +1186,7 @@ class EventsAPI {
     required int galleryId,
     int? mediaId,
     bool includePending = false,
+    bool includeUnmatched = false,
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Not signed in');
@@ -1169,6 +1197,7 @@ class EventsAPI {
           'gallery_id': '$galleryId',
           if (mediaId != null) 'media_id': '$mediaId',
           if (includePending) 'include_pending': '1',
+          if (includeUnmatched) 'include_unmatched': '1',
         },
       ),
       headers: {'Authorization': 'Bearer $token'},

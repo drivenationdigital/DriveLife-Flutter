@@ -90,6 +90,7 @@ class _GalleryPhotoTaggingScreenState extends State<GalleryPhotoTaggingScreen> {
       final existing = await EventsAPI.fetchGalleryTags(
         galleryId: widget.galleryId,
         includePending: true,
+        includeUnmatched: true,
       );
 
       if (!mounted) return;
