@@ -459,7 +459,7 @@ class _PostCardState extends State<PostCard>
                 Icons.local_offer_outlined,
                 color: Colors.black,
               ),
-              title: const Text('Edit tags'),
+              title: const Text('Edit User Tags'),
               // Tagging used to be available only while composing, so a wrong
               // tag or a missed person stayed that way for good.
               onTap: () async {
