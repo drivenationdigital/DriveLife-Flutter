@@ -782,7 +782,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
               onModsChanged: _loadVehicle,
               isOwner: isVehiclePublisher(),
             ),
-            _GarageTaggedTab(garageId: widget.garageId),
+            _GarageTaggedTab(
+              garageId: widget.garageId,
+              taggingOff: _vehicle?['allow_tagging']?.toString() == '0',
+              isOwner: isVehiclePublisher(),
+            ),
           ],
         ),
       ),
@@ -843,7 +847,22 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 class _GarageTaggedTab extends StatefulWidget {
   final String garageId;
 
-  const _GarageTaggedTab({required this.garageId});
+  /// Whether the owner has turned off tagging for this vehicle.
+  ///
+  /// This tab is then permanently empty by design, and "No tagged posts" reads
+  /// as nobody having photographed the car rather than as a setting doing
+  /// exactly what it was asked to.
+  final bool taggingOff;
+
+  /// Only the owner is told why. To anybody else the tab is simply empty —
+  /// whether a stranger has opted out of tagging is not their business.
+  final bool isOwner;
+
+  const _GarageTaggedTab({
+    required this.garageId,
+    this.taggingOff = false,
+    this.isOwner = false,
+  });
 
   @override
   State<_GarageTaggedTab> createState() => _GarageTaggedTabState();
@@ -900,6 +919,41 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
     }
 
     if (_posts.isEmpty && _taggedPhotos.isEmpty) {
+      if (widget.taggingOff && widget.isOwner) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_outline, size: 40, color: Colors.grey.shade400),
+                const SizedBox(height: 14),
+                Text(
+                  'Tagging is off for this vehicle',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Nobody can tag it, and we will not look for its '
+                  'registration in anyone else\'s photos. Turn tagging on in '
+                  'Edit vehicle to start being told when it turns up.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
       return Center(
         child: Text(
           'No tagged posts',

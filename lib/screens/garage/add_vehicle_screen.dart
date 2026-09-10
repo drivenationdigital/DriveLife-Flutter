@@ -194,6 +194,13 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     'Other / Not Listed',
   ];
 
+  /// The registration this vehicle already had, uppercased.
+  ///
+  /// A car added without one, or with the wrong one, only becomes findable in
+  /// other people's photos when the plate is put right — and that happens on
+  /// an edit, which is exactly where nothing looked.
+  String _originalReg = '';
+
   @override
   void initState() {
     super.initState();
@@ -327,6 +334,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       _modelCtrl.text = v['model']?.toString() ?? '';
       _variantCtrl.text = v['variant']?.toString() ?? '';
       _regCtrl.text = v['registration']?.toString() ?? '';
+      _originalReg = _regCtrl.text.trim().toUpperCase();
       _colourCtrl.text = v['colour']?.toString() ?? '';
       _descCtrl.text = v['short_description']?.toString() ?? '';
 
@@ -519,8 +527,15 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       // leaving, because this screen is the only moment the answer is a
       // surprise worth having.
       //
-      // New vehicles only: an edit has been through this once already.
-      if (!_isEditMode) {
+      // A new vehicle, or an edit that changed the registration — the plate
+      // is the only thing that finds a car in somebody else's photos, so a
+      // corrected one is a first look just as much as a new car is. An edit
+      // that leaves the plate alone has been through this already.
+      final regChanged =
+          _regCtrl.text.trim().toUpperCase() != _originalReg &&
+          _regCtrl.text.trim().isNotEmpty;
+
+      if (!_isEditMode || regChanged) {
         final garageId = int.tryParse('$vehicleId') ?? 0;
         if (garageId > 0) {
           await PhotoMatchesSheet.show(context, garageId);
@@ -1373,13 +1388,52 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
                   _sectionTitle('Vehicle Tagging'),
                   _card(
-                    child: SwitchListTile(
-                      title: const Text(
-                        "Allow this vehicle to be discovered & tagged via it's registration",
-                      ),
-                      value: _taggingEnabled,
-                      activeThumbColor: theme.primaryColor,
-                      onChanged: (v) => setState(() => _taggingEnabled = v),
+                    child: Column(
+                      children: [
+                        SwitchListTile(
+                          title: const Text(
+                            "Allow this vehicle to be discovered & tagged via it's registration",
+                          ),
+                          value: _taggingEnabled,
+                          activeThumbColor: theme.primaryColor,
+                          onChanged: (v) =>
+                              setState(() => _taggingEnabled = v),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                _taggingEnabled
+                                    ? Icons.visibility_outlined
+                                    : Icons.lock_outline,
+                                size: 16,
+                                color: Colors.grey.shade600,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _taggingEnabled
+                                      ? 'When we read this registration in '
+                                            'someone\'s photo, we tag your '
+                                            'vehicle and let you know. Nothing '
+                                            'appears until you accept it.'
+                                      : 'Nobody can tag this vehicle, and its '
+                                            'registration will not be found in '
+                                            'anyone\'s photos — including '
+                                            'photos of it that already exist.',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    height: 1.4,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
 

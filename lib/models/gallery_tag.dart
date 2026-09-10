@@ -94,6 +94,60 @@ class GalleryTag {
     );
   }
 
+  /// Rebuilds a tag from the POST tag endpoint, which answers in a different
+  /// shape to the gallery one.
+  ///
+  /// Same tag, same screens, two payloads — get-post-tags nests the thing
+  /// tagged under `entity` and names a vehicle as one string with the plate in
+  /// brackets, where galleries send the plate and the model apart. Reading it
+  /// here rather than in each screen is what stops the post and gallery
+  /// tagging UIs drifting into looking like two different features.
+  factory GalleryTag.fromPostTag(Map<String, dynamic> json) {
+    final type = '${json['type']}';
+    final isVehicle = type != 'user';
+
+    final entity = json['entity'];
+    final map = entity is Map
+        ? Map<String, dynamic>.from(entity)
+        : <String, dynamic>{};
+
+    final owner = map['owner'];
+    final ownerMap = owner is Map ? Map<String, dynamic>.from(owner) : null;
+
+    final registration = '${map['registration'] ?? ''}'.trim();
+    final make = '${map['make'] ?? ''}'.trim();
+    final model = '${map['model'] ?? ''}'.trim();
+    final entityId = int.tryParse('${json['entity_id']}') ?? 0;
+
+    return GalleryTag(
+      kind: isVehicle ? TagKind.vehicle : TagKind.member,
+      // The plate is the heading and the car is the line under it, the way a
+      // gallery tag reads. A registration nobody has claimed has only the
+      // plate, which is the whole of what was read off the photo.
+      label: isVehicle
+          ? (registration.isNotEmpty
+                ? registration
+                : '${map['name'] ?? 'Unknown vehicle'}')
+          : '${map['name'] ?? ''}',
+      subtitle: isVehicle
+          ? [make, model].where((s) => s.isNotEmpty).join(' ')
+          : '',
+      avatarUrl: '${map['image'] ?? ''}',
+      entityId: entityId,
+      registration: isVehicle ? registration : '',
+      ownerId: isVehicle
+          ? (int.tryParse('${ownerMap?['id'] ?? 0}') ?? 0)
+          : entityId,
+      ownerHandle: isVehicle ? '${ownerMap?['name'] ?? ''}' : '',
+      // The post endpoints call this profile_image where the gallery one calls
+      // it avatar. Both are read rather than picking a side, because the two
+      // shapes reach the same screens.
+      ownerAvatar: isVehicle
+          ? '${ownerMap?['profile_image'] ?? ownerMap?['avatar'] ?? ownerMap?['image'] ?? ''}'
+          : '',
+    );
+  }
+
   /// Two tags are the same tag if they point at the same thing.
   bool matches(GalleryTag other) {
     if (kind != other.kind) return false;

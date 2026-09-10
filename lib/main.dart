@@ -1,6 +1,7 @@
 import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/registration_provider.dart';
+import 'package:drivelife/providers/pending_tags_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
@@ -101,6 +102,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => UnreadCountProvider()),
         ChangeNotifierProvider(create: (_) => BottomNavProvider()),
+        ChangeNotifierProvider(create: (_) => PendingTagsProvider()),
         ChangeNotifierProvider(create: (_) => LocationAccessProvider()),
       ],
       child: const MyApp(),

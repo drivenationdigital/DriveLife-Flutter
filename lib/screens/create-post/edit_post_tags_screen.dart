@@ -1,16 +1,24 @@
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/gallery_tag.dart';
-import 'package:drivelife/models/tagged_entity.dart';
+import 'package:drivelife/screens/create-post/post_photo_tagging_screen.dart';
+import 'package:drivelife/widgets/media/detected_vehicle_row.dart';
 import 'package:drivelife/widgets/media/gallery_tag_picker.dart';
 import 'package:flutter/material.dart';
 
-/// Adjusts who is tagged in a post after it has been published.
+/// Adjusts who and what is tagged in a post after it has been published.
 ///
-/// Tagging used to be a one-way door: the step during composing was the only
-/// chance, and a wrong tag or a missed person stayed that way for good.
+/// The same screen a gallery gets, and for the same reasons. Two lists of what
+/// is on the post — vehicles and people — and one way in to tagging photo by
+/// photo, which is where a tag actually belongs: a post's tags are per image,
+/// and everything added from a flat list landed on the first one.
 ///
-/// People and vehicles only for now. Venues and events are attached to a post
-/// differently and are not editable here yet.
+/// Registrations the scan read that match nobody's garage are listed here and
+/// nowhere else. They are the tags most likely to be wrong, this is the only
+/// screen that can correct them, and the post's author is the only person the
+/// server sends them to.
+///
+/// Venues and events are attached to a post differently and are not editable
+/// here yet.
 class EditPostTagsScreen extends StatefulWidget {
   final int postId;
 
@@ -28,23 +36,22 @@ class EditPostTagsScreen extends StatefulWidget {
   State<EditPostTagsScreen> createState() => _EditPostTagsScreenState();
 }
 
+/// One tag on the post, with the row id needed to take it off again.
+typedef _PostTag = ({GalleryTag tag, int tagId});
+
 class _EditPostTagsScreenState extends State<EditPostTagsScreen> {
   static const Color _ink = Color(0xFF0B0B0B);
   static const Color _muted = Color(0xFF8A8A8A);
-  static const Color _gold = Color(0xFFAE9159);
 
-  /// What the post has now, keyed by the server's tag id so a removal can name
-  /// the exact row.
-  final Map<int, GalleryTag> _existing = {};
-
-  /// Tag ids the user has taken off, applied on save.
-  final Set<int> _removed = {};
-
-  /// Tags added in this session, which have no id until they are written.
-  List<GalleryTag> _added = [];
+  List<_PostTag> _vehicles = const [];
+  List<_PostTag> _people = const [];
 
   bool _loading = true;
-  bool _saving = false;
+  bool _openingPhotos = false;
+
+  /// Whether anything changed, so the screen behind knows to reload.
+  bool _changed = false;
+
   String? _error;
 
   @override
@@ -63,50 +70,27 @@ class _EditPostTagsScreenState extends State<EditPostTagsScreen> {
       final tags = await PostsAPI.fetchPostTags(postId: widget.postId);
       if (!mounted) return;
 
-      _existing.clear();
+      final vehicles = <_PostTag>[];
+      final people = <_PostTag>[];
 
       for (final raw in tags) {
         final tagId = int.tryParse('${raw['tag_id']}') ?? 0;
         final type = '${raw['type']}';
 
-        // Venues and events hang off a post differently and are not editable
-        // here, so they are left alone rather than listed and then dropped.
         if (tagId <= 0 || (type != 'user' && !type.contains('car'))) continue;
 
-        final entity = raw['entity'];
-        final map = entity is Map ? Map<String, dynamic>.from(entity) : {};
-
-        final isVehicle = type != 'user';
-        final owner = map['owner'];
-        final ownerMap = owner is Map ? Map<String, dynamic>.from(owner) : null;
-
-        final registration = '${map['registration'] ?? ''}'.trim();
-        final make = '${map['make'] ?? ''}'.trim();
-        final model = '${map['model'] ?? ''}'.trim();
-
-        // Shaped like a gallery tag: the plate is the heading and the car is
-        // the line underneath, rather than one string with the plate in
-        // brackets that the card then has to show whole.
-        _existing[tagId] = GalleryTag(
-          kind: isVehicle ? TagKind.vehicle : TagKind.member,
-          label: isVehicle
-              ? (registration.isNotEmpty
-                    ? registration
-                    : '${map['name'] ?? 'Unknown vehicle'}')
-              : '${map['name'] ?? ''}',
-          subtitle: isVehicle
-              ? [make, model].where((s) => s.isNotEmpty).join(' ')
-              : '',
-          avatarUrl: '${map['image'] ?? ''}',
-          entityId: int.tryParse('${raw['entity_id']}') ?? 0,
-          registration: isVehicle ? registration : '',
-          ownerId: isVehicle
-              ? (int.tryParse('${ownerMap?['id'] ?? 0}') ?? 0)
-              : (int.tryParse('${raw['entity_id']}') ?? 0),
-        );
+        final tag = GalleryTag.fromPostTag(raw);
+        (tag.kind == TagKind.vehicle ? vehicles : people).add((
+          tag: tag,
+          tagId: tagId,
+        ));
       }
 
-      setState(() => _loading = false);
+      setState(() {
+        _vehicles = vehicles;
+        _people = people;
+        _loading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -116,63 +100,36 @@ class _EditPostTagsScreenState extends State<EditPostTagsScreen> {
     }
   }
 
-  /// Everything currently on the post, as the picker sees it.
-  List<GalleryTag> get _visible => [
-    for (final entry in _existing.entries)
-      if (!_removed.contains(entry.key)) entry.value,
-    ..._added,
-  ];
-
-  /// The picker hands back a whole list, so a removal shows up as something
-  /// that used to be there and no longer is.
-  void _onChanged(List<GalleryTag> tags) {
-    final kept = tags.toSet();
+  /// Takes a tag off, straight away.
+  ///
+  /// No Save button: a removal is one decision about one tag, and holding it
+  /// behind a second confirmation is how a screen full of them ends up half
+  /// applied. The row leaves the list first and comes back if the call fails.
+  Future<void> _remove(_PostTag entry) async {
+    final wasVehicle = entry.tag.kind == TagKind.vehicle;
 
     setState(() {
-      for (final entry in _existing.entries) {
-        if (_removed.contains(entry.key)) continue;
-        if (!kept.contains(entry.value)) _removed.add(entry.key);
+      _changed = true;
+      if (wasVehicle) {
+        _vehicles = _vehicles.where((e) => e.tagId != entry.tagId).toList();
+      } else {
+        _people = _people.where((e) => e.tagId != entry.tagId).toList();
       }
-
-      _added = tags.where((tag) => !_existing.containsValue(tag)).toList();
     });
-  }
-
-  Future<void> _save() async {
-    setState(() => _saving = true);
 
     try {
-      for (final tagId in _removed) {
-        await PostsAPI.removePostTag(tagId: tagId);
-      }
-
-      if (_added.isNotEmpty) {
-        await PostsAPI.addTagsForPost(
-          userId: widget.authorId,
-          postId: widget.postId,
-          tags: [
-            for (final tag in _added)
-              TaggedEntity(
-                id: '${tag.entityId}',
-                label: tag.label,
-                type: tag.kind == TagKind.member ? 'user' : 'car',
-                // Added after the fact, with no photo to point at: the first
-                // image is where a tag with no evidence goes.
-                index: 0,
-                x: 0.5,
-                y: 0.5,
-                registration: tag.registration,
-              ),
-          ],
-        );
-      }
-
-      if (!mounted) return;
-      Navigator.pop(context, true);
+      await PostsAPI.removePostTag(tagId: entry.tagId);
     } catch (e) {
       if (!mounted) return;
 
-      setState(() => _saving = false);
+      setState(() {
+        if (wasVehicle) {
+          _vehicles = [..._vehicles, entry];
+        } else {
+          _people = [..._people, entry];
+        }
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('$e'.replaceFirst('Exception: ', '')),
@@ -182,61 +139,77 @@ class _EditPostTagsScreenState extends State<EditPostTagsScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final dirty = _removed.isNotEmpty || _added.isNotEmpty;
+  Future<void> _tagMore() async {
+    setState(() => _openingPhotos = true);
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        elevation: 0,
-        titleSpacing: 0,
-        centerTitle: false,
-        leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: _ink, size: 30),
-          onPressed: () => Navigator.pop(context, false),
-        ),
-        title: const Text(
-          'Edit User Tags',
-          style: TextStyle(
-            color: _ink,
-            fontSize: 19,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: TextButton(
-              onPressed: (_saving || !dirty) ? null : _save,
-              child: _saving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: _gold,
-                      ),
-                    )
-                  : Text(
-                      'Save',
-                      style: TextStyle(
-                        color: dirty ? _gold : Colors.grey.shade400,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                      ),
-                    ),
-            ),
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: Colors.grey.shade200),
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => PostPhotoTaggingScreen(
+          postId: widget.postId,
+          authorId: widget.authorId,
         ),
       ),
-      body: _buildBody(),
+    );
+
+    if (!mounted) return;
+    setState(() => _openingPhotos = false);
+
+    // Reload rather than patch: the grid can have added and removed several
+    // tags across several photos, and their row ids are new.
+    if (changed == true) {
+      _changed = true;
+      await _load();
+    }
+  }
+
+  /// A tagged vehicle in the shape the auto-detected list uses, so a car looks
+  /// the same wherever it is shown.
+  Map<String, dynamic> _asSuggestion(GalleryTag tag) => {
+    'registration': tag.label,
+    'subtitle': tag.subtitle.isNotEmpty
+        ? tag.subtitle
+        // A plate nobody has claimed. Said plainly, because "Unknown vehicle"
+        // reads as an error when it is simply all we know.
+        : 'Not registered here yet',
+    'image': tag.avatarUrl,
+    if (tag.ownerHandle.isNotEmpty)
+      'owner': {'label': tag.ownerHandle, 'image': tag.ownerAvatar},
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) Navigator.pop(context, _changed);
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+          elevation: 0,
+          titleSpacing: 0,
+          centerTitle: false,
+          leading: IconButton(
+            icon: const Icon(Icons.chevron_left, color: _ink, size: 30),
+            onPressed: () => Navigator.pop(context, _changed),
+          ),
+          title: const Text(
+            'Edit User Tags',
+            style: TextStyle(
+              color: _ink,
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(1),
+            child: Container(height: 1, color: Colors.grey.shade200),
+          ),
+        ),
+        body: _buildBody(),
+      ),
     );
   }
 
@@ -273,20 +246,187 @@ class _EditPostTagsScreenState extends State<EditPostTagsScreen> {
         const Text(
           'Who is in this post?',
           style: TextStyle(
-            fontSize: 20,
+            fontSize: 17,
             fontWeight: FontWeight.w800,
             color: _ink,
           ),
         ),
         const SizedBox(height: 6),
         const Text(
-          'Tagging someone lets them find the post from their own profile. '
-          'A tag on somebody else is a request until they accept it.',
+          'Everything tagged on this post, including registrations we read off '
+          'the photos. Only you can see the ones that match no vehicle here.',
           style: TextStyle(fontSize: 13.5, color: _muted, height: 1.45),
         ),
-        const SizedBox(height: 18),
-        GalleryTagPicker(tags: _visible, onChanged: _onChanged),
+        const SizedBox(height: 20),
+
+        if (_vehicles.isNotEmpty) ...[
+          _Section(
+            icon: Icons.directions_car_filled_outlined,
+            title: 'Vehicles',
+            count: _vehicles.length,
+            child: Column(
+              children: [
+                for (final entry in _vehicles)
+                  DetectedVehicleRow(
+                    suggestion: _asSuggestion(entry.tag),
+                    onRemove: () => _remove(entry),
+                    removeTooltip: 'Not in this post',
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+
+        if (_people.isNotEmpty) ...[
+          _Section(
+            icon: Icons.person_outline,
+            title: 'People',
+            count: _people.length,
+            child: Column(
+              children: [
+                for (final entry in _people)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: GalleryTagCard(
+                      tag: entry.tag,
+                      onRemove: () => _remove(entry),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+
+        if (_vehicles.isEmpty && _people.isEmpty) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: const Text(
+              'Nothing is tagged in this post yet.',
+              style: TextStyle(fontSize: 13.5, color: _muted),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+
+        Container(height: 1, color: Colors.grey.shade200),
+        const SizedBox(height: 20),
+        const Text(
+          'Tag more users',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: _ink,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Search for people and vehicles, and tag them photo by photo.',
+          style: TextStyle(fontSize: 13.5, color: _muted, height: 1.45),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _openingPhotos ? null : _tagMore,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _ink,
+              minimumSize: const Size.fromHeight(50),
+              side: BorderSide(color: Colors.grey.shade400),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            icon: _openingPhotos
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.grid_view_rounded, size: 18),
+            label: const Text(
+              'Tag more users',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+            ),
+          ),
+        ),
       ],
+    );
+  }
+}
+
+/// One headed block, styled like the auto-detected panel the tagging screens
+/// use so the two read as the same feature.
+class _Section extends StatelessWidget {
+  static const Color _ink = Color(0xFF0B0B0B);
+  static const Color _gold = Color(0xFFC4A062);
+
+  final IconData icon;
+  final String title;
+  final int count;
+  final Widget child;
+
+  const _Section({
+    required this.icon,
+    required this.title,
+    required this.count,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 17, color: _gold),
+              const SizedBox(width: 7),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: _ink,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: _gold.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF8A6D2F),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          child,
+        ],
+      ),
     );
   }
 }

@@ -29,6 +29,27 @@ class PendingImage {
   /// backend flagged it as worth a closer look.
   final bool flagged;
 
+  /// Where the match came from: 'ai' for the recognition pipeline, 'gallery'
+  /// for a registration tagged on a gallery photo.
+  ///
+  /// Registration tagging used to live in a second queue behind the profile's
+  /// tags tab — the same decision, in the place nobody looked. Both arrive
+  /// here now, and this is what says how to answer one.
+  final String source;
+
+  /// The tag row, for a gallery match. A photo can be in more than one
+  /// gallery, so its media id does not identify the tag.
+  final int? tagId;
+
+  /// The gallery a gallery-sourced photo belongs to.
+  final int? galleryId;
+
+  /// What was tagged: 'vehicle' or 'user'.
+  ///
+  /// The queue holds both now, and they are not the same question — one asks
+  /// whether that is your car, the other whether that is you.
+  final String tagKind;
+
   const PendingImage({
     required this.id,
     required this.imageUrl,
@@ -39,6 +60,10 @@ class PendingImage {
     this.locationName,
     this.postId,
     this.flagged = false,
+    this.source = 'ai',
+    this.tagId,
+    this.galleryId,
+    this.tagKind = 'vehicle',
   });
 
   factory PendingImage.fromJson(Map<String, dynamic> json) {
@@ -55,6 +80,13 @@ class PendingImage {
       addedLabel: json['added_label']?.toString() ?? '',
       postId: _asInt(json['post_id']),
       flagged: match['flagged'] == true,
+      // Absent on an older API build, where every row was a recognition match.
+      source: json['source']?.toString() ?? 'ai',
+      tagId: _asInt(json['tag_id']),
+      galleryId: _asInt(json['gallery_id']),
+      // Recognition rows are always about a vehicle — that pipeline only ever
+      // matched cars — so the absent case is the right default.
+      tagKind: json['tag_kind']?.toString() ?? 'vehicle',
     );
   }
 

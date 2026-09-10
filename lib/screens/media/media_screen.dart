@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/media_api.dart';
 import 'package:drivelife/models/media_models.dart';
+import 'package:drivelife/providers/pending_tags_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/media/images_of_you_screen.dart';
@@ -116,6 +119,10 @@ class _MediaScreenState extends State<MediaScreen>
         _pendingError = null;
         _loadingPending = false;
       });
+
+      // Same answer, so the badge does not need its own request — but it does
+      // need telling, or a pull-to-refresh here would leave it stale.
+      unawaited(context.read<PendingTagsProvider>().refresh());
     } on MediaApiException catch (e) {
       if (!mounted) return;
       setState(() {

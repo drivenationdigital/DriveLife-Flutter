@@ -1,6 +1,6 @@
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/media/gallery_view_screen.dart';
-import 'package:drivelife/screens/media/gallery_tag_requests_screen.dart';
+import 'package:drivelife/screens/media/images_of_you_screen.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/services/user_service.dart';
@@ -133,12 +133,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
-    // Straight to the requests screen. The tag is pending, so the gallery
-    // itself would not show it — answering is the only thing to do, and
-    // landing anywhere else is what made these impossible to action.
-    if (entityType == 'gallery' || entityType == 'gallery_car') {
+    // Every tag waiting on an answer — your car or you, gallery or post —
+    // is answered in the same queue.
+    //
+    // This used to branch on the entity type and send the two kinds to two
+    // screens. Which meant a notification had to be right about where its tag
+    // lived, and when it was not — a type that did not match, an older build
+    // deciding differently — the reader landed on a screen telling them there
+    // was nothing to review, about the tag they had just been told about.
+    // One destination cannot be wrong.
+    if (entityType == 'car' ||
+        entityType == 'gallery_car' ||
+        entityType == 'gallery') {
       Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const GalleryTagRequestsScreen()),
+        MaterialPageRoute(builder: (_) => const ImagesOfYouScreen()),
       );
       return;
     }
@@ -571,9 +579,10 @@ class _NotificationTile extends StatelessWidget {
     // requests screen is the only place anything can be done about it.
     final entityType = entity['entity_type']?.toString() ?? '';
     final showTagReview =
-        notification['type'] == 'tag' &&
+        (notification['type'] == 'tag' || notification['type'] == 'post') &&
         (entityType == 'gallery' ||
             entityType == 'gallery_car' ||
+            entityType == 'car' ||
             (entityData['post_id'] == null && entityData['media'] == null));
 
     return InkWell(
@@ -1032,8 +1041,11 @@ class _TagReviewButton extends StatelessWidget {
     return SizedBox(
       height: 30,
       child: OutlinedButton.icon(
+        // The one queue that holds every pending tag. It used to pick between
+        // two screens from the notification's entity type, which is how
+        // "Review tag" opened a page saying there was nothing to review.
         onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const GalleryTagRequestsScreen()),
+          MaterialPageRoute(builder: (_) => const ImagesOfYouScreen()),
         ),
         icon: Icon(Icons.local_offer_outlined, size: 14, color: color),
         label: Text(

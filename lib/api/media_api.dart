@@ -170,9 +170,16 @@ class MediaAPI {
   }
 
   /// Accept or decline a single photo. [decision] is `accepted` or `declined`.
+  /// Accept or decline one photo.
+  ///
+  /// [source] and [tagId] come straight off the row being answered: a gallery
+  /// match is a tag row rather than a recognition row, and the media id it
+  /// carries is the photo's — which can appear in more than one gallery.
   static Future<void> decide({
     required String mediaId,
     required String decision,
+    String source = 'ai',
+    int? tagId,
   }) async {
     final uri = Uri.parse('$_base/media-matches/decide');
 
@@ -181,7 +188,12 @@ class MediaAPI {
           .post(
             uri,
             headers: await _headers(),
-            body: jsonEncode({'media_id': mediaId, 'decision': decision}),
+            body: jsonEncode({
+              'media_id': mediaId,
+              'decision': decision,
+              if (source != 'ai') 'source': source,
+              if (tagId != null) 'tag_id': tagId,
+            }),
           )
           .timeout(ApiConfig.requestTimeout);
 

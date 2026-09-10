@@ -170,6 +170,42 @@ class PostsAPI {
     return [];
   }
 
+  /// Whether a typed registration may be tagged at all.
+  ///
+  /// The vehicle search returns nothing both for a car nobody has registered
+  /// here and for one whose owner has turned tagging off — the first is fine
+  /// to tag as a plain plate, the second is not, and from the client the two
+  /// answers look identical. Without asking, the app offered to tag a plate
+  /// its owner had explicitly opted out of.
+  ///
+  /// True on any failure. The server refuses the tag regardless, so a network
+  /// blip should not block tagging a car nobody has opted out of.
+  static Future<bool> isPlateTaggable(String registration) async {
+    final plate = registration.trim();
+    if (plate.isEmpty) return true;
+
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return true;
+
+      final response = await http
+          .get(
+            Uri.parse(
+              '$_baseUrl/wp-json/app/v2/plate-taggable',
+            ).replace(queryParameters: {'registration': plate}),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode != 200) return true;
+
+      final body = json.decode(response.body);
+      return body is Map ? body['taggable'] != false : true;
+    } catch (_) {
+      return true;
+    }
+  }
+
   /// Runs one pass of the vehicle scan over a post's images.
   ///
   /// Incremental: each image is a model round trip, so the server does a
@@ -651,6 +687,9 @@ class PostsAPI {
               // Always present, empty for a person: the server indexes this
               // key for car tags whether or not it holds anything.
               'registration': tag.registration,
+              // The photo, where the caller knows which one. Beats `index`,
+              // which is only as good as both sides agreeing on the order.
+              if (tag.mediaId != null) 'media_id': tag.mediaId,
             },
           )
           .toList();

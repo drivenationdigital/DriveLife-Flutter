@@ -1,10 +1,9 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/models/gallery_tag.dart';
 import 'package:drivelife/screens/media/gallery_photo_tagging_screen.dart';
-import 'package:drivelife/widgets/media/gallery_tag_picker.dart';
+import 'package:drivelife/widgets/media/detected_vehicle_row.dart';
 import 'package:flutter/material.dart';
 
 /// Step 2 — say who and what is in the gallery, then publish.
@@ -797,105 +796,10 @@ class _ScanSection extends StatelessWidget {
             ),
 
           for (final suggestion in suggestions)
-            _SuggestionRow(
+            DetectedVehicleRow(
               suggestion: suggestion,
               onRemove: () => onRemove(suggestion),
             ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SuggestionRow extends StatelessWidget {
-  static const Color _muted = Color(0xFF8A8A8A);
-  static const Color _gold = Color(0xFFC4A062);
-
-  final Map<String, dynamic> suggestion;
-  final VoidCallback onRemove;
-
-  const _SuggestionRow({required this.suggestion, required this.onRemove});
-
-  @override
-  Widget build(BuildContext context) {
-    final plate = '${suggestion['registration'] ?? ''}';
-    final image = '${suggestion['image'] ?? ''}';
-    final count = int.tryParse('${suggestion['photo_count']}') ?? 0;
-    final owner = suggestion['owner'];
-    final ownerHandle = owner is Map ? '${owner['label'] ?? ''}' : '';
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(
-        children: [
-          if (image.isEmpty)
-            const GalleryPlateBadge(size: 40)
-          else
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: CachedNetworkImage(
-                imageUrl: image,
-                width: 40,
-                height: 40,
-                fit: BoxFit.cover,
-                memCacheWidth: 120,
-                placeholder: (_, __) => const GalleryPlateBadge(size: 40),
-                errorWidget: (_, __, ___) => const GalleryPlateBadge(size: 40),
-              ),
-            ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        plate,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                    if (count > 0) ...[
-                      const SizedBox(width: 7),
-                      Text(
-                        '$count photo${count == 1 ? '' : 's'}',
-                        style: const TextStyle(fontSize: 11.5, color: _muted),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${suggestion['subtitle'] ?? ''}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12.5, color: _muted),
-                ),
-                // Its own line, not appended to the model: a long model name
-                // and a long handle together would ellipsis away exactly the
-                // part that says whose car it is.
-                if (ownerHandle.isNotEmpty)
-                  Text(
-                    'Owned by @$ownerHandle',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12.5, color: _muted),
-                  ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, size: 18),
-            onPressed: onRemove,
-            tooltip: 'Not in these photos',
-          ),
         ],
       ),
     );

@@ -3,6 +3,7 @@ import 'package:drivelife/main.dart';
 import 'package:drivelife/models/account_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
+import 'package:drivelife/providers/pending_tags_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
@@ -78,6 +79,10 @@ class _HomeTabsState extends State<HomeTabs> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         context.read<LocationAccessProvider>().refresh();
+        // What the Photos tab badge counts. Loaded once on launch rather than
+        // when the tab is opened, since the whole point is to say there is
+        // something there before anyone goes looking.
+        context.read<PendingTagsProvider>().refresh();
         FirebaseMessagingService.flushPendingDeepLink();
       }
     });
@@ -594,12 +599,22 @@ class _HomeTabsState extends State<HomeTabs> {
         ),
         if (FeatureFlags.mediaTab)
           BottomNavigationBarItem(
-            icon: iconSvg(
-              // Lowercase p: this must match the file on disk exactly, since
-              // the asset bundle is case-sensitive on device.
-              'assets/app-icons/06-photo.svg',
-              theme,
-              isActive: _currentIndex == _mediaIndex,
+            icon: Consumer<PendingTagsProvider>(
+              builder: (context, tags, child) => _BadgedIcon(
+                // Unseen rather than pending: a badge that mirrored the whole
+                // queue would never clear until every tag was answered, and a
+                // dot that is always on is one people stop reading.
+                count: tags.unseen,
+                color: theme.primaryColor,
+                child: child!,
+              ),
+              child: iconSvg(
+                // Lowercase p: this must match the file on disk exactly, since
+                // the asset bundle is case-sensitive on device.
+                'assets/app-icons/06-photo.svg',
+                theme,
+                isActive: _currentIndex == _mediaIndex,
+              ),
             ),
             label: 'Photos',
           ),
@@ -766,6 +781,60 @@ class _CreateCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A nav icon with a count over its top-right corner.
+///
+/// Nothing is drawn at zero, and the icon keeps its own size either way — a
+/// badge that changed the icon's footprint would shift the whole nav row every
+/// time a tag arrived.
+class _BadgedIcon extends StatelessWidget {
+  final Widget child;
+  final int count;
+  final Color color;
+
+  const _BadgedIcon({
+    required this.child,
+    required this.count,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (count <= 0) return child;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        child,
+        Positioned(
+          top: -4,
+          right: -6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            constraints: const BoxConstraints(minWidth: 17),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white, width: 1.5),
+            ),
+            child: Text(
+              // Past nine the exact number stops being useful and starts
+              // being too wide for the icon it sits on.
+              count > 9 ? '9+' : '$count',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                height: 1.3,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

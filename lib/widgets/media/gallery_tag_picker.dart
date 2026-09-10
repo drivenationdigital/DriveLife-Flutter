@@ -157,6 +157,33 @@ class _GalleryTagPickerState extends State<GalleryTagPicker> {
     );
   }
 
+  /// Plates whose owner has turned tagging off, as the server has answered
+  /// for them this session.
+  ///
+  /// Cached because the offer is rebuilt on every keystroke and the answer for
+  /// a given plate cannot change while someone is typing it.
+  final Map<String, bool> _plateTaggable = {};
+
+  /// Asks whether the typed plate may be tagged, once per plate.
+  ///
+  /// Only fired when the offer is about to appear — the search has come back
+  /// empty and what was typed looks like a registration — so this is one call
+  /// at the end of typing rather than one per keystroke.
+  Future<void> _checkPlate(String plate) async {
+    if (plate.isEmpty || _plateTaggable.containsKey(plate)) return;
+
+    // Marked before the call so a rebuild mid-flight does not fire a second.
+    _plateTaggable[plate] = true;
+
+    final taggable = await PostsAPI.isPlateTaggable(plate);
+    if (!mounted) return;
+
+    setState(() => _plateTaggable[plate] = taggable);
+  }
+
+  /// Whether the typed registration is one somebody has opted out of.
+  bool get _plateBlocked => _plateTaggable[_plate] == false;
+
   /// Whether to offer the typed registration as a tag in its own right.
   ///
   /// Vehicle search is an exact match, so "no results" is the ordinary case for
@@ -174,6 +201,16 @@ class _GalleryTagPickerState extends State<GalleryTagPicker> {
 
   @override
   Widget build(BuildContext context) {
+    // Asked here rather than in _search: whether the offer appears at all
+    // depends on what is already tagged and how much has been typed since,
+    // which the search does not know. Runs once per plate.
+    if (_canTagPlate) {
+      final plate = _plate;
+      if (!_plateTaggable.containsKey(plate)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _checkPlate(plate));
+      }
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -256,17 +293,20 @@ class _GalleryTagPickerState extends State<GalleryTagPicker> {
 
         if (_canTagPlate) ...[
           const SizedBox(height: 10),
-          _PlateOffer(
-            plate: _plate,
-            onTag: () => _add(
-              GalleryTag(
-                kind: TagKind.vehicle,
-                label: _plate,
-                subtitle: 'Not registered here yet',
-                registration: _plate,
+          if (_plateBlocked)
+            const _PlateBlocked()
+          else
+            _PlateOffer(
+              plate: _plate,
+              onTag: () => _add(
+                GalleryTag(
+                  kind: TagKind.vehicle,
+                  label: _plate,
+                  subtitle: 'Not registered here yet',
+                  registration: _plate,
+                ),
               ),
             ),
-          ),
         ],
 
         for (final result in _results) ...[
@@ -367,6 +407,56 @@ class _PlateOffer extends StatelessWidget {
             child: const Text(
               'Tag',
               style: TextStyle(color: _kGold, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A registration whose owner has turned tagging off.
+///
+/// Says nothing about whose car it is, or even that it is registered here —
+/// the person typing has the plate already, and the rest is not theirs to be
+/// told. What it does say is that the absence of a Tag button is a decision
+/// somebody made, not the app failing to find something.
+class _PlateBlocked extends StatelessWidget {
+  const _PlateBlocked();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.lock_outline,
+              size: 20,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              "This vehicle can't be tagged.\nIts owner has turned tagging off.",
+              style: TextStyle(
+                fontSize: 12.5,
+                color: Color(0xFF8A8A8A),
+                height: 1.35,
+              ),
             ),
           ),
         ],
@@ -555,7 +645,10 @@ class GalleryTagAvatar extends StatelessWidget {
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(isVehicle ? 8 : size / 2),
+      // Circular either way now: the badge it falls back to is round, and a
+      // vehicle changing shape depending on whether it has a photo was the
+      // odd one out in every list it appeared in.
+      borderRadius: BorderRadius.circular(size / 2),
       child: CachedNetworkImage(
         imageUrl: imageUrl,
         width: size,
@@ -582,9 +675,13 @@ class GalleryPlateBadge extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5C518),
-        borderRadius: BorderRadius.circular(8),
+      // Round, like every other thing that stands in for somebody in these
+      // lists. A car in a row of circular avatars was the one square, which
+      // read as a different kind of item rather than the same kind without a
+      // picture.
+      decoration: const BoxDecoration(
+        color: Color(0xFFF5C518),
+        shape: BoxShape.circle,
       ),
       alignment: Alignment.center,
       child: Icon(

@@ -1,12 +1,12 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/gallery_tag.dart';
 import 'package:drivelife/models/tagged_entity.dart';
+import 'package:drivelife/screens/create-post/post_photo_tagging_screen.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
-import 'package:drivelife/widgets/media/gallery_tag_picker.dart';
+import 'package:drivelife/widgets/media/detected_vehicle_row.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -52,6 +52,11 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
   bool _scanning = false;
   bool _saving = false;
   bool _scanStarted = false;
+  bool _openingPhotos = false;
+
+  /// Set once anything has been tagged photo by photo, so leaving does not
+  /// report "Post published" as though nothing happened.
+  bool _taggedPhotos = false;
 
   /// Whether the scan read every image. A finished scan that found nothing is
   /// a result worth reporting, not a reason to vanish.
@@ -189,6 +194,71 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
     });
   }
 
+  /// Writes what the scan found. Safe to call twice — the server ignores a
+  /// tag that is already on the photo.
+  Future<void> _saveDetectedTags() async {
+    final postId = _postId;
+    if (postId == null || _tags.isEmpty) return;
+
+    final userId = context.read<UserProvider>().user?.id ?? 0;
+
+    await PostsAPI.addTagsForPost(
+      userId: userId,
+      postId: postId,
+      tags: _tags.map((tag) {
+        return TaggedEntity(
+          // Where it was seen for a detected car; the first image for a
+          // manual tag, which carries no evidence of its own.
+          index: _indexFor[tag.label] ?? 0,
+          id: '${tag.entityId}',
+          type: tag.kind == TagKind.vehicle ? 'car' : 'user',
+          label: tag.label,
+          imageUrl: tag.avatarUrl.isEmpty ? null : tag.avatarUrl,
+          registration: tag.registration,
+        );
+      }).toList(),
+    );
+  }
+
+  /// Opens per-photo tagging, exactly as the gallery flow does.
+  ///
+  /// The detected tags are written first, so the grid opens showing what is
+  /// already on each photo rather than an empty post — and so nothing is lost
+  /// if the user finishes from in there.
+  Future<void> _tagMore() async {
+    final postId = _postId;
+    if (postId == null) return;
+
+    setState(() => _openingPhotos = true);
+
+    try {
+      await _saveDetectedTags();
+      if (!mounted) return;
+
+      final userId = context.read<UserProvider>().user?.id ?? 0;
+
+      final changed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) =>
+              PostPhotoTaggingScreen(postId: postId, authorId: userId),
+        ),
+      );
+
+      if (!mounted) return;
+      if (changed == true) setState(() => _taggedPhotos = true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$e'.replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _openingPhotos = false);
+    }
+  }
+
   Future<void> _publish() async {
     final postId = _postId;
 
@@ -202,24 +272,7 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
     setState(() => _saving = true);
 
     try {
-      final userId = context.read<UserProvider>().user?.id ?? 0;
-
-      await PostsAPI.addTagsForPost(
-        userId: userId,
-        postId: postId,
-        tags: _tags.map((tag) {
-          return TaggedEntity(
-            // Where it was seen for a detected car; the first image for a
-            // manual tag, which carries no evidence of its own.
-            index: _indexFor[tag.label] ?? 0,
-            id: '${tag.entityId}',
-            type: tag.kind == TagKind.vehicle ? 'car' : 'user',
-            label: tag.label,
-            imageUrl: tag.avatarUrl.isEmpty ? null : tag.avatarUrl,
-            registration: tag.registration,
-          );
-        }).toList(),
-      );
+      await _saveDetectedTags();
 
       if (!mounted) return;
       _finish();
@@ -245,8 +298,12 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
+          // Tags added photo by photo never land in _tags, so counting
+          // only that list reported "Post published" over work just done.
           count == 0
-              ? 'Post published'
+              ? (_taggedPhotos
+                    ? 'Post published with your tags'
+                    : 'Post published')
               : 'Post published with $count tag${count == 1 ? '' : 's'}',
         ),
         backgroundColor: _gold,
@@ -321,7 +378,11 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : Text(_tags.isEmpty ? 'Skip' : 'Done'),
+                  // Always "Done", as the gallery flow is: the post is
+                  // already published by the time this screen appears, and
+                  // "Skip" also read the wrong list — tags added photo by
+                  // photo never reach _tags.
+                  : const Text('Done'),
             ),
           ),
         ],
@@ -388,9 +449,46 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
               const SizedBox(height: 24),
             ],
 
-            GalleryTagPicker(
-              tags: _tags,
-              onChanged: (tags) => setState(() => _tags = tags),
+            Container(height: 1, color: Colors.grey.shade200),
+            const SizedBox(height: 20),
+            const Text(
+              'Tag more users',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: _ink,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Search for people and vehicles, and tag them photo by photo.',
+              style: TextStyle(fontSize: 13.5, color: _muted, height: 1.45),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _openingPhotos ? null : _tagMore,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _ink,
+                  minimumSize: const Size.fromHeight(50),
+                  side: BorderSide(color: Colors.grey.shade400),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                icon: _openingPhotos
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.grid_view_rounded, size: 18),
+                label: const Text(
+                  'Tag more users',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+              ),
             ),
           ],
         ],
@@ -525,101 +623,11 @@ class _PostScanSection extends StatelessWidget {
             ),
 
           for (final suggestion in suggestions)
-            _PostSuggestionRow(
+            DetectedVehicleRow(
               suggestion: suggestion,
               onRemove: () => onRemove(suggestion),
+              removeTooltip: 'Not in this post',
             ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PostSuggestionRow extends StatelessWidget {
-  static const Color _muted = Color(0xFF8A8A8A);
-
-  final Map<String, dynamic> suggestion;
-  final VoidCallback onRemove;
-
-  const _PostSuggestionRow({required this.suggestion, required this.onRemove});
-
-  @override
-  Widget build(BuildContext context) {
-    final plate = '${suggestion['registration'] ?? ''}';
-    final image = '${suggestion['image'] ?? ''}';
-    final count = int.tryParse('${suggestion['photo_count']}') ?? 0;
-    final owner = suggestion['owner'];
-    final ownerHandle = owner is Map ? '${owner['label'] ?? ''}' : '';
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(
-        children: [
-          if (image.isEmpty)
-            const GalleryPlateBadge(size: 40)
-          else
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: CachedNetworkImage(
-                imageUrl: image,
-                width: 40,
-                height: 40,
-                fit: BoxFit.cover,
-                memCacheWidth: 120,
-                placeholder: (_, __) => const GalleryPlateBadge(size: 40),
-                errorWidget: (_, __, ___) => const GalleryPlateBadge(size: 40),
-              ),
-            ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        plate,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                    if (count > 0) ...[
-                      const SizedBox(width: 7),
-                      Text(
-                        '$count photo${count == 1 ? '' : 's'}',
-                        style: const TextStyle(fontSize: 11.5, color: _muted),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${suggestion['subtitle'] ?? ''}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12.5, color: _muted),
-                ),
-                if (ownerHandle.isNotEmpty)
-                  Text(
-                    'Owned by @$ownerHandle',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12.5, color: _muted),
-                  ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, size: 18),
-            onPressed: onRemove,
-            tooltip: 'Not in this post',
-          ),
         ],
       ),
     );

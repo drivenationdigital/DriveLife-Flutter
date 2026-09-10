@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/media_api.dart';
 import 'package:drivelife/models/media_models.dart';
+import 'package:drivelife/providers/pending_tags_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,13 +37,20 @@ class _ImagesOfYouScreenState extends State<ImagesOfYouScreen> {
 
     try {
       final result = await MediaAPI.getMatches(status: 'pending', limit: 50);
-      print(result.data);
       if (!mounted) return;
       setState(() {
         _images = result.data;
         _error = null;
         _loading = false;
       });
+
+      // Seen, not answered. Opening the queue is what clears the badge —
+      // deciding is a separate thing the user is entitled to put off, and a
+      // badge that waited for it would never go out.
+      final tags = context.read<PendingTagsProvider>();
+      await tags.refresh();
+      if (!mounted) return;
+      await tags.markSeen();
     } on MediaApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -69,17 +79,24 @@ class _ImagesOfYouScreenState extends State<ImagesOfYouScreen> {
 
     HapticFeedback.lightImpact();
     setState(() => _images.removeAt(index));
+    context.read<PendingTagsProvider>().resolved(image);
 
     try {
       await MediaAPI.decide(
         mediaId: image.id,
         decision: approved ? 'accepted' : 'declined',
+        source: image.source,
+        tagId: image.tagId,
       );
       _toast(
         approved
             ? 'Photo approved — you are now tagged in it.'
             : 'Photo declined. It will not appear on your profile.',
       );
+
+      // The notification that sent them here is gone once the tag is
+      // answered, so the count behind it has to go too.
+      if (mounted) unawaited(context.read<PendingTagsProvider>().refresh());
     } on MediaApiException catch (e) {
       // Put it back where it was so the queue order survives a failure.
       if (!mounted) return;
@@ -418,6 +435,31 @@ class _PendingImageCard extends StatelessWidget {
               const SizedBox(width: 4),
               Icon(Icons.verified, size: 14, color: primaryColor),
             ],
+          ],
+        ),
+        const SizedBox(height: 3),
+        Row(
+          children: [
+            Icon(
+              image.tagKind == 'user'
+                  ? Icons.person_outline
+                  : Icons.directions_car_filled_outlined,
+              size: 14,
+              color: Colors.grey.shade600,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              // Says what is being asked. The queue used to hold one kind of
+              // thing and could leave it unsaid; now that a card may be about
+              // your face or your number plate, not saying which leaves the
+              // reader guessing what they are approving.
+              image.tagKind == 'user' ? 'Tagged you' : 'Tagged your vehicle',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade700,
+              ),
+            ),
           ],
         ),
         if (image.locationName != null) ...[

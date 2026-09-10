@@ -127,10 +127,13 @@ class _PhotoMatchesSheetState extends State<PhotoMatchesSheet> {
             ),
             const SizedBox(height: 8),
             Text(
+              // "Galleries" was true when only galleries were searched. Posts
+              // are where most photos of most cars actually are.
               widget.registration.isEmpty
-                  ? 'Spotted in galleries other members have uploaded.'
-                  : '${widget.registration} was spotted in galleries other '
-                        'members have uploaded.',
+                  ? 'Spotted in posts and galleries other members have '
+                        'uploaded.'
+                  : '${widget.registration} was spotted in posts and galleries '
+                        'other members have uploaded.',
               style: const TextStyle(fontSize: 14, color: _muted, height: 1.45),
             ),
             const SizedBox(height: 18),

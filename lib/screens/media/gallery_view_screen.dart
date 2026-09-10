@@ -553,7 +553,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
         _galleryTags = wide;
         _photoTags = perPhoto;
         _pendingTags = waiting;
-        _pendingTagCount = waiting.length;
+        _pendingTagCount = _countSubjects(waiting);
       });
     } catch (_) {
       // Leave the row hidden.
@@ -1536,6 +1536,27 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     ..._pendingTags,
   ];
 
+  /// How many distinct things a set of tags is about.
+  ///
+  /// A vehicle counts once however many photos its plate was read in, and a
+  /// person counts once however many of their cars are in the gallery. Rows
+  /// are what the table holds; subjects are what a person is looking at.
+  static int _countSubjects(List<GalleryTag> tags) {
+    final plates = <String>{};
+    final members = <int>{};
+
+    for (final tag in tags) {
+      if (tag.kind == TagKind.vehicle) {
+        final plate = tag.registration.isNotEmpty ? tag.registration : tag.label;
+        if (plate.isNotEmpty) plates.add(plate.toUpperCase());
+      } else if (tag.hasMember) {
+        members.add(tag.ownerId);
+      }
+    }
+
+    return plates.length + members.length;
+  }
+
   /// What the strip says has been tagged.
   ///
   /// Counted by REGISTRATION for vehicles, not by owner. A read plate that
@@ -1661,6 +1682,31 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   Widget _buildPendingTagNote() {
     final count = _pendingTagCount;
 
+    // Named rather than counted as bare "tags", so this line and the summary
+    // above it are visibly about the same things.
+    final plates = <String>{};
+    final members = <int>{};
+
+    for (final tag in _pendingTags) {
+      if (tag.kind == TagKind.vehicle) {
+        final plate = tag.registration.isNotEmpty ? tag.registration : tag.label;
+        if (plate.isNotEmpty) plates.add(plate.toUpperCase());
+      } else if (tag.hasMember) {
+        members.add(tag.ownerId);
+      }
+    }
+
+    final parts = [
+      if (plates.isNotEmpty)
+        '${plates.length} vehicle${plates.length == 1 ? '' : 's'}',
+      if (members.isNotEmpty)
+        '${members.length} user${members.length == 1 ? '' : 's'}',
+    ];
+
+    final what = parts.isEmpty
+        ? '$count tag${count == 1 ? '' : 's'}'
+        : parts.join(' and ');
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Row(
@@ -1669,7 +1715,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              '$count tag${count == 1 ? '' : 's'} waiting to be accepted. '
+              '$what waiting to be accepted. '
               '${count == 1 ? 'It' : 'They'} will show here once confirmed.',
               style: const TextStyle(
                 fontSize: 12.5,
