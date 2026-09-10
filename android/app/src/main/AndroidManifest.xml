@@ -17,6 +17,11 @@
     <!-- <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/> -->
     <!-- <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/> -->
 
+    <!-- Saving a downloaded gallery photo to the camera roll. Only Android 9
+         and below need asking: from API 29 the MediaStore write is scoped and
+         needs no permission at all. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>
+
     <application
         android:label="DriveLife"
         android:name="${applicationName}"

@@ -574,16 +574,6 @@ class _NotificationTile extends StatelessWidget {
     final clubJoinRequest = notification['type'] == 'join_request';
     final clubId = entityData['club_id']?.toString() ?? '';
 
-    // A tag you may still have to answer. Gallery tags always land pending,
-    // and a tag with no post behind it has nowhere else to go — for both, the
-    // requests screen is the only place anything can be done about it.
-    final entityType = entity['entity_type']?.toString() ?? '';
-    final showTagReview =
-        (notification['type'] == 'tag' || notification['type'] == 'post') &&
-        (entityType == 'gallery' ||
-            entityType == 'gallery_car' ||
-            entityType == 'car' ||
-            (entityData['post_id'] == null && entityData['media'] == null));
 
     return InkWell(
       onTap: onTap,
@@ -621,14 +611,6 @@ class _NotificationTile extends StatelessWidget {
                     timeAgo,
                     style: const TextStyle(color: Colors.grey, fontSize: 12),
                   ),
-
-                  // Below the message rather than beside it: the row's right
-                  // side is a fixed-width slot, and a button in there pushes
-                  // the text past the overflow line on narrow screens.
-                  if (showTagReview) ...[
-                    const SizedBox(height: 8),
-                    _TagReviewButton(color: theme.primaryColor),
-                  ],
                 ],
               ),
             ),
@@ -1026,45 +1008,3 @@ class _NotificationTile extends StatelessWidget {
   }
 }
 
-/// "Review tag" under a tag notification.
-///
-/// A gallery tag is a request that does nothing until it is answered, and the
-/// notification was the only sign it existed — with no way from it to the one
-/// screen where it can be accepted or declined.
-class _TagReviewButton extends StatelessWidget {
-  final Color color;
-
-  const _TagReviewButton({required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 30,
-      child: OutlinedButton.icon(
-        // The one queue that holds every pending tag. It used to pick between
-        // two screens from the notification's entity type, which is how
-        // "Review tag" opened a page saying there was nothing to review.
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const ImagesOfYouScreen()),
-        ),
-        icon: Icon(Icons.local_offer_outlined, size: 14, color: color),
-        label: Text(
-          'Review tag',
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w700,
-            color: color,
-          ),
-        ),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          visualDensity: VisualDensity.compact,
-          side: BorderSide(color: color.withValues(alpha: 0.5)),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(999),
-          ),
-        ),
-      ),
-    );
-  }
-}

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/models/gallery_tag.dart';
+import 'package:drivelife/utils/photo_download.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/gallery_upload_provider.dart';
@@ -1180,6 +1181,12 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
           tagsFor: _tagsForPhoto,
           onTagTap: _openTag,
           onShare: _sharePhoto,
+          // Watermarked and size-capped by the server, not here — see
+          // PhotoDownload.
+          onDownload: (p) => PhotoDownload.save(
+            context: context,
+            mediaId: p.id,
+          ),
           // A like or comment in the viewer updates the grid behind it, so
           // closing the viewer does not show stale counts.
           onPhotoChanged: _updatePhoto,

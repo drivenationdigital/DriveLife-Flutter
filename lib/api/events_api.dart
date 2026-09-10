@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:typed_data';
 import 'dart:io';
 import 'dart:convert';
 import 'package:drivelife/models/event_media.dart';
@@ -937,6 +939,102 @@ class EventsAPI {
   static Future<Map<String, dynamic>> galleryScanStatus({
     required int galleryId,
   }) => scanGallery(galleryId: galleryId, limit: 0);
+
+  /// A gallery photo as a downloadable file: capped in size, with the
+  /// DriveLife mark burned into it.
+  ///
+  /// The work happens server-side and has to. Resizing or stamping here would
+  /// mean the app had already pulled the full-resolution original, which is
+  /// the thing the download is meant not to hand over.
+  ///
+  /// Returns the JPEG bytes.
+  static Future<Uint8List> downloadGalleryPhoto({required int mediaId}) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('You need to be signed in to save photos.');
+
+    final uri = Uri.parse(
+      '${ApiConfig.baseUrl}/wp-json/app/v2/galleries/download',
+    ).replace(queryParameters: {'media_id': '$mediaId'});
+
+    Exception? lastError;
+
+    // Two goes. Each download has the server fetch the original from
+    // Cloudflare and rebuild it, so several in quick succession can have one
+    // land on a busy moment and fail where the next succeeds — which is a poor
+    // reason to make somebody tap again.
+    //
+    // Only the transient cases come back here. A refusal the server explains
+    // is thrown straight out of the loop: retrying a deleted photo just fails
+    // again, more slowly.
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        await Future.delayed(const Duration(milliseconds: 700));
+      }
+
+      final http.Response response;
+
+      try {
+        response = await http
+            .get(uri, headers: {'Authorization': 'Bearer $token'})
+            .timeout(const Duration(seconds: 45));
+      } on TimeoutException {
+        lastError = Exception(
+          'That took too long. Check your connection and try again.',
+        );
+        continue;
+      } catch (_) {
+        lastError = Exception(
+          "Couldn't reach DriveLife. Check your connection and try again.",
+        );
+        continue;
+      }
+
+      if (response.statusCode == 200) return response.bodyBytes;
+
+      // This endpoint always answers JSON with a message when it refuses. One
+      // with a message is a considered answer, so it stands.
+      final message = _serverMessage(response.body);
+      if (message != null) throw Exception(message);
+
+      // No message means it never reached the endpoint — a gateway timeout, a
+      // 502, an HTML error page from in front of the app. Worth another go.
+      lastError = Exception(_transportMessage(response.statusCode));
+    }
+
+    throw lastError ??
+        Exception('Could not save that photo. Try again in a moment.');
+  }
+
+  /// The server's own explanation, or null when the body is not one of ours.
+  static String? _serverMessage(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map && decoded['message'] != null) {
+        return '${decoded['message']}';
+      }
+    } catch (_) {
+      // Not JSON, so not from the endpoint.
+    }
+
+    return null;
+  }
+
+  /// What to say about a status code that carried no explanation.
+  static String _transportMessage(int status) {
+    if (status == 429) {
+      return 'Too many downloads at once. Give it a moment and try again.';
+    }
+
+    if (status == 401 || status == 403) {
+      return 'You need to be signed in to save photos.';
+    }
+
+    if (status >= 500) {
+      return 'The server was busy. Try that again in a moment.';
+    }
+
+    return 'Could not save that photo. Try again in a moment.';
+  }
 
   /// Removes a registration from a gallery entirely.
   ///

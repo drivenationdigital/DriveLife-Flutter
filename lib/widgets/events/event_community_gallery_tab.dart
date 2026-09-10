@@ -1030,6 +1030,10 @@ class CommunityPhotoViewer extends StatefulWidget {
   /// Shares this one photo. Null where there is nothing to link to.
   final void Function(CommunityPhoto photo)? onShare;
 
+  /// Saves this photo to the device, watermarked and size-capped by the
+  /// server. Null where downloading is not offered.
+  final Future<void> Function(CommunityPhoto photo)? onDownload;
+
   /// Called when a like or comment changes a photo, so the grid behind can
   /// keep its own copy in step without refetching the gallery.
   final void Function(CommunityPhoto photo)? onPhotoChanged;
@@ -1042,6 +1046,7 @@ class CommunityPhotoViewer extends StatefulWidget {
     this.tagsFor,
     this.onTagTap,
     this.onShare,
+    this.onDownload,
     this.onPhotoChanged,
   });
 
@@ -1056,6 +1061,10 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
   static const double _dismissVelocity = 700;
 
   late final PageController _controller;
+
+  /// The photo currently being fetched, so its button can spin and a second
+  /// tap cannot start the same download twice.
+  int? _downloading;
 
   /// One zoom transform per page, so the drag can tell whether the photo on
   /// screen is zoomed in and so paging away and back keeps that zoom.
@@ -1283,6 +1292,20 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
     );
   }
 
+  /// Fetches and saves one photo, keeping the spinner on its own button.
+  ///
+  /// The result is reported by the caller, which owns the messaging; this only
+  /// owns the in-flight state, because that belongs to the button.
+  Future<void> _download(CommunityPhoto photo) async {
+    setState(() => _downloading = photo.id);
+
+    try {
+      await widget.onDownload!(photo);
+    } finally {
+      if (mounted) setState(() => _downloading = null);
+    }
+  }
+
   /// Close button, counter, per-photo tags and the uploader credit — the whole
   /// overlay, kept together so the dismiss drag can fade it as one.
   Widget _buildChrome(CommunityPhoto photo) {
@@ -1307,6 +1330,26 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (widget.onDownload != null)
+                  IconButton(
+                    icon: _downloading == photo.id
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.file_download_outlined,
+                            color: Colors.white,
+                          ),
+                    tooltip: 'Save photo',
+                    onPressed: _downloading != null
+                        ? null
+                        : () => _download(photo),
+                  ),
                 if (widget.onShare != null)
                   IconButton(
                     icon: const Icon(Icons.ios_share, color: Colors.white),
