@@ -14,6 +14,13 @@ class SearchResultsContent extends StatelessWidget {
   final String resultType; // 'events', 'users', 'venues', 'vehicles'
   final Color primaryColor;
 
+  /// Whether anything has actually been typed.
+  ///
+  /// Without it an untouched tab said "No events found", which is a statement
+  /// about a search nobody had run — and reads as though the app looked and
+  /// came back empty.
+  final bool hasQuery;
+
   // Event callbacks
   final Function(Map<String, dynamic>)? onEventTap;
   final String Function(String?)? formatEventDate;
@@ -36,6 +43,7 @@ class SearchResultsContent extends StatelessWidget {
     required this.searchResults,
     required this.resultType,
     required this.primaryColor,
+    this.hasQuery = true,
     this.onEventTap,
     this.onClubTap,
     this.formatEventDate,
@@ -74,16 +82,40 @@ class SearchResultsContent extends StatelessWidget {
         slivers: [
           SliverFillRemaining(
             child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(_getEmptyIcon(), size: 64, color: Colors.grey.shade400),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No ${resultType} found',
-                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                  ),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      hasQuery ? _getEmptyIcon() : Icons.search,
+                      size: 64,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      hasQuery
+                          ? 'No $resultType found'
+                          : 'Search for $resultType',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      hasQuery
+                          ? 'Try a different spelling, or fewer words.'
+                          : 'Start typing to see results.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -631,6 +663,11 @@ class _SearchScreenState extends State<SearchScreen>
   Timer? _debounce;
 
   void _onSearchChanged(String value) {
+    // Rebuilt on the keystroke, not on the search that follows it 400ms later.
+    // Two things read the field directly — the clear button and the empty
+    // state — and both were a search behind what had been typed.
+    setState(() {});
+
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
       _performSearch(value);
@@ -640,7 +677,7 @@ class _SearchScreenState extends State<SearchScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _searchController.text = '';
 
     // Perform initial search
@@ -748,7 +785,6 @@ class _SearchScreenState extends State<SearchScreen>
                   _buildVenuesTab(theme),
                   _buildUsersTab(theme),
                   // _buildClubsTab(theme),
-                  _buildVehiclesTab(theme),
                 ],
               ),
             ),
@@ -763,6 +799,7 @@ class _SearchScreenState extends State<SearchScreen>
     return SearchResultsContent(
       isSearching: _isSearching,
       searchResults: _searchResults,
+      hasQuery: _searchController.text.trim().isNotEmpty,
       resultType: 'clubs',
       primaryColor: theme.primaryColor,
       onClubTap: (club) {
@@ -830,7 +867,6 @@ class _SearchScreenState extends State<SearchScreen>
           Tab(text: 'Venues'),
           Tab(text: 'Users'),
           // Tab(text: 'Clubs'),
-          Tab(text: 'Vehicles'),
         ],
       ),
     );
@@ -987,6 +1023,7 @@ class _SearchScreenState extends State<SearchScreen>
     return SearchResultsContent(
       isSearching: _isSearching,
       searchResults: _searchResults,
+      hasQuery: _searchController.text.trim().isNotEmpty,
       resultType: 'events',
       primaryColor: theme.primaryColor,
       onEventTap: (event) {
@@ -996,9 +1033,8 @@ class _SearchScreenState extends State<SearchScreen>
           arguments: {'event': event},
         );
       },
-      // formatEventDate: (date) {
-      //   return DateHelpers.formatEventDate(date);
-      // },
+      formatEventDate: (date) =>
+          date == null ? '' : DateHelpers.formatEventDate(date),
       formatEventTime: (startDate, endDate) {
         if (startDate == null || endDate == null) return null;
         return DateHelpers.formatEventTime(startDate, endDate);
@@ -1010,6 +1046,7 @@ class _SearchScreenState extends State<SearchScreen>
     return SearchResultsContent(
       isSearching: _isSearching,
       searchResults: _searchResults,
+      hasQuery: _searchController.text.trim().isNotEmpty,
       resultType: 'venues',
       primaryColor: theme.primaryColor,
       onVenueTap: (venue) {
@@ -1026,6 +1063,7 @@ class _SearchScreenState extends State<SearchScreen>
     return SearchResultsContent(
       isSearching: _isSearching,
       searchResults: _searchResults,
+      hasQuery: _searchController.text.trim().isNotEmpty,
       resultType: 'users',
       primaryColor: theme.primaryColor,
       onUserTap: (user) {
@@ -1033,22 +1071,6 @@ class _SearchScreenState extends State<SearchScreen>
           context,
           '/view-profile',
           arguments: {'userId': user['id']},
-        );
-      },
-    );
-  }
-
-  Widget _buildVehiclesTab(ThemeProvider theme) {
-    return SearchResultsContent(
-      isSearching: _isSearching,
-      searchResults: _searchResults,
-      resultType: 'vehicles',
-      primaryColor: theme.primaryColor,
-      onVehicleTap: (vehicle) {
-        Navigator.pushNamed(
-          context,
-          '/vehicle-detail',
-          arguments: {'garageId': vehicle['id']},
         );
       },
     );

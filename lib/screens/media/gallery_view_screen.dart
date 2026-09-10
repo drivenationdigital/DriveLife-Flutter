@@ -5,13 +5,11 @@ import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/models/gallery_tag.dart';
 import 'package:drivelife/utils/photo_download.dart';
 import 'package:drivelife/routes.dart';
-import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:drivelife/screens/media/gallery_arrange_screen.dart';
 import 'package:drivelife/screens/media/gallery_tagging_screen.dart';
 import 'package:drivelife/screens/media/gallery_upload_progress_screen.dart';
 import 'package:drivelife/widgets/media/gallery_tag_picker.dart';
-import 'package:drivelife/services/user_service.dart';
 import 'package:drivelife/widgets/events/event_community_gallery_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/utils/gallery_photo_picker.dart';
@@ -118,8 +116,6 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   static const Color _muted = Color(0xFF8A8A8A);
   static const Color _gold = Color(0xFFC4A062);
 
-  final _userService = UserService();
-
   final List<CommunityPhoto> _photos = [];
   GalleryOwner? _owner;
 
@@ -162,8 +158,6 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// of the gallery yet — nobody but the owner should see them listed.
   List<GalleryTag> _pendingTags = const [];
 
-  bool _following = false;
-  bool _followBusy = false;
   String? _error;
 
   @override
@@ -588,8 +582,13 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   GalleryOwner? _ownerFromPhotos() {
     final cover = _cover;
     if (cover == null) return null;
+
     return GalleryOwner(
-      userId: 0,
+      // The uploader's id, which the photo has been carrying all along. It was
+      // hardcoded to 0 here, and _openProfile refuses 0 — so the name and
+      // avatar in the header had tap handlers that could never fire, and the
+      // one person a gallery is obviously by was the one you could not open.
+      userId: cover.uploaderId,
       name: cover.uploaderName,
       avatarUrl: cover.uploaderAvatar,
     );
@@ -1090,29 +1089,6 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _toggleFollow() async {
-    final owner = _owner;
-    if (owner == null || owner.userId <= 0 || _followBusy) return;
-
-    final sessionUser = context.read<AccountManager>().activeUser;
-    if (sessionUser == null) return;
-
-    // Optimistic — a follow button that waits on the network feels broken.
-    final wasFollowing = _following;
-    setState(() {
-      _following = !wasFollowing;
-      _followBusy = true;
-    });
-
-    final ok = await _userService.followUser(owner.userId, sessionUser.id);
-
-    if (!mounted) return;
-    setState(() {
-      if (!ok) _following = wasFollowing;
-      _followBusy = false;
-    });
   }
 
   /// The link that opens this gallery in the app.
@@ -1813,7 +1789,6 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
 
   Widget _buildOwnerRow() {
     final owner = _owner!;
-    final canFollow = owner.userId > 0;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
@@ -1864,28 +1839,6 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
               ),
             ),
           ),
-          if (canFollow)
-            OutlinedButton(
-              onPressed: _followBusy ? null : _toggleFollow,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _ink,
-                side: const BorderSide(color: _ink, width: 1.4),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 12,
-                ),
-              ),
-              child: Text(
-                _following ? 'Following' : 'Follow',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                ),
-              ),
-            ),
         ],
       ),
     );
