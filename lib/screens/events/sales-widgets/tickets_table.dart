@@ -217,7 +217,7 @@ class _TicketsSectionState extends State<TicketsSection> {
                           _HeaderCell('Ticket'),
                           _HeaderCell('Subtotal'),
                           _HeaderCell('Car'),
-                          _HeaderCell('Car Club'),
+                          _HeaderCell('Car Group'),
                         ],
                       ),
                       // Data rows

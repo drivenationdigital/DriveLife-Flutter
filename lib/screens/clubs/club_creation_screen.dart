@@ -50,7 +50,7 @@ class _ClubTypeSelectionSheetState extends State<ClubTypeSelectionSheet> {
     if (_titleController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter a club title'),
+          content: Text('Please enter a group title'),
           backgroundColor: Colors.red,
         ),
       );
@@ -66,7 +66,7 @@ class _ClubTypeSelectionSheetState extends State<ClubTypeSelectionSheet> {
       );
 
       if (clubId != null && mounted) {
-        print('✅ Club created with ID: $clubId');
+        print('✅ Group created with ID: $clubId');
 
         // goto add event screen
         Navigator.of(context).pushReplacement(
@@ -75,7 +75,7 @@ class _ClubTypeSelectionSheetState extends State<ClubTypeSelectionSheet> {
           ),
         );
       } else {
-        throw Exception('Failed to create club');
+        throw Exception('Failed to create group');
       }
     } catch (e) {
       if (mounted) {
@@ -123,7 +123,7 @@ class _ClubTypeSelectionSheetState extends State<ClubTypeSelectionSheet> {
             child: Column(
               children: [
                 Text(
-                  'CREATE CLUB',
+                  'CREATE GROUP',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -133,7 +133,7 @@ class _ClubTypeSelectionSheetState extends State<ClubTypeSelectionSheet> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _currentPage == 0 ? 'Get Started' : 'Name your club',
+                  _currentPage == 0 ? 'Get Started' : 'Name your group',
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w600,
@@ -251,9 +251,9 @@ class _ClubTypeSelectionSheetState extends State<ClubTypeSelectionSheet> {
         children: [
           // Private Club Option
           _ClubTypeCard(
-            title: 'Private Club',
+            title: 'Private Group',
             description:
-                'Users can request to join the club but must be approved by Club Admin',
+                'Users can request to join the group but must be approved by Group Admin',
             isSelected: _selectedType == 'private',
             onTap: () => setState(() => _selectedType = 'private'),
           ),
@@ -261,9 +261,9 @@ class _ClubTypeSelectionSheetState extends State<ClubTypeSelectionSheet> {
 
           // Public Club Option
           _ClubTypeCard(
-            title: 'Public Club',
+            title: 'Public Group',
             description:
-                'Anyone can join the club without requiring Club Admin approval',
+                'Anyone can join the group without requiring Group Admin approval',
             isSelected: _selectedType == 'public',
             onTap: () => setState(() => _selectedType = 'public'),
           ),
@@ -279,7 +279,7 @@ class _ClubTypeSelectionSheetState extends State<ClubTypeSelectionSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Club title',
+            'Group title',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -291,7 +291,7 @@ class _ClubTypeSelectionSheetState extends State<ClubTypeSelectionSheet> {
             controller: _titleController,
             maxLength: 60,
             decoration: InputDecoration(
-              hintText: 'Club title',
+              hintText: 'Group title',
               hintStyle: TextStyle(color: Colors.grey.shade400),
               filled: true,
               fillColor: Colors.grey.shade50,

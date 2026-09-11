@@ -437,31 +437,31 @@ class _PendingImageCard extends StatelessWidget {
             ],
           ],
         ),
-        const SizedBox(height: 3),
-        Row(
-          children: [
-            Icon(
-              image.tagKind == 'user'
-                  ? Icons.person_outline
-                  : Icons.directions_car_filled_outlined,
-              size: 14,
-              color: Colors.grey.shade600,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              // Says what is being asked. The queue used to hold one kind of
-              // thing and could leave it unsaid; now that a card may be about
-              // your face or your number plate, not saying which leaves the
-              // reader guessing what they are approving.
-              image.tagKind == 'user' ? 'Tagged you' : 'Tagged your vehicle',
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade700,
-              ),
-            ),
-          ],
-        ),
+        // const SizedBox(height: 3),
+        // Row(
+        //   children: [
+        //     Icon(
+        //       image.tagKind == 'user'
+        //           ? Icons.person_outline
+        //           : Icons.directions_car_filled_outlined,
+        //       size: 14,
+        //       color: Colors.grey.shade600,
+        //     ),
+        //     const SizedBox(width: 4),
+        //     Text(
+        //       // Says what is being asked. The queue used to hold one kind of
+        //       // thing and could leave it unsaid; now that a card may be about
+        //       // your face or your number plate, not saying which leaves the
+        //       // reader guessing what they are approving.
+        //       image.tagKind == 'user' ? 'Tagged you' : 'Tagged your vehicle',
+        //       style: TextStyle(
+        //         fontSize: 12.5,
+        //         fontWeight: FontWeight.w600,
+        //         color: Colors.grey.shade700,
+        //       ),
+        //     ),
+        //   ],
+        // ),
         if (image.locationName != null) ...[
           const SizedBox(height: 2),
           Row(

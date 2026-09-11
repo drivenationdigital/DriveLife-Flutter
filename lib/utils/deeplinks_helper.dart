@@ -201,7 +201,7 @@ class DeepLinkHandler {
             : null;
         uriID = uriID?.split('&').first;
         final clubId = params['dl-club'] ?? uriID;
-        debugPrint('🔗 [DeepLink] Club ID: $clubId');
+        debugPrint('🔗 [DeepLink] Group ID: $clubId');
 
         if (currentUser == null) {
           debugPrint('⚠️ [DeepLink] User not logged in');
@@ -261,6 +261,31 @@ class DeepLinkHandler {
             'galleryId': galleryId,
             if (photoId != null) 'photoId': photoId,
           },
+        );
+        return;
+      }
+
+      // VEHICLE — /vehicle/:garageId, the link the share button sends.
+      //
+      // Unlike the others this one does not require a session. A shared car is
+      // the most likely thing to reach somebody who has never opened the app,
+      // which is the whole point of sharing it — the screen itself decides
+      // what a signed-out visitor may see.
+      if (params.containsKey('dl-vehicle') ||
+          (uri.pathSegments.length == 2 &&
+              uri.pathSegments[0] == 'vehicle')) {
+        final fromPath = uri.pathSegments.length == 2
+            ? uri.pathSegments[1].split('&').first.trim()
+            : null;
+
+        final garageId = params['dl-vehicle'] ?? fromPath;
+        debugPrint('🔗 [DeepLink] Vehicle ID: $garageId');
+
+        if (garageId == null || garageId.isEmpty) return;
+
+        navigatorKey.currentState?.pushNamed(
+          AppRoutes.vehicleDetail,
+          arguments: {'garageId': garageId},
         );
         return;
       }

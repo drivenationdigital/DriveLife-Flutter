@@ -187,7 +187,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
         });
       } else {
         setState(() {
-          _errorMessage = response.message ?? 'Failed to load clubs';
+          _errorMessage = response.message ?? 'Failed to load groups';
           _isLoading = false;
         });
       }
@@ -229,7 +229,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _discoverError = 'Could not load clubs. Pull to retry.';
+        _discoverError = 'Could not load groups. Pull to retry.';
         _isDiscoverLoading = false;
       });
     }
@@ -425,7 +425,7 @@ Widget _buildEmptyState() {
         Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
         const SizedBox(height: 16),
         Text(
-          'No clubs found',
+          'No groups found',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -449,7 +449,7 @@ Widget _buildEmptyState() {
             }
           },
           icon: const Icon(Icons.add, size: 18),
-          label: const Text('Add club'),
+          label: const Text('Add group'),
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFFC4A062),
             foregroundColor: Colors.white,
@@ -514,7 +514,7 @@ Widget _buildEmptyState() {
             Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
             const SizedBox(height: 16),
             Text(
-              'No clubs found',
+              'No groups found',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -563,7 +563,7 @@ Widget _buildEmptyState() {
       child: TextField(
         controller: _searchController,
         decoration: InputDecoration(
-          hintText: 'Search clubs',
+          hintText: 'Search groups',
           hintStyle: TextStyle(color: Colors.grey.shade400),
           prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
           suffixIcon: _searchController.text.isNotEmpty
@@ -608,7 +608,7 @@ Widget _buildEmptyState() {
               children: [
                 Icon(Icons.explore_outlined, size: 16),
                 SizedBox(width: 6),
-                Text('Discover Clubs'),
+                Text('Discover Groups'),
               ],
             ),
           ),
@@ -618,7 +618,7 @@ Widget _buildEmptyState() {
               children: [
                 Icon(Icons.favorite_border, size: 16),
                 SizedBox(width: 6),
-                Text('My Clubs'),
+                Text('My Groups'),
               ],
             ),
           ),
@@ -649,7 +649,7 @@ Widget _buildEmptyState() {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const Text(
-                'Spotlight Clubs',
+                'Spotlight Groups',
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
@@ -922,7 +922,7 @@ Widget _buildEmptyState() {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => FilterBottomSheet(
-        title: 'Filter by Club Type',
+        title: 'Filter by Group Type',
         multiSelect: false,
         options: [
           FilterOption(label: 'All', value: 'all'),
@@ -970,7 +970,7 @@ Widget _buildEmptyState() {
         children: [
           Expanded(
             child: _buildFilterButton(
-              'Club Type',
+              'Group Type',
               _selectedClubType == 'all' ? 'All' : _resolveClubTypeLabel(),
               _onClubTypeFilterTapped,
             ),
@@ -1102,7 +1102,7 @@ Widget _buildEmptyState() {
             Icon(Icons.group_outlined, size: 64, color: Colors.grey.shade300),
             const SizedBox(height: 16),
             Text(
-              'No clubs yet',
+              'No groups yet',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -1111,7 +1111,7 @@ Widget _buildEmptyState() {
             ),
             const SizedBox(height: 8),
             Text(
-              'Create your first club to get started',
+              'Create your first group to get started',
               style: TextStyle(color: Colors.grey.shade500),
             ),
           ],

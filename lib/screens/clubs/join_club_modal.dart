@@ -101,7 +101,7 @@ class _ClubJoinModalState extends State<ClubJoinModal> {
       SnackBar(
         content: Text(
           success
-              ? 'Request sent! The club owner will review your application.'
+              ? 'Request sent! The group owner will review your application.'
               : 'Something went wrong. Please try again.',
         ),
         backgroundColor: success ? Colors.green.shade600 : Colors.red.shade400,
@@ -144,7 +144,7 @@ class _ClubJoinModalState extends State<ClubJoinModal> {
           const SizedBox(height: 12),
 
           Text(
-            'To validate your membership request, the club would like you to fill out the below questions before joining:',
+            'To validate your membership request, the group would like you to fill out the below questions before joining:',
             style: TextStyle(
               fontSize: 13,
               color: Colors.grey.shade600,

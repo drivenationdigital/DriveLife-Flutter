@@ -95,7 +95,7 @@ class _ClubInviteModalState extends State<ClubInviteModal> {
 
             // ── Title ────────────────────────────────────────
             const Text(
-              'Club Admin Invitation',
+              'Group Admin Invitation',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,

@@ -13,7 +13,7 @@ class RegisterStepFourScreen extends StatelessWidget {
     2: 'Event Organiser',
     3: 'Automotive Venue',
     4: 'Automotive Business',
-    5: 'Car Club',
+    5: 'Car Group',
   };
 
   @override

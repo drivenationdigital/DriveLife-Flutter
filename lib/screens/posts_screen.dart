@@ -570,7 +570,7 @@ class _ActionPills extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             _PillButton(
-              label: 'Find Clubs',
+              label: 'Find Groups',
               icon: Icons.groups_outlined,
               isPrimary: false,
               onTap: () {

@@ -101,7 +101,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
 
     if (widget.existingClubId != null) {
       _clubId = widget.existingClubId;
-      print('Editing existing club with ID: $_clubId');
+      print('Editing existing group with ID: $_clubId');
       _loadExistingData();
     }
 
@@ -155,7 +155,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
       final response = await ClubApiService.getClubEditData(_clubId!);
 
       if (!response.success || response.data == null) {
-        throw Exception(response.message ?? 'Failed to load club data');
+        throw Exception(response.message ?? 'Failed to load group data');
       }
 
       final club = response.data!;
@@ -262,7 +262,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
 
       setState(() {});
     } catch (e) {
-      _showError('Failed to load club: $e');
+      _showError('Failed to load group: $e');
     } finally {
       setState(() {
         _isLoadingClub = false;
@@ -376,14 +376,14 @@ class _CreateClubScreenState extends State<CreateClubScreen>
   void _validateAndCreate() {
     // Validate required fields
     if (_titleController.text.trim().isEmpty) {
-      _showError('Club title is required');
+      _showError('Group title is required');
       _tabController.animateTo(0);
       return;
     }
 
     // Club email is required for new clubs
     if (_emailController.text.trim().isEmpty) {
-      _showError('Club email is required');
+      _showError('Group email is required');
       _tabController.animateTo(1);
       return;
     }
@@ -399,7 +399,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
       // ✅ Changed from 'local' to 2
       if (_locationController.text.trim().isEmpty &&
           widget.existingClubId == null) {
-        _showError('Club location is required');
+        _showError('Group location is required');
         _tabController.animateTo(0);
         return;
       }
@@ -545,7 +545,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Club saved successfully!'),
+            content: Text('Group saved successfully!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -627,7 +627,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
             .toList(),
       );
 
-      print('💾 Updating club: $_clubId');
+      print('💾 Updating group: $_clubId');
       print('📋 Update Request: ${updateRequest.toJson()}');
 
       final response = await ClubApiService.updateClubData(
@@ -640,7 +640,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
       if (response.success) {
         _loadManagedClubs();
 
-        print('🎉 Club data saved successfully');
+        print('🎉 Group data saved successfully');
 
         // Check if there are new images to upload
         bool hasNewLogoImage = _logoImage != null && !_isLogoUploaded;
@@ -653,18 +653,18 @@ class _CreateClubScreenState extends State<CreateClubScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                publish ? 'Club updated successfully!' : 'Club saved as draft',
+                publish ? 'Group updated successfully!' : 'Group saved as draft',
               ),
               backgroundColor: Colors.green,
             ),
           );
         }
       } else {
-        throw Exception(response.message ?? 'Failed to update club');
+        throw Exception(response.message ?? 'Failed to update group');
       }
     } catch (e) {
       if (!mounted) return;
-      _showError('Failed to save club: $e');
+      _showError('Failed to save group: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -680,9 +680,9 @@ class _CreateClubScreenState extends State<CreateClubScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: theme.backgroundColor,
-        title: const Text('Delete Club'),
+        title: const Text('Delete Group'),
         content: const Text(
-          'Are you sure you want to delete this club? This action cannot be undone.',
+          'Are you sure you want to delete this group? This action cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -708,7 +708,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
         );
 
         if (response == null || response['success'] != true) {
-          throw Exception(response?['message'] ?? 'Failed to delete club');
+          throw Exception(response?['message'] ?? 'Failed to delete group');
         }
 
         if (!mounted) return;
@@ -716,13 +716,13 @@ class _CreateClubScreenState extends State<CreateClubScreen>
         Navigator.pop(context, 'deleted');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Club deleted successfully'),
+            content: Text('Group deleted successfully'),
             backgroundColor: Colors.red,
           ),
         );
       } catch (e) {
         if (!mounted) return;
-        _showError('Failed to delete club: $e');
+        _showError('Failed to delete group: $e');
       } finally {
         if (mounted) {
           setState(() => _isLoading = false);
@@ -776,7 +776,7 @@ class _CreateClubScreenState extends State<CreateClubScreen>
         title: Column(
           children: [
             Text(
-              widget.existingClubId != null ? 'EDIT CLUB' : 'CREATE CLUB',
+              widget.existingClubId != null ? 'EDIT GROUP' : 'CREATE GROUP',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -872,10 +872,10 @@ class _CreateClubScreenState extends State<CreateClubScreen>
               ),
               tabs: const [
                 Tab(text: 'Basic Details'),
-                Tab(text: 'Club Profile'),
+                Tab(text: 'Group Profile'),
                 Tab(text: 'Description'),
                 Tab(text: 'Membership Questions'),
-                Tab(text: 'Club Terms'),
+                Tab(text: 'Group Terms'),
                 Tab(text: 'Administrators'),
                 // Tab(text: 'Publish'),
               ],
@@ -1005,15 +1005,15 @@ class _CreateClubScreenState extends State<CreateClubScreen>
       case 0:
         return 'Basic Details';
       case 1:
-        return 'Your club profile';
+        return 'Your group profile';
       case 2:
-        return 'Describe your club';
+        return 'Describe your group';
       case 3:
         return 'Membership Questions';
       case 4:
-        return 'Club Terms';
+        return 'Group Terms';
       case 5:
-        return 'Club Administrators';
+        return 'Group Administrators';
       case 6:
         return 'Save and Publish';
       default:
@@ -1113,7 +1113,7 @@ class _BasicDetailsTab extends StatelessWidget {
           const Row(
             children: [
               Text(
-                'Club Title',
+                'Group Title',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -1129,7 +1129,7 @@ class _BasicDetailsTab extends StatelessWidget {
             controller: titleController,
             maxLength: 80,
             decoration: InputDecoration(
-              hintText: 'Enter club title',
+              hintText: 'Enter group title',
               hintStyle: TextStyle(color: Colors.grey.shade400),
               filled: true,
               fillColor: Colors.grey.shade50,
@@ -1282,7 +1282,7 @@ class _BasicDetailsTab extends StatelessWidget {
           const Row(
             children: [
               Text(
-                'Club Location',
+                'Group Location',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -1309,11 +1309,11 @@ class _BasicDetailsTab extends StatelessWidget {
                 items: const [
                   DropdownMenuItem(
                     value: 2, // ✅ Changed from 'local' to 2
-                    child: Text('Local / Regional Club'),
+                    child: Text('Local / Regional Group'),
                   ),
                   DropdownMenuItem(
                     value: 1, // ✅ Changed from 'national' to 1
-                    child: Text('National Club'),
+                    child: Text('National Group'),
                   ),
                 ],
                 onChanged: (value) {
@@ -1333,7 +1333,7 @@ class _BasicDetailsTab extends StatelessWidget {
               googleAPIKey: "AIzaSyDqDMSFVfl-tOgqaj4ZqA5I3HnobrIK6jg",
               focusNode: locationFocusNode,
               inputDecoration: InputDecoration(
-                hintText: 'Club Location',
+                hintText: 'Group Location',
                 hintStyle: TextStyle(color: Colors.grey.shade400),
                 filled: true,
                 fillColor: Colors.grey.shade50,
@@ -1381,7 +1381,7 @@ class _BasicDetailsTab extends StatelessWidget {
                   ),
                 ),
                 child: const Text(
-                  'Delete this club',
+                  'Delete this group',
                   style: TextStyle(
                     color: Colors.red,
                     fontSize: 14,
@@ -1485,7 +1485,7 @@ class _ClubProfileTab extends StatelessWidget {
         children: [
           // Club Logo
           const Text(
-            'Club Logo',
+            'Group Logo',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1509,7 +1509,7 @@ class _ClubProfileTab extends StatelessWidget {
 
           // Club Cover Image
           const Text(
-            'Club Cover Image',
+            'Group Cover Image',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1518,7 +1518,7 @@ class _ClubProfileTab extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Add an image that best represents your club',
+            'Add an image that best represents your group',
             style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
           ),
           const SizedBox(height: 12),
@@ -1533,7 +1533,7 @@ class _ClubProfileTab extends StatelessWidget {
 
           // Email Address
           const Text(
-            'Club Email Address',
+            'Group Email Address',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1572,7 +1572,7 @@ class _ClubProfileTab extends StatelessWidget {
 
           // Club Website
           const Text(
-            'Club Website',
+            'Group Website',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1673,7 +1673,7 @@ class _ClubProfileTab extends StatelessWidget {
 
           // Club Merchandise Link
           const Text(
-            'Club Merchandise Link',
+            'Group Merchandise Link',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1682,7 +1682,7 @@ class _ClubProfileTab extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'If you sell club merchandise online, link it here',
+            'If you sell group merchandise online, link it here',
             style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
           ),
           const SizedBox(height: 8),
@@ -1739,7 +1739,7 @@ class _DescriptionTab extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Tell us more about your club',
+                  'Tell us more about your group',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -1807,7 +1807,7 @@ class _DescriptionTab extends StatelessWidget {
                         child: QuillEditor.basic(
                           controller: controller,
                           config: const QuillEditorConfig(
-                            placeholder: 'Enter club description...',
+                            placeholder: 'Enter group description...',
                           ),
                         ),
                       ),
@@ -2032,7 +2032,7 @@ class _ClubTermsTab extends StatelessWidget {
                         child: QuillEditor.basic(
                           controller: controller,
                           config: const QuillEditorConfig(
-                            placeholder: 'Enter club terms...',
+                            placeholder: 'Enter group terms...',
                           ),
                         ),
                       ),
@@ -2181,7 +2181,7 @@ class _AdministratorsTabState extends State<_AdministratorsTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Club administrators can create and manage events, accept new member requests and remove members. They cannot edit club details, unpublish or delete a club.',
+                  'Group administrators can create and manage events, accept new member requests and remove members. They cannot edit group details, unpublish or delete a group.',
                   style: TextStyle(fontSize: 14, color: Colors.black87),
                 ),
                 const SizedBox(height: 24),
@@ -2683,7 +2683,7 @@ class _PublishClubModal extends StatelessWidget {
           children: [
             // Header
             Text(
-              'EDIT CLUB',
+              'EDIT GROUP',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -2715,8 +2715,8 @@ class _PublishClubModal extends StatelessWidget {
                     icon: isPublished ? Icons.check_circle : Icons.cancel,
                     iconColor: isPublished ? theme.primaryColor : Colors.grey,
                     text: isPublished
-                        ? 'Your club is currently published.'
-                        : 'Your club is currently unpublished.',
+                        ? 'Your group is currently published.'
+                        : 'Your group is currently unpublished.',
                   ),
                   const SizedBox(height: 8),
                   _StatusRow(
@@ -2772,7 +2772,7 @@ class _PublishClubModal extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      isPublished ? 'Update Club' : 'Publish Club',
+                      isPublished ? 'Update Group' : 'Publish Group',
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -2789,7 +2789,7 @@ class _PublishClubModal extends StatelessWidget {
               TextButton(
                 onPressed: onDelete,
                 child: const Text(
-                  'DELETE CLUB',
+                  'DELETE GROUP',
                   style: TextStyle(
                     color: Colors.red,
                     fontSize: 13,

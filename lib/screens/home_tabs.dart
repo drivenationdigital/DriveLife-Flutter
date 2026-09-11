@@ -221,8 +221,8 @@ class _HomeTabsState extends State<HomeTabs> {
             ),
           if (isUser)
             _CreateAction(
-              label: 'Add Club',
-              svg: 'assets/app-icons/06-Clubs.svg',
+              label: 'Add Group',
+              svg: 'assets/app-icons/07-groups.svg',
               onTap: _createClub,
             ),
           if (isUser)
@@ -591,11 +591,11 @@ class _HomeTabsState extends State<HomeTabs> {
         ),
         BottomNavigationBarItem(
           icon: iconSvg(
-            'assets/app-icons/06-Clubs.svg',
+            'assets/app-icons/07-groups.svg',
             theme,
             isActive: _currentIndex == 3,
           ),
-          label: 'Clubs',
+          label: 'Groups',
         ),
         if (FeatureFlags.mediaTab)
           BottomNavigationBarItem(

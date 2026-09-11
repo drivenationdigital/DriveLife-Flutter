@@ -134,7 +134,7 @@ class MemberRow extends StatelessWidget {
                         ),
                         const SizedBox(width: 10),
                         Text(
-                          'Remove from club',
+                          'Remove from group',
                           style: TextStyle(color: Colors.red.shade400),
                         ),
                       ],

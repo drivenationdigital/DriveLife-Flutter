@@ -433,7 +433,7 @@ Future<EventDiscount?> _showDiscountEditor({
               controller: noteController,
               decoration: const InputDecoration(
                 labelText: 'Note (optional)',
-                hintText: 'Club members only',
+                hintText: 'Group members only',
                 border: OutlineInputBorder(),
               ),
             ),

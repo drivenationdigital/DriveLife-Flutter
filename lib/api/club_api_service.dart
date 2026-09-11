@@ -50,9 +50,9 @@ class ClubApiService {
               .toList();
         }
       }
-      throw Exception('Failed to load club types');
+      throw Exception('Failed to load group types');
     } catch (e) {
-      print('Error fetching club types: $e');
+      print('Error fetching group types: $e');
       rethrow;
     }
   }
@@ -115,9 +115,9 @@ class ClubApiService {
       if (response.statusCode == 200) {
         return data['data'] as List<dynamic>?;
       }
-      throw Exception('Failed to load clubs');
+      throw Exception('Failed to load groups');
     } catch (e) {
-      print('Error fetching clubs: $e');
+      print('Error fetching groups: $e');
       rethrow;
     }
   }
@@ -135,9 +135,9 @@ class ClubApiService {
           return data['clubs'] as List<dynamic>?;
         }
       }
-      throw Exception('Failed to load featured clubs');
+      throw Exception('Failed to load featured groups');
     } catch (e) {
-      print('Error fetching featured clubs: $e');
+      print('Error fetching featured groups: $e');
       rethrow;
     }
   }
@@ -155,9 +155,9 @@ class ClubApiService {
           return data['club'];
         }
       }
-      throw Exception('Failed to load club details');
+      throw Exception('Failed to load group details');
     } catch (e) {
-      print('Error fetching club details: $e');
+      print('Error fetching group details: $e');
       rethrow;
     }
   }
@@ -186,7 +186,7 @@ class ClubApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Error fetching club events: $e');
+      print('❌ Error fetching group events: $e');
       return null;
     }
   }
@@ -204,7 +204,7 @@ class ClubApiService {
         body: jsonEncode({'club_id': clubId}),
       );
 
-      print('📡 Leave club: ${response.statusCode}');
+      print('📡 Leave group: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -212,7 +212,7 @@ class ClubApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Error leaving club: $e');
+      print('❌ Error leaving group: $e');
       return false;
     }
   }
@@ -242,7 +242,7 @@ class ClubApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Error fetching club posts: $e');
+      print('❌ Error fetching group posts: $e');
       return null;
     }
   }
@@ -393,12 +393,12 @@ class ClubApiService {
           return data['club'];
         }
 
-        print('❌ Failed to load club details: ${data['message']}');
+        print('❌ Failed to load group details: ${data['message']}');
         return null;
       }
       return null;
     } catch (e) {
-      print('❌ Error fetching club: $e');
+      print('❌ Error fetching group: $e');
       return null;
     }
   }
@@ -559,9 +559,9 @@ class ClubApiService {
           return data['members'];
         }
       }
-      throw Exception('Failed to load club members');
+      throw Exception('Failed to load group members');
     } catch (e) {
-      print('Error fetching club members: $e');
+      print('Error fetching group members: $e');
       rethrow;
     }
   }
@@ -718,7 +718,7 @@ class ClubApiService {
 
         return ApiResponse<MyClubsResponse>(
           success: false,
-          message: json['message'] as String? ?? 'Failed to load clubs',
+          message: json['message'] as String? ?? 'Failed to load groups',
         );
       }
 
@@ -802,13 +802,13 @@ class ClubApiService {
 
         return ApiResponse<ClubEditData>(
           success: false,
-          message: data['message'] as String? ?? 'Failed to load club data',
+          message: data['message'] as String? ?? 'Failed to load group data',
         );
       }
 
       return _handleError(response);
     } catch (e) {
-      print('Error fetching club edit data: $e');
+      print('Error fetching group edit data: $e');
       return _handleError<ClubEditData>(e);
     }
   }
@@ -869,9 +869,9 @@ class ClubApiService {
           return data['club_id'];
         }
       }
-      throw Exception('Failed to create club');
+      throw Exception('Failed to create group');
     } catch (e) {
-      print('Error creating club: $e');
+      print('Error creating group: $e');
       return null;
     }
   }
@@ -904,7 +904,7 @@ class ClubApiService {
 
       throw Exception('${data['message'] ?? 'Unknown error'}');
     } catch (e) {
-      print('Error deleting club: $e');
+      print('Error deleting group: $e');
       return null;
     }
   }

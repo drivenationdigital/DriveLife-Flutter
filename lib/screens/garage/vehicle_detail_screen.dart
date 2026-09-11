@@ -13,6 +13,7 @@ import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/screens/media/gallery_view_screen.dart';
 import 'package:drivelife/widgets/media/gallery_card.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:provider/provider.dart';
 import '../../api/garage_api.dart';
 import '../../widgets/profile/profile_avatar.dart';
@@ -259,6 +260,33 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     return true;
   }
 
+  /// Shares this vehicle.
+  ///
+  /// Same shape as the post, event, venue and gallery links the app already
+  /// sends — `/vehicle/:id` — which DeepLinkHandler routes back to this
+  /// screen.
+  void _shareVehicle() {
+    final vehicle = _vehicle;
+
+    final registration = '${vehicle?['registration'] ?? ''}'.trim();
+    final make = '${vehicle?['make'] ?? ''}'.trim();
+    final model = '${vehicle?['model'] ?? ''}'.trim();
+
+    // The car, not the plate. A registration is what the vehicle is to the
+    // DVLA; the make and model is what it is to the person being sent it.
+    final name = [make, model].where((s) => s.isNotEmpty).join(' ');
+    final title = name.isNotEmpty
+        ? name
+        : (registration.isNotEmpty ? registration : 'a vehicle');
+
+    final url =
+        'https://app.mydrivelife.com/vehicle/${widget.garageId}?ref=share';
+
+    SharePlus.instance.share(
+      ShareParams(text: '$title on DriveLife\n$url', subject: title),
+    );
+  }
+
   Widget _buildOwnerActions(ThemeProvider theme) {
     final isOwner = isVehiclePublisher();
 
@@ -493,6 +521,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
         centerTitle: true,
         title: Image.asset('assets/logo-dark.png', height: 18),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share, color: Colors.black),
+            tooltip: 'Share vehicle',
+            onPressed: _shareVehicle,
+          ),
           if (isVehiclePublisher())
             Stack(
               clipBehavior: Clip.none,

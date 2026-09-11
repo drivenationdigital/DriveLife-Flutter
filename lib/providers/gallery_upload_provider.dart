@@ -71,6 +71,9 @@ class GalleryUploadBatch {
   /// no id of ours, so it is carried by name and coordinates.
   final String placeId;
   final String placeLabel;
+
+  /// Two-letter country of the place, where Google named one.
+  final String placeCountry;
   final double? lat;
   final double? lng;
 
@@ -99,6 +102,7 @@ class GalleryUploadBatch {
     this.entityType = 'event',
     this.placeId = '',
     this.placeLabel = '',
+    this.placeCountry = '',
     this.lat,
     this.lng,
     this.galleryId,
@@ -207,6 +211,7 @@ class GalleryUploadProvider with ChangeNotifier {
     String entityType = 'event',
     String placeId = '',
     String placeLabel = '',
+    String placeCountry = '',
     double? lat,
     double? lng,
     int? existingGalleryId,
@@ -223,6 +228,7 @@ class GalleryUploadProvider with ChangeNotifier {
       galleryName: galleryName,
       placeId: placeId,
       placeLabel: placeLabel,
+      placeCountry: placeCountry,
       lat: lat,
       lng: lng,
       // Seeding the id makes every register call APPEND to that gallery
@@ -477,6 +483,7 @@ class GalleryUploadProvider with ChangeNotifier {
         galleryId: batch.galleryId,
         placeId: batch.placeId,
         placeLabel: batch.placeLabel,
+        placeCountry: batch.placeCountry,
         lat: batch.lat,
         lng: batch.lng,
       );

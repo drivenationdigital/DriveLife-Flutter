@@ -771,6 +771,14 @@ class EventsAPI {
   /// Empty rather than 'GB' when there is nothing to go on: the server records
   /// an absent country as absent, and defaulting here would launder a guess
   /// into a stored fact.
+  /// Where the member is NOW, not where their account belongs.
+  ///
+  /// `last_location` is rewritten from the device's coordinates every time the
+  /// app reports them, so this is Canada for a British member standing in
+  /// Canada — which is exactly what a gallery shot there should record.
+  ///
+  /// Their account's own country is not sent at all: the server reads that
+  /// from their record, where it cannot be rewritten by a stale client.
   static Future<String> _userCountry() async {
     try {
       final user = await _authService.getUser();
@@ -793,6 +801,7 @@ class EventsAPI {
     int? galleryId,
     String placeId = '',
     String placeLabel = '',
+    String placeCountry = '',
     double? lat,
     double? lng,
   }) async {
@@ -809,7 +818,8 @@ class EventsAPI {
     // travels as its own fields instead.
     final hasPlace = entityType == 'location' && placeLabel.isNotEmpty;
 
-    // Never sent before. Without it the server fell back to 'GB' for anything
+    // Where the photos were taken, as far as we can tell: the uploader's
+    // current location. Without it the server fell back to 'GB' for anything
     // with no event or venue behind it, so every standalone gallery — now the
     // common kind — was recorded as British whoever made it.
     final country = await _userCountry();
@@ -832,6 +842,7 @@ class EventsAPI {
           'entity_type': 'location',
           'place_id': placeId,
           'place_label': placeLabel,
+          if (placeCountry.isNotEmpty) 'place_country': placeCountry,
           if (lat != null) 'lat': lat,
           if (lng != null) 'lng': lng,
         },
@@ -1353,6 +1364,10 @@ class EventsAPI {
     String? scope,
     String? linkType,
     String? search,
+    /// Two-letter country code. Galleries uploaded before the column existed
+    /// have none, so any country filter excludes them — we do not know where
+    /// they were taken and guessing would be worse than omitting them.
+    String? country,
     DateTime? from,
     DateTime? to,
     // ── Tagged in ────────────────────────────────────────────────────────
@@ -1380,6 +1395,8 @@ class EventsAPI {
       if (scope != null && scope.isNotEmpty) 'scope': scope,
       if (linkType != null && linkType.isNotEmpty) 'link_type': linkType,
       if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+      if (country != null && country.trim().isNotEmpty)
+        'country': country.trim().toUpperCase(),
       if (from != null) 'from': day(from),
       if (to != null) 'to': day(to),
       if (taggedUserId != null && taggedUserId > 0)

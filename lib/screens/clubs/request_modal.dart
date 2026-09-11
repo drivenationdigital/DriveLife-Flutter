@@ -42,7 +42,7 @@ class _ClubRequestModalState extends State<ClubRequestModal> {
         SnackBar(
           content: Text(
             response
-                ? '${widget.memberName} added to the club'
+                ? '${widget.memberName} added to the group'
                 : 'Could not accept request',
           ),
           backgroundColor: response ? _gold : Colors.red.shade600,

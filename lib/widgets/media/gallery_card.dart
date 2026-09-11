@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/utils/country.dart';
 import 'package:flutter/material.dart';
 
 /// Who a gallery belongs to, as a card credits them.
@@ -36,6 +37,10 @@ class GalleryCard extends StatelessWidget {
   /// someone else's profile, for instance.
   final VoidCallback? onLongPress;
 
+  /// Two-letter country the gallery was uploaded from. Empty for galleries
+  /// made before it was recorded, which show no badge rather than a guess.
+  final String country;
+
   const GalleryCard({
     super.key,
     required this.title,
@@ -43,6 +48,7 @@ class GalleryCard extends StatelessWidget {
     required this.onTap,
     this.onLongPress,
     this.subtitle = '',
+    this.country = '',
   });
 
   @override
@@ -79,6 +85,33 @@ class GalleryCard extends StatelessWidget {
               ),
               child: SizedBox.expand(),
             ),
+
+            // Top corner, away from the title block at the bottom. A flag
+            // is a glance, not a caption — it should not compete with the
+            // gallery's own name for the same line.
+            if (countryFlag(country).isNotEmpty)
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${countryFlag(country)} ${country.toUpperCase()}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
 
             Positioned(
               left: 12,

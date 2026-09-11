@@ -181,7 +181,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final bool verified;
     final String? imageUrl;
     if (_isEntityPost) {
-      label = _associatedEntity?['label'] ?? 'Club';
+      label = _associatedEntity?['label'] ?? 'Group';
       verified = _associatedEntity?['verified'] == true;
       imageUrl = _associatedEntity?['logo'];
     } else {

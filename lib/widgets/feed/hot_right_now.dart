@@ -38,7 +38,7 @@ class HotRightNow extends StatelessWidget {
       onTap: (context) => context.read<BottomNavProvider>().setIndex(2),
     ),
     _HotItem(
-      title: 'Discover Clubs',
+      title: 'Discover Groups',
       imagePath: 'assets/hot-images/03-clubs.jpg',
       // Clubs tab (bottom nav index 3)
       onTap: (context) => context.read<BottomNavProvider>().setIndex(3),

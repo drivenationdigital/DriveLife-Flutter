@@ -569,7 +569,7 @@ class _NotificationTile extends StatelessWidget {
     final isInvite = notification['type'] == 'invite';
     // final inviteStatus = entityData['invite_status'] ?? 'pending';
     // final isPendingInvite = isInvite && inviteStatus == 'pending';
-    final clubName = entityData['club_name']?.toString() ?? 'a club';
+    final clubName = entityData['club_name']?.toString() ?? 'a group';
 
     final clubJoinRequest = notification['type'] == 'join_request';
     final clubId = entityData['club_id']?.toString() ?? '';
@@ -946,17 +946,17 @@ class _NotificationTile extends StatelessWidget {
             ? '$name tagged your car in a post'
             : '$name tagged you in a post';
       case 'invite':
-        final clubName = entityData['club_name']?.toString() ?? 'a club';
+        final clubName = entityData['club_name']?.toString() ?? 'a group';
         return '$name invited you to join $clubName';
       case 'join_request':
-        final clubName = entityData['club_name']?.toString() ?? 'a club';
+        final clubName = entityData['club_name']?.toString() ?? 'a group';
         return '$name requested to join $clubName';
       case 'join_approval':
-        final clubName = entityData['club_name']?.toString() ?? 'a club';
+        final clubName = entityData['club_name']?.toString() ?? 'a group';
         return '$name approved your request to join $clubName';
       case 'club':
         if (entityType == 'post') {
-          final clubName = entityData['club_name']?.toString() ?? 'a club';
+          final clubName = entityData['club_name']?.toString() ?? 'a group';
           final caption = entityData['caption']?.toString().trim() ?? '';
           if (caption.isNotEmpty) {
             final snippet = ellipsis(caption, 80);
@@ -964,7 +964,7 @@ class _NotificationTile extends StatelessWidget {
           }
           return '$clubName shared a new post';
         }
-        return '$name interacted with your club';
+        return '$name interacted with your group';
       case 'venue':
         if (entityType == 'post') {
           final venueName = entityData['venue_name']?.toString() ?? 'a venue';

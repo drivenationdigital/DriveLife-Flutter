@@ -271,7 +271,7 @@ class ChunkedFileUploader {
 
       return {'success': true, 'message': 'All files uploaded successfully'};
     } catch (error) {
-      print('Error uploading club files to Cloudflare: $error');
+      print('Error uploading group files to Cloudflare: $error');
       rethrow;
     }
   }

@@ -88,9 +88,9 @@ class _CarClubsTabState extends State<CarClubsTab> {
       padding: const EdgeInsets.all(20),
       children: [
         EditorToggleRow(
-          title: 'Accept car club stands',
+          title: 'Accept car group stands',
           subtitle:
-              'Let clubs apply for a stand so their members can park together.',
+              'Let groups apply for a stand so their members can park together.',
           value: _config.enabled,
           accent: widget.accent,
           onChanged: (value) => _emit(_config.copyWith(enabled: value)),
@@ -106,7 +106,7 @@ class _CarClubsTabState extends State<CarClubsTab> {
           const SizedBox(height: 24),
           const EditorSectionHeader(
             title: 'Application window',
-            subtitle: 'When clubs can apply. Leave a date unset for no limit.',
+            subtitle: 'When groups can apply. Leave a date unset for no limit.',
           ),
           const SizedBox(height: 12),
 
@@ -149,8 +149,8 @@ class _CarClubsTabState extends State<CarClubsTab> {
 
           const SizedBox(height: 24),
           EditorToggleRow(
-            title: 'Cap the number of clubs',
-            subtitle: 'How many club stands you have room for.',
+            title: 'Cap the number of groups',
+            subtitle: 'How many group stands you have room for.',
             value: _config.limitEnabled,
             accent: widget.accent,
             onChanged: (value) => _emit(_config.copyWith(limitEnabled: value)),
@@ -158,7 +158,7 @@ class _CarClubsTabState extends State<CarClubsTab> {
           if (_config.limitEnabled) ...[
             const SizedBox(height: 12),
             EditorNumberField(
-              label: 'Maximum clubs',
+              label: 'Maximum groups',
               hint: 'e.g. 20',
               controller: _maxController,
             ),
@@ -168,7 +168,7 @@ class _CarClubsTabState extends State<CarClubsTab> {
           EditorToggleRow(
             title: 'Charge for a stand',
             subtitle:
-                'Approved clubs get a link to pay. Free stands are confirmed '
+                'Approved groups get a link to pay. Free stands are confirmed '
                 'on approval instead.',
             value: _config.requireTicket,
             accent: widget.accent,
@@ -186,7 +186,7 @@ class _CarClubsTabState extends State<CarClubsTab> {
 
           const SizedBox(height: 24),
           const EditorSectionHeader(
-            title: 'Information for clubs',
+            title: 'Information for groups',
             subtitle:
                 'Shown on the application form. Stand size, arrival, what is '
                 'included.',

@@ -4,6 +4,7 @@ import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:drivelife/screens/media/gallery_upload_progress_screen.dart';
 import 'package:drivelife/utils/gallery_photo_picker.dart';
+import 'package:drivelife/utils/country.dart';
 import 'package:flutter/material.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
 import 'package:google_places_flutter/model/prediction.dart';
@@ -29,6 +30,10 @@ class TaggedEvent {
   /// Google's id for a place. Empty for an event or venue, which are posts.
   final String placeId;
 
+  /// Two-letter country the place is in, read off the end of its address.
+  /// Empty when Google's description did not end with one we recognise.
+  final String placeCountry;
+
   final double? lat;
   final double? lng;
 
@@ -40,6 +45,7 @@ class TaggedEvent {
     this.thumbnail = '',
     this.type = TaggedEntityType.event,
     this.placeId = '',
+    this.placeCountry = '',
     this.lat,
     this.lng,
   });
@@ -339,6 +345,7 @@ class _NewGalleryScreenState extends State<NewGalleryScreen> {
       entityType: event?.entityType ?? 'none',
       placeId: event?.placeId ?? '',
       placeLabel: (event != null && event.isPlace) ? event.name : '',
+      placeCountry: (event != null && event.isPlace) ? event.placeCountry : '',
       lat: event?.lat,
       lng: event?.lng,
     );
@@ -1148,10 +1155,12 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
                       googleAPIKey: _googlePlacesKey,
                       focusNode: _placeFocus,
                       debounceTime: 400,
-                      // ── 3. UK and US only ──────────────────────────────
-                      // The app covers two blogs, so a place in neither is
-                      // something no gallery can usefully sit at.
-                      countries: const ['uk', 'us'],
+                      // ── 3. Where members actually shoot ───────────────
+                      // Wider than the two blogs. A blog is a catalogue, not a
+                      // border: a British member at a meet in Canada needs to
+                      // be able to say so, and the gallery still files under
+                      // whichever catalogue their account belongs to.
+                      countries: const ['uk', 'us', 'ca'],
                       isLatLngRequired: true,
                       isCrossBtnShown: true,
                       inputDecoration: InputDecoration(
@@ -1176,6 +1185,10 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
                             id: '',
                             name: name,
                             placeId: prediction.placeId ?? '',
+                            // The tail of "Toronto, ON, Canada". The only
+                            // thing in the app that can name a country the
+                            // two blogs do not cover.
+                            placeCountry: countryFromAddress(name) ?? '',
                             lat: double.tryParse(prediction.lat ?? ''),
                             lng: double.tryParse(prediction.lng ?? ''),
                           ),

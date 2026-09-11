@@ -214,18 +214,18 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             borderRadius: BorderRadius.circular(16),
           ),
           title: const Text(
-            'Leave Club?',
+            'Leave Group?',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
           ),
           content: const Text(
-            'Are you sure you want to leave this club?',
+            'Are you sure you want to leave this group?',
             style: TextStyle(fontSize: 14, color: Colors.grey),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text(
-                'Stay in Club',
+                'Stay in Group',
                 style: TextStyle(color: Colors.grey),
               ),
             ),
@@ -239,7 +239,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                 if (success && mounted) {
                   setState(() => _isMember = false);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('You have left the club.')),
+                    const SnackBar(content: Text('You have left the group.')),
                   );
                 }
               },
@@ -251,7 +251,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              child: const Text('Leave Club'),
+              child: const Text('Leave Group'),
             ),
           ],
         ),
@@ -359,7 +359,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             success
                 ? _isMember
                       ? 'Congratulations! You are now a member.'
-                      : 'Request sent! The club owner will review your application.'
+                      : 'Request sent! The group owner will review your application.'
                 : 'Something went wrong. Please try again.',
           ),
           backgroundColor: success
@@ -444,7 +444,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'Club Links',
+                      'Group Links',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -604,7 +604,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
 
       // If widget.tab is set, open that tab/screen
       if (widget.tab != null) {
-        print('Opening club with tab: ${widget.tab}');
+        print('Opening group with tab: ${widget.tab}');
         final tab = widget.tab!.toLowerCase();
 
         // Members tab is now a modal — for "members" deep-link, open pending requests
@@ -639,7 +639,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       _loadPendingRequestsCount();
       _loadMembers();
     } catch (e) {
-      print('❌ Error loading club: $e ${widget.clubPostId}');
+      print('❌ Error loading group: $e ${widget.clubPostId}');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -683,7 +683,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     if (_clubData == null) {
       return Scaffold(
         backgroundColor: Colors.white,
-        body: const Center(child: Text('Club not found')),
+        body: const Center(child: Text('Group not found')),
       );
     }
 
@@ -855,7 +855,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             SliverList(
               delegate: SliverChildBuilderDelegate((context, i) {
                 return AnnouncementCard(
-                  authorName: _clubData?['title'] ?? 'Club',
+                  authorName: _clubData?['title'] ?? 'Group',
                   posted: (announcements[i]['date'] ?? '').toString(),
                   content: (announcements[i]['content'] ?? '').toString(),
                   logoUrl: _clubData?['logo'] as String?,
@@ -899,7 +899,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       context: context,
       barrierDismissible: true,
       builder: (_) => ClubRequestModal(
-        clubName: _clubData?['title'] ?? 'this club',
+        clubName: _clubData?['title'] ?? 'this group',
         memberName: (member['name'] ?? 'User').toString(),
         userId: int.parse(member['user_id'].toString()),
         clubId: int.parse(_clubData?['id'].toString() ?? '0'),
@@ -1060,7 +1060,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
         content: Text(
-          'Block $name from the club?\n\n'
+          'Block $name from the group?\n\n'
           'They will be removed from the members list and won\'t be able to '
           'rejoin until unblocked.',
           style: const TextStyle(
@@ -1207,7 +1207,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
             content: Text(
-              'Remove $name from the club? They can request to join again later.',
+              'Remove $name from the group? They can request to join again later.',
               style: const TextStyle(fontSize: 14, color: Colors.black),
             ),
             actions: [
@@ -1246,7 +1246,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             });
             _loadMembers();
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('$name removed from the club')),
+              SnackBar(content: Text('$name removed from the group')),
             );
           }
         }
@@ -1490,12 +1490,12 @@ class _ClubViewScreenState extends State<ClubViewScreen>
               if (_isOwner || _isAdmin) {
                 return [
                   _menuItem('share', Icons.share_outlined, 'Share', _ink),
-                  _menuItem('edit', Icons.edit_outlined, 'Edit club', _ink),
+                  _menuItem('edit', Icons.edit_outlined, 'Edit group', _ink),
                   const PopupMenuDivider(height: 1),
                   _menuItem(
                     'delete',
                     Icons.delete_outline,
-                    'Delete club',
+                    'Delete group',
                     Colors.red,
                     textColor: Colors.red,
                   ),
@@ -1510,7 +1510,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                   _menuItem(
                     'leave',
                     Icons.logout,
-                    'Leave club',
+                    'Leave group',
                     Colors.red,
                     textColor: Colors.red,
                   ),
@@ -1587,7 +1587,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     switch (value) {
       case 'share':
         Share.share(
-          'Check out this club on DriveLife: ${_clubData?['title']}\n\n'
+          'Check out this group on DriveLife: ${_clubData?['title']}\n\n'
           'https://app.mydrivelife.com/club/${_clubData?['id']}',
         );
         break;
@@ -1622,9 +1622,9 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: theme.backgroundColor,
-        title: const Text('Delete Club'),
+        title: const Text('Delete Group'),
         content: const Text(
-          'Are you sure you want to delete this club? This action cannot be undone.',
+          'Are you sure you want to delete this group? This action cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -1655,7 +1655,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         );
 
         if (response == null || response['success'] != true) {
-          throw Exception(response?['message'] ?? 'Failed to delete club');
+          throw Exception(response?['message'] ?? 'Failed to delete group');
         }
 
         if (!mounted) return;
@@ -1663,7 +1663,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         Navigator.pop(context, 'deleted');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Club deleted successfully'),
+            content: Text('Group deleted successfully'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1671,7 +1671,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Failed to delete club'),
+            content: Text('Failed to delete group'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1964,7 +1964,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             ),
             const SizedBox(height: 16),
             Text(
-              _clubData!['club_type'] == '1' ? 'Private Club' : 'Join Club',
+              _clubData!['club_type'] == '1' ? 'Private Group' : 'Join Group',
               style: TextStyle(
                 color: _ink,
                 fontSize: 18,
@@ -1973,7 +1973,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             ),
             const SizedBox(height: 6),
             Text(
-              'Join the club to view posts and events',
+              'Join the group to view posts and events',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey.shade600,
@@ -1987,7 +1987,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                 width: 180,
                 child: _PrimaryActionButton(
                   icon: Icons.add,
-                  label: 'Join Club',
+                  label: 'Join Group',
                   onTap: _handleJoinLeave,
                 ),
               ),
@@ -2125,7 +2125,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         Expanded(
           child: _PrimaryActionButton(
             icon: Icons.add,
-            label: 'Join Club',
+            label: 'Join Group',
             onTap: _handleJoinLeave,
           ),
         ),
@@ -2139,7 +2139,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     if (!_isMember && !_isOwner && !_isAdmin) {
       // Not a member — show toast and return early
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Join the club to create posts')),
+        const SnackBar(content: Text('Join the group to create posts')),
       );
       return;
     }
@@ -2719,7 +2719,7 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
             ),
             const SizedBox(height: 16),
             const Text(
-              'Private Club',
+              'Private Group',
               style: TextStyle(
                 color: _ink,
                 fontSize: 18,
@@ -2728,7 +2728,7 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
             ),
             const SizedBox(height: 6),
             Text(
-              'Join the club to view posts and events',
+              'Join the group to view posts and events',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey.shade600,
@@ -2742,7 +2742,7 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
                 width: 180,
                 child: _PrimaryActionButton(
                   icon: Icons.add,
-                  label: 'Join Club',
+                  label: 'Join Group',
                   onTap: widget.handleJoinLeave,
                 ),
               ),
@@ -2942,7 +2942,7 @@ class _ComposePrompt extends StatelessWidget {
               const SizedBox(width: 12),
               const Expanded(
                 child: Text(
-                  'Share something with the club…',
+                  'Share something with the group…',
                   style: TextStyle(color: _muted, fontSize: 14),
                 ),
               ),

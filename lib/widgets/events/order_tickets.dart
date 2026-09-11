@@ -378,7 +378,7 @@ class TicketDetailsCard extends StatelessWidget {
                   ],
                   if (carClub.isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    _buildDetailRow('Car Club', carClub),
+                    _buildDetailRow('Car Group', carClub),
                   ],
                   const SizedBox(height: 16),
                 ],

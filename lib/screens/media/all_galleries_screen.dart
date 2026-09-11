@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/screens/media/gallery_view_screen.dart';
 import 'package:drivelife/widgets/media/gallery_card.dart';
+import 'package:drivelife/utils/country.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -57,6 +58,17 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
 
   GalleryFilter _filter = GalleryFilter.all;
   DateTimeRange? _dates;
+
+  /// Two-letter country, or null for everywhere.
+  String? _country;
+
+  /// The countries the filter offers.
+  ///
+  /// A fixed three rather than whatever the table happens to contain. The
+  /// server filters on any ISO code and returns the full set it holds, so
+  /// widening this is a one-line change here — but a dropdown that grows by
+  /// itself as members travel would list places with one gallery in them.
+  static const List<String> _countries = ['GB', 'US', 'CA'];
 
   int _page = 1;
   bool _loading = true;
@@ -154,6 +166,7 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
       scope: 'all',
       linkType: _filter.wire,
       search: _searchController.text,
+      country: _country,
       from: _dates?.start,
       to: _dates?.end,
       page: page,
@@ -200,6 +213,66 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
 
   void _clearDates() {
     setState(() => _dates = null);
+    _load();
+  }
+
+  String get _countryLabel =>
+      _country == null ? 'Anywhere' : countryLabel(_country!);
+
+  /// Offers the countries that have galleries, plus a way back to all of them.
+  Future<void> _pickCountry() async {
+    final picked = await showModalBottomSheet<String?>(
+      context: context,
+      backgroundColor: Colors.white,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 18, 20, 8),
+              child: Text(
+                'Where was it shot?',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+            ),
+            ListTile(
+              title: const Text('Anywhere'),
+              trailing: _country == null
+                  ? const Icon(Icons.check, color: _gold)
+                  : null,
+              // An empty string rather than null, because null is also what a
+              // dismissed sheet returns and the two mean opposite things.
+              onTap: () => Navigator.pop(sheetContext, ''),
+            ),
+            for (final code in _countries)
+              ListTile(
+                title: Text(countryLabel(code)),
+                trailing: _country == code
+                    ? const Icon(Icons.check, color: _gold)
+                    : null,
+                onTap: () => Navigator.pop(sheetContext, code),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    // Dismissed without choosing.
+    if (picked == null || !mounted) return;
+
+    final next = picked.isEmpty ? null : picked;
+    if (next == _country) return;
+
+    setState(() => _country = next);
+    _load();
+  }
+
+  void _clearCountry() {
+    setState(() => _country = null);
     _load();
   }
 
@@ -316,6 +389,15 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
                   selected: _dates != null,
                   onTap: _pickDates,
                   onClear: _dates == null ? null : _clearDates,
+                ),
+                const SizedBox(width: 8),
+
+                _FilterChip(
+                  label: _countryLabel,
+                  icon: Icons.public,
+                  selected: _country != null,
+                  onTap: _pickCountry,
+                  onClear: _country == null ? null : _clearCountry,
                 ),
                 const SizedBox(width: 8),
                 for (final filter in GalleryFilter.values) ...[
@@ -437,6 +519,7 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
             // The owner's handle alone. The photo count was already on
             // the card, so spending the line on it twice said nothing.
             subtitle: ownerName,
+            country: '${gallery['country'] ?? ''}',
             onTap: () => _open(gallery),
           );
         },
