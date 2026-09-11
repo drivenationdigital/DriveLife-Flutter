@@ -95,7 +95,30 @@ class DeepLinkHandler {
     return id.isEmpty ? null : id;
   }
 
-  void _handleDeepLink(Uri uri) {
+  /// Folds a custom-scheme link into the https shape every branch below reads.
+  ///
+  /// `drivelife://vehicle/123` and `https://app.mydrivelife.com/vehicle/123`
+  /// mean the same thing, but they parse differently: with a custom scheme the
+  /// entity type lands in `host` and only the id is in `pathSegments`, so a
+  /// handler matching `pathSegments[0] == 'vehicle'` never fires.
+  ///
+  /// That is why the website's "Open in app" button did nothing. It emits the
+  /// custom scheme for every entity — venue, club, post, profile — so this was
+  /// never about one page.
+  Uri _normalise(Uri uri) {
+    if (uri.scheme == 'http' || uri.scheme == 'https') return uri;
+    if (uri.host.isEmpty) return uri;
+
+    return uri.replace(
+      scheme: 'https',
+      host: 'app.mydrivelife.com',
+      pathSegments: [uri.host, ...uri.pathSegments],
+    );
+  }
+
+  void _handleDeepLink(Uri incoming) {
+    final uri = _normalise(incoming);
+
     final navContext = navigatorKey.currentContext;
     if (navContext == null) {
       debugPrint('⚠️ [DeepLink] Navigator not ready');

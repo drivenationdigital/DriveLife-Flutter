@@ -82,6 +82,22 @@
                     android:scheme="https"
                     android:host="app.mydrivelife.com" />
             </intent-filter>
+
+            <!-- The drivelife:// scheme the SEO site's "Open in app" button
+                 emits. iOS has registered it all along (CFBundleURLSchemes in
+                 Info.plist); Android never did, so that button did nothing
+                 here for any entity.
+
+                 Its own filter, without autoVerify: a custom scheme has no
+                 domain to verify against, and leaving it in the block above
+                 would stop the https App Links being verified at all. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="drivelife" />
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
