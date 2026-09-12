@@ -50,6 +50,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final response = await NotificationsAPI.getUserNotifications(
       loadOldNotifications: loadOld,
     );
+    print(response);
 
     if (!mounted) return;
 
@@ -133,28 +134,43 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
-    // Every tag waiting on an answer — your car or you, gallery or post —
-    // is answered in the same queue.
+    final rawEntityData = entity?['entity_data'];
+    final entityData = rawEntityData is Map
+        ? Map<String, dynamic>.from(rawEntityData)
+        : const <String, dynamic>{};
+
+    final galleryId = entityData['gallery_id'];
+
+    // Gallery tags wait in the pending queue on the Photos tab. That is
+    // genuinely where they are answered — nothing inside a gallery shows a
+    // tag that is still waiting on a yes.
     //
-    // This used to branch on the entity type and send the two kinds to two
-    // screens. Which meant a notification had to be right about where its tag
-    // lived, and when it was not — a type that did not match, an older build
-    // deciding differently — the reader landed on a screen telling them there
-    // was nothing to review, about the tag they had just been told about.
-    // One destination cannot be wrong.
-    if (entityType == 'car' ||
+    // Recognised by the gallery in the payload as well as by the entity type,
+    // for the same reason a post is recognised by its post id: the type names
+    // what was tagged, the data says where it is, and a type this build does
+    // not know sends the reader nowhere at all.
+    if (entityType == 'gallery' ||
         entityType == 'gallery_car' ||
-        entityType == 'gallery') {
+        (galleryId != null && '$galleryId' != '0')) {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const ImagesOfYouScreen()),
       );
       return;
     }
 
-    if ((entityType == 'post' || entityType == 'comment') && entityId != null) {
-      final postId = entityType == 'post'
-          ? entityId
-          : entity?['entity_data']?['post_id'];
+    // Anything that happened ON a post opens that post: a tag on you, a tag
+    // on your car, a like, a comment.
+    //
+    // Decided by the post id in the notification rather than by entity type,
+    // because the type says what was tagged and not where it is. Sending
+    // 'car' to the pending queue with the gallery tags was wrong twice over:
+    // a post's vehicle tag is not in that queue, so it opened a screen saying
+    // there was nothing to review; and a tag on YOU fell past this to the
+    // profile branch, which opened whoever did the tagging instead of the
+    // photo they did it in.
+    final postId = entityType == 'post' ? entityId : entityData['post_id'];
+
+    if (postId != null && '$postId'.isNotEmpty && '$postId' != '0') {
       Navigator.pushNamed(
         context,
         '/post-detail',
@@ -165,7 +181,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               : null,
         },
       );
-    } else if (notification['type'] == 'follow' ||
+      return;
+    }
+
+    if (notification['type'] == 'follow' ||
         entityType == 'user' ||
         entityType == 'club' ||
         entityType == 'venue') {
@@ -920,7 +939,17 @@ class _NotificationTile extends StatelessWidget {
         return '$name has tagged $taggedTarget in a post';
 
       case 'tag':
-        if (entityType == 'gallery' || entityType == 'gallery_car') {
+        // Recognised by the gallery in the payload as well as by the entity
+        // type, exactly as the tap handler does it. Without the second test a
+        // type this build does not know falls through to the bare "tagged
+        // you" below, which says neither what was tagged nor where it is.
+        final galleryId = entityData['gallery_id'];
+        final inGallery =
+            entityType == 'gallery' ||
+            entityType == 'gallery_car' ||
+            (galleryId != null && '$galleryId' != '0');
+
+        if (inGallery) {
           final gallery = entityData['gallery_name']?.toString().trim() ?? '';
           final what = entityType == 'gallery_car' ? 'your vehicle' : 'you';
 
