@@ -103,9 +103,16 @@ class AppRoutes {
       '/post/',
       '/event/',
       '/profile/',
+      // The website's own word for a profile link. Both are listed because
+      // both are in the wild.
+      '/user/',
       '/venue/',
       '/club/',
       '/gallery/',
+      // Shareable since the vehicle page was added, and missing from here the
+      // whole time: a cold start on a shared car fell through to "No route
+      // defined".
+      '/vehicle/',
     ];
 
     // ⭐ Check if this is a deep link URL

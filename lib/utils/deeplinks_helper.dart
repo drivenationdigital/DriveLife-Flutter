@@ -313,13 +313,18 @@ class DeepLinkHandler {
         return;
       }
 
-      // PROFILE — extend existing handler to also catch /user/:username
-      if (params.containsKey('dl-profile') ||
-          (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'profile')) {
-        var uriUsername =
-            (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'user')
-            ? uri.pathSegments[1]
-            : null;
+      // PROFILE — /profile/:username or /user/:username, or ?dl-profile=
+      //
+      // Both words, and tested once rather than twice. The guard used to ask
+      // for 'profile' while the extraction under it asked for 'user', so a
+      // /user/ link never entered this branch at all and a /profile/ one
+      // entered it and came out with no username.
+      final isProfilePath =
+          uri.pathSegments.length == 2 &&
+          (uri.pathSegments[0] == 'profile' || uri.pathSegments[0] == 'user');
+
+      if (params.containsKey('dl-profile') || isProfilePath) {
+        var uriUsername = isProfilePath ? uri.pathSegments[1] : null;
         uriUsername = uriUsername?.split('&').first;
         final profileId = params['dl-profile'] ?? uriUsername;
         debugPrint('🔗 [DeepLink] Profile ID: $profileId');

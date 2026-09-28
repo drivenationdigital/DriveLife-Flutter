@@ -328,9 +328,26 @@ class _MediaScreenState extends State<MediaScreen>
       ];
     }
 
+    final groups = _galleries.groups;
+    final standalone = _galleries.standalone;
+
     return [
+      if (groups.isNotEmpty) ...[
+        const _SectionHeader(title: 'Events & venues'),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(_hPadding, 0, _hPadding, 12),
+          child: Text(
+            'Every photo from the same meet in one place — galleries and '
+            'posts together.',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          ),
+        ),
+        _GalleryRow(galleries: groups, onTap: _openGallery),
+        const SizedBox(height: 28),
+      ],
+
       _SectionHeader(
-        title: 'Galleries',
+        title: groups.isEmpty ? 'Galleries' : 'Recent galleries',
         actionLabel: 'See all',
         // Every gallery, newest first, with filters. This used to jump to the
         // Events tab — a different thing entirely, and no way to browse
@@ -353,7 +370,7 @@ class _MediaScreenState extends State<MediaScreen>
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
           ),
         ),
-      _GalleryRow(galleries: _galleries.data, onTap: _openGallery),
+      _GalleryRow(galleries: standalone, onTap: _openGallery),
       const SizedBox(height: 28),
     ];
   }

@@ -26,6 +26,9 @@ class UploadPostData {
   final Map<String, dynamic>? association;
   final String? newsContent; // Add newsId field
 
+  /// {question, options: [..]}, or null for the usual post with no poll.
+  final Map<String, dynamic>? poll;
+
   UploadPostData({
     required this.id,
     required this.mediaFiles,
@@ -42,6 +45,7 @@ class UploadPostData {
     this.location,
     this.association,
     this.newsContent,
+    this.poll,
   });
 }
 
@@ -344,6 +348,7 @@ class UploadPostProvider with ChangeNotifier {
         mentionedUsers: data.mentionedUsers,
         mentionedHashtags: data.mentionedHashtags,
         newsContent: data.newsContent, // Pass news content if available
+        poll: data.poll,
       );
 
       // Add tags if any

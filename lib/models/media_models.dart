@@ -187,6 +187,13 @@ class EventGallery {
   /// an event with nothing uploaded — neither has an owner to credit.
   final String ownerUsername;
 
+  /// Everything shot at one event, venue or place, rather than one upload.
+  ///
+  /// A group has no gallery id — it is opened by its entity, which is what
+  /// gives the merged view. False on an older API build, where every card was
+  /// a single gallery.
+  final bool isGroup;
+
   const EventGallery({
     this.galleryId,
     required this.eventId,
@@ -199,6 +206,7 @@ class EventGallery {
     this.blogId,
     this.entityType = 'event',
     this.ownerUsername = '',
+    this.isGroup = false,
   });
 
   bool get isVenue => entityType == 'venue';
@@ -237,6 +245,7 @@ class EventGallery {
     // Older API builds send no entity_type; those rows are all events.
     entityType: _str(json['entity_type']) ?? 'event',
     ownerUsername: _str(json['owner_username']) ?? '',
+    isGroup: json['group'] == true,
   );
 }
 
@@ -252,6 +261,15 @@ class EventGalleriesResponse {
   /// The row is padded with upcoming events that have nothing uploaded yet, so
   /// the hint explaining the empty cards is worth showing.
   bool get hasEmptyGalleries => data.any((g) => g.photoCount == 0);
+
+  /// Everything shot at an event, venue or place — the top section.
+  List<EventGallery> get groups =>
+      data.where((g) => g.isGroup).toList(growable: false);
+
+  /// Single galleries that belong to no entity, plus the padded suggestion
+  /// cards. The section underneath.
+  List<EventGallery> get standalone =>
+      data.where((g) => !g.isGroup).toList(growable: false);
 
   factory EventGalleriesResponse.fromJson(Map<String, dynamic> json) =>
       EventGalleriesResponse(

@@ -103,6 +103,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   // Tagged location
   String? _taggedLocationName;
+
+  /// {question, options: [..]} when a poll has been attached, else null.
+  ///
+  /// Null is the whole of "this post has no poll": nothing is sent, nothing
+  /// is written, and the post is exactly what it was before polls existed.
+  Map<String, dynamic>? _poll;
   double? _taggedLat;
   double? _taggedLng;
 
@@ -751,6 +757,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               if (_taggedLng != null) 'lng': _taggedLng,
             }
           : null,
+      poll: _poll,
       linkType: _linkType,
       linkUrl: _linkUrlController.text.trim().isNotEmpty
           ? _linkUrlController.text.trim()
@@ -955,6 +962,28 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 
+  /// Attaches, edits or removes the post's poll.
+  ///
+  /// The sheet pops null when it was dismissed without deciding anything, an
+  /// empty map to mean "take the poll off", and the poll itself otherwise —
+  /// so backing out of an edit cannot silently delete what was there.
+  Future<void> _openPollSheet() async {
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) => _PollSheet(initial: _poll),
+    );
+
+    if (result == null || !mounted) return;
+
+    setState(() => _poll = result.isEmpty ? null : result);
+  }
+
   Widget _buildContextTagsRow() {
     final chips = <_TagChipData>[];
 
@@ -970,6 +999,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             _taggedLng = null;
             _locationController.clear();
           }),
+        ),
+      );
+    }
+
+    // Poll
+    if (_poll != null) {
+      final question = '${_poll!['question'] ?? ''}';
+
+      chips.add(
+        _TagChipData(
+          icon: Icons.poll_outlined,
+          label: question.isEmpty ? 'Poll' : question,
+          onRemove: () => setState(() => _poll = null),
         ),
       );
     }
@@ -1093,6 +1135,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               // two buttons back.
 
               // ],
+              _ToolButton(
+                icon: Icons.poll_outlined,
+                label: 'Poll',
+                onTap: _openPollSheet,
+              ),
               _ToolButton(
                 icon: Icons.link,
                 label: 'Link',
@@ -2812,6 +2859,278 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Writing a poll: a question, two to four answers, and how long it runs.
+///
+/// Four answers is the ceiling because the poll is answered inside the
+/// comments sheet, where a fifth bar starts pushing the comments themselves
+/// off the screen — and because a vote cannot be changed, so a long list is a
+/// lot to ask someone to get right first time.
+class _PollSheet extends StatefulWidget {
+  final Map<String, dynamic>? initial;
+
+  const _PollSheet({this.initial});
+
+  @override
+  State<_PollSheet> createState() => _PollSheetState();
+}
+
+class _PollSheetState extends State<_PollSheet> {
+  static const int _minOptions = 2;
+  static const int _maxOptions = 4;
+  static const Color _gold = Color(0xFFAE9159);
+
+  /// How long the poll runs. A week unless told otherwise.
+  static const List<({int days, String label})> _durations = [
+    (days: 1, label: '1 day'),
+    (days: 3, label: '3 days'),
+    (days: 7, label: '1 week'),
+    (days: 14, label: '2 weeks'),
+    (days: 30, label: '1 month'),
+  ];
+
+  late final TextEditingController _question = TextEditingController(
+    text: '${widget.initial?['question'] ?? ''}',
+  );
+
+  late final List<TextEditingController> _options = _initialOptions();
+
+  late int _days =
+      int.tryParse('${widget.initial?['duration_days'] ?? ''}') ?? 7;
+
+  List<TextEditingController> _initialOptions() {
+    final existing = (widget.initial?['options'] as List? ?? const [])
+        .map((e) => TextEditingController(text: '$e'))
+        .toList();
+
+    while (existing.length < _minOptions) {
+      existing.add(TextEditingController());
+    }
+
+    return existing;
+  }
+
+  @override
+  void dispose() {
+    _question.dispose();
+    for (final option in _options) {
+      option.dispose();
+    }
+    super.dispose();
+  }
+
+  /// A poll needs a question and two answers people can actually tell apart.
+  bool get _isValid {
+    if (_question.text.trim().isEmpty) return false;
+
+    final filled = _options
+        .map((c) => c.text.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+
+    return filled.length >= _minOptions;
+  }
+
+  void _save() {
+    final options = _options
+        .map((c) => c.text.trim())
+        .where((t) => t.isNotEmpty)
+        .take(_maxOptions)
+        .toList();
+
+    Navigator.pop(context, {
+      'question': _question.text.trim(),
+      'options': options,
+      'duration_days': _days,
+    });
+  }
+
+  // The app's field look: 12px corners, grey at rest, gold when focused.
+  OutlineInputBorder _border(Color color, {double width = 1}) =>
+      OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: color, width: width),
+      );
+
+  InputDecoration _dec(String label, {String? hint}) => InputDecoration(
+    labelText: label,
+    hintText: hint,
+    counterText: '',
+    isDense: true,
+    filled: true,
+    fillColor: Colors.grey.shade50,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+    labelStyle: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+    floatingLabelStyle: const TextStyle(
+      color: _gold,
+      fontWeight: FontWeight.w600,
+    ),
+    hintStyle: TextStyle(color: Colors.grey.shade400),
+    border: _border(Colors.grey.shade300),
+    enabledBorder: _border(Colors.grey.shade300),
+    focusedBorder: _border(_gold, width: 1.6),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Add a poll',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                if (widget.initial != null)
+                  TextButton(
+                    // An empty map, which the composer reads as "remove".
+                    onPressed: () => Navigator.pop(context, <String, dynamic>{}),
+                    child: const Text(
+                      'Remove',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'People answer it in the comments. Votes are final, so nobody '
+              'can change their mind once they have picked.',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 18),
+
+            TextField(
+              controller: _question,
+              maxLength: 255,
+              cursorColor: _gold,
+              textCapitalization: TextCapitalization.sentences,
+              onChanged: (_) => setState(() {}),
+              decoration: _dec(
+                'Question',
+                hint: 'Which one would you daily?',
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            for (var i = 0; i < _options.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _options[i],
+                        maxLength: 100,
+                        cursorColor: _gold,
+                        textCapitalization: TextCapitalization.sentences,
+                        onChanged: (_) => setState(() {}),
+                        decoration: _dec('Option ${i + 1}'),
+                      ),
+                    ),
+                    if (_options.length > _minOptions)
+                      IconButton(
+                        icon: Icon(
+                          Icons.close,
+                          size: 20,
+                          color: Colors.grey.shade600,
+                        ),
+                        tooltip: 'Remove option',
+                        onPressed: () => setState(() {
+                          _options.removeAt(i).dispose();
+                        }),
+                      ),
+                  ],
+                ),
+              ),
+
+            if (_options.length < _maxOptions)
+              TextButton.icon(
+                onPressed: () =>
+                    setState(() => _options.add(TextEditingController())),
+                icon: const Icon(Icons.add, size: 18, color: _gold),
+                label: const Text(
+                  'Add option',
+                  style: TextStyle(color: _gold, fontWeight: FontWeight.w600),
+                ),
+                style: TextButton.styleFrom(padding: EdgeInsets.zero),
+              ),
+
+            const SizedBox(height: 14),
+            Text(
+              'Voting ends after',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final duration in _durations)
+                  ChoiceChip(
+                    label: Text(duration.label),
+                    selected: _days == duration.days,
+                    onSelected: (_) => setState(() => _days = duration.days),
+                    showCheckmark: false,
+                    labelStyle: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _days == duration.days ? Colors.white : Colors.black87,
+                    ),
+                    selectedColor: _gold,
+                    backgroundColor: Colors.grey.shade100,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                      side: BorderSide(
+                        color: _days == duration.days
+                            ? _gold
+                            : Colors.grey.shade300,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: theme.primaryColor,
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: _isValid ? _save : null,
+                child: const Text(
+                  'Save poll',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

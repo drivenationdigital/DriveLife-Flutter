@@ -751,6 +751,14 @@ class _PostCardState extends State<PostCard>
                 ),
               ),
             ),
+
+            // A poll on this post, directly under the likes. Without it the
+            // only sign that a post asked you something was opening the
+            // comments on the off-chance.
+            _PollPrompt(
+              summary: widget.post['poll_summary'],
+              onTap: () => _openComments(context),
+            ),
           ]
           // ── REGULAR POST LAYOUT (unchanged) ──────────────────────
           else ...[
@@ -831,6 +839,14 @@ class _PostCardState extends State<PostCard>
                   ),
                 ),
               ),
+            ),
+
+            // A poll on this post, directly under the likes. Without it the
+            // only sign that a post asked you something was opening the
+            // comments on the off-chance.
+            _PollPrompt(
+              summary: widget.post['poll_summary'],
+              onTap: () => _openComments(context),
             ),
             // ✅ Caption - Wrapped in RepaintBoundary
             RepaintBoundary(
@@ -2537,6 +2553,96 @@ class _MediaTags extends StatelessWidget {
                   color: Colors.white,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// "This post has a poll" — the line under the likes.
+///
+/// Renders nothing at all when the post has no poll, which is every post that
+/// existed before polls did. The summary comes from the feed (see
+/// dl_poll_attach); tapping opens the comments, which is where the poll is
+/// actually answered.
+class _PollPrompt extends StatelessWidget {
+  static const Color _gold = Color(0xFFAE9159);
+
+  /// The `poll_summary` from the post, straight off the API. Dynamic because
+  /// the card works in untyped post maps throughout.
+  final dynamic summary;
+  final VoidCallback onTap;
+
+  const _PollPrompt({required this.summary, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    if (summary is! Map) return const SizedBox.shrink();
+
+    final map = Map<String, dynamic>.from(summary as Map);
+    final question = '${map['question'] ?? ''}'.trim();
+    final voted = map['has_voted'] == true;
+    final closed = map['is_closed'] == true;
+    final votes = int.tryParse('${map['total_votes']}') ?? 0;
+
+    // A poll with no question is not a poll worth announcing.
+    if (question.isEmpty) return const SizedBox.shrink();
+
+    // Closed comes first: once voting is over, whether this reader answered
+    // is no longer the useful thing to say about it.
+    final label = closed
+        ? 'See result'
+        : voted
+        ? 'You voted · ${votes == 1 ? '1 vote' : '$votes votes'}'
+        : 'Tap to vote';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            children: [
+              Icon(
+                closed
+                    ? Icons.how_to_vote_outlined
+                    : voted
+                    ? Icons.check_circle_outline
+                    : Icons.poll_outlined,
+                size: 15,
+                color: (voted || closed) ? Colors.grey.shade600 : _gold,
+              ),
+              const SizedBox(width: 6),
+              // The question itself, because "there is a poll" is not a
+              // reason to open anything — the question is.
+              Expanded(
+                child: Text(
+                  question,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: (voted || closed)
+                      ? Colors.grey.shade700
+                      : Colors.black,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: (voted || closed) ? Colors.grey.shade600 : _gold,
                 ),
               ),
             ],

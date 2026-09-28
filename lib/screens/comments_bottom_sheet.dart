@@ -1,3 +1,5 @@
+import 'package:drivelife/api/posts_api.dart';
+import 'package:drivelife/models/post_poll.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -47,6 +49,11 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
 
   List<dynamic> comments = [];
   bool loading = true;
+
+  /// The post's poll, if it has one. Null for almost every post, and the
+  /// sheet then renders exactly what it rendered before polls existed.
+  PostPoll? _poll;
+  bool _voting = false;
   String? _replyingToUsername;
   String? _replyingToCommentId;
 
@@ -70,6 +77,53 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
     super.initState();
     _loadComments();
     _getCurrentUserId();
+    _loadPoll();
+  }
+
+  /// Fetched alongside the comments rather than carried on the post, so the
+  /// feed is untouched by any of this. A failure leaves _poll null, which is
+  /// the same as a post without one — a poll that will not load is not worth
+  /// breaking the comments over.
+  Future<void> _loadPoll() async {
+    final postId = int.tryParse(widget.postId) ?? 0;
+    if (postId <= 0) return;
+
+    final poll = await PostsAPI.fetchPostPoll(postId);
+    if (!mounted || poll == null) return;
+
+    setState(() => _poll = poll);
+  }
+
+  /// Records a vote and redraws from the server's answer.
+  ///
+  /// A vote cannot be changed, so the server's copy is what shows — if one was
+  /// already cast, this reveals that one rather than pretending the tap
+  /// counted.
+  Future<void> _vote(int optionId) async {
+    if (_voting || _poll == null || _poll!.hasVoted) return;
+
+    setState(() => _voting = true);
+
+    try {
+      final poll = await PostsAPI.votePostPoll(
+        postId: _poll!.postId,
+        optionId: optionId,
+      );
+
+      if (!mounted) return;
+      setState(() => _poll = poll);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$e'.replaceFirst('Exception: ', '')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _voting = false);
+    }
   }
 
   @override
@@ -365,6 +419,17 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                 ],
               ),
             ),
+
+            // The poll, above the comments and always in view: it is the
+            // thing the author asked, and scrolling it away with the comments
+            // would bury the question under the answers to it.
+            if (_poll != null)
+              _PollCard(
+                poll: _poll!,
+                busy: _voting,
+                primaryColor: theme.primaryColor,
+                onVote: _vote,
+              ),
 
             // Comments list
             Expanded(
@@ -1113,6 +1178,469 @@ class _TenorGifPickerState extends State<_TenorGifPicker> {
           ),
         );
       },
+    );
+  }
+}
+
+/// A post's poll, as it appears in the comments sheet.
+///
+/// Three states, and which shows is decided by the poll rather than by taps:
+///
+///  * open and unanswered — the options are buttons;
+///  * open and answered — results, because a vote is final and there is
+///    nothing left to press;
+///  * closed — results for everyone, answered or not, with the winner called.
+class _PollCard extends StatelessWidget {
+  final PostPoll poll;
+  final bool busy;
+  final Color primaryColor;
+  final ValueChanged<int> onVote;
+
+  const _PollCard({
+    required this.poll,
+    required this.busy,
+    required this.primaryColor,
+    required this.onVote,
+  });
+
+  /// What the line under the options says.
+  String _footer() {
+    final votes = poll.totalVotes;
+    final plural = votes == 1 ? 'vote' : 'votes';
+
+    if (poll.isClosed) {
+      final winners = poll.winners;
+
+      if (winners.isEmpty) return 'Poll closed · nobody voted';
+
+      if (winners.length > 1) {
+        return 'Tied · $votes $plural';
+      }
+
+      return 'Winner: ${winners.first.label} · $votes $plural';
+    }
+
+    final left = poll.timeLeftLabel;
+    final base = votes == 0
+        ? 'Be the first to vote'
+        : '$votes $plural so far';
+
+    return left == null ? base : '$base · $left';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Closed shows everyone the result, whether they answered or not: there
+    // is nothing left to protect once voting is over.
+    final showResults = poll.isClosed || poll.hasVoted;
+    final winners = poll.isClosed ? poll.winners : const <PollOption>[];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                poll.isClosed ? Icons.how_to_vote_outlined : Icons.poll_outlined,
+                size: 16,
+                color: poll.isClosed ? Colors.grey.shade600 : primaryColor,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                poll.isClosed ? 'POLL CLOSED' : 'POLL',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.4,
+                  color: poll.isClosed ? Colors.grey.shade600 : primaryColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            poll.question,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+
+          for (final option in poll.options)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: showResults
+                  ? _Result(
+                      option: option,
+                      percent: poll.percentFor(option),
+                      mine: option.id == poll.myOptionId,
+                      won: winners.any((w) => w.id == option.id),
+                      primaryColor: primaryColor,
+                    )
+                  : _Choice(
+                      label: option.label,
+                      busy: busy,
+                      onTap: () => onVote(option.id),
+                    ),
+            ),
+
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _footer(),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+              ),
+
+              // Only the author, and only once somebody has voted — an empty
+              // list is not worth a button. The endpoint checks again.
+              if (poll.isAuthor && poll.totalVotes > 0)
+                GestureDetector(
+                  onTap: () => showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.white,
+                    useSafeArea: true,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(18),
+                      ),
+                    ),
+                    builder: (_) => _PollVotersSheet(
+                      poll: poll,
+                      primaryColor: primaryColor,
+                    ),
+                  ),
+                  child: Text(
+                    'See who voted',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: primaryColor,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One option, before voting.
+class _Choice extends StatelessWidget {
+  final String label;
+  final bool busy;
+  final VoidCallback onTap;
+
+  const _Choice({
+    required this.label,
+    required this.busy,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: busy ? null : onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+}
+
+/// One option, once the results are showing: a bar behind the label.
+class _Result extends StatelessWidget {
+  final PollOption option;
+  final int percent;
+  final bool mine;
+
+  /// Took the most votes in a closed poll. More than one option can win.
+  final bool won;
+  final Color primaryColor;
+
+  const _Result({
+    required this.option,
+    required this.percent,
+    required this.mine,
+    required this.won,
+    required this.primaryColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // The winner is filled more strongly than a bar you merely picked: after
+    // a poll closes the result is the point, not who you were.
+    final fill = won
+        ? primaryColor.withValues(alpha: 0.38)
+        : mine
+        ? primaryColor.withValues(alpha: 0.22)
+        : Colors.grey.shade300;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Stack(
+        children: [
+          Container(height: 44, width: double.infinity, color: Colors.white),
+          LayoutBuilder(
+            builder: (context, constraints) => Container(
+              height: 44,
+              width: constraints.maxWidth * (percent / 100),
+              color: fill,
+            ),
+          ),
+          SizedBox(
+            height: 44,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  if (won) ...[
+                    const Icon(Icons.emoji_events, size: 15),
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    child: Text(
+                      option.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: (mine || won)
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  if (mine) ...[
+                    Icon(Icons.check_circle, size: 15, color: primaryColor),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(
+                    '$percent%',
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Who voted for what — the author's view only.
+///
+/// People answering a poll can see that the person who asked will know what
+/// they picked; nobody else gets this, and the endpoint refuses anyone else
+/// regardless of what the app offers.
+class _PollVotersSheet extends StatefulWidget {
+  final PostPoll poll;
+  final Color primaryColor;
+
+  const _PollVotersSheet({required this.poll, required this.primaryColor});
+
+  @override
+  State<_PollVotersSheet> createState() => _PollVotersSheetState();
+}
+
+class _PollVotersSheetState extends State<_PollVotersSheet> {
+  List<PollVoter>? _voters;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _error = null);
+
+    try {
+      final voters = await PostsAPI.fetchPollVoters(widget.poll.postId);
+      if (!mounted) return;
+      setState(() => _voters = voters);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.7,
+      maxChildSize: 0.95,
+      builder: (context, controller) => Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 5,
+            decoration: BoxDecoration(
+              color: Colors.grey[400],
+              borderRadius: BorderRadius.circular(2.5),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Who voted',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+
+          Expanded(child: _buildBody(controller)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody(ScrollController controller) {
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton(onPressed: _load, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final voters = _voters;
+
+    if (voters == null) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+
+    return ListView(
+      controller: controller,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        for (final option in widget.poll.options) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    option.label,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${option.votes}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: widget.primaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          ...(() {
+            final picked =
+                voters.where((v) => v.optionId == option.id).toList();
+
+            if (picked.isEmpty) {
+              return [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Text(
+                    'No votes yet',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                ),
+              ];
+            }
+
+            return picked.map(
+              (voter) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage: voter.avatar != null
+                          ? NetworkImage(voter.avatar!)
+                          : null,
+                      child: voter.avatar == null
+                          ? Text(
+                              voter.displayName.isEmpty
+                                  ? '?'
+                                  : voter.displayName
+                                        .substring(0, 1)
+                                        .toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        voter.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          })(),
+
+          const Divider(height: 18),
+        ],
+      ],
     );
   }
 }

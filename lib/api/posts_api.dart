@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:drivelife/models/post_poll.dart';
 import 'package:drivelife/models/tagged_entity.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/services/app_error_logger.dart';
@@ -168,6 +169,108 @@ class PostsAPI {
     }
 
     return [];
+  }
+
+  /// The poll on a post, or null when it has none.
+  ///
+  /// Asked for by the comments sheet rather than carried on the post: the feed
+  /// query is left alone, and a post with no poll costs one small call that
+  /// answers null.
+  static Future<PostPoll?> fetchPostPoll(int postId) async {
+    try {
+      final token = await _authService.getToken();
+
+      final response = await http
+          .get(
+            Uri.parse(
+              '$_baseUrl/wp-json/app/v2/post-poll',
+            ).replace(queryParameters: {'post_id': '$postId'}),
+            headers: {
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 12));
+
+      if (response.statusCode != 200) return null;
+
+      final body = json.decode(response.body);
+      final poll = body is Map ? body['poll'] : null;
+
+      if (poll is! Map) return null;
+
+      return PostPoll.fromJson(Map<String, dynamic>.from(poll));
+    } catch (_) {
+      // A poll that will not load is not worth breaking the comments over.
+      return null;
+    }
+  }
+
+  /// Votes, and returns the poll as the server settled it.
+  ///
+  /// The server's copy rather than a guess: a vote cannot be changed, so if
+  /// one was already cast this comes back showing that one instead of
+  /// pretending the tap counted.
+  static Future<PostPoll> votePostPoll({
+    required int postId,
+    required int optionId,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('You need to be signed in to vote.');
+
+    final response = await http
+        .post(
+          Uri.parse('$_baseUrl/wp-json/app/v2/post-poll/vote'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: json.encode({'post_id': postId, 'option_id': optionId}),
+        )
+        .timeout(const Duration(seconds: 15));
+
+    final body = json.decode(response.body);
+
+    if (response.statusCode != 200 || body is! Map || body['poll'] is! Map) {
+      final message = body is Map && body['message'] != null
+          ? '${body['message']}'
+          : 'Could not record your vote. Try again in a moment.';
+      throw Exception(message);
+    }
+
+    return PostPoll.fromJson(Map<String, dynamic>.from(body['poll']));
+  }
+
+  /// Who voted for what. The post's author only — the server refuses
+  /// anybody else, and the app only offers it when the poll says is_author.
+  static Future<List<PollVoter>> fetchPollVoters(int postId) async {
+    final token = await _authService.getToken();
+    if (token == null) return const [];
+
+    final response = await http
+        .get(
+          Uri.parse(
+            '$_baseUrl/wp-json/app/v2/post-poll/voters',
+          ).replace(queryParameters: {'post_id': '$postId'}),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(seconds: 15));
+
+    if (response.statusCode != 200) {
+      final body = json.decode(response.body);
+      throw Exception(
+        body is Map && body['message'] != null
+            ? '${body['message']}'
+            : 'Could not load the votes.',
+      );
+    }
+
+    final body = json.decode(response.body);
+    final list = body is Map ? body['voters'] as List? : null;
+
+    return (list ?? const [])
+        .whereType<Map>()
+        .map((e) => PollVoter.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
   /// Whether a typed registration may be tagged at all.
@@ -597,6 +700,8 @@ class PostsAPI {
     List<Map<String, dynamic>>? mentionedUsers,
     List<Map<String, dynamic>>? mentionedHashtags,
     String? newsContent, // Add news content parameter
+    /// {question, options: [..]} when the composer attached a poll.
+    Map<String, dynamic>? poll,
   }) async {
     try {
       final body = {
@@ -631,6 +736,12 @@ class PostsAPI {
 
       if (mentionedHashtags != null && mentionedHashtags.isNotEmpty) {
         body['mentioned_hashtags'] = json.encode(mentionedHashtags);
+      }
+
+      // Only sent when there is one, so a post without a poll is byte for
+      // byte the request it was before.
+      if (poll != null) {
+        body['poll'] = json.encode(poll);
       }
 
       final response = await http.post(
