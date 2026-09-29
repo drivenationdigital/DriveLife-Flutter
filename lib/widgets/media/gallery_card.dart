@@ -103,7 +103,7 @@ class GalleryCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    '${countryFlag(country)} ${country.toUpperCase()}',
+                    '${countryFlag(country)} ${countryTag(country)}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 11,

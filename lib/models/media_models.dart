@@ -243,6 +243,17 @@ class EventGallery {
   /// photos were taken when there is no owner to name.
   String get ownerLabel => ownerUsername.isEmpty ? subtitle : '@$ownerUsername';
 
+  /// "Event Gallery", "Venue Gallery", "Location Gallery".
+  ///
+  /// What the card IS, rather than the address underneath it. A group's title
+  /// already names the event; repeating its address below said nothing about
+  /// why several people's photos are under one cover.
+  String get kindLabel => switch (entityType) {
+    'venue' => 'Venue Gallery',
+    'location' => 'Location Gallery',
+    _ => 'Event Gallery',
+  };
+
   /// A real gallery, as opposed to an upcoming-event placeholder.
   bool get isGallery => galleryId != null && galleryId! > 0;
 

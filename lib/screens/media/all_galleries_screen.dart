@@ -5,10 +5,13 @@ import 'package:drivelife/screens/media/gallery_view_screen.dart';
 import 'package:drivelife/widgets/media/gallery_card.dart';
 import 'package:drivelife/utils/country.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 /// What a gallery is linked to, as a filter.
-enum GalleryFilter { all, event, venue, location, none }
+///
+/// No "standalone": this page lists merged groups, and a group is by
+/// definition the photos gathered around an event, a venue or a place. A
+/// gallery attached to none of them is on its owner's profile, not here.
+enum GalleryFilter { all, event, venue, location }
 
 extension on GalleryFilter {
   /// Wire value for `link_type`. Null for [GalleryFilter.all], which sends no
@@ -18,7 +21,6 @@ extension on GalleryFilter {
     GalleryFilter.event => 'event',
     GalleryFilter.venue => 'venue',
     GalleryFilter.location => 'location',
-    GalleryFilter.none => 'none',
   };
 
   String get label => switch (this) {
@@ -26,7 +28,6 @@ extension on GalleryFilter {
     GalleryFilter.event => 'Events',
     GalleryFilter.venue => 'Venues',
     GalleryFilter.location => 'Locations',
-    GalleryFilter.none => 'Standalone',
   };
 }
 
@@ -57,7 +58,6 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
   final List<Map<String, dynamic>> _galleries = [];
 
   GalleryFilter _filter = GalleryFilter.all;
-  DateTimeRange? _dates;
 
   /// Two-letter country, or null for everywhere.
   String? _country;
@@ -167,8 +167,6 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
       linkType: _filter.wire,
       search: _searchController.text,
       country: _country,
-      from: _dates?.start,
-      to: _dates?.end,
       page: page,
       perPage: _perPage,
     );
@@ -182,37 +180,6 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
   void _setFilter(GalleryFilter filter) {
     if (filter == _filter) return;
     setState(() => _filter = filter);
-    _load();
-  }
-
-  Future<void> _pickDates() async {
-    final now = DateTime.now();
-
-    final picked = await showDateRangePicker(
-      context: context,
-      // Galleries cannot predate the app; the upper bound is today because
-      // this filters upload dates, which cannot be in the future.
-      firstDate: DateTime(2020),
-      lastDate: now,
-      initialDateRange: _dates,
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: Theme.of(
-            context,
-          ).colorScheme.copyWith(primary: _gold, onPrimary: Colors.white),
-        ),
-        child: child!,
-      ),
-    );
-
-    if (picked == null || !mounted) return;
-
-    setState(() => _dates = picked);
-    _load();
-  }
-
-  void _clearDates() {
-    setState(() => _dates = null);
     _load();
   }
 
@@ -301,17 +268,6 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
     if (changed && mounted) await _load();
   }
 
-  String get _dateLabel {
-    final dates = _dates;
-    if (dates == null) return 'Any date';
-
-    final format = DateFormat('d MMM');
-    final sameYear = dates.start.year == dates.end.year;
-    final year = sameYear ? '' : ' ${dates.end.year}';
-
-    return '${format.format(dates.start)} – ${format.format(dates.end)}$year';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -383,22 +339,13 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
           ),
           const SizedBox(height: 10),
 
-          // Horizontal, not wrapped: five chips plus a date would take two
-          // rows on a narrow phone and push the galleries off screen.
+          // Horizontal, not wrapped: the chips would take two rows on a
+          // narrow phone and push the galleries off screen.
           SizedBox(
             height: 34,
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
-                _FilterChip(
-                  label: _dateLabel,
-                  icon: Icons.calendar_today_outlined,
-                  selected: _dates != null,
-                  onTap: _pickDates,
-                  onClear: _dates == null ? null : _clearDates,
-                ),
-                const SizedBox(width: 8),
-
                 _FilterChip(
                   label: _countryLabel,
                   icon: Icons.public,
@@ -453,7 +400,7 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
     if (_galleries.isEmpty) {
       final filtered =
           _filter != GalleryFilter.all ||
-          _dates != null ||
+          _country != null ||
           _searchController.text.trim().isNotEmpty;
 
       return Center(
@@ -519,17 +466,12 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
           final gallery = _galleries[index];
           final owner = gallery['owner'];
 
-          // A group has no owner: it is an event's photos, from everybody who
-          // was there. The handle line becomes how many people that is.
+          // A group has no owner: it is an event's photos, from everybody
+          // who was there. The handle line becomes how many photos that is.
           final photos = int.tryParse('${gallery['photo_count']}') ?? 0;
-          final people = int.tryParse('${gallery['contributor_count']}') ?? 0;
 
           final subtitle = owner == null
-              ? [
-                  '$photos ${photos == 1 ? 'photo' : 'photos'}',
-                  if (people > 0)
-                    '$people ${people == 1 ? 'person' : 'people'}',
-                ].join(' · ')
+              ? '$photos ${photos == 1 ? 'photo' : 'photos'}'
               : galleryOwnerLabel(owner);
 
           return GalleryCard(

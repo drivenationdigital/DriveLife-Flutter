@@ -881,10 +881,10 @@ class _GalleryCard extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            // Who made it. The event underneath used to go here, but the title
-            // above already names the gallery and the card said nothing about
-            // whose it was.
-            gallery.ownerLabel,
+            // A group says what it is; a single gallery says whose it is. The
+            // address used to go here, which the title above had usually
+            // named already.
+            gallery.isGroup ? gallery.kindLabel : gallery.ownerLabel,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600),

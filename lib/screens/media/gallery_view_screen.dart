@@ -151,6 +151,12 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// an event or venue.
   String? _placeName;
 
+  /// The event or venue these photos hang off, when there is one.
+  ///
+  /// The page is named after it but had no route to it — a merged view that
+  /// says "Petrolhead Live" should be a way of getting to Petrolhead Live.
+  Map<String, dynamic>? _entityLink;
+
   /// Tags on the whole gallery. Per-photo tags are not shown here — they
   /// belong to their photo, not to the gallery as a whole.
   List<GalleryTag> _galleryTags = const [];
@@ -242,6 +248,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       _canCurate = response['is_event_owner'] == true;
       _entityImage = _firstLinkImage(response);
       _placeName = _firstPlaceName(response);
+      _entityLink = _firstEntityLink(response);
       _unscannedCount = int.tryParse('${response['unscanned']}') ?? 0;
       _loading = false;
 
@@ -295,6 +302,26 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   ///
   /// A place is the only kind of link with no page to open, so it is shown as
   /// plain text rather than something tappable.
+  /// The first linked event or venue, as something to open.
+  ///
+  /// Places are left to [_firstPlaceName]: a Google place is an address, not a
+  /// listing, and there is no page in the app to send anyone to.
+  Map<String, dynamic>? _firstEntityLink(Map<String, dynamic> response) {
+    final links = response['links'] as List<dynamic>? ?? const [];
+
+    for (final link in links.whereType<Map>()) {
+      final type = '${link['entity_type']}';
+      if (type != 'event' && type != 'venue') continue;
+
+      if ((int.tryParse('${link['entity_id'] ?? ''}') ?? 0) <= 0) continue;
+      if ('${link['title'] ?? ''}'.isEmpty) continue;
+
+      return Map<String, dynamic>.from(link);
+    }
+
+    return null;
+  }
+
   String? _firstPlaceName(Map<String, dynamic> response) {
     final links = response['links'] as List<dynamic>? ?? const [];
 
@@ -528,13 +555,27 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// than an error over a gallery that displays perfectly well.
   Future<void> _loadTags() async {
     final galleryId = widget.galleryId;
-    if (galleryId == null || galleryId <= 0) return;
+
+    // A merged group has no gallery id of its own. Its tags are still the
+    // tags on the photos it is showing, so it asks for them by the event,
+    // venue or place it gathers — leaving them out emptied the row on every
+    // merged view, which is most of them now.
+    final isGroup = galleryId == null || galleryId <= 0;
+
+    final entityId = int.tryParse(widget.entityId) ?? 0;
+    final placeId = widget.placeId ?? '';
+
+    if (isGroup && entityId <= 0 && placeId.isEmpty) return;
 
     try {
       // Pending rows come back only for the owner, and only they can act on
-      // this — for anyone else the request is none of their business.
+      // this — for anyone else the request is none of their business. A group
+      // belongs to nobody, so the server ignores both extras there.
       final tags = await EventsAPI.fetchGalleryTags(
-        galleryId: galleryId,
+        galleryId: isGroup ? null : galleryId,
+        entityType: isGroup ? widget.entityType : null,
+        entityId: isGroup ? widget.entityId : null,
+        placeId: isGroup ? widget.placeId : null,
         includePending: _canCurate,
         // Plates matching no garage come back for the owner alone. They are
         // what the strip counts and what the owner removes; to a visitor they
@@ -1372,6 +1413,9 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       child: CustomScrollView(
         slivers: [
           // Directly under the title, before anything else on the page.
+          if (_entityLink != null)
+            SliverToBoxAdapter(child: _buildEntityRow(_entityLink!)),
+
           if (_placeName != null)
             SliverToBoxAdapter(child: _buildPlaceRow(_placeName!)),
 
@@ -1506,6 +1550,71 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// Above the cover rather than in the header: the header already carries the
   /// gallery name and the linked entity, and a long place name would push
   /// either of those out.
+  /// The event or venue behind these photos, as a way in.
+  Widget _buildEntityRow(Map<String, dynamic> link) {
+    final isVenue = '${link['entity_type']}' == 'venue';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _openEntity(link),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+            child: Row(
+              children: [
+                Icon(
+                  isVenue ? Icons.storefront_outlined : Icons.event_outlined,
+                  size: 16,
+                  color: _gold,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '${link['title']}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      color: _gold,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.chevron_right, size: 18, color: _muted),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openEntity(Map<String, dynamic> link) {
+    final id = '${link['entity_id'] ?? ''}';
+    if (id.isEmpty || id == '0') return;
+
+    if ('${link['entity_type']}' == 'venue') {
+      Navigator.pushNamed(
+        context,
+        AppRoutes.venueDetails,
+        arguments: {'venueId': id},
+      );
+      return;
+    }
+
+    // The screen fetches the rest itself; an id is all it needs to start.
+    Navigator.pushNamed(
+      context,
+      AppRoutes.eventDetail,
+      arguments: {
+        'event': {'id': id},
+      },
+    );
+  }
+
   Widget _buildPlaceRow(String place) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),

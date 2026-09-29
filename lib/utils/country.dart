@@ -118,6 +118,17 @@ String? countryFromAddress(String address) {
   return countryCodeFromName(parts.last);
 }
 
+/// The short form to print beside a flag.
+///
+/// The codes are ISO, and ISO calls the United Kingdom GB. Nobody else does —
+/// a badge reading "GB" over a photo from a Silverstone meet looks like a
+/// mistake, so the badge says UK and the stored value stays GB.
+String countryTag(String code) {
+  final iso = code.trim().toUpperCase();
+
+  return iso == 'GB' ? 'UK' : iso;
+}
+
 /// The country's name, or the code itself when it is not one we name.
 String countryName(String code) {
   final iso = code.trim().toUpperCase();

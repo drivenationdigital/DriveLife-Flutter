@@ -1286,13 +1286,21 @@ class EventsAPI {
     throw Exception(body['message']?.toString() ?? 'Could not rename');
   }
 
-  /// The tags on a gallery.
+  /// The tags on a gallery, or on a merged group.
   ///
   /// [includePending] is for the owner EDITING: saving replaces the whole set,
   /// so an editor that could not see pending requests would delete them just by
   /// saving. Ignored for anyone else.
+  ///
+  /// Pass [galleryId] for one gallery. A merged group has none, so it is asked
+  /// for by the event, venue or place it gathers and comes back with its
+  /// members' tags together — the people in those photos are still in them
+  /// when several uploads are shown under one cover.
   static Future<List<Map<String, dynamic>>> fetchGalleryTags({
-    required int galleryId,
+    int? galleryId,
+    String? entityType,
+    String? entityId,
+    String? placeId,
     int? mediaId,
     bool includePending = false,
     bool includeUnmatched = false,
@@ -1300,15 +1308,32 @@ class EventsAPI {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Not signed in');
 
+    // One or the other, never both: a gallery id wins outright on the server,
+    // so sending an entity alongside it would quietly do nothing.
+    final query = <String, String>{
+      if (mediaId != null) 'media_id': '$mediaId',
+      if (includePending) 'include_pending': '1',
+      if (includeUnmatched) 'include_unmatched': '1',
+    };
+
+    if (galleryId != null && galleryId > 0) {
+      query['gallery_id'] = '$galleryId';
+    } else {
+      if (entityType != null && entityType.isNotEmpty) {
+        query['entity_type'] = entityType;
+      }
+      if (entityId != null && entityId.isNotEmpty) {
+        query['entity_id'] = entityId;
+      }
+      if (placeId != null && placeId.isNotEmpty) {
+        query['place_id'] = placeId;
+      }
+    }
+
     final response = await http.get(
-      Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/galleries/tags').replace(
-        queryParameters: {
-          'gallery_id': '$galleryId',
-          if (mediaId != null) 'media_id': '$mediaId',
-          if (includePending) 'include_pending': '1',
-          if (includeUnmatched) 'include_unmatched': '1',
-        },
-      ),
+      Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/galleries/tags',
+      ).replace(queryParameters: query),
       headers: {'Authorization': 'Bearer $token'},
     );
 
