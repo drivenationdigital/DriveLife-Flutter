@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:drivelife/api/posts_api.dart';
+import 'package:drivelife/utils/date.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/models/tagged_entity.dart';
 import 'package:flutter/services.dart';
@@ -625,6 +626,28 @@ class _SearchResultTile extends StatelessWidget {
     this.onTap,
   });
 
+  bool get _isEvent => entityType == 'events' || entity['type'] == 'event';
+
+  IconData get _fallbackIcon {
+    if (entityType == 'car') return Icons.directions_car;
+    if (_isEvent) return Icons.event;
+    return Icons.person;
+  }
+
+  /// "Sat, 3 Oct 26 · Silverstone Circuit", dropping whichever half is
+  /// missing. Null for anything that is not an event.
+  String? get _eventSubtitle {
+    if (!_isEvent) return null;
+
+    final raw = '${entity['start_date'] ?? ''}'.trim();
+    final date = raw.isEmpty ? '' : DateHelpers.formatEventDate(raw);
+    final place = '${entity['location'] ?? ''}'.trim();
+
+    final parts = [date, place].where((p) => p.isNotEmpty).toList();
+
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final imageUrl = entity['image']?.toString();
@@ -652,18 +675,11 @@ class _SearchResultTile extends StatelessWidget {
                         imageUrl,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Icon(
-                          entityType == 'car'
-                              ? Icons.directions_car
-                              : Icons.person,
+                          _fallbackIcon,
                           color: Colors.grey.shade500,
                         ),
                       )
-                    : Icon(
-                        entityType == 'car'
-                            ? Icons.directions_car
-                            : Icons.person,
-                        color: Colors.grey.shade500,
-                      ),
+                    : Icon(_fallbackIcon, color: Colors.grey.shade500),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -689,6 +705,23 @@ class _SearchResultTile extends StatelessWidget {
                           style: TextStyle(
                             color: Colors.grey.shade600,
                             fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+
+                    // Events repeat: the same meet runs every year, and
+                    // several can share a name on the same weekend. The name
+                    // alone is not enough to pick the right one.
+                    if (_eventSubtitle != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Text(
+                          _eventSubtitle!,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12.5,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

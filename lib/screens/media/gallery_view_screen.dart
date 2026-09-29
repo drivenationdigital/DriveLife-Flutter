@@ -78,6 +78,12 @@ class GalleryViewScreen extends StatefulWidget {
   /// Public URL, for the share sheet.
   final String? shareUrl;
 
+  /// Google's id for a place, when this screen is showing a location group.
+  ///
+  /// A place has no post id, so an event or venue's entityId cannot address
+  /// one — this is what the merged view is looked up by instead.
+  final String? placeId;
+
   /// A photo to open the viewer on once the gallery loads.
   ///
   /// Set by a shared link. The gallery loads underneath first, so closing the
@@ -105,6 +111,7 @@ class GalleryViewScreen extends StatefulWidget {
     this.shareUrl,
     this.initialPhotoId,
     this.onChanged,
+    this.placeId,
   });
 
   @override
@@ -135,6 +142,10 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// has one. Null otherwise — the header then shows the name alone rather
   /// than an empty box.
   String? _entityImage;
+
+  /// How many people contributed to a merged view. Null for one gallery,
+  /// which has an owner instead.
+  int? _contributors;
 
   /// Where the gallery was taken, when it is linked to a place rather than to
   /// an event or venue.
@@ -206,6 +217,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       eventId: widget.entityId,
       page: 1,
       entityType: widget.entityType,
+      placeId: widget.placeId,
     );
 
     if (!mounted) return;
@@ -233,9 +245,15 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       _unscannedCount = int.tryParse('${response['unscanned']}') ?? 0;
       _loading = false;
 
-      // No owner passed in — take it from the cover photo's uploader, which
-      // for a single-person gallery is the person who made it.
-      _owner ??= _ownerFromPhotos();
+      _contributors = int.tryParse('${response['contributors'] ?? ''}');
+
+      // Only for a single gallery. A merged view is everybody's photos for an
+      // event, so the cover photo's uploader is just whoever happened to be
+      // most recent — naming them as the author put one person's name on
+      // everyone else's work.
+      if (widget.galleryId != null) {
+        _owner ??= _ownerFromPhotos();
+      }
     });
 
     // After the photos, not before: tags are supporting detail and should
@@ -258,6 +276,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       eventId: widget.entityId,
       page: next,
       entityType: widget.entityType,
+      placeId: widget.placeId,
     );
 
     if (!mounted) return;
@@ -449,6 +468,11 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// open, so a chip for one leads nowhere — and where the plate DOES match a
   /// garage, the person it belongs to is the useful thing to show.
   List<GalleryTag> _tagsForPhoto(CommunityPhoto photo) {
+    // A post's photo has no tags of ours, and its row id belongs to a
+    // different table — looking it up here would show whichever gallery
+    // photo happened to share the number.
+    if (photo.isFromPost) return const [];
+
     final seenPeople = <int>{};
     final seenPlates = <String>{};
     final shown = <GalleryTag>[];
@@ -1352,6 +1376,34 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
             SliverToBoxAdapter(child: _buildPlaceRow(_placeName!)),
 
           if (_owner != null) SliverToBoxAdapter(child: _buildOwnerRow()),
+
+          // What a merged view has instead of an owner.
+          if (_owner == null && (_contributors ?? 0) > 0)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.people_outline,
+                      size: 16,
+                      color: Colors.grey.shade600,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _contributors == 1
+                          ? 'Photos from 1 person'
+                          : 'Photos from $_contributors people',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
           // Members only — a gallery of unmatched plates has an empty strip.
           if (_taggedMembers.isNotEmpty)

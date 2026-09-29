@@ -216,8 +216,12 @@ class _MediaScreenState extends State<MediaScreen>
       MaterialPageRoute(
         builder: (_) => GalleryViewScreen(
           galleryId: gallery.galleryId,
-          entityId: gallery.eventId.toString(),
+          // entityId, not eventId: a venue's card has no event id.
+          entityId: gallery.entityId.toString(),
           entityType: gallery.entityType,
+          // A location group has no entity id — Google's place id is what
+          // addresses it.
+          placeId: gallery.placeId,
           entityTitle: gallery.title,
           galleryName: gallery.galleryName,
           dateLabel: gallery.dateLabel,
@@ -328,26 +332,12 @@ class _MediaScreenState extends State<MediaScreen>
       ];
     }
 
-    final groups = _galleries.groups;
-    final standalone = _galleries.standalone;
-
+    // One row again. Individual galleries no longer appear here at all — this
+    // feed is events, venues and places, plus the upcoming-event cards that
+    // invite the first upload. A gallery of your own is on your profile.
     return [
-      if (groups.isNotEmpty) ...[
-        const _SectionHeader(title: 'Events & venues'),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(_hPadding, 0, _hPadding, 12),
-          child: Text(
-            'Every photo from the same meet in one place — galleries and '
-            'posts together.',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-          ),
-        ),
-        _GalleryRow(galleries: groups, onTap: _openGallery),
-        const SizedBox(height: 28),
-      ],
-
       _SectionHeader(
-        title: groups.isEmpty ? 'Galleries' : 'Recent galleries',
+        title: 'Galleries',
         actionLabel: 'See all',
         // Every gallery, newest first, with filters. This used to jump to the
         // Events tab — a different thing entirely, and no way to browse
@@ -370,7 +360,7 @@ class _MediaScreenState extends State<MediaScreen>
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
           ),
         ),
-      _GalleryRow(galleries: standalone, onTap: _openGallery),
+      _GalleryRow(galleries: _galleries.data, onTap: _openGallery),
       const SizedBox(height: 28),
     ];
   }

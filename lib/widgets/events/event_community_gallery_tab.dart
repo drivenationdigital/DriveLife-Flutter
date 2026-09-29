@@ -42,6 +42,17 @@ class CommunityPhoto {
   final bool liked;
   final int commentCount;
 
+  /// Which table this photo came from: 'gallery' or 'post'.
+  ///
+  /// An entity view merges a place's galleries with the posts tagged to it, so
+  /// a photo here may belong to a post. Those cannot be deleted, curated,
+  /// liked or commented on from this screen — all of that keys on a gallery
+  /// photo's id, and the two tables number their rows independently.
+  final String source;
+
+  /// The post a 'post' photo belongs to, else 0.
+  final int postId;
+
   const CommunityPhoto({
     required this.id,
     required this.url,
@@ -56,7 +67,12 @@ class CommunityPhoto {
     this.likeCount = 0,
     this.liked = false,
     this.commentCount = 0,
+    this.source = 'gallery',
+    this.postId = 0,
   });
+
+  /// Belongs to a post rather than to this gallery.
+  bool get isFromPost => source == 'post';
 
   /// Only [isCover] ever changes client-side — flipped optimistically so the
   /// badge moves before the round trip lands — but the whole model is covered
@@ -75,6 +91,8 @@ class CommunityPhoto {
     int? likeCount,
     bool? liked,
     int? commentCount,
+    String? source,
+    int? postId,
   }) {
     return CommunityPhoto(
       id: id ?? this.id,
@@ -90,6 +108,8 @@ class CommunityPhoto {
       likeCount: likeCount ?? this.likeCount,
       liked: liked ?? this.liked,
       commentCount: commentCount ?? this.commentCount,
+      source: source ?? this.source,
+      postId: postId ?? this.postId,
     );
   }
 
@@ -112,6 +132,8 @@ class CommunityPhoto {
           DateTime.tryParse(_str(json['created_at'])),
       // Absent on an older server build — default to no control rather than
       // offering a delete that would come back 403.
+      source: '${json['source'] ?? 'gallery'}',
+      postId: int.tryParse(_str(json['post_id'])) ?? 0,
       canDelete: json['can_delete'] == true || json['can_delete'] == 1,
       isCover: json['is_cover'] == true || json['is_cover'] == 1,
       scanned: json['scanned'] == true || json['scanned'] == 1,
@@ -1110,6 +1132,9 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
   }
 
   Future<void> _toggleLike(CommunityPhoto photo) async {
+    // The control is hidden for these, but a photo can change under a tap.
+    if (photo.isFromPost) return;
+
     if (_liking.contains(photo.id)) return;
     _liking.add(photo.id);
 
@@ -1393,28 +1418,34 @@ class CommunityPhotoViewerState extends State<CommunityPhotoViewer> {
                 children: [
                   // Like and comment, above the tags and the credit — the
                   // actions come first because they are what you reach for.
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Row(
-                      children: [
-                        _ViewerAction(
-                          icon: photo.liked
-                              ? Icons.favorite
-                              : Icons.favorite_border,
-                          colour: photo.liked ? Colors.red : Colors.white,
-                          count: photo.likeCount,
-                          onTap: () => _toggleLike(photo),
-                        ),
-                        const SizedBox(width: 18),
-                        _ViewerAction(
-                          icon: Icons.mode_comment_outlined,
-                          colour: Colors.white,
-                          count: photo.commentCount,
-                          onTap: () => _openComments(photo),
-                        ),
-                      ],
+                  // Not for a photo that belongs to a post: liking and
+                  // commenting here key on a GALLERY photo's id, and the two
+                  // tables number their rows independently — so this would
+                  // like whichever gallery photo happened to share the id.
+                  // The post's own likes and comments live on the post.
+                  if (!photo.isFromPost)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        children: [
+                          _ViewerAction(
+                            icon: photo.liked
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            colour: photo.liked ? Colors.red : Colors.white,
+                            count: photo.likeCount,
+                            onTap: () => _toggleLike(photo),
+                          ),
+                          const SizedBox(width: 18),
+                          _ViewerAction(
+                            icon: Icons.mode_comment_outlined,
+                            colour: Colors.white,
+                            count: photo.commentCount,
+                            onTap: () => _openComments(photo),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
 
                   if (widget.tagsFor != null)
                     Builder(

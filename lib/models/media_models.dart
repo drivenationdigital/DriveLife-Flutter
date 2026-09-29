@@ -162,6 +162,13 @@ class EventGallery {
   final int? galleryId;
 
   final int eventId;
+
+  /// The event or venue this card is for.
+  ///
+  /// Separate from [eventId] because that one is only ever set for events —
+  /// a venue group carries event_id 0, so opening it by eventId asked the API
+  /// for entity 0 and got "needs a gallery or entity" back.
+  final int entityId;
   final String title;
   final String? coverImageUrl;
   final String? locationName;
@@ -187,6 +194,11 @@ class EventGallery {
   /// an event with nothing uploaded — neither has an owner to credit.
   final String ownerUsername;
 
+  /// Google's id for the place, when this card is a location group.
+  ///
+  /// A place has no post id, so this is the only way to address one.
+  final String? placeId;
+
   /// Everything shot at one event, venue or place, rather than one upload.
   ///
   /// A group has no gallery id — it is opened by its entity, which is what
@@ -197,6 +209,7 @@ class EventGallery {
   const EventGallery({
     this.galleryId,
     required this.eventId,
+    this.entityId = 0,
     required this.title,
     this.coverImageUrl,
     this.locationName,
@@ -207,6 +220,7 @@ class EventGallery {
     this.entityType = 'event',
     this.ownerUsername = '',
     this.isGroup = false,
+    this.placeId,
   });
 
   bool get isVenue => entityType == 'venue';
@@ -235,6 +249,10 @@ class EventGallery {
   factory EventGallery.fromJson(Map<String, dynamic> json) => EventGallery(
     galleryId: json['gallery_id'] == null ? null : _int(json['gallery_id']),
     eventId: _int(json['event_id']),
+    // Older API builds sent only event_id; falling back keeps those working.
+    entityId: json['entity_id'] == null
+        ? _int(json['event_id'])
+        : _int(json['entity_id']),
     title: json['title']?.toString() ?? 'Event',
     coverImageUrl: _str(json['cover_image']),
     locationName: _str(json['location']),
@@ -246,6 +264,7 @@ class EventGallery {
     entityType: _str(json['entity_type']) ?? 'event',
     ownerUsername: _str(json['owner_username']) ?? '',
     isGroup: json['group'] == true,
+    placeId: _str(json['place_id']),
   );
 }
 

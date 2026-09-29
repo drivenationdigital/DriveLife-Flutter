@@ -1714,6 +1714,9 @@ class EventsAPI {
     int page = 1,
     int perPage = 30,
     String entityType = 'event',
+    /// Google's id for a map pin. A place has no post behind it, so it cannot
+    /// be addressed by entity id the way an event or venue is.
+    String? placeId,
   }) async {
     try {
       final token = await _authService.getToken();
@@ -1724,8 +1727,9 @@ class EventsAPI {
 
       final entityId = int.tryParse(eventId ?? '') ?? 0;
       final byGallery = galleryId != null && galleryId > 0;
+      final byPlace = placeId != null && placeId.isNotEmpty;
 
-      if (!byGallery && entityId <= 0) {
+      if (!byGallery && !byPlace && entityId <= 0) {
         print('❌ [EventsAPI] fetchCommunityGallery needs a gallery or entity');
         return null;
       }
@@ -1740,7 +1744,11 @@ class EventsAPI {
         },
         body: jsonEncode({
           if (byGallery) 'gallery_id': galleryId,
-          if (!byGallery) ...{
+          if (!byGallery && byPlace) ...{
+            'entity_type': 'location',
+            'place_id': placeId,
+          },
+          if (!byGallery && !byPlace) ...{
             'entity_type': entityType,
             'entity_id': entityId,
             if (entityType == 'event') 'event_id': entityId,

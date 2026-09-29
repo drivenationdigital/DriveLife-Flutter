@@ -278,12 +278,19 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
 
   Future<void> _open(Map<String, dynamic> gallery) async {
     final title = '${gallery['title'] ?? ''}';
+    final entityType = '${gallery['entity_type'] ?? ''}';
+    final placeId = '${gallery['place_id'] ?? ''}';
     var changed = false;
 
     await Navigator.of(context).push(
       MaterialPageRoute(
+        // A group has no gallery id — it is opened by the event, venue or
+        // place it gathers, which is what gives the merged view.
         builder: (_) => GalleryViewScreen(
           galleryId: int.tryParse('${gallery['gallery_id']}'),
+          entityId: '${gallery['entity_id'] ?? ''}',
+          entityType: entityType.isEmpty ? 'event' : entityType,
+          placeId: placeId.isEmpty ? null : placeId,
           entityTitle: title,
           galleryName: title,
           onChanged: () => changed = true,
@@ -511,14 +518,27 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
 
           final gallery = _galleries[index];
           final owner = gallery['owner'];
-          final ownerName = galleryOwnerLabel(owner);
+
+          // A group has no owner: it is an event's photos, from everybody who
+          // was there. The handle line becomes how many people that is.
+          final photos = int.tryParse('${gallery['photo_count']}') ?? 0;
+          final people = int.tryParse('${gallery['contributor_count']}') ?? 0;
+
+          final subtitle = owner == null
+              ? [
+                  '$photos ${photos == 1 ? 'photo' : 'photos'}',
+                  if (people > 0)
+                    '$people ${people == 1 ? 'person' : 'people'}',
+                ].join(' · ')
+              : galleryOwnerLabel(owner);
 
           return GalleryCard(
             title: '${gallery['title'] ?? ''}',
             coverUrl: '${gallery['cover_thumb'] ?? gallery['cover'] ?? ''}',
-            // The owner's handle alone. The photo count was already on
-            // the card, so spending the line on it twice said nothing.
-            subtitle: ownerName,
+            // The owner's handle alone for a single gallery. The photo count
+            // was already on the card, so spending the line on it twice said
+            // nothing — but a group has no handle to show.
+            subtitle: subtitle,
             country: '${gallery['country'] ?? ''}',
             onTap: () => _open(gallery),
           );
