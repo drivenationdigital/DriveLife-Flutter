@@ -23,6 +23,8 @@ import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:drivelife/providers/connectivity_provider.dart';
+import 'package:drivelife/widgets/offline_banner.dart';
 
 
 // const String stripePublishableKey =
@@ -104,6 +106,12 @@ void main() async {
         ChangeNotifierProvider(create: (_) => BottomNavProvider()),
         ChangeNotifierProvider(create: (_) => PendingTagsProvider()),
         ChangeNotifierProvider(create: (_) => LocationAccessProvider()),
+        // Starts watching as soon as it is built, which is before the first
+        // screen asks for anything.
+        ChangeNotifierProvider(
+          create: (_) => ConnectivityProvider()..start(),
+          lazy: false,
+        ),
       ],
       child: const MyApp(),
     ),
@@ -181,7 +189,12 @@ class _MyAppState extends State<MyApp> {
           ),
           // Add this builder to set a white background immediately
           builder: (context, child) {
-            return Container(color: Colors.white, child: child);
+            return Container(
+              color: Colors.white,
+              // Above the navigator, so the strip survives every push and
+              // pop rather than each screen having to know about it.
+              child: OfflineBanner(child: child ?? const SizedBox.shrink()),
+            );
           },
           initialRoute: AppRoutes.splash,
           onGenerateRoute: AppRoutes.generateRoute,

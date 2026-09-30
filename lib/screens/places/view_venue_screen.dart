@@ -15,6 +15,7 @@ import 'package:flutter_html/flutter_html.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../widgets/media/entity_galleries_tab.dart';
+import 'package:drivelife/widgets/navigate_sheet.dart';
 
 // ── Brand color constants (match club view) ────────────────────────────
 const Color _gold = Color(0xFFC4A062);
@@ -714,29 +715,57 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
 
               const SizedBox(height: 6),
 
-              // Location subtitle
+              // Location subtitle — tap for directions.
               if (_venue?.location.isNotEmpty == true)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 14,
-                        color: _gold,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => showNavigateSheet(
+                      context,
+                      latitude: _venue!.latitude,
+                      longitude: _venue!.longitude,
+                      address: _venue!.location,
+                      title: _venue!.title,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 4,
                       ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          _venue!.location,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: _muted, fontSize: 13),
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            size: 14,
+                            color: _gold,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              _venue!.location,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: _muted,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          // Says what the tap does, without spending a line
+                          // on the word "directions" beside a long address.
+                          const Icon(
+                            Icons.directions_outlined,
+                            size: 15,
+                            color: _gold,
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
 

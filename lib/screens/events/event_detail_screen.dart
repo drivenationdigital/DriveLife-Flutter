@@ -8,6 +8,7 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/widgets/media/entity_galleries_tab.dart';
+import 'package:drivelife/widgets/navigate_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -151,59 +152,6 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   //     };
   //   }
   // }
-
-  Future<void> _openInMaps() async {
-    if (_fullEventData == null) return;
-
-    final lat = _fullEventData!['latitude'];
-    final lng = _fullEventData!['longitude'];
-
-    if (lat == null || lng == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Location coordinates not available')),
-      );
-      return;
-    }
-
-    final latitude = double.tryParse(lat.toString()) ?? 0.0;
-    final longitude = double.tryParse(lng.toString()) ?? 0.0;
-    final location = _fullEventData!['location'] ?? '';
-
-    // Try Apple Maps first (iOS), then Google Maps
-    final appleMapsUrl = 'https://maps.apple.com/?q=$latitude,$longitude';
-    final googleMapsUrl =
-        'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
-
-    try {
-      // Fallback to Google Maps
-      final googleUri = Uri.parse(googleMapsUrl);
-      if (await canLaunchUrl(googleUri)) {
-        await launchUrl(googleUri, mode: LaunchMode.externalApplication);
-        return;
-      }
-
-      // Try Apple Maps first
-      final appleUri = Uri.parse(appleMapsUrl);
-      if (await canLaunchUrl(appleUri)) {
-        await launchUrl(appleUri, mode: LaunchMode.externalApplication);
-        return;
-      }
-
-      // If neither works, show error
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Could not open maps')));
-      }
-    } catch (e) {
-      print('Error opening maps: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Error opening maps')));
-      }
-    }
-  }
 
   String _formatEventDate(Map<String, dynamic> event) {
     try {
@@ -935,28 +883,57 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                       ),
                       const SizedBox(height: 16),
 
-                      // Location
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.location_on_outlined,
-                            size: 20,
-                            color: theme.primaryColor,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              eventLocation,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.black87,
-                                height: 1.4,
+                      // Location — tap for directions.
+                      //
+                      // Nothing to navigate to without either a point or an
+                      // address, and a row that looks tappable and does
+                      // nothing is worse than one that plainly is not.
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap:
+                            (latitude != null && longitude != null) ||
+                                eventLocation.toString().trim().isNotEmpty
+                            ? () => showNavigateSheet(
+                                context,
+                                latitude: latitude,
+                                longitude: longitude,
+                                address: eventLocation.toString(),
+                                title: eventTitle.toString(),
+                              )
+                            : null,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.location_on_outlined,
+                                size: 20,
+                                color: theme.primaryColor,
                               ),
-                            ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  eventLocation,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.black87,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Says what the tap does. "Directions" spelled
+                              // out would wrap on a long address.
+                              Icon(
+                                Icons.directions_outlined,
+                                size: 20,
+                                color: theme.primaryColor,
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                       const SizedBox(height: 12),
 

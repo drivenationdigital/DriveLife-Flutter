@@ -2,6 +2,14 @@ class VenueDetail {
   final String id;
   final String title;
   final String location;
+
+  /// The point behind [location], when the API sends one.
+  ///
+  /// Null on an older API build, and on a venue saved before the geocode ran.
+  /// Anything using these has to work from the address alone as well.
+  final double? latitude;
+  final double? longitude;
+
   final String? description;
   final VenueCoverPhoto coverPhoto;
   final VenueLogo logo;
@@ -21,6 +29,8 @@ class VenueDetail {
     required this.id,
     required this.title,
     required this.location,
+    this.latitude,
+    this.longitude,
     this.description,
     required this.coverPhoto,
     required this.logo,
@@ -41,6 +51,8 @@ class VenueDetail {
         id: json['id']?.toString() ?? '',
         title: json['title']?.toString() ?? '',
         location: json['location']?.toString() ?? '',
+        latitude: double.tryParse(json['latitude']?.toString() ?? ''),
+        longitude: double.tryParse(json['longitude']?.toString() ?? ''),
         description: json['description']?.toString(),
         coverPhoto: VenueCoverPhoto.fromJson(json['cover_photo'] ?? {}),
         logo: VenueLogo.fromJson(json['logo'] ?? {}),
@@ -70,6 +82,8 @@ class VenueDetail {
       'id': id,
       'title': title,
       'location': location,
+      'latitude': latitude,
+      'longitude': longitude,
       'description': description,
       'cover_photo': coverPhoto.toJson(),
       'logo': logo.toJson(),
