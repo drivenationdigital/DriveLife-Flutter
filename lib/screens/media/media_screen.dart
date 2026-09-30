@@ -551,11 +551,17 @@ class _SearchRow extends StatelessWidget {
                     children: [
                       Icon(Icons.search, size: 19, color: Colors.grey.shade600),
                       const SizedBox(width: 8),
-                      Text(
-                        'Search event or location',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 14,
+                      // Flexible so the hint ellipsises on narrow screens or
+                      // with larger text scale rather than overflowing the row.
+                      Flexible(
+                        child: Text(
+                          'Search event or location',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
                     ],
