@@ -1291,31 +1291,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
             ),
             const SizedBox(width: 12),
           ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _ink,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: _muted, fontSize: 13.5),
-                ),
-              ],
-            ),
-          ),
+          Expanded(child: _buildTitleBlock()),
         ],
       ),
       actions: [
@@ -1351,6 +1327,61 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
 
   /// "24/05/2026 · 173 photos", dropping the date when there isn't one — a
   /// venue gallery has no date, and a leading separator would look broken.
+  /// The title, and a way through to whatever it names.
+  ///
+  /// A chip underneath used to carry the listing, which put the event's name
+  /// on screen twice — for a merged view the title already IS the event. A
+  /// location gallery has nothing to open, so its title stays inert.
+  Widget _buildTitleBlock() {
+    final link = _entityLink;
+
+    final block = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                _title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _ink,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            // The only thing marking the title as a link. Small and gold
+            // rather than an underline: this is a heading first.
+            if (link != null) ...[
+              const SizedBox(width: 1),
+              const Icon(Icons.chevron_right, size: 19, color: _gold),
+            ],
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          _subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: _muted, fontSize: 13.5),
+        ),
+      ],
+    );
+
+    if (link == null) return block;
+
+    return GestureDetector(
+      onTap: () => _openEntity(link),
+      // Transparent, not null: without it the gap beside a short title does
+      // not register a tap.
+      behavior: HitTestBehavior.opaque,
+      child: block,
+    );
+  }
+
   String get _subtitle {
     final count = _loading ? null : (_total > 0 ? _total : _photos.length);
     final label = (widget.dateLabel != null && widget.dateLabel!.isNotEmpty)
@@ -1412,42 +1443,10 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       },
       child: CustomScrollView(
         slivers: [
-          // Directly under the title, before anything else on the page.
-          if (_entityLink != null)
-            SliverToBoxAdapter(child: _buildEntityRow(_entityLink!)),
-
-          if (_placeName != null)
-            SliverToBoxAdapter(child: _buildPlaceRow(_placeName!)),
-
           if (_owner != null) SliverToBoxAdapter(child: _buildOwnerRow()),
 
-          // What a merged view has instead of an owner.
-          if (_owner == null && (_contributors ?? 0) > 0)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.people_outline,
-                      size: 16,
-                      color: Colors.grey.shade600,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      _contributors == 1
-                          ? 'Photos from 1 person'
-                          : 'Photos from $_contributors people',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        color: Colors.grey.shade700,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          // Everything else about the gallery, on one line.
+          SliverToBoxAdapter(child: _buildMetaRow()),
 
           // Members only — a gallery of unmatched plates has an empty strip.
           if (_taggedMembers.isNotEmpty)
@@ -1550,45 +1549,35 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// Above the cover rather than in the header: the header already carries the
   /// gallery name and the linked entity, and a long place name would push
   /// either of those out.
-  /// The event or venue behind these photos, as a way in.
-  Widget _buildEntityRow(Map<String, dynamic> link) {
-    final isVenue = '${link['entity_type']}' == 'venue';
+  /// The one line of context under the title: where these photos were taken
+  /// and how many people they came from.
+  ///
+  /// Chips in a single wrapping row, not stacked rows. Each of those was one
+  /// short phrase beside a 16px icon, and three of them pushed the cover —
+  /// the thing the page exists to show — most of the way off screen.
+  ///
+  /// The listing is not here: it is the title, which names it already.
+  Widget _buildMetaRow() {
+    final place = _placeName;
+    final people = _contributors ?? 0;
+
+    final chips = <Widget>[
+      if (place != null) _MetaChip(icon: Icons.place_outlined, label: place),
+
+      // Only where there is no owner. A single gallery credits its uploader
+      // in the row above, and "1 person" under their name says it twice.
+      if (_owner == null && people > 0)
+        _MetaChip(
+          icon: Icons.people_outline,
+          label: people == 1 ? '1 person' : '$people people',
+        ),
+    ];
+
+    if (chips.isEmpty) return const SizedBox(height: 4);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () => _openEntity(link),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-            child: Row(
-              children: [
-                Icon(
-                  isVenue ? Icons.storefront_outlined : Icons.event_outlined,
-                  size: 16,
-                  color: _gold,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    '${link['title']}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13.5,
-                      color: _gold,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const Icon(Icons.chevron_right, size: 18, color: _muted),
-              ],
-            ),
-          ),
-        ),
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      child: Wrap(spacing: 8, runSpacing: 8, children: chips),
     );
   }
 
@@ -1612,30 +1601,6 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       arguments: {
         'event': {'id': id},
       },
-    );
-  }
-
-  Widget _buildPlaceRow(String place) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
-      child: Row(
-        children: [
-          const Icon(Icons.place_outlined, size: 16, color: _gold),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              place,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13.5,
-                color: _muted,
-                height: 1.3,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -2053,6 +2018,52 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
           itemBuilder: (_, __) => Container(color: Colors.grey.shade200),
         ),
       ],
+    );
+  }
+}
+
+/// One fact about a gallery, as a pill.
+///
+/// Telling you something, never taking you anywhere — the one thing here that
+/// leads somewhere is the title, which is where it belongs.
+class _MetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _MetaChip({required this.icon, required this.label});
+
+  static const Color _muted = Color(0xFF6B6B6B);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2F2F2),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: _muted),
+          const SizedBox(width: 6),
+          // Capped so one long address cannot take the whole row and push the
+          // chips beside it onto their own lines.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 230),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: _muted,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

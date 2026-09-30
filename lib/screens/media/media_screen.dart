@@ -134,33 +134,10 @@ class _MediaScreenState extends State<MediaScreen>
     }
   }
 
-  /// What the search field currently holds. Empty means the normal feed.
-  String _gallerySearch = '';
-
-  /// Rising counter so a slow response for an earlier query cannot land on top
-  /// of a newer one.
-  int _searchRequestId = 0;
-
-  Future<void> _onSearchChanged(String value) async {
-    final query = value.trim();
-    if (query == _gallerySearch) return;
-
-    _gallerySearch = query;
-    final id = ++_searchRequestId;
-
-    setState(() => _loadingGalleries = true);
-    await _loadGalleries(requestId: id);
-  }
-
-  Future<void> _loadGalleries({int? requestId}) async {
+  Future<void> _loadGalleries() async {
     try {
-      final result = await MediaAPI.getEventGalleries(
-        limit: _gallerySearch.isEmpty ? 5 : 20,
-        search: _gallerySearch.isEmpty ? null : _gallerySearch,
-      );
+      final result = await MediaAPI.getEventGalleries(limit: 5);
 
-      // A superseded search must not overwrite the current one.
-      if (requestId != null && requestId != _searchRequestId) return;
       if (!mounted) return;
       setState(() {
         _galleries = result;
@@ -257,10 +234,7 @@ class _MediaScreenState extends State<MediaScreen>
           padding: const EdgeInsets.only(top: 8, bottom: 24),
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
-            _SearchRow(
-              onGalleryCreated: _loadAll,
-              onSearchChanged: _onSearchChanged,
-            ),
+            _SearchRow(onGalleryCreated: _loadAll),
             ..._pendingSection(theme),
             ..._gallerySection(),
             ..._popularSection(),
@@ -319,18 +293,9 @@ class _MediaScreenState extends State<MediaScreen>
       ];
     }
 
-    if (_galleries.data.isEmpty) {
-      // With no search, an empty section just hides. Mid-search it has to say
-      // something — otherwise typing makes the whole row vanish and the user
-      // cannot tell the search from a broken screen.
-      if (_gallerySearch.isEmpty) return const [];
-
-      return [
-        const _SectionHeader(title: 'Galleries'),
-        _SectionMessage(message: 'No galleries match "$_gallerySearch".'),
-        const SizedBox(height: 28),
-      ];
-    }
+    // Nothing to show and nothing being searched for: the section hides
+    // rather than explaining its own emptiness.
+    if (_galleries.data.isEmpty) return const [];
 
     // One row again. Individual galleries no longer appear here at all — this
     // feed is events, venues and places, plus the upcoming-event cards that
@@ -544,19 +509,16 @@ class _PopularGridSkeleton extends StatelessWidget {
   }
 }
 
-/// Search field paired with the primary "Add a gallery" action.
+/// Way in to the gallery search, paired with "Add a gallery".
+///
+/// Not a field. Searching here returned five results in a strip you could not
+/// filter, while the browse page did the same search properly — two searches
+/// over the same galleries that behaved differently. This one opens that one.
 class _SearchRow extends StatelessWidget {
   /// Called when a gallery was actually created, so the screen can refresh.
   final Future<void> Function() onGalleryCreated;
 
-  /// Fires as the user types. Matches an event's title or address, or the name
-  /// the uploader gave a gallery.
-  final ValueChanged<String> onSearchChanged;
-
-  const _SearchRow({
-    required this.onGalleryCreated,
-    required this.onSearchChanged,
-  });
+  const _SearchRow({required this.onGalleryCreated});
 
   @override
   Widget build(BuildContext context) {
@@ -570,34 +532,35 @@ class _SearchRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Container(
-              height: _MediaScreenState._controlHeight,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
+            child: Material(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
                 borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.search, size: 19, color: Colors.grey.shade600),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      textInputAction: TextInputAction.search,
-                      onChanged: onSearchChanged,
-                      onSubmitted: onSearchChanged,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        border: InputBorder.none,
-                        hintText: 'Search event or location',
-                        hintStyle: TextStyle(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const AllGalleriesScreen(openSearch: true),
+                  ),
+                ),
+                child: Container(
+                  height: _MediaScreenState._controlHeight,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    children: [
+                      Icon(Icons.search, size: 19, color: Colors.grey.shade600),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Search event or location',
+                        style: TextStyle(
                           color: Colors.grey.shade600,
                           fontSize: 14,
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),

@@ -39,7 +39,14 @@ extension on GalleryFilter {
 /// Ordering is by upload date rather than by the event's date: a gallery from
 /// last year's meet uploaded today is new to everyone looking at this list.
 class AllGalleriesScreen extends StatefulWidget {
-  const AllGalleriesScreen({super.key});
+  /// Opens with the keyboard up and the field focused.
+  ///
+  /// Set when arriving from the search box on the Photos tab, which is a way
+  /// in to this page rather than a search of its own — landing here with the
+  /// field asleep would make that tap feel like it did nothing.
+  final bool openSearch;
+
+  const AllGalleriesScreen({super.key, this.openSearch = false});
 
   @override
   State<AllGalleriesScreen> createState() => _AllGalleriesScreenState();
@@ -53,6 +60,7 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
   static const int _perPage = 20;
 
   final _searchController = TextEditingController();
+  final _searchFocus = FocusNode();
   final _scrollController = ScrollController();
 
   final List<Map<String, dynamic>> _galleries = [];
@@ -93,6 +101,7 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
+    _searchFocus.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -312,6 +321,9 @@ class _AllGalleriesScreenState extends State<AllGalleriesScreen> {
         children: [
           TextField(
             controller: _searchController,
+            focusNode: _searchFocus,
+            autofocus: widget.openSearch,
+            textInputAction: TextInputAction.search,
             onChanged: _onSearchChanged,
             decoration: InputDecoration(
               isDense: true,
