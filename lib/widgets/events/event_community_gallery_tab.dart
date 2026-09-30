@@ -160,6 +160,17 @@ class EventCommunityGalleryTab extends StatefulWidget {
   /// entity it hangs off differs.
   final String entityType;
 
+  /// Look, but do not touch.
+  ///
+  /// Hides every way of changing the gallery — adding photos, deleting them,
+  /// setting a cover, rearranging — leaving the grid and the viewer. Used on
+  /// a finished event, where the photos are a record of what happened rather
+  /// than something still being assembled.
+  ///
+  /// A display setting, not a permission: the server decides what anyone may
+  /// actually do, and this only stops the app offering it.
+  final bool readOnly;
+
   const EventCommunityGalleryTab({
     super.key,
     required this.eventId,
@@ -167,6 +178,7 @@ class EventCommunityGalleryTab extends StatefulWidget {
     required this.primaryColor,
     this.eventCoverUrl,
     this.entityType = 'event',
+    this.readOnly = false,
   });
 
   bool get isVenue => entityType == 'venue';
@@ -555,18 +567,21 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
         builder: (viewerContext) => CommunityPhotoViewer(
           photos: List.of(_photos),
           initialIndex: index,
-          onDelete: (photo) async {
-            await _confirmDelete(photo);
+          // Null hides the viewer's delete control entirely.
+          onDelete: widget.readOnly
+              ? null
+              : (photo) async {
+                  await _confirmDelete(photo);
 
-            // The viewer holds a snapshot taken when it opened, so once a photo
-            // is gone from the grid that snapshot is stale — paging through a
-            // deleted photo would show a broken tile. Close back to the grid,
-            // which has already updated.
-            if (!_photos.any((p) => p.id == photo.id) &&
-                viewerContext.mounted) {
-              Navigator.of(viewerContext).pop();
-            }
-          },
+                  // The viewer holds a snapshot taken when it opened, so once
+                  // a photo is gone from the grid that snapshot is stale —
+                  // paging through a deleted photo would show a broken tile.
+                  // Close back to the grid, which has already updated.
+                  if (!_photos.any((p) => p.id == photo.id) &&
+                      viewerContext.mounted) {
+                    Navigator.of(viewerContext).pop();
+                  }
+                },
         ),
       ),
     );
@@ -735,23 +750,28 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          ElevatedButton.icon(
-            onPressed: _openUploader,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: widget.primaryColor,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          if (!widget.readOnly) ...[
+            const SizedBox(width: 12),
+            ElevatedButton.icon(
+              onPressed: _openUploader,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: widget.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              icon: const Icon(Icons.add_a_photo_outlined, size: 17),
+              label: const Text(
+                'Add photos',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
               ),
             ),
-            icon: const Icon(Icons.add_a_photo_outlined, size: 17),
-            label: const Text(
-              'Add photos',
-              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -851,10 +871,13 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
       onTap: () => _openViewer(index),
       // Long-press opens what the viewer is actually allowed to do: the full
       // curation sheet for the event owner, a straight delete for a
-      // contributor on their own photo, nothing for anyone else.
-      onLongPress: _isEventOwner
-          ? () => _showOwnerActions(photo)
-          : (photo.canDelete ? () => _confirmDelete(photo) : null),
+      // contributor on their own photo, nothing for anyone else — and nothing
+      // at all where the gallery is read-only.
+      onLongPress: widget.readOnly
+          ? null
+          : (_isEventOwner
+                ? () => _showOwnerActions(photo)
+                : (photo.canDelete ? () => _confirmDelete(photo) : null)),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -889,7 +912,9 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
                 child: const Icon(Icons.star, size: 11, color: Colors.white),
               ),
             ),
-          if (photo.canDelete)
+          // The badge says "there is a menu behind this tile". With nothing
+          // behind it, it is a button that does nothing.
+          if (photo.canDelete && !widget.readOnly)
             Positioned(
               top: 4,
               right: 4,
@@ -933,8 +958,13 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Were you at this event? Be the first to share your photos with '
-            'the community.',
+            // Read-only means there is no invitation to extend: asking
+            // somebody to be the first to share, under a button that is not
+            // there, is a dead end.
+            widget.readOnly
+                ? 'Nobody shared photos from this event.'
+                : 'Were you at this event? Be the first to share your photos '
+                      'with the community.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
@@ -942,23 +972,28 @@ class _EventCommunityGalleryTabState extends State<EventCommunityGalleryTab> {
               color: Colors.grey.shade500,
             ),
           ),
-          const SizedBox(height: 20),
-          ElevatedButton.icon(
-            onPressed: _openUploader,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: widget.primaryColor,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          if (!widget.readOnly) ...[
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _openUploader,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: widget.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+              label: const Text(
+                'Share your photos',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
               ),
             ),
-            icon: const Icon(Icons.add_a_photo_outlined, size: 18),
-            label: const Text(
-              'Share your photos',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-          ),
+          ],
         ],
       ),
     );

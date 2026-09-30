@@ -1286,6 +1286,51 @@ class EventsAPI {
     throw Exception(body['message']?.toString() ?? 'Could not rename');
   }
 
+  /// Everyone whose photos are in a gallery or a merged group.
+  ///
+  /// Read from the same union the "photos from N people" count comes from, so
+  /// the list and the number above it cannot disagree.
+  static Future<List<Map<String, dynamic>>> fetchGalleryContributors({
+    int? galleryId,
+    String? entityType,
+    String? entityId,
+    String? placeId,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final query = <String, String>{};
+
+    if (galleryId != null && galleryId > 0) {
+      query['gallery_id'] = '$galleryId';
+    } else {
+      if (entityType != null && entityType.isNotEmpty) {
+        query['entity_type'] = entityType;
+      }
+      if (entityId != null && entityId.isNotEmpty) {
+        query['entity_id'] = entityId;
+      }
+      if (placeId != null && placeId.isNotEmpty) query['place_id'] = placeId;
+    }
+
+    final response = await http.get(
+      Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/galleries/contributors',
+      ).replace(queryParameters: query),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode != 200) return const [];
+
+    final body = jsonDecode(response.body);
+    final list = (body is Map ? body['contributors'] : null) as List? ?? const [];
+
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
   /// The tags on a gallery, or on a merged group.
   ///
   /// [includePending] is for the owner EDITING: saving replaces the whole set,

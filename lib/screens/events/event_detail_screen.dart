@@ -7,8 +7,13 @@ import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:drivelife/api/events_api.dart';
+import 'package:drivelife/widgets/events/event_community_gallery_tab.dart';
 import 'package:drivelife/widgets/media/entity_galleries_tab.dart';
 import 'package:drivelife/widgets/navigate_sheet.dart';
+import 'package:drivelife/config/feature_flags.dart' show FeatureFlags;
+import 'package:drivelife/models/checkout_models.dart'
+    show checkoutEidFromTicketUrl;
+import 'package:drivelife/screens/tickets/ticket_selection_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -17,7 +22,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 class EventDetailScreen extends StatefulWidget {
   final Map<String, dynamic>? event;
 
-  /// Tab to open on: 0 About, 1 Entry & Tickets, 2 Community Gallery.
+  /// Tab to open on: 0 Details, 1 Entry & Tickets, 2 Media.
+  ///
+  /// Always in that order, even though a finished event shows its tabs in a
+  /// different one and drops the middle. It is resolved to the right tab
+  /// rather than used as a position, so callers do not have to know which
+  /// kind of event they are opening.
   final int initialTabIndex;
 
   const EventDetailScreen({super.key, this.event, this.initialTabIndex = 0});
@@ -26,12 +36,28 @@ class EventDetailScreen extends StatefulWidget {
   State<EventDetailScreen> createState() => _EventDetailScreenState();
 }
 
-class _EventDetailScreenState extends State<EventDetailScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+/// The tabs an event can show.
+///
+/// Named rather than numbered because the ORDER changes: a finished event
+/// leads with its photos, so "tab 1" means different things on different
+/// events and an index is no longer a reliable way to talk about one.
+enum _EventTab { details, tickets, media }
 
-  /// About Us + Entry & Tickets, plus Gallery when it is switched on.
-  static const int _tabCount = FeatureFlags.eventCommunityGallery ? 3 : 2;
+extension on _EventTab {
+  String get label => switch (this) {
+    // "About Us" read as the organiser's own page; what is actually here is
+    // the event's description.
+    _EventTab.details => 'Details',
+    _EventTab.tickets => 'Entry & Tickets',
+    _EventTab.media => 'Media',
+  };
+}
+
+class _EventDetailScreenState extends State<EventDetailScreen>
+    // Several tickers over the screen's life: the controller is rebuilt once
+    // the event's dates reveal how many tabs it actually has.
+    with TickerProviderStateMixin {
+  late TabController _tabController;
   final PageController _imageController = PageController();
   int _currentImageIndex = 0;
   bool _isFavorite = false;
@@ -46,14 +72,99 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   // gmaps.GoogleMapController? _mapController;
   // Set<gmaps.Marker> _markers = {};
 
+  /// Whether the event is over.
+  ///
+  /// Derived from the dates because the API sends no "finished" flag. The
+  /// latest end_date across every date row decides, and the whole of that day
+  /// counts — an event running until this evening is not a past event at 9am.
+  ///
+  /// False while the event is still loading, so the tabs settle into the
+  /// common shape rather than flipping layout a moment after opening.
+  bool get _isPastEvent {
+    final dates = _fullEventData?['dates'];
+    if (dates is! List || dates.isEmpty) return false;
+
+    DateTime? last;
+
+    for (final row in dates) {
+      if (row is! Map) continue;
+
+      // end_date is absent on single-day entries.
+      final end = '${row['end_date'] ?? ''}'.trim();
+      final start = '${row['start_date'] ?? ''}'.trim();
+
+      final parsed = DateTime.tryParse(end.isNotEmpty ? end : start);
+      if (parsed == null) continue;
+
+      if (last == null || parsed.isAfter(last)) last = parsed;
+    }
+
+    if (last == null) return false;
+
+    return DateTime(
+      last.year,
+      last.month,
+      last.day,
+      23,
+      59,
+      59,
+    ).isBefore(DateTime.now());
+  }
+
+  /// Which tabs this event shows, in order.
+  ///
+  /// A finished event is a record of what happened, so the photos lead and
+  /// the ticket tab goes entirely — it can no longer sell anything, and an
+  /// empty "Entry & Tickets" on an event that ended last year is a dead end.
+  List<_EventTab> get _tabs => _isPastEvent
+      ? [
+          if (FeatureFlags.eventCommunityGallery) _EventTab.media,
+          _EventTab.details,
+        ]
+      : [
+          _EventTab.details,
+          _EventTab.tickets,
+          if (FeatureFlags.eventCommunityGallery) _EventTab.media,
+        ];
+
+  /// Where to open, honouring what the caller asked for.
+  ///
+  /// [EventDetailScreen.initialTabIndex] is in the live ordering, which is
+  /// what every existing caller was written against. Resolving it to a tab
+  /// and looking that up means a deep link to the gallery still lands on the
+  /// gallery once a past event has reordered them.
+  int get _initialIndex {
+    const requested = [_EventTab.details, _EventTab.tickets, _EventTab.media];
+    final wanted = requested[widget.initialTabIndex.clamp(0, 2)];
+    final at = _tabs.indexOf(wanted);
+
+    return at < 0 ? 0 : at;
+  }
+
+  /// Rebuilds the controller when the number of tabs changes.
+  ///
+  /// It changes exactly once — when the event's dates arrive and turn out to
+  /// be in the past — so this is a no-op on every other call.
+  void _syncTabController() {
+    if (_tabController.length == _tabs.length) return;
+
+    _tabController.dispose();
+    _tabController = TabController(
+      length: _tabs.length,
+      vsync: this,
+      initialIndex: _initialIndex,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
-    // Length, tabs and TabBarView children must agree — see _tabCount.
+    // Built for the live shape; _syncTabController reshapes it if the event
+    // turns out to have finished.
     _tabController = TabController(
-      length: _tabCount,
+      length: _tabs.length,
       vsync: this,
-      initialIndex: widget.initialTabIndex.clamp(0, _tabCount - 1),
+      initialIndex: _initialIndex,
     );
     _isFavorite = widget.event?['is_liked'] ?? false;
     _fetchEventDetails();
@@ -98,6 +209,10 @@ class _EventDetailScreenState extends State<EventDetailScreen>
           _fullEventData = eventData;
           _isFavorite = eventData['is_liked'] ?? false;
           _isLoadingEvent = false;
+
+          // The dates have arrived, so it is now known whether this event has
+          // finished — and therefore how many tabs it has.
+          _syncTabController();
           // _setupMapMarker();
         });
       } else {
@@ -152,6 +267,55 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   //     };
   //   }
   // }
+
+  /// Opens wherever this event's tickets are sold.
+  ///
+  /// CarEvents ticketing goes to the native ticket list when that is switched
+  /// on; an organiser's own ticketing link is somebody else's site and always
+  /// opens in a browser.
+  Future<void> _openTickets(String ticketUrl, String title) async {
+    final eid = checkoutEidFromTicketUrl(ticketUrl);
+
+    if (FeatureFlags.nativeTicketSelection && eid != null) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              TicketSelectionScreen(eventEid: eid, eventTitle: title),
+        ),
+      );
+      return;
+    }
+
+    final uri = Uri.tryParse(ticketUrl);
+    if (uri == null) return;
+
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  /// Says the event is over, where the actions used to be.
+  ///
+  /// Stating it plainly rather than just removing the buttons: a page with
+  /// nothing to do on it reads as broken, and somebody who has arrived from a
+  /// year-old link deserves to know which it is.
+  Widget _buildFinishedBanner() {
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFF14140F),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+      child: const Text(
+        'THIS EVENT HAS NOW FINISHED',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
+  }
 
   String _formatEventDate(Map<String, dynamic> event) {
     try {
@@ -937,6 +1101,12 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                       ),
                       const SizedBox(height: 12),
 
+                      // Everything you can DO with an event goes once it is
+                      // over. There is nothing left to register for, buy a
+                      // ticket to or plan around, and a live-looking Buy
+                      // Tickets button on last year's show is worse than no
+                      // button at all. The banner below says so instead.
+                      if (!_isPastEvent) ...[
                       if (registrationRequired)
                         SizedBox(
                           width: double.infinity,
@@ -1002,15 +1172,10 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
-                            onPressed: () async {
-                              final uri = Uri.parse(ticketUrl);
-                              if (await canLaunchUrl(uri)) {
-                                await launchUrl(
-                                  uri,
-                                  mode: LaunchMode.externalApplication,
-                                );
-                              }
-                            },
+                            onPressed: () => _openTickets(
+                              ticketUrl,
+                              eventTitle.toString(),
+                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.grey.shade900,
                               foregroundColor: Colors.white,
@@ -1138,9 +1303,15 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                             ),
                         ],
                       ),
+                      ],
                     ],
                   ),
                 ),
+
+                // Outside the padding on purpose: edge to edge, the way a
+                // status stripe reads, rather than a card floating in the
+                // middle of the page.
+                if (_isPastEvent) _buildFinishedBanner(),
 
                 // Tab Bar
                 Container(
@@ -1160,11 +1331,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                       fontSize: 16,
                     ),
                     tabs: [
-                      const Tab(text: 'About Us'),
-                      const Tab(text: 'Entry & Tickets'),
-                      if (FeatureFlags.eventCommunityGallery)
-                        const Tab(text: 'Media'),
-                      // Tab(text: 'Map'),
+                      for (final tab in _tabs) Tab(text: tab.label),
                     ],
                   ),
                 ),
@@ -1176,37 +1343,45 @@ class _EventDetailScreenState extends State<EventDetailScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          // About Us Tab
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: buildHtmlContent(
-              eventDescription,
-              'No description available.',
-            ),
-          ),
+          for (final tab in _tabs)
+            switch (tab) {
+              _EventTab.details => SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: buildHtmlContent(
+                  eventDescription,
+                  'No description available.',
+                ),
+              ),
 
-          // Entry & Tickets Tab
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: buildHtmlContent(
-              entryDetails,
-              hasTickets
-                  ? 'Tickets are available for this event.'
-                  : 'This is a free event. No tickets required.',
-            ),
-          ),
+              _EventTab.tickets => SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: buildHtmlContent(
+                  entryDetails,
+                  hasTickets
+                      ? 'Tickets are available for this event.'
+                      : 'This is a free event. No tickets required.',
+                ),
+              ),
 
-          // Media Tab — the galleries tagged to this event, not one merged
-          // pool of photos. Creating a gallery happens on the media tab, where
-          // it can be titled and tagged, so there is no add button here.
-          if (FeatureFlags.eventCommunityGallery)
-            EntityGalleriesTab(
-              entityId: eventId,
-              primaryColor: theme.primaryColor,
-            ),
-
-          // Map Tab
-          // _buildMapTab(latitude, longitude, eventTitle, eventLocation, theme),
+              // Once an event is over, what matters is everything that was
+              // shot there — one pool, the same merged view the gallery page
+              // shows, rather than a list of separate uploads to open one by
+              // one. A live event still lists its galleries, where the point
+              // is contributing to the right one.
+              _EventTab.media => _isPastEvent
+                  ? EventCommunityGalleryTab(
+                      eventId: eventId,
+                      eventTitle: eventTitle.toString(),
+                      primaryColor: theme.primaryColor,
+                      // Nothing to add to or curate on an event that is over
+                      // — this tab is the record of it.
+                      readOnly: true,
+                    )
+                  : EntityGalleriesTab(
+                      entityId: eventId,
+                      primaryColor: theme.primaryColor,
+                    ),
+            },
         ],
       ),
     );

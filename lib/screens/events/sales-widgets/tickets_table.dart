@@ -222,7 +222,14 @@ class _TicketsSectionState extends State<TicketsSection> {
                       ),
                       // Data rows
                       ..._paged.map((t) {
-                        final car = t['car'] as Map? ?? {};
+                        // Not always an object. The API builds this with
+                        // array_filter(), which drops every empty field, and
+                        // json_encode turns the resulting empty PHP array
+                        // into [] rather than {} — so a ticket that collected
+                        // no vehicle details arrives as a list and casting it
+                        // to a Map took the whole table down with it.
+                        final rawCar = t['car'];
+                        final car = rawCar is Map ? rawCar : const {};
                         final carStr = [
                           car['make'] ?? '',
                           car['model'] ?? '',

@@ -1549,6 +1549,30 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// Above the cover rather than in the header: the header already carries the
   /// gallery name and the linked entity, and a long place name would push
   /// either of those out.
+  /// Who the photos came from, as a list you can open.
+  ///
+  /// Fetched when asked for rather than with the gallery: a merged event can
+  /// have dozens of contributors, and resolving every name and avatar to fill
+  /// a sheet nobody opened would be paid for on every load.
+  Future<void> _showContributors() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      useSafeArea: true,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) => _ContributorsSheet(
+        galleryId: widget.galleryId,
+        entityType: widget.entityType,
+        entityId: widget.entityId,
+        placeId: widget.placeId,
+        onOpenProfile: _openProfile,
+      ),
+    );
+  }
+
   /// The one line of context under the title: where these photos were taken
   /// and how many people they came from.
   ///
@@ -1569,7 +1593,11 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       if (_owner == null && people > 0)
         _MetaChip(
           icon: Icons.people_outline,
-          label: people == 1 ? '1 person' : '$people people',
+          label: people == 1
+              ? 'Photos shared by 1 person'
+              : 'Photos shared by $people people',
+          // "Photos from 7 people" invites the question of which seven.
+          onTap: _showContributors,
         ),
     ];
 
@@ -2022,22 +2050,188 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   }
 }
 
+/// Everyone whose photos are in this gallery.
+class _ContributorsSheet extends StatefulWidget {
+  final int? galleryId;
+  final String entityType;
+  final String entityId;
+  final String? placeId;
+  final void Function(int userId, String handle) onOpenProfile;
+
+  const _ContributorsSheet({
+    required this.galleryId,
+    required this.entityType,
+    required this.entityId,
+    required this.placeId,
+    required this.onOpenProfile,
+  });
+
+  @override
+  State<_ContributorsSheet> createState() => _ContributorsSheetState();
+}
+
+class _ContributorsSheetState extends State<_ContributorsSheet> {
+  static const Color _muted = Color(0xFF8A8A8A);
+
+  List<Map<String, dynamic>>? _people;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final people = await EventsAPI.fetchGalleryContributors(
+        galleryId: widget.galleryId,
+        entityType: widget.entityType,
+        entityId: widget.entityId,
+        placeId: widget.placeId,
+      );
+
+      if (!mounted) return;
+      setState(() => _people = people);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _failed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final people = _people;
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.5,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      builder: (context, controller) => Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 38,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
+            child: Row(
+              children: [
+                const Text(
+                  'Photos from',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+                const Spacer(),
+                if (people != null)
+                  Text(
+                    '${people.length}',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: _muted,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: people == null
+                ? Center(
+                    child: _failed
+                        ? const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Text(
+                              "Couldn't load who uploaded these.",
+                              style: TextStyle(color: _muted),
+                            ),
+                          )
+                        : const CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : ListView.builder(
+                    controller: controller,
+                    padding: const EdgeInsets.only(bottom: 20),
+                    itemCount: people.length,
+                    itemBuilder: (context, index) {
+                      final person = people[index];
+                      final handle = '${person['username'] ?? ''}';
+                      final name = '${person['display_name'] ?? ''}';
+                      final avatar = '${person['avatar'] ?? ''}';
+
+                      return ListTile(
+                        leading: CircleAvatar(
+                          radius: 21,
+                          backgroundColor: Colors.grey.shade200,
+                          backgroundImage: avatar.isEmpty
+                              ? null
+                              : CachedNetworkImageProvider(avatar),
+                          child: avatar.isEmpty
+                              ? Icon(Icons.person, color: Colors.grey.shade500)
+                              : null,
+                        ),
+                        title: Text(
+                          handle.isEmpty ? name : '@$handle',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: name.isEmpty || name == handle
+                            ? null
+                            : Text(
+                                name,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: _muted,
+                                ),
+                              ),
+                        trailing: const Icon(
+                          Icons.chevron_right,
+                          size: 20,
+                          color: _muted,
+                        ),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          widget.onOpenProfile(
+                            int.tryParse('${person['user_id']}') ?? 0,
+                            handle,
+                          );
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// One fact about a gallery, as a pill.
 ///
-/// Telling you something, never taking you anywhere — the one thing here that
-/// leads somewhere is the title, which is where it belongs.
+/// Mostly just telling you something. The exception carries a chevron: a row
+/// of identical grey pills where one of them is secretly tappable is a link
+/// nobody finds, so the ones that lead somewhere say so.
 class _MetaChip extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const _MetaChip({required this.icon, required this.label});
+  /// Null for a chip that is only telling you something.
+  final VoidCallback? onTap;
+
+  const _MetaChip({required this.icon, required this.label, this.onTap});
 
   static const Color _muted = Color(0xFF6B6B6B);
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+    final chip = Container(
+      padding: EdgeInsets.fromLTRB(10, 7, onTap == null ? 10 : 6, 7),
       decoration: BoxDecoration(
         color: const Color(0xFFF2F2F2),
         borderRadius: BorderRadius.circular(999),
@@ -2062,7 +2256,20 @@ class _MetaChip extends StatelessWidget {
               ),
             ),
           ),
+          if (onTap != null)
+            const Icon(Icons.chevron_right, size: 16, color: _muted),
         ],
+      ),
+    );
+
+    if (onTap == null) return chip;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: chip,
       ),
     );
   }

@@ -9,6 +9,8 @@ import '../main.dart';
 import '../api/qr_code_api.dart';
 import '../widgets/qr_scanner_modal.dart';
 import 'dart:async';
+import 'package:url_launcher/url_launcher.dart' show closeInAppWebView;
+import 'package:drivelife/screens/events/order_ticket_view.dart';
 
 class DeepLinkHandler {
   static final DeepLinkHandler _instance = DeepLinkHandler._internal();
@@ -133,6 +135,37 @@ class DeepLinkHandler {
       debugPrint('👤 [DeepLink] User logged in: ${currentUser != null}');
 
       final params = uri.queryParameters;
+
+      // ── Back from the ticket checkout ────────────────────────────────
+      //
+      // The web checkout finishes an order by navigating to whatever was
+      // passed as ?complete=, with the encrypted order id appended. We hand it
+      // drivelife://app/?dl-order=1, so a completed purchase comes back here
+      // and the buyer lands on their tickets instead of on a web page they
+      // then have to close.
+      //
+      // Before the login check on purpose: buying tickets needs no account,
+      // so bouncing a signed-out buyer to a login screen would lose the order
+      // they just paid for.
+      if (params.containsKey('dl-order')) {
+        final orderId = params['order_id'] ?? '';
+        debugPrint('🎟️ [DeepLink] Order complete: $orderId');
+
+        // Closes the in-app browser the checkout was running in. Not
+        // awaited: the handler is synchronous, and the tickets screen should
+        // not wait on a browser dismissal to be pushed behind it. Harmless
+        // when there is none — the buyer may have finished in a real browser.
+        unawaited(closeInAppWebView());
+
+        if (orderId.isEmpty) return;
+
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => OrderTicketsPage(orderId: orderId),
+          ),
+        );
+        return;
+      }
 
       // ⭐ Handle QR code: https://app.mydrivelife.com/?qr=0C013CE0
       if (params.containsKey('qr')) {

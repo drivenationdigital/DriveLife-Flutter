@@ -23,6 +23,26 @@ class FeatureFlags {
   //   widgets/events/editor/*.dart
   // Re-wiring them means re-adding the tabs to the editor, not flipping a flag.
 
+  /// The in-app ticket checkout.
+  ///
+  /// OFF while it is being tested. Buy Tickets behaves exactly as it always
+  /// did: it opens whatever `ticket_url` the events API sends, in the
+  /// device's browser. Turn this back on — one word — to restore the native
+  /// flow; everything behind it is built and unchanged.
+  ///
+  /// Nothing is stranded by leaving it off. A cart is only created once a
+  /// buyer commits to the native path, so with this false the app never
+  /// opens one, never reserves stock and never talks to the checkout API.
+  ///
+  /// When it goes back on: tickets, details and Stripe payment all happen in
+  /// the app, and two things still leave it on purpose — an event whose
+  /// organiser takes PayPal, Square or Mollie (their own merchant accounts,
+  /// browser SDKs, no native equivalent, so the whole checkout opens in an
+  /// in-app browser rather than quietly dropping a method they switched on),
+  /// and an organiser's external ticketing link, which is somebody else's
+  /// site.
+  static const bool nativeTicketSelection = false;
+
   /// Community gallery on events: the tab on the event detail screen and the
   /// "Share photos" buttons on the events list.
   ///
