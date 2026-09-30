@@ -14,6 +14,7 @@ import '../account-settings/username_screen.dart';
 import '../account-settings/app_permissions_screen.dart';
 import '../account-settings/account_settings_screen.dart';
 import '../account-settings/edit_profile_images_screen.dart';
+import 'package:drivelife/providers/feature_tips_provider.dart';
 
 class EditProfileSettingsScreen extends StatelessWidget {
   final _authService = AuthService();
@@ -181,6 +182,8 @@ class EditProfileSettingsScreen extends StatelessWidget {
           const SizedBox(height: 8),
           const _UploadQualityTile(),
           const SizedBox(height: 8),
+          const _FeatureTipsTile(),
+          const SizedBox(height: 8),
           _buildMenuItem(
             context,
             'App Permissions',
@@ -233,6 +236,102 @@ class EditProfileSettingsScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "Feature tips" switch, with a way to replay them.
+///
+/// Reads through the provider rather than preferences directly: the tips are
+/// live on other screens, so the switch and a callout that is open at the time
+/// have to be looking at the same answer.
+class _FeatureTipsTile extends StatelessWidget {
+  const _FeatureTipsTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+    final tips = context.watch<FeatureTipsProvider>();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Feature tips',
+                      style: TextStyle(fontSize: 16, color: Colors.black),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Point out new things once, where they are. Each tip '
+                      'disappears for good as soon as you have seen it.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Colors.grey.shade600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Switch(
+                value: tips.enabled,
+                // Disabled until the stored value is known, so it cannot flash
+                // on and be toggled against a value that has not loaded yet.
+                onChanged: tips.ready ? tips.setEnabled : null,
+                activeThumbColor: theme.primaryColor,
+              ),
+            ],
+          ),
+
+          // Only worth offering while they are wanted at all.
+          if (tips.enabled) ...[
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: tips.ready
+                    ? () async {
+                        await tips.resetAll();
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Feature tips will show again'),
+                          ),
+                        );
+                      }
+                    : null,
+                style: TextButton.styleFrom(
+                  foregroundColor: theme.primaryColor,
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  'Show them again',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

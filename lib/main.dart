@@ -24,6 +24,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:drivelife/providers/connectivity_provider.dart';
+import 'package:drivelife/providers/feature_tips_provider.dart';
 import 'package:drivelife/widgets/offline_banner.dart';
 
 
@@ -110,6 +111,12 @@ void main() async {
         // screen asks for anything.
         ChangeNotifierProvider(
           create: (_) => ConnectivityProvider()..start(),
+          lazy: false,
+        ),
+        // One preferences read, off the first frame. Nothing is shown until
+        // it lands, so a cold start never flashes a tip and takes it away.
+        ChangeNotifierProvider(
+          create: (_) => FeatureTipsProvider()..load(),
           lazy: false,
         ),
       ],

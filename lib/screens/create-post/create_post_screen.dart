@@ -17,6 +17,8 @@ import 'package:video_player/video_player.dart';
 import 'package:fluttertagger/fluttertagger.dart';
 import 'package:video_compress/video_compress.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
+import 'package:drivelife/providers/feature_tips_provider.dart';
+import 'package:drivelife/widgets/feature_tip_target.dart';
 
 enum MediaPickerMode { images, videos, ask }
 
@@ -1135,10 +1137,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               // two buttons back.
 
               // ],
-              _ToolButton(
-                icon: Icons.poll_outlined,
-                label: 'Poll',
-                onTap: _openPollSheet,
+              FeatureTipTarget(
+                tip: FeatureTips.poll,
+                child: _ToolButton(
+                  icon: Icons.poll_outlined,
+                  label: 'Poll',
+                  onTap: _openPollSheet,
+                ),
               ),
               _ToolButton(
                 icon: Icons.link,
