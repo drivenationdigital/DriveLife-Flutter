@@ -2,6 +2,7 @@ import 'package:drivelife/widgets/media/tagged_photos_grid.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/garage_reminders_service.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/routes.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/garage/add_reminders.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
@@ -432,6 +433,29 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     }
   }
 
+  /// Opens the profile of whoever owns this vehicle.
+  ///
+  /// The id comes off the vehicle row, not the owner block: the API builds
+  /// that block from name, handle and avatar and never puts an id in it, so
+  /// reading one from there would always be null and every tap would open
+  /// nothing.
+  void _openOwnerProfile() {
+    final owner = _vehicle?['owner'];
+    if (owner is! Map) return;
+
+    final userId = int.tryParse('${_vehicle?['owner_id'] ?? ''}');
+    final username = '${owner['username'] ?? ''}'.trim();
+
+    // The profile screen can find somebody by either, so one is enough.
+    if (userId == null && username.isEmpty) return;
+
+    Navigator.pushNamed(
+      context,
+      AppRoutes.viewProfile,
+      arguments: {'userId': userId, 'username': username},
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
@@ -627,44 +651,55 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                     Positioned(
                       left: 16,
                       bottom: 16,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.7),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: [
-                            ProfileAvatar(
-                              imageUrl: _vehicle!['owner']?['profile_image'],
-                              radius: 12,
-                            ),
-                            const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Material(
+                        color: Colors.black.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(20),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: _openOwnerProfile,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Text(
-                                  'Added By',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 10,
-                                  ),
+                                ProfileAvatar(
+                                  imageUrl:
+                                      _vehicle!['owner']?['profile_image'],
+                                  radius: 12,
                                 ),
-                                Text(
-                                  '@${_vehicle!['owner']?['username'] ?? 'user'}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text(
+                                      // Whose car it is, not who typed it in.
+                                      'Owned By',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                    Text(
+                                      '@${_vehicle!['owner']?['username'] ?? 'user'}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(width: 2),
+                                const Icon(
+                                  Icons.chevron_right,
+                                  size: 16,
+                                  color: Colors.white70,
                                 ),
                               ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),

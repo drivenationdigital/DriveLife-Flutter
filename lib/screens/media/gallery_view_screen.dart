@@ -98,6 +98,24 @@ class GalleryViewScreen extends StatefulWidget {
   /// that swipe from working at all.
   final VoidCallback? onChanged;
 
+  /// Drop the Scaffold and app bar and render only the gallery itself.
+  ///
+  /// For putting this inside something that already has its own chrome — the
+  /// Media tab on an event, where the page above already names the event and
+  /// carries the share button. Everything below the app bar is identical,
+  /// which is the point: one gallery layout, not a second one that drifts.
+  final bool embedded;
+
+  /// Look, but do not touch.
+  ///
+  /// Suppresses every way of changing the gallery — curating, setting a
+  /// cover, rearranging, deleting, scanning for plates. Used where the photos
+  /// are a record rather than something still being assembled.
+  ///
+  /// A display setting, not a permission: the server still decides what
+  /// anyone may do, and this only stops the app offering it.
+  final bool readOnly;
+
   const GalleryViewScreen({
     super.key,
     this.galleryId,
@@ -112,6 +130,8 @@ class GalleryViewScreen extends StatefulWidget {
     this.initialPhotoId,
     this.onChanged,
     this.placeId,
+    this.embedded = false,
+    this.readOnly = false,
   });
 
   @override
@@ -244,8 +264,11 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       _total = int.tryParse('${response['total']}') ?? _photos.length;
       _totalPages = int.tryParse('${response['total_pages']}') ?? 1;
       // Named is_event_owner for the app already reading it; it means "may
-      // curate this gallery".
-      _canCurate = response['is_event_owner'] == true;
+      // curate this gallery". Forced off when read-only, which switches off
+      // every affordance hanging from it in one place rather than gating each
+      // of them separately.
+      _canCurate =
+          !widget.readOnly && response['is_event_owner'] == true;
       _entityImage = _firstLinkImage(response);
       _placeName = _firstPlaceName(response);
       _entityLink = _firstEntityLink(response);
@@ -1105,6 +1128,10 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   /// at — offering both here made it far too easy to wipe a gallery while
   /// meaning to drop one bad shot.
   Future<void> _showCurateActions(CommunityPhoto photo) async {
+    // Read-only covers the contributor's own-photo delete too, which
+    // _canCurate on its own does not.
+    if (widget.readOnly) return;
+
     // Curators get both actions; a contributor who only uploaded this photo
     // still gets to remove it.
     if (!_canCurate && !photo.canDelete) return;
@@ -1160,17 +1187,31 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
   ///
   /// Same shape as the post, event and venue links the app already shares —
   /// `/gallery/:id` — which DeepLinkHandler routes back to this screen.
-  /// Null for the entity-addressed view, which is a merged pool of several
-  /// galleries and has no single thing to link to.
+  /// A merged pool has no gallery of its own, so it links to the thing it
+  /// gathers — the event or venue page, which carries these same photos on
+  /// its Media tab. Sharing one used to send the title and nothing else,
+  /// which arrives as a line of text nobody can act on.
+  ///
+  /// Still null for a location group: a Google place has no page in the app,
+  /// and a link that opens nothing is worse than no link.
   String? get _shareUrl {
     if (widget.shareUrl != null && widget.shareUrl!.isNotEmpty) {
       return widget.shareUrl;
     }
 
     final galleryId = widget.galleryId;
-    if (galleryId == null || galleryId <= 0) return null;
+    if (galleryId != null && galleryId > 0) {
+      return 'https://app.mydrivelife.com/gallery/$galleryId?ref=share';
+    }
 
-    return 'https://app.mydrivelife.com/gallery/$galleryId?ref=share';
+    final entityId = int.tryParse(widget.entityId) ?? 0;
+    if (entityId > 0 &&
+        (widget.entityType == 'event' || widget.entityType == 'venue')) {
+      return 'https://app.mydrivelife.com/${widget.entityType}/$entityId'
+          '?ref=share';
+    }
+
+    return null;
   }
 
   /// Shares a single photo.
@@ -1243,6 +1284,10 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Embedded: no Scaffold of its own, or it would paint a second one over
+    // the page hosting it and swallow that page's snack bars.
+    if (widget.embedded) return _buildBody();
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _buildAppBar(),
@@ -1586,6 +1631,9 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
     final people = _contributors ?? 0;
 
     final chips = <Widget>[
+      // No photo count here. On the full screen it is the app bar's subtitle;
+      // embedded there is no app bar, but the grid underneath is its own
+      // answer to "how many" and a chip saying it as well is one fact twice.
       if (place != null) _MetaChip(icon: Icons.place_outlined, label: place),
 
       // Only where there is no owner. A single gallery credits its uploader

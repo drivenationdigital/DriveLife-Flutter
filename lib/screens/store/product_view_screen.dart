@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/models/product_model.dart';
 import 'package:drivelife/utils/html_text.dart';
+import 'package:drivelife/widgets/image_viewer_screen.dart';
 import 'package:shimmer/shimmer.dart';
 
 class ProductDetailScreen extends StatefulWidget {
@@ -1141,66 +1142,3 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 }
 
 // Image viewer for full-screen gallery
-class ImageViewerScreen extends StatefulWidget {
-  final List<String> images;
-  final int initialIndex;
-
-  const ImageViewerScreen({
-    super.key,
-    required this.images,
-    this.initialIndex = 0,
-  });
-
-  @override
-  State<ImageViewerScreen> createState() => _ImageViewerScreenState();
-}
-
-class _ImageViewerScreenState extends State<ImageViewerScreen> {
-  late PageController _pageController;
-  late int _currentIndex;
-
-  @override
-  void initState() {
-    super.initState();
-    _currentIndex = widget.initialIndex;
-    _pageController = PageController(initialPage: widget.initialIndex);
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          '${_currentIndex + 1} / ${widget.images.length}',
-          style: const TextStyle(color: Colors.white),
-        ),
-      ),
-      body: PageView.builder(
-        controller: _pageController,
-        onPageChanged: (index) => setState(() => _currentIndex = index),
-        itemCount: widget.images.length,
-        itemBuilder: (context, index) {
-          return InteractiveViewer(
-            minScale: 0.5,
-            maxScale: 4.0,
-            child: Center(
-              child: Image.network(widget.images[index], fit: BoxFit.contain),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}

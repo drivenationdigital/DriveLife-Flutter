@@ -1,13 +1,12 @@
 import 'package:drivelife/config/feature_flags.dart';
-import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:drivelife/api/events_api.dart';
-import 'package:drivelife/widgets/events/event_community_gallery_tab.dart';
+import 'package:drivelife/screens/media/gallery_view_screen.dart';
+import 'package:drivelife/widgets/image_viewer_screen.dart';
 import 'package:drivelife/widgets/media/entity_galleries_tab.dart';
 import 'package:drivelife/widgets/navigate_sheet.dart';
 import 'package:drivelife/config/feature_flags.dart' show FeatureFlags;
@@ -734,8 +733,14 @@ class _EventDetailScreenState extends State<EventDetailScreen>
     final eventDate = _formatEventDate(event);
     final eventTime = _formatEventTime(event);
     final eventLocation = event['location'] ?? 'Location TBA';
-    final eventDescription = _stripHtml(event['description']);
-    final entryDetails = _stripHtml(event['entry_details']);
+    // Raw HTML, not stripped. Both of these are authored in WordPress — the
+    // description in an ACF editor, the entry details assembled with headings
+    // and ticket boxes — and buildHtmlContent below is a full renderer with
+    // styles for paragraphs, headings, lists and links. Running the tags off
+    // first handed that renderer a single run of plain text, which is exactly
+    // what it then drew: one paragraph, no breaks, no emphasis, no links.
+    final eventDescription = event['description']?.toString() ?? '';
+    final entryDetails = event['entry_details']?.toString() ?? '';
     final hasTickets = event['has_tickets'] == true;
     final ticketUrl = event['ticket_url'];
     final registrationRequired = event?['registrationRequired'] == true;
@@ -755,7 +760,11 @@ class _EventDetailScreenState extends State<EventDetailScreen>
     );
 
     Widget buildHtmlContent(String? htmlContent, String emptyMessage) {
-      if (htmlContent == null || htmlContent.isEmpty) {
+      // Emptiness is judged on the text, not the markup. An editor field left
+      // blank rarely comes back as "" — it comes back as "<p></p>" or a stray
+      // "&nbsp;", which is not empty and renders as a blank gap where the
+      // "no description" line should be.
+      if (htmlContent == null || _stripHtml(htmlContent).isEmpty) {
         return Text(
           emptyMessage,
           style: TextStyle(
@@ -934,27 +943,41 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                               },
                               itemCount: eventImages.length,
                               itemBuilder: (context, index) {
-                                return CachedNetworkImage(
-                                  imageUrl: eventImages[index],
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => Container(
-                                    color: Colors.grey.shade300,
-                                    child: Center(
-                                      child: CircularProgressIndicator(
-                                        color: theme.primaryColor,
-                                        strokeWidth: 2,
+                                return GestureDetector(
+                                  // The header crops to fill; tapping shows
+                                  // the whole picture, which on an event
+                                  // poster is usually where the detail is.
+                                  onTap: () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      fullscreenDialog: true,
+                                      builder: (_) => ImageViewerScreen(
+                                        images: eventImages,
+                                        initialIndex: index,
                                       ),
                                     ),
                                   ),
-                                  errorWidget: (context, url, error) =>
-                                      Container(
-                                        color: Colors.grey.shade300,
-                                        child: Icon(
-                                          Icons.event,
-                                          size: 80,
-                                          color: Colors.grey.shade400,
+                                  child: CachedNetworkImage(
+                                    imageUrl: eventImages[index],
+                                    fit: BoxFit.cover,
+                                    placeholder: (context, url) => Container(
+                                      color: Colors.grey.shade300,
+                                      child: Center(
+                                        child: CircularProgressIndicator(
+                                          color: theme.primaryColor,
+                                          strokeWidth: 2,
                                         ),
                                       ),
+                                    ),
+                                    errorWidget: (context, url, error) =>
+                                        Container(
+                                          color: Colors.grey.shade300,
+                                          child: Icon(
+                                            Icons.event,
+                                            size: 80,
+                                            color: Colors.grey.shade400,
+                                          ),
+                                        ),
+                                  ),
                                 );
                               },
                             ),
@@ -989,7 +1012,11 @@ class _EventDetailScreenState extends State<EventDetailScreen>
 
                 // Event Details Section
                 Padding(
-                  padding: const EdgeInsets.all(20),
+                  // No bottom padding on a finished event: the banner below
+                  // supplies its own, and 20 here plus the gap inside the
+                  // column left it floating well clear of the content it is
+                  // about.
+                  padding: EdgeInsets.fromLTRB(20, 20, 20, _isPastEvent ? 0 : 20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1311,7 +1338,12 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                 // Outside the padding on purpose: edge to edge, the way a
                 // status stripe reads, rather than a card floating in the
                 // middle of the page.
-                if (_isPastEvent) _buildFinishedBanner(),
+                if (_isPastEvent) ...[
+                  _buildFinishedBanner(),
+                  // Clear of the tab bar, which would otherwise sit directly
+                  // against the black and read as part of it.
+                  const SizedBox(height: 16),
+                ],
 
                 // Tab Bar
                 Container(
@@ -1368,11 +1400,16 @@ class _EventDetailScreenState extends State<EventDetailScreen>
               // shows, rather than a list of separate uploads to open one by
               // one. A live event still lists its galleries, where the point
               // is contributing to the right one.
+              // The gallery screen itself, minus its chrome — so this is the
+              // same layout as opening the group from the Photos tab, tag
+              // strip and contributor count included, rather than a second
+              // grid that looks nearly like it.
               _EventTab.media => _isPastEvent
-                  ? EventCommunityGalleryTab(
-                      eventId: eventId,
-                      eventTitle: eventTitle.toString(),
-                      primaryColor: theme.primaryColor,
+                  ? GalleryViewScreen(
+                      entityId: eventId,
+                      entityType: 'event',
+                      entityTitle: eventTitle.toString(),
+                      embedded: true,
                       // Nothing to add to or curate on an event that is over
                       // — this tab is the record of it.
                       readOnly: true,
