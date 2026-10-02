@@ -263,6 +263,78 @@ class CheckoutInfo {
   List<String> get providerIds =>
       providers.isEmpty ? const ['stripe'] : [for (final p in providers) p.id];
 
+  /// Whether this event offers a Stripe card payment.
+  bool get hasStripe => providerIds.contains('stripe');
+
+  /// Whether this event offers PayPal, which sits alongside the card
+  /// processor rather than replacing it.
+  bool get hasPaypal => providerIds.contains('paypal');
+
+  /// Whether this event's card payments go through Square.
+  bool get hasSquare => providerIds.contains('square');
+
+  /// The Square settings for this event's card payments.
+  ///
+  /// `application_id` is the PLATFORM's app, not the organiser's: the SDK
+  /// tokenises against our application and the charge is authorised
+  /// server-side by the organiser's own access token. Only `location_id`
+  /// belongs to them.
+  ({String applicationId, String locationId, String environment})? get square {
+    for (final provider in providers) {
+      if (provider.id != 'square') continue;
+
+      return (
+        applicationId: '${provider.raw['application_id'] ?? ''}'.trim(),
+        locationId: '${provider.raw['location_id'] ?? ''}'.trim(),
+        environment: '${provider.raw['environment'] ?? ''}'.trim(),
+      );
+    }
+
+    return null;
+  }
+
+  /// A card processor the app cannot present, named as a buyer would read it.
+  ///
+  /// Square and Mollie are browser SDKs with no native equivalent, and they
+  /// occupy the card slot *instead of* Stripe — so an event using one has no
+  /// card payment the app can take, even though PayPal may still work.
+  /// Null when there is no such processor.
+  String? get cardProcessorNotInApp {
+    for (final id in providerIds) {
+      // Square is handled natively now; only Mollie is left without one, by
+      // design — it hosts its own 3-D Secure page and has no mobile SDK.
+      if (id == 'mollie') return 'Mollie';
+    }
+
+    return null;
+  }
+
+  /// The Stripe settings this event's PaymentIntent is created against.
+  ///
+  /// `providers` is preferred but optional — a backend predating the
+  /// multi-provider work omits it and sends only the top-level `stripe`
+  /// object — so this resolves both in one place rather than each screen
+  /// guessing.
+  ///
+  /// A null `account` is not a missing value: it means the organiser has no
+  /// Stripe of their own (no `stripe_account_id`), so the money lands on
+  /// DriveLife's platform account instead. Whether that is allowed is a
+  /// policy question, answered by StripeConfig, not here.
+  ({String key, String? account}) get stripe {
+    for (final provider in providers) {
+      if (provider.id != 'stripe') continue;
+
+      final account = '${provider.raw['account'] ?? ''}'.trim();
+
+      return (
+        key: '${provider.raw['publishable_key'] ?? ''}'.trim(),
+        account: account.isEmpty ? null : account,
+      );
+    }
+
+    return (key: stripeKey.trim(), account: stripeAccount);
+  }
+
   factory CheckoutInfo.fromJson(Map<String, dynamic> json) {
     final stripe = (json['stripe'] as Map?)?.cast<String, dynamic>();
     final account = _str(stripe?['account']);
@@ -501,9 +573,17 @@ class CheckoutCart {
   /// The server's line items, keyed by ticket. Passed through as received.
   final Map<String, dynamic> lines;
 
+  /// When the stock this cart is holding goes back on sale.
+  ///
+  /// Set when the cart is reserved, not when it is created: an empty cart
+  /// holds nothing and has no deadline to show. Sixty minutes is the
+  /// server's window — see the classic checkout's CHECKOUT_MINUTES.
+  final DateTime? reservedUntil;
+
   const CheckoutCart({
     required this.token,
     this.totals = const CartTotals(),
     this.lines = const {},
+    this.reservedUntil,
   });
 }

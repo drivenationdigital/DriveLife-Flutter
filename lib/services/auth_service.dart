@@ -3,6 +3,7 @@ import 'package:drivelife/models/user_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:drivelife/config/app_environment.dart';
 
 /// Why a login attempt ended the way it did.
 ///
@@ -34,7 +35,7 @@ class LoginResult {
 }
 
 class AuthService {
-  static const String _apiUrl = 'https://www.carevents.com/uk';
+  static String get _apiUrl => AppEnvironment.wordpressBase;
   final _storage = const FlutterSecureStorage();
   AccountManager? _accountManager;
 

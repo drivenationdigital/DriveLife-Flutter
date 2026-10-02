@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:drivelife/config/app_environment.dart';
 
 class AccountManager extends ChangeNotifier {
   List<Account> _accounts = [];
@@ -166,7 +167,7 @@ class AccountManager extends ChangeNotifier {
     try {
       final response = await http.get(
         Uri.parse(
-          'https://www.carevents.com/uk/wp-json/app/v1/managed-entities',
+          '${AppEnvironment.wordpressBase}/wp-json/app/v1/managed-entities',
         ),
         headers: {
           'Content-Type': 'application/json',

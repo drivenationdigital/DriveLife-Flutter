@@ -1,3 +1,4 @@
+import 'package:drivelife/config/app_environment.dart';
 import 'package:drivelife/providers/connectivity_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -19,7 +20,21 @@ class OfflineBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final network = context.watch<ConnectivityProvider>();
 
+    // A staging build looks exactly like the real one in a screenshot, and
+    // the difference is whose money moves. The stripe rides above everything,
+    // always, so it cannot be missed or scrolled away from.
+    if (AppEnvironment.isStaging) {
+      return _StagingFrame(
+        child: network.showBanner ? _withBanner(context, network) : child,
+      );
+    }
+
     if (!network.showBanner) return child;
+
+    return _withBanner(context, network);
+  }
+
+  Widget _withBanner(BuildContext context, ConnectivityProvider network) {
 
     final restored = network.justRestored;
     final topInset = MediaQuery.paddingOf(context).top;
@@ -85,6 +100,52 @@ class OfflineBanner extends StatelessWidget {
         // The strip has taken the status bar inset, so the app below must not
         // take it a second time — every SafeArea in there would add a second
         // gap the size of the notch.
+        Expanded(
+          child: MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            child: child,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A stripe across the top of every staging build.
+///
+/// Staging and production are pixel-identical, and the difference is which
+/// WordPress the orders land in and whose Stripe takes the money. Anyone
+/// looking at a screenshot — or at a phone on a desk — can tell at a glance.
+class _StagingFrame extends StatelessWidget {
+  final Widget child;
+
+  const _StagingFrame({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final topInset = MediaQuery.paddingOf(context).top;
+
+    return Column(
+      children: [
+        Material(
+          color: const Color(0xFF8A2BE2),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, topInset + 4, 16, 4),
+            child: const Text(
+              'STAGING — test data, test cards',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+        ),
+        // The stripe has taken the status bar inset, so the app below must
+        // not take it again.
         Expanded(
           child: MediaQuery.removePadding(
             context: context,

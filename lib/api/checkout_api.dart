@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:drivelife/config/app_environment.dart';
+import 'package:flutter/foundation.dart';
 import 'package:drivelife/models/checkout_models.dart';
 import 'package:http/http.dart' as http;
 
@@ -41,22 +43,52 @@ class CheckoutApi {
   /// `checkout.carevents.com` reaches the same route, but that host rewrites
   /// its top-level paths to `/get-tickets/...`; the API is cleaner from the
   /// canonical origin.
-  static const String baseUrl = 'https://account.carevents.com';
+  ///
+  /// Follows the app's environment: the checkout proxy talks to whichever
+  /// WordPress it was deployed against, so a staging app must use the staging
+  /// accounts app or its event ids and cart tokens will not match.
+  static String get baseUrl => AppEnvironment.accountsBase;
 
   /// Where a buyer is sent to finish paying.
   ///
-  /// A vanity host pointed at the same application: checkout.carevents.com/
-  /// <eventEid> rewrites internally to /get-tickets/<eventEid>, so the buyer
-  /// sees a short payments-branded URL rather than the account dashboard's.
-  static const String checkoutBaseUrl = 'https://checkout.carevents.com';
+  /// A vanity host pointed at the same application: `checkout.carevents.com`
+  /// rewrites `/<eventEid>` internally to `/get-tickets/<eventEid>`, so the
+  /// buyer sees a short payments-branded URL rather than the dashboard's.
+  ///
+  /// Staging has no such subdomain and uses the real path instead; either way
+  /// the event id is appended to this.
+  static String get checkoutBaseUrl => AppEnvironment.checkoutLinkBase;
 
   static const Duration _timeout = Duration(seconds: 25);
+
+  /// Prints a checkout call, on staging only.
+  ///
+  /// The buyer-facing messages are deliberately vague — "Could not start the
+  /// PayPal payment" reads the same for a misconfigured app as for a declined
+  /// card — so without this there is nothing to debug from. Off in production
+  /// because these payloads carry a buyer's name, email and phone.
+  static void _log(String message) {
+    if (!AppEnvironment.isStaging) return;
+    debugPrint('🎟️ [Checkout] $message');
+  }
+
+  /// A JSON object from the PHP, whatever shape "empty" arrived in.
+  ///
+  /// PHP has one array type and json_encode writes an empty one as `[]`, not
+  /// `{}`. So any map the backend can send empty — a cleared cart, a cart
+  /// with no coupons, totals that have not been computed — arrives as a LIST
+  /// and a straight cast throws. Removing the last ticket crashed on exactly
+  /// this.
+  static Map<String, dynamic> _asMap(dynamic value) =>
+      value is Map ? value.cast<String, dynamic>() : const {};
 
   static Future<Map<String, dynamic>> _action(
     String action, [
     Map<String, dynamic> payload = const {},
   ]) async {
     http.Response response;
+
+    _log('→ $action');
 
     try {
       response = await http
@@ -67,15 +99,25 @@ class CheckoutApi {
           )
           .timeout(_timeout);
     } on TimeoutException {
+      _log('✖ $action timed out after ${_timeout.inSeconds}s');
       throw const CheckoutException(
         'The ticketing service took too long to respond. Please try again.',
       );
-    } catch (_) {
+    } catch (e) {
+      _log('✖ $action could not reach $baseUrl: $e');
       throw const CheckoutException(
         "Couldn't reach the ticketing service. Please check your connection "
         'and try again.',
       );
     }
+
+    // Truncated: a ticket list or a cart dump drowns the console and the
+    // useful part of an error is always at the front.
+    final preview = response.body.length > 900
+        ? '${response.body.substring(0, 900)}…'
+        : response.body;
+
+    _log('← $action HTTP ${response.statusCode} $preview');
 
     Map<String, dynamic>? body;
 
@@ -107,8 +149,28 @@ class CheckoutApi {
   }
 
   /// The event, its VAT display setting and the methods it accepts.
-  static Future<CheckoutInfo> info(String eventEid) async =>
-      CheckoutInfo.fromJson(await _action('info', {'eventEid': eventEid}));
+  static Future<CheckoutInfo> info(String eventEid) async {
+    final info = CheckoutInfo.fromJson(
+      await _action('info', {'eventEid': eventEid}),
+    );
+
+    // Said plainly, because the raw reply cannot show it: this event's terms
+    // and conditions run to thousands of characters and push `providers` and
+    // `stripe` past the truncation long before they are reached.
+    //
+    // Which methods an event offers, and whose Stripe account it would charge,
+    // is the first thing to know when a checkout behaves unexpectedly.
+    final stripe = info.stripe;
+
+    _log(
+      'info: providers=${info.providerIds.join(',')} '
+      'stripeKey=${stripe.key.isEmpty ? 'MISSING' : '${stripe.key.substring(0, stripe.key.length.clamp(0, 11))}…'} '
+      'stripeAccount=${stripe.account ?? 'NONE (platform account)'} '
+      'site=${info.event.site} currency=${info.event.currency}',
+    );
+
+    return info;
+  }
 
   /// The ticket list.
   ///
@@ -178,7 +240,7 @@ class CheckoutApi {
     final body = await _action('totals', {'cartToken': cartToken});
 
     return CartTotals.fromJson(
-      (body['totals'] as Map?)?.cast<String, dynamic>() ?? const {},
+      _asMap(body['totals']),
     );
   }
 
@@ -205,7 +267,7 @@ class CheckoutApi {
       'email': '',
     });
 
-    final coupon = (body['coupon'] as Map?)?.cast<String, dynamic>();
+    final coupon = body['coupon'] is Map ? _asMap(body['coupon']) : null;
 
     if (coupon == null) {
       final message = '${body['message'] ?? ''}'.trim();
@@ -294,6 +356,135 @@ class CheckoutApi {
     );
   }
 
+  /// Takes one admission back out of the cart.
+  ///
+  /// Per unit, not per line: removing "one of the three" is the thing a buyer
+  /// actually wants. Returns the cart as it now stands, and whether that
+  /// emptied it — an empty cart has nothing left to pay for, so the caller
+  /// sends them back to the ticket list rather than to an order of nothing.
+  static Future<({Map<String, dynamic> lines, bool isEmpty})> removeUnit(
+    String cartToken,
+    String ticketId,
+    int metaIndex,
+  ) async {
+    final body = await _action('removeUnit', {
+      'cartToken': cartToken,
+      'ticketId': ticketId,
+      'metaIndex': metaIndex,
+    });
+
+    return (
+      lines: _asMap(body['cart_data']),
+      isEmpty: body['cart_empty'] == true,
+    );
+  }
+
+  /// Opens a PayPal order sized to the cart.
+  ///
+  /// The amount is never sent: the PHP prices the cart itself and rejects
+  /// anything that no longer matches. All that comes back is PayPal's order
+  /// id, which is what the buyer approves and what the capture then charges.
+  ///
+  /// [returnUrl] and [cancelUrl] are where PayPal sends the buyer afterwards.
+  /// The website omits them because its JS popup calls back in the page; the
+  /// app has no popup, so they are how the buyer gets back here.
+  static Future<({String orderId, Uri approveUrl, double total})> paypalCreate(
+    String cartToken,
+    String eventEid,
+    String site, {
+    required String returnUrl,
+    required String cancelUrl,
+  }) async {
+    final body = await _action('paypalCreate', {
+      'cartToken': cartToken,
+      'eventEid': eventEid,
+      'site': site,
+      'returnUrl': returnUrl,
+      'cancelUrl': cancelUrl,
+    });
+
+    final orderId = '${body['orderId'] ?? ''}';
+
+    if (orderId.isEmpty) {
+      throw const CheckoutException(
+        "We couldn't start the PayPal payment. Please try again.",
+      );
+    }
+
+    // PayPal's own approval link wherever it gave one. Assembling the URL
+    // from the order id means choosing a host, and choosing wrong — sandbox
+    // order, live checkout — shows the buyer a bare "Something went wrong".
+    final given = '${body['approveUrl'] ?? ''}'.trim();
+
+    final host = '${body['environment'] ?? ''}' == 'live'
+        ? 'https://www.paypal.com'
+        : 'https://www.sandbox.paypal.com';
+
+    final approveUrl = given.isNotEmpty
+        ? Uri.parse(given)
+        : Uri.parse('$host/checkoutnow?token=$orderId');
+
+    return (
+      orderId: orderId,
+      approveUrl: approveUrl,
+      total: double.tryParse('${body['total'] ?? 0}') ?? 0,
+    );
+  }
+
+  /// Captures the order the buyer approved at PayPal.
+  ///
+  /// Server-side, against the charge PayPal actually recorded — the app only
+  /// ever carries the order id, never an amount. Comes back in Stripe's
+  /// vocabulary so the completion path is the same whichever method was used.
+  static Future<({String transactionId, String paymentStatus})> paypalCapture(
+    String cartToken,
+    String eventEid,
+    String paypalOrderId,
+    String site,
+  ) async {
+    final body = await _action('paypalCapture', {
+      'cartToken': cartToken,
+      'eventEid': eventEid,
+      'paypalOrderId': paypalOrderId,
+      'site': site,
+    });
+
+    return (
+      transactionId: '${body['transactionId'] ?? ''}',
+      paymentStatus: '${body['paymentStatus'] ?? ''}',
+    );
+  }
+
+  /// Charges a Square card token.
+  ///
+  /// [sourceId] is the single-use nonce the In-App Payments SDK produces;
+  /// [verificationToken] is the SCA result from its buyer-verification flow.
+  /// Square requires the latter for UK/EEA cards and ignores it elsewhere, so
+  /// it is always sent when there is one.
+  ///
+  /// No amount travels: the PHP prices the cart and charges the organiser's
+  /// own Square account.
+  static Future<({String transactionId, String paymentStatus})> squarePay(
+    String cartToken,
+    String eventEid,
+    String sourceId,
+    String verificationToken,
+    String site,
+  ) async {
+    final body = await _action('squarePay', {
+      'cartToken': cartToken,
+      'eventEid': eventEid,
+      'sourceId': sourceId,
+      'verificationToken': verificationToken,
+      'site': site,
+    });
+
+    return (
+      transactionId: '${body['transactionId'] ?? ''}',
+      paymentStatus: '${body['paymentStatus'] ?? ''}',
+    );
+  }
+
   /// Writes the order.
   ///
   /// Called twice in a normal purchase. Once with `pending` and no
@@ -307,6 +498,10 @@ class CheckoutApi {
     String paymentIntentId = '',
     required String paymentStatus,
     required Map<String, String> form,
+    /// Which gateway [paymentIntentId] came from. For PayPal the backend
+    /// re-checks it against the charge it recorded when it captured, and
+    /// takes the status from there rather than from us.
+    String provider = 'stripe',
   }) async {
     final body = await _action('saveOrder', {
       'cartToken': cartToken,
@@ -315,7 +510,7 @@ class CheckoutApi {
       'paymentStatus': paymentStatus,
       'form': form,
       'boxOffice': false,
-      'provider': 'stripe',
+      'provider': provider,
     });
 
     return (

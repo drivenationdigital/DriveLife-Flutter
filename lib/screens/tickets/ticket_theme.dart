@@ -88,7 +88,70 @@ abstract final class TicketTheme {
     required Widget child,
     String? title,
     String? subtitle,
+
+    /// Numbers the card, which is how the checkout shows its order of
+    /// business. Omitted for a card that is not a step in itself.
+    int? step,
+
+    /// Runs the heading full width with a rule under it, for a card whose
+    /// contents are a list rather than a form.
+    bool ruledHeader = false,
+    EdgeInsets padding = const EdgeInsets.fromLTRB(16, 16, 16, 16),
   }) {
+    final heading = title == null
+        ? null
+        : Row(
+            children: [
+              if (step != null) ...[
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: const BoxDecoration(
+                    color: gold,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '$step',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: ink,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: muted,
+                          fontSize: 12.5,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          );
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -96,34 +159,137 @@ abstract final class TicketTheme {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: line),
       ),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (title != null) ...[
+          // A ruled header sits edge to edge with its own padding so the rule
+          // reaches both sides of the card rather than floating inside it. A
+          // plain one just stacks above the content.
+          if (heading != null && ruledHeader) ...[
+            Padding(
+              padding: EdgeInsets.fromLTRB(padding.left, 14, padding.right, 12),
+              child: heading,
+            ),
+            const Divider(height: 1, thickness: 1, color: line),
+          ],
+          Padding(
+            padding: padding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (heading != null && !ruledHeader) ...[
+                  heading,
+                  const SizedBox(height: 14),
+                ],
+                child,
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The checkout's own page header: eyebrow, event, date.
+  ///
+  /// Centred and quiet. The buyer already knows which event they tapped, so
+  /// this says where they have arrived rather than what they are choosing.
+  static Widget pageHeader({
+    required String eyebrow,
+    required String title,
+    String? subtitle,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      child: Column(
+        children: [
+          Text(
+            eyebrow.toUpperCase(),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: gold,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.8,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: ink,
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              height: 1.15,
+            ),
+          ),
+          if (subtitle != null && subtitle.isNotEmpty) ...[
+            const SizedBox(height: 8),
             Text(
-              title,
+              subtitle,
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 color: ink,
-                fontSize: 15.5,
-                fontWeight: FontWeight.w800,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: const TextStyle(
-                  color: muted,
-                  fontSize: 12.5,
-                  height: 1.35,
-                ),
-              ),
-            ],
-            const SizedBox(height: 14),
           ],
-          child,
         ],
+      ),
+    );
+  }
+
+  /// Who is actually selling the ticket, in the smallest voice available.
+  static Widget poweredBy(String company) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+      child: Text(
+        'Powered by ${company.isEmpty ? 'CarEvents.com' : company}',
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: Color(0xFFA9A69D), fontSize: 12.5),
+      ),
+    );
+  }
+
+  /// A blocking "working on it" over whatever is underneath.
+  ///
+  /// Blocking on purpose: these moments reserve stock and open payments, and
+  /// a second tap during one is how a buyer ends up with two carts.
+  static Widget overlay(String label) {
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.black26,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(32, 26, 32, 22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 30,
+                  height: 30,
+                  child: CircularProgressIndicator(strokeWidth: 3, color: gold),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -199,6 +365,11 @@ abstract final class TicketTheme {
     required bool value,
     required ValueChanged<bool> onChanged,
     String? error,
+
+    /// Replaces the plain [label] where part of it has to be tappable — a
+    /// terms link, say. The box itself still toggles from its own tap target,
+    /// so tapping the link cannot accidentally tick the box.
+    Widget? richLabel,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -230,14 +401,15 @@ abstract final class TicketTheme {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      label,
-                      style: const TextStyle(
-                        color: ink,
-                        fontSize: 14,
-                        height: 1.35,
-                      ),
-                    ),
+                    child: richLabel ??
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            color: ink,
+                            fontSize: 14,
+                            height: 1.35,
+                          ),
+                        ),
                   ),
                 ),
               ],
@@ -339,6 +511,47 @@ abstract final class TicketTheme {
     );
   }
 
+  /// One line of an order summary: what it is on the left, what it costs on
+  /// the right.
+  static Widget summaryRow(
+    String label,
+    String value, {
+    bool bold = false,
+    bool accent = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: bold ? ink : muted,
+                fontSize: bold ? 15 : 13.5,
+                fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
+                height: 1.35,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            value,
+            style: TextStyle(
+              color: accent ? gold : ink,
+              fontSize: bold ? 17 : 13.5,
+              fontWeight: bold ? FontWeight.w800 : FontWeight.w700,
+              // Figures line up down the column rather than jittering as the
+              // digits change.
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Something the buyer needs to read before carrying on.
   static Widget notice(String message, {bool isError = true}) {
     return Container(
@@ -425,9 +638,10 @@ abstract final class TicketTheme {
               child: ElevatedButton(
                 onPressed: busy || !enabled ? null : onPressed,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: ink,
+                  backgroundColor: gold,
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor: const Color(0xFFDCDAD4),
+                  disabledBackgroundColor: const Color(0xFFE8E4DA),
+                  disabledForegroundColor: const Color(0xFFA9A69D),
                   padding: const EdgeInsets.symmetric(horizontal: 26),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),

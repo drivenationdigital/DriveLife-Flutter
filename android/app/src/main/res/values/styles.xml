@@ -19,4 +19,49 @@
     <style name="NormalTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
+
+    <!-- Square's card entry screen.
+         Square draws this one natively, so it cannot be styled from Dart.
+         The SDK ships `sqip.Theme.CardEntry` as an EMPTY style over its own
+         base precisely so an app can redefine it; declaring it here wins at
+         resource-merge time. The dots matter - that is the real resource
+         name, and the underscored sqip_Theme_CardEntry in R.txt is only the
+         Java field AAPT generates from it.
+         Inherits the base so everything not set below - the save button
+         style, the edit text style, the window animation - stays Square's. -->
+    <style name="sqip.Theme.CardEntry" parent="sqip.Theme.BaseCardEntry">
+        <!-- DriveLife gold, replacing Square's default grey. Drives the save
+             button, the cursor and the focused field. -->
+        <item name="colorAccent">#C4A062</item>
+        <item name="colorPrimary">#C4A062</item>
+        <item name="colorPrimaryDark">#14140F</item>
+
+        <item name="android:textColorPrimary">#14140F</item>
+        <item name="android:textColorHint">#A8A59C</item>
+
+        <!-- Square reads these two by name for the title bar and the button,
+             so the screen says what the buyer is about to do. -->
+        <item name="sqipActivityTitle">Card details</item>
+        <item name="sqipSaveButtonText">Pay</item>
+
+        <!-- The checkout is light throughout; letting the OS invert this one
+             screen is how a buyer ends up with a dark card form in the middle
+             of a white flow. -->
+        <item name="android:forceDarkAllowed">false</item>
+
+        <!-- Rises from the bottom instead of pushing in from the right. -->
+        <item name="android:windowAnimationStyle">@style/CardEntrySheetAnimation</item>
+    </style>
+
+    <!-- The card screen behaving like a sheet rather than a page.
+         Square's own sqip_ActivityAnimation slides in from the right and
+         pushes the screen behind it to the left - the motion of moving
+         through a form. Paying is something laid OVER the checkout, so it
+         comes up from the bottom and the checkout stays where it is. -->
+    <style name="CardEntrySheetAnimation" parent="android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/card_entry_slide_up</item>
+        <item name="android:activityOpenExitAnimation">@anim/card_entry_hold</item>
+        <item name="android:activityCloseEnterAnimation">@anim/card_entry_hold</item>
+        <item name="android:activityCloseExitAnimation">@anim/card_entry_slide_down</item>
+    </style>
 </resources>

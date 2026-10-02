@@ -4,9 +4,10 @@ import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/utils/chunk_upload_utility.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:drivelife/config/app_environment.dart';
 
 class GarageAPI {
-  static const String _apiUrl = 'https://www.carevents.com/uk';
+  static String get _apiUrl => AppEnvironment.wordpressBase;
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
   static final AuthService _authService = AuthService();
 

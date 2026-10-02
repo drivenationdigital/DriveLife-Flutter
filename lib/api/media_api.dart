@@ -24,7 +24,7 @@ class MediaApiException implements Exception {
 class MediaAPI {
   MediaAPI._();
 
-  static const String _base = '${ApiConfig.baseUrl}/wp-json/app/v2';
+  static String get _base => '${ApiConfig.baseUrl}/wp-json/app/v2';
   static final AuthService _auth = AuthService();
 
   static Future<Map<String, String>> _headers() async {

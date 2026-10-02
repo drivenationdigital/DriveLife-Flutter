@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
+import 'package:drivelife/config/app_environment.dart';
 
 class CommentsResponse {
   final List<dynamic> comments;
@@ -19,7 +20,8 @@ class CommentsResponse {
 }
 
 class InteractionsAPI {
-  static const String _baseUrl = 'https://www.carevents.com/uk/wp-json/app/v1';
+  static String get _baseUrl =>
+      '${AppEnvironment.wordpressBase}/wp-json/app/v1';
   static final AuthService _auth = AuthService();
 
   static Future<Map<String, dynamic>?> maybeLikePost(String postId) async {

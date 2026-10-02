@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:drivelife/config/app_environment.dart';
 
 // ── Model ─────────────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ class UserProfileCache {
   static final AuthService _authService = AuthService();
 
   static const _prefKey = 'user_profile_cache';
-  static const _baseUrl = 'https://www.carevents.com/uk'; // ← update
+  static String get _baseUrl => AppEnvironment.wordpressBase;
 
   // In-memory cache: userId → UserProfile
   final Map<String, UserProfile> _cache = {};

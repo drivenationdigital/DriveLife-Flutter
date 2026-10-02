@@ -11,6 +11,7 @@ import '../widgets/qr_scanner_modal.dart';
 import 'dart:async';
 import 'package:url_launcher/url_launcher.dart' show closeInAppWebView;
 import 'package:drivelife/screens/events/order_ticket_view.dart';
+import 'package:drivelife/screens/tickets/paypal_return.dart';
 
 class DeepLinkHandler {
   static final DeepLinkHandler _instance = DeepLinkHandler._internal();
@@ -135,6 +136,29 @@ class DeepLinkHandler {
       debugPrint('👤 [DeepLink] User logged in: ${currentUser != null}');
 
       final params = uri.queryParameters;
+
+      // ── Back from PayPal ─────────────────────────────────────────────
+      //
+      // The buyer approved (or cancelled) on PayPal's own pages and has been
+      // redirected here. A payment screen is parked waiting for this, so it
+      // is handed over rather than navigated to — nothing moves on screen
+      // except the browser closing over the screen already underneath.
+      //
+      // Before the login check, like the order return below: buying needs no
+      // account, and bouncing to a login would strand an approved payment.
+      if (params.containsKey('dl-paypal')) {
+        final status = params['dl-paypal'] ?? '';
+        debugPrint('💰 [DeepLink] PayPal returned: $status');
+
+        unawaited(closeInAppWebView());
+
+        PayPalReturn.deliver(
+          status: status,
+          // PayPal appends the order id itself as `token`.
+          token: params['token'],
+        );
+        return;
+      }
 
       // ── Back from the ticket checkout ────────────────────────────────
       //

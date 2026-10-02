@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The checkout underneath, staying put.
+
+  Android animates BOTH activities on a transition. Without this the screen
+  being covered slides sideways out of the way, which is the page-to-page
+  motion we are replacing — a sheet should rise over something still.
+-->
+<translate xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="280"
+    android:fromYDelta="0"
+    android:toYDelta="0" />

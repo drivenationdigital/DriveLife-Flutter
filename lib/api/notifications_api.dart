@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
+import 'package:drivelife/config/app_environment.dart';
 
 class NotificationsAPI {
-  static const String _baseUrl = 'https://www.carevents.com/uk/wp-json/app/v1';
+  static String get _baseUrl =>
+      '${AppEnvironment.wordpressBase}/wp-json/app/v1';
   static final AuthService _auth = AuthService();
 
   /// Get user notifications

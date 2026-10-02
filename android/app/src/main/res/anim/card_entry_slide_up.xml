@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Square's card entry arriving.
+
+  Up from the bottom, the way a sheet does. The SDK's own animation pushes in
+  from the right like the next page of a form, which is what made a payment
+  step feel like navigating away rather than something laid over the checkout.
+
+  decelerate: fast off the bottom, easing as it settles.
+-->
+<translate xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="280"
+    android:fromYDelta="100%p"
+    android:toYDelta="0"
+    android:interpolator="@android:anim/decelerate_interpolator" />

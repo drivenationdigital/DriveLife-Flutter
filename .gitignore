@@ -51,3 +51,5 @@ app.*.map.json
 .env
 
 php-api/
+drivelife-accounts-api/
+get-tickets/

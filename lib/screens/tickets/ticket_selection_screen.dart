@@ -1,10 +1,12 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/checkout_api.dart';
+import 'package:drivelife/config/app_environment.dart';
+import 'package:drivelife/config/stripe_config.dart';
 import 'package:drivelife/models/checkout_models.dart';
 import 'package:drivelife/screens/events/order_ticket_view.dart';
 import 'package:drivelife/screens/tickets/ticket_details_screen.dart';
+import 'package:drivelife/screens/tickets/ticket_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -368,9 +370,14 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
       return CheckoutCart(
         token: cart,
         totals: totals,
-        lines:
-            (added['added_tickets'] as Map?)?.cast<String, dynamic>() ??
-            const {},
+        // Cast defensively: an empty PHP array arrives as [] rather than
+        // {}, which a straight Map cast throws on.
+        lines: added['added_tickets'] is Map
+            ? (added['added_tickets'] as Map).cast<String, dynamic>()
+            : const {},
+        // Counted from the reserve that just succeeded. The server holds the
+        // stock for an hour from that moment.
+        reservedUntil: DateTime.now().add(const Duration(minutes: 60)),
       );
     } on CheckoutException catch (e) {
       if (mounted) setState(() => _notice = e.message);
@@ -380,13 +387,95 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
 
   /// Whether this event can be sold without leaving the app.
   ///
-  /// Stripe and nothing else. PayPal, Square and Mollie are the organiser's
+  /// Two conditions, both about where the money goes.
+  ///
+  /// Stripe and nothing else: PayPal, Square and Mollie are the organiser's
   /// own merchant accounts with browser SDKs and no native equivalent, and an
   /// event offering one of them alongside Stripe would lose a method the
-  /// organiser deliberately switched on. Those go to the web checkout whole.
-  bool get _canPayInApp {
-    final ids = _info?.providerIds ?? const ['stripe'];
-    return ids.length == 1 && ids.first == 'stripe';
+  /// organiser deliberately switched on.
+  ///
+  /// And that Stripe has to be the organiser's own connected account. Without
+  /// one the charge lands on DriveLife's, collecting on their behalf — see
+  /// StripeConfig.allowPlatformCharges. Those go to the web checkout whole,
+  /// which is the path that was set up for them.
+  /// Why this event has to be paid for on the web, or null if it does not.
+  ///
+  /// A reason rather than a bare false. Handing somebody to a browser with no
+  /// explanation is indistinguishable from the native checkout being broken,
+  /// which is exactly how it looked the first time it happened.
+  ///
+  /// The rule it is applying, which the server decides and this only follows:
+  ///
+  /// * One card provider per organiser — Stripe, Square or Mollie, never two.
+  /// * None connected falls back to the platform's Stripe, so every event can
+  ///   still sell a ticket.
+  /// * PayPal is never the card slot. It sits alongside whichever card
+  ///   provider applies, including the fallback.
+  ///
+  /// So the only question here is whether the app can present what the server
+  /// offers — and the single answer that is still no is Mollie.
+  String? get _webCheckoutReason {
+    final info = _info;
+    if (info == null) return 'The event has not finished loading';
+
+    // Stripe, Square and PayPal all have native SDKs. Mollie does not — it
+    // hosts its own 3-D Secure page and has no mobile SDK at all — and it
+    // occupies the card slot INSTEAD of the other two.
+    //
+    // That only sinks the native checkout when there is nothing else: an
+    // event with Mollie AND PayPal is still buyable here, with the card
+    // option withheld and said so on the payment screen.
+    final unsupported = info.providerIds
+        .where((id) => id != 'stripe' && id != 'square' && id != 'paypal')
+        .toList();
+
+    if (unsupported.isNotEmpty && !info.hasPaypal) {
+      return 'This organiser takes ${unsupported.join(', ')}, which the app '
+          'cannot handle';
+    }
+
+    // Square needs nothing checked here. It is the organiser's own merchant
+    // account with no platform split, so the money goes straight to them —
+    // the question the Stripe branch below exists to ask does not arise.
+    if (info.hasSquare) {
+      final square = info.square;
+
+      if (square == null ||
+          square.applicationId.isEmpty ||
+          square.locationId.isEmpty) {
+        if (info.hasPaypal) return null;
+        return "This organiser's Square settings are incomplete";
+      }
+
+      return null;
+    }
+
+    // PayPal alone needs nothing from Stripe — the organiser's own PayPal
+    // takes the whole amount.
+    if (!info.hasStripe) return null;
+
+    final stripe = info.stripe;
+
+    // Site-level and always present in practice. Without it there is no card
+    // payment to offer at all, fallback or otherwise.
+    if (stripe.key.trim().isEmpty) {
+      return 'This site has no Stripe publishable key';
+    }
+
+    if (!StripeConfig.mayChargeNatively(
+      key: stripe.key,
+      account: stripe.account,
+    )) {
+      // Only reachable with the platform fallback switched off. The card
+      // option is then withheld rather than fatal when PayPal is also on
+      // offer, since that still pays the organiser directly.
+      if (info.hasPaypal) return null;
+
+      return 'This organiser has not connected their own Stripe account, so '
+          'the payment would go through DriveLife';
+    }
+
+    return null;
   }
 
   /// Sends the buyer to the web checkout with their selection already made.
@@ -462,7 +551,20 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
 
     // Decided before anything is reserved, because the two paths build their
     // carts in different places.
-    if (!_canPayInApp) return _handOffToWeb();
+    final reason = _webCheckoutReason;
+
+    if (reason != null) {
+      // Always logged, so a hand-off during testing says why rather than
+      // leaving a browser to be explained. Shown on screen only on staging —
+      // a buyer does not need to read about Stripe Connect.
+      debugPrint('🎟️ [Checkout] Opening the web checkout: $reason');
+
+      if (AppEnvironment.isStaging) {
+        setState(() => _notice = 'Web checkout: $reason');
+      }
+
+      return _handOffToWeb();
+    }
 
     setState(() {
       _committing = true;
@@ -575,149 +677,116 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
 
     final buyable = _tickets.where((t) => !t.isSection).toList();
 
+    final event = _info?.event;
+
     return ListView(
-      padding: const EdgeInsets.only(bottom: 28),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
       children: [
-        _buildEventHeader(),
-
-        if (_notice != null) _buildNotice(_notice!),
-
-        if (buyable.isEmpty)
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 32, 20, 32),
-            child: Text(
-              'There are no tickets available for this event at the moment.',
-              style: TextStyle(color: _muted, height: 1.4),
-            ),
-          )
-        else
-          for (final ticket in _tickets)
-            ticket.isSection
-                ? _buildSection(ticket)
-                : _TicketRow(
-                    ticket: ticket,
-                    quantity: _quantities[ticket.pid] ?? 0,
-                    max: _maxFor(ticket),
-                    coupon: _coupon,
-                    vatMultiplier: _info?.vatMultiplier ?? 1,
-                    money: _money,
-                    onChanged: (next) => _setQuantity(ticket, next),
-                  ),
-
-        const SizedBox(height: 8),
-        _CodeEntry(
-          couponCode: _coupon?.code,
-          onCoupon: _applyCoupon,
-          onSecret: _applySecret,
-          onRemoveCoupon: () {
-            setState(() => _coupon = null);
-            _reloadTickets();
-          },
+        TicketTheme.pageHeader(
+          eyebrow: 'Get tickets',
+          title: event?.title.isNotEmpty == true
+              ? event!.title
+              : (widget.eventTitle ?? 'Tickets'),
+          subtitle: _whenLabel(),
         ),
+
+        if (_notice != null) ...[
+          _buildNotice(_notice!),
+          const SizedBox(height: 14),
+        ],
+
+        // One card holding the whole list, so the section bars run to its
+        // edges rather than stopping short of them.
+        // No "Tickets" heading on the card: the eyebrow directly above it
+        // already says GET TICKETS, and the two together read as a mistake.
+        TicketTheme.card(
+          padding: EdgeInsets.zero,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (buyable.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 24, 16, 24),
+                  child: Text(
+                    'There are no tickets available for this event at the '
+                    'moment.',
+                    style: TextStyle(color: _muted, height: 1.4),
+                  ),
+                )
+              else
+                for (var i = 0; i < _tickets.length; i++)
+                  _tickets[i].isSection
+                      ? _buildSection(_tickets[i])
+                      : _TicketRow(
+                          ticket: _tickets[i],
+                          quantity: _quantities[_tickets[i].pid] ?? 0,
+                          max: _maxFor(_tickets[i]),
+                          coupon: _coupon,
+                          vatMultiplier: _info?.vatMultiplier ?? 1,
+                          money: _money,
+                          // No rule above the first row or straight after a
+                          // section bar, which is already a divider.
+                          topRule: i > 0 && !_tickets[i - 1].isSection,
+                          onChanged: (next) =>
+                              _setQuantity(_tickets[i], next),
+                        ),
+
+              const Divider(height: 1, thickness: 1, color: _line),
+              _CodeEntry(
+                couponCode: _coupon?.code,
+                onCoupon: _applyCoupon,
+                onSecret: _applySecret,
+                onRemoveCoupon: () {
+                  setState(() => _coupon = null);
+                  _reloadTickets();
+                },
+              ),
+            ],
+          ),
+        ),
+
+        TicketTheme.poweredBy(event?.companyName ?? ''),
       ],
     );
   }
 
-  Widget _buildEventHeader() {
-    final event = _info?.event;
-    final title = event?.title.isNotEmpty == true
-        ? event!.title
-        : (widget.eventTitle ?? '');
-    final logo = event?.ticketsLogo;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (logo != null && logo.isNotEmpty) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: CachedNetworkImage(
-                imageUrl: logo,
-                width: 52,
-                height: 52,
-                fit: BoxFit.cover,
-                memCacheWidth: 160,
-                placeholder: (_, __) =>
-                    Container(width: 52, height: 52, color: _line),
-                errorWidget: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            ),
-            const SizedBox(width: 14),
-          ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: _ink,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    height: 1.2,
-                  ),
-                ),
-                if (event != null) ...[
-                  const SizedBox(height: 6),
-                  _buildMetaLine(Icons.calendar_today_outlined, _whenLabel()),
-                  if (event.location.isNotEmpty)
-                    _buildMetaLine(Icons.place_outlined, event.location),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
+  /// "Tue, 1 February 2028", or a range across two days.
+  ///
+  /// The API sends ISO dates, which are for storing, not for reading. A
+  /// one-day event says one date; a longer one says both ends, dropping the
+  /// repeated month and year so the common case stays short.
   String _whenLabel() {
     final event = _info!.event;
-    final parts = <String>[
-      if (event.startDate.isNotEmpty) event.startDate,
-      if (event.startTime.isNotEmpty) event.startTime,
-    ];
 
-    return parts.join(' · ');
-  }
+    final start = DateTime.tryParse(event.startDate);
+    if (start == null) return '';
 
-  Widget _buildMetaLine(IconData icon, String text) {
-    if (text.isEmpty) return const SizedBox.shrink();
+    final end = DateTime.tryParse(event.endDate);
+    final full = DateFormat('EEE, d MMMM yyyy');
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 14, color: _muted),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                color: _muted,
-                fontSize: 13,
-                height: 1.35,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    if (end == null || end.difference(start).inDays == 0) {
+      return full.format(start);
+    }
+
+    final sameMonth = start.year == end.year && start.month == end.month;
+
+    return '${DateFormat(sameMonth ? 'd' : 'd MMMM').format(start)} - '
+        '${full.format(end)}';
   }
 
   Widget _buildSection(CheckoutTicket ticket) {
     return Container(
       width: double.infinity,
-      color: const Color(0xFFFAF9F7),
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+      // Solid black, matching the web. A section is a divider between kinds
+      // of ticket, and at this weight it reads as one at a glance rather than
+      // as another row to be scanned.
+      color: _ink,
+      padding: const EdgeInsets.fromLTRB(16, 11, 16, 11),
       child: Text(
         ticket.name.toUpperCase(),
         style: const TextStyle(
-          color: _muted,
-          fontSize: 11,
+          color: Colors.white,
+          fontSize: 11.5,
           fontWeight: FontWeight.w800,
           letterSpacing: 1.3,
         ),
@@ -808,9 +877,10 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
               child: ElevatedButton(
                 onPressed: ready ? _continue : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _ink,
+                  backgroundColor: _gold,
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor: const Color(0xFFDCDAD4),
+                  disabledBackgroundColor: const Color(0xFFE8E4DA),
+                  disabledForegroundColor: const Color(0xFFA9A69D),
                   padding: const EdgeInsets.symmetric(horizontal: 26),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -826,7 +896,7 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
                         ),
                       )
                     : const Text(
-                        'Continue',
+                        'Checkout',
                         style: TextStyle(
                           fontSize: 15.5,
                           fontWeight: FontWeight.w800,
@@ -849,6 +919,7 @@ class _TicketRow extends StatelessWidget {
   final CheckoutCoupon? coupon;
   final double vatMultiplier;
   final String Function(double) money;
+  final bool topRule;
   final ValueChanged<int> onChanged;
 
   const _TicketRow({
@@ -859,6 +930,7 @@ class _TicketRow extends StatelessWidget {
     required this.vatMultiplier,
     required this.money,
     required this.onChanged,
+    this.topRule = false,
   });
 
   @override
@@ -873,10 +945,12 @@ class _TicketRow extends StatelessWidget {
     final price = discounted ? coupon!.priceAfter(listed) : listed;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-      decoration: const BoxDecoration(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
         border: Border(
-          top: BorderSide(color: _TicketSelectionScreenState._line),
+          top: topRule
+              ? const BorderSide(color: _TicketSelectionScreenState._line)
+              : BorderSide.none,
         ),
       ),
       child: Row(
@@ -1161,13 +1235,30 @@ class _CodeEntryState extends State<_CodeEntry> {
     setState(() => _busy = false);
   }
 
+  Widget _codeLink(String label, {required bool secret}) {
+    return GestureDetector(
+      onTap: () => setState(() {
+        _isSecret = secret;
+        _open = true;
+      }),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: _TicketSelectionScreenState._gold,
+          fontSize: 13.5,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final applied = widget.couponCode;
 
     if (applied != null && applied.isNotEmpty) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+        padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
         child: Row(
           children: [
             const Icon(
@@ -1202,44 +1293,89 @@ class _CodeEntryState extends State<_CodeEntry> {
     }
 
     if (!_open) {
+      // Named separately rather than as one "discount or secret code" link.
+      // They do different things — one reprices, the other reveals tickets
+      // that are not on the list — and a buyer holding one knows which.
       return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 20, 0),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => setState(() => _open = true),
-            icon: const Icon(Icons.local_offer_outlined, size: 16),
-            label: const Text(
-              'Have a discount or secret code?',
-              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-            ),
-            style: TextButton.styleFrom(
-              foregroundColor: _TicketSelectionScreenState._muted,
-            ),
-          ),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Wrap(
+          spacing: 20,
+          runSpacing: 4,
+          children: [
+            _codeLink('Have a discount code?', secret: false),
+            _codeLink('Have a secret code?', secret: true),
+          ],
         ),
       );
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
+                child: Text(
+                  _isSecret ? 'Secret code' : 'Discount code',
+                  style: const TextStyle(
+                    color: _TicketSelectionScreenState._ink,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              // A way back out. Opening this used to be one-way: the only
+              // exits were applying a code or leaving the screen, which is a
+              // trap for anyone who tapped it to see what it was.
+              GestureDetector(
+                onTap: _close,
+                behavior: HitTestBehavior.opaque,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Icon(
+                    Icons.close,
+                    size: 18,
+                    color: _TicketSelectionScreenState._muted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _isSecret
+                ? 'Unlocks tickets that are not shown publicly.'
+                : 'Reduces the price of the tickets it applies to.',
+            style: const TextStyle(
+              color: _TicketSelectionScreenState._muted,
+              fontSize: 12.5,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
                 child: TextField(
                   controller: _controller,
+                  autofocus: true,
                   textCapitalization: TextCapitalization.characters,
                   onSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
                     isDense: true,
-                    hintText: _isSecret ? 'Secret code' : 'Discount code',
+                    hintText: _isSecret ? 'Enter code' : 'Enter code',
                     hintStyle: const TextStyle(
                       color: _TicketSelectionScreenState._muted,
                       fontSize: 14,
                     ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 13,
+                      vertical: 13,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFFFCFCFB),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: const BorderSide(
@@ -1250,7 +1386,7 @@ class _CodeEntryState extends State<_CodeEntry> {
                       borderRadius: BorderRadius.circular(10),
                       borderSide: const BorderSide(
                         color: _TicketSelectionScreenState._gold,
-                        width: 1.5,
+                        width: 1.6,
                       ),
                     ),
                   ),
@@ -1258,14 +1394,13 @@ class _CodeEntryState extends State<_CodeEntry> {
               ),
               const SizedBox(width: 10),
               SizedBox(
-                height: 44,
-                child: OutlinedButton(
+                height: 46,
+                child: ElevatedButton(
                   onPressed: _busy ? null : _submit,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _TicketSelectionScreenState._ink,
-                    side: const BorderSide(
-                      color: _TicketSelectionScreenState._line,
-                    ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _TicketSelectionScreenState._gold,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: const Color(0xFFE8E4DA),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -1274,40 +1409,45 @@ class _CodeEntryState extends State<_CodeEntry> {
                       ? const SizedBox(
                           width: 15,
                           height: 15,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : const Text(
                           'Apply',
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: () => setState(() => _isSecret = !_isSecret),
-              style: TextButton.styleFrom(
-                foregroundColor: _TicketSelectionScreenState._muted,
-                minimumSize: Size.zero,
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: Text(
-                _isSecret
-                    ? 'This is a discount code instead'
-                    : 'This is a secret code that unlocks tickets',
-                style: const TextStyle(fontSize: 12.5),
+          const SizedBox(height: 6),
+          GestureDetector(
+            onTap: () => setState(() => _isSecret = !_isSecret),
+            child: Text(
+              _isSecret
+                  ? 'I have a discount code instead'
+                  : 'I have a secret code instead',
+              style: const TextStyle(
+                color: _TicketSelectionScreenState._gold,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// Puts the field away without applying anything.
+  void _close() {
+    FocusScope.of(context).unfocus();
+    _controller.clear();
+    setState(() => _open = false);
   }
 }

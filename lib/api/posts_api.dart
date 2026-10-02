@@ -10,9 +10,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:tus_client_dart/tus_client_dart.dart';
 import 'package:cross_file/cross_file.dart' show XFile;
+import 'package:drivelife/config/app_environment.dart';
 
 class PostsAPI {
-  static const String _baseUrl = 'https://www.carevents.com/uk';
+  static String get _baseUrl => AppEnvironment.wordpressBase;
   static const _storage = FlutterSecureStorage();
   static final AuthService _authService = AuthService();
 

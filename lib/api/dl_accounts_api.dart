@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:drivelife/config/app_environment.dart';
 
 /// Client for the dashboard's event API (`dl-accounts/v1`).
 ///
@@ -23,8 +24,8 @@ class DlAccountsAPI {
 
   static final AuthService _authService = AuthService();
 
-  static const String _base =
-      'https://www.carevents.com/uk/wp-json/dl-accounts/v1';
+  static String get _base =>
+      '${AppEnvironment.wordpressBase}/wp-json/dl-accounts/v1';
 
   /// The app stores countries as `gb`/`us`; this API expects `uk`/`us`.
   static String siteForCountry(String? country) {

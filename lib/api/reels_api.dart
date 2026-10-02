@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:drivelife/config/app_environment.dart';
 
 class ReelsAPI {
-  static const String _baseUrl = "https://www.carevents.com/uk";
+  static String get _baseUrl => AppEnvironment.wordpressBase;
 
   static Future<List<Map<String, dynamic>>> getReels({
     required int userId,

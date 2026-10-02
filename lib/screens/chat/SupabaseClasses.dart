@@ -7,9 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import 'package:http/http.dart' as http;
+import 'package:drivelife/config/app_environment.dart';
 
 class AppConfig {
-  static const wpBaseUrl = 'https://www.carevents.com/uk';
+  static String get wpBaseUrl => AppEnvironment.wordpressBase;
 
   // Supabase project details
   // Found at: Supabase Dashboard → Settings → API

@@ -27,7 +27,11 @@ android {
         applicationId = "com.app.carcalendar"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // 28, not Flutter's default 24: Square's In-App Payments SDK requires
+        // Android 9. Raising it drops API 24-27 (Android 7.0 - 8.1), which
+        // can no longer install or update the app at all — a deliberate
+        // trade for taking Square card payments in the app.
+        minSdk = maxOf(flutter.minSdkVersion, 28)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -45,6 +49,15 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
+
+    packaging {
+        resources {
+            // Square's SDK pulls in a second okhttp, and both jars carry this
+            // OSGi manifest. It is build metadata the app never reads, but two
+            // copies at the same path fail mergeDebugJavaResource outright.
+            excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
+    }
 }
 
 flutter {
@@ -57,6 +70,17 @@ flutter {
 // }
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+
+    // Square's card-entry AAR, named directly so its resources resolve at
+    // compile time. The plugin already pulls it in, but as `implementation`,
+    // which keeps it off THIS module's compile resource path — and
+    // styles.xml inherits from sqip_Theme_BaseCardEntry to theme the card
+    // screen, which then fails to link.
+    //
+    // Version must match square_in_app_payments' MIN_IAP_SDK_VERSION. Gradle
+    // resolves to the higher of the two if they drift, so a mismatch is a
+    // stale comment rather than a broken build — but keep them in step.
+    implementation("com.squareup.sdk.in-app-payments:card-entry:1.6.9")
     
     // Add these for crash fix:
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22")

@@ -2,9 +2,10 @@ import 'dart:convert';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:drivelife/config/app_environment.dart';
 
 class QrCodeAPI {
-  static const String _baseUrl = 'https://www.carevents.com/uk';
+  static String get _baseUrl => AppEnvironment.wordpressBase;
   static const _storage = FlutterSecureStorage();
   static final AuthService _authService = AuthService();
 

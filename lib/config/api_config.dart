@@ -1,5 +1,6 @@
+import 'package:drivelife/config/app_environment.dart';
 class ApiConfig {
-  static const String baseUrl = 'https://www.carevents.com/uk';
+  static String get baseUrl => AppEnvironment.wordpressBase;
 
   // API version
   static const String apiVersion = 'v2';

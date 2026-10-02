@@ -7,6 +7,7 @@ import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/rendering.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:drivelife/config/app_environment.dart';
 
 class StoryItem {
   final int storyId;
@@ -91,7 +92,8 @@ class StoryUser {
 }
 
 class StoriesService {
-  static const String _base = 'https://www.carevents.com/wp-json/app/v2';
+  static String get _base =>
+      '${AppEnvironment.wordpressRoot}/wp-json/app/v2';
   static final AuthService _authService = AuthService();
 
   static Future<Map<String, dynamic>?> getUploadUrl(String token) async {

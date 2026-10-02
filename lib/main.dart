@@ -23,6 +23,7 @@ import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:drivelife/config/app_environment.dart';
 import 'package:drivelife/providers/connectivity_provider.dart';
 import 'package:drivelife/providers/feature_tips_provider.dart';
 import 'package:drivelife/widgets/offline_banner.dart';
@@ -67,6 +68,7 @@ void main() async {
   authService.setAccountManager(accountManager);
 
   try {
+    AppEnvironment.assertSafeForRelease();
     Stripe.publishableKey = stripePublishableKey;
     Stripe.merchantIdentifier = 'merchant.com.app.carcalendar';
     // await Stripe.instance.applySettings();

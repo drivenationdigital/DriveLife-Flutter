@@ -1,3 +1,5 @@
+import 'package:drivelife/config/app_environment.dart';
+
 /// Switches for work that is built but not ready to ship.
 ///
 /// The code behind a disabled flag stays in the tree — it is only unreachable
@@ -41,7 +43,12 @@ class FeatureFlags {
   /// in-app browser rather than quietly dropping a method they switched on),
   /// and an organiser's external ticketing link, which is somebody else's
   /// site.
-  static const bool nativeTicketSelection = false;
+  static const bool nativeTicketSelection = bool.fromEnvironment(
+    'DL_NATIVE_TICKETS',
+    // On automatically when the app is pointed at staging, which is where it
+    // is being tested; off everywhere else until it ships.
+    defaultValue: AppEnvironment.useStaging,
+  );
 
   /// Community gallery on events: the tab on the event detail screen and the
   /// "Share photos" buttons on the events list.

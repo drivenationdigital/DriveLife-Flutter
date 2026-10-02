@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Square's card entry leaving: back down the way it came.
+
+  Slightly quicker than the entrance and accelerating, so dismissing feels
+  decisive rather than reluctant.
+-->
+<translate xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="220"
+    android:fromYDelta="0"
+    android:toYDelta="100%p"
+    android:interpolator="@android:anim/accelerate_interpolator" />

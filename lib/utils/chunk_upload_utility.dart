@@ -1,13 +1,13 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:drivelife/config/app_environment.dart';
 
 typedef ProgressCallback =
     void Function(int current, int total, double percentage);
 
 /// Use this version if you want to show upload progress to users
 class ChunkUploadUtility {
-  static const String _baseUrl =
-      'https://www.carevents.com/uk'; // Replace with your actual base URL
+  static String get _baseUrl => AppEnvironment.wordpressBase;
   // static const int chunkSize = 500000; // 500KB chunks
 
   static int _getChunkSize(int base64Length) {
