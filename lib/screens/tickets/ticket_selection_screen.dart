@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:drivelife/api/checkout_api.dart';
 import 'package:drivelife/config/app_environment.dart';
+import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/config/stripe_config.dart';
 import 'package:drivelife/models/checkout_models.dart';
 import 'package:drivelife/screens/events/order_ticket_view.dart';
@@ -156,8 +157,7 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
     return token;
   }
 
-  int get _totalSelected =>
-      _quantities.values.fold(0, (sum, qty) => sum + qty);
+  int get _totalSelected => _quantities.values.fold(0, (sum, qty) => sum + qty);
 
   /// The event's cap on items per order, or null where there is none.
   int? get _cartLimit {
@@ -212,9 +212,10 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
       _ => '£',
     };
 
-    return NumberFormat.currency(symbol: symbol, decimalDigits: 2).format(
-      amount,
-    );
+    return NumberFormat.currency(
+      symbol: symbol,
+      decimalDigits: 2,
+    ).format(amount);
   }
 
   /// The most of this ticket the buyer may still add.
@@ -326,7 +327,8 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
 
       if (added['status'] == 'maxqty') {
         setState(
-          () => _notice = 'This event allows a maximum of '
+          () => _notice =
+              'This event allows a maximum of '
               '${added['max_qty']} items per order.',
         );
         return null;
@@ -336,8 +338,8 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
       // code validated on its own — most often because none of the chosen
       // tickets are in its allowed list. Ignoring it would send the buyer on
       // to pay full price having been shown a discount.
-      final couponMessage =
-          '${added['auto_apply_coupon_message'] ?? ''}'.trim();
+      final couponMessage = '${added['auto_apply_coupon_message'] ?? ''}'
+          .trim();
 
       if (couponMessage.isNotEmpty &&
           couponMessage != 'Coupon already applied') {
@@ -345,7 +347,8 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
         _cartToken = null;
 
         setState(
-          () => _notice = 'The code ${_coupon?.code ?? ''} could not be '
+          () => _notice =
+              'The code ${_coupon?.code ?? ''} could not be '
               'applied: $couponMessage. Remove it or change your tickets, '
               'then try again.',
         );
@@ -418,15 +421,17 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
     final info = _info;
     if (info == null) return 'The event has not finished loading';
 
-    // Stripe, Square and PayPal all have native SDKs. Mollie does not — it
-    // hosts its own 3-D Secure page and has no mobile SDK at all — and it
-    // occupies the card slot INSTEAD of the other two.
+    // All four providers are handled in the app. A fifth added server-side
+    // would arrive here as an id this version has never heard of, and if it
+    // holds the card slot there is no card payment to be taken.
     //
     // That only sinks the native checkout when there is nothing else: an
-    // event with Mollie AND PayPal is still buyable here, with the card
-    // option withheld and said so on the payment screen.
+    // event with an unknown processor AND PayPal is still buyable here, with
+    // the card option withheld and said so on the payment screen.
+    const handled = {'stripe', 'square', 'paypal', 'mollie'};
+
     final unsupported = info.providerIds
-        .where((id) => id != 'stripe' && id != 'square' && id != 'paypal')
+        .where((id) => !handled.contains(id))
         .toList();
 
     if (unsupported.isNotEmpty && !info.hasPaypal) {
@@ -448,6 +453,20 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
       }
 
       return null;
+    }
+
+    if (info.hasMollie) {
+      // Nothing to check, for the same reason as Square: the organiser's own
+      // merchant account, no platform split, and nothing in the app that
+      // could be missing — the hosted page is Mollie's.
+      if (FeatureFlags.nativeMollieCheckout) return null;
+
+      // Untested against a live organiser, so production still sends these to
+      // the web checkout. Unless PayPal is also on offer, in which case the
+      // native flow stands and the card option is withheld instead.
+      if (info.hasPaypal) return null;
+
+      return 'Mollie card payments are not switched on in the app yet';
     }
 
     // PayPal alone needs nothing from Stripe — the organiser's own PayPal
@@ -505,18 +524,17 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
       unawaited(CheckoutApi.clearCart(opened));
     }
 
-    final url = Uri.parse(
-      '${CheckoutApi.checkoutBaseUrl}/${widget.eventEid}',
-    ).replace(
-      queryParameters: {
-        'qty': selected.join(','),
-        if (_coupon != null) 'coupon': _coupon!.code,
-        if (_secretCode.isNotEmpty) 'code': _secretCode,
-        // Where the checkout sends the buyer once the order is placed. It
-        // appends order_id, which deeplinks_helper turns into their tickets.
-        'complete': 'drivelife://app/?dl-order=1',
-      },
-    );
+    final url = Uri.parse('${CheckoutApi.checkoutBaseUrl}/${widget.eventEid}')
+        .replace(
+          queryParameters: {
+            'qty': selected.join(','),
+            if (_coupon != null) 'coupon': _coupon!.code,
+            if (_secretCode.isNotEmpty) 'code': _secretCode,
+            // Where the checkout sends the buyer once the order is placed. It
+            // appends order_id, which deeplinks_helper turns into their tickets.
+            'complete': 'drivelife://app/?dl-order=1',
+          },
+        );
 
     var launched = false;
 
@@ -586,11 +604,8 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
 
     final orderId = await Navigator.of(context).push<String>(
       MaterialPageRoute(
-        builder: (_) => TicketDetailsScreen(
-          info: info,
-          cart: cart,
-          tickets: _tickets,
-        ),
+        builder: (_) =>
+            TicketDetailsScreen(info: info, cart: cart, tickets: _tickets),
       ),
     );
 
@@ -727,8 +742,7 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
                           // No rule above the first row or straight after a
                           // section bar, which is already a divider.
                           topRule: i > 0 && !_tickets[i - 1].isSection,
-                          onChanged: (next) =>
-                              _setQuantity(_tickets[i], next),
+                          onChanged: (next) => _setQuantity(_tickets[i], next),
                         ),
 
               const Divider(height: 1, thickness: 1, color: _line),
@@ -1082,11 +1096,7 @@ class _TicketRow extends StatelessWidget {
       );
     }
 
-    return _QuantityStepper(
-      value: quantity,
-      max: max,
-      onChanged: onChanged,
-    );
+    return _QuantityStepper(value: quantity, max: max, onChanged: onChanged);
   }
 }
 

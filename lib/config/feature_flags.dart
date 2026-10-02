@@ -27,26 +27,44 @@ class FeatureFlags {
 
   /// The in-app ticket checkout.
   ///
-  /// OFF while it is being tested. Buy Tickets behaves exactly as it always
-  /// did: it opens whatever `ticket_url` the events API sends, in the
-  /// device's browser. Turn this back on — one word — to restore the native
-  /// flow; everything behind it is built and unchanged.
+  /// Tickets, details and payment all happen in the app — Stripe, Square and
+  /// PayPal through their own SDKs, Mollie through its hosted page and back
+  /// via a `drivelife://` link.
   ///
-  /// Nothing is stranded by leaving it off. A cart is only created once a
-  /// buyer commits to the native path, so with this false the app never
-  /// opens one, never reserves stock and never talks to the checkout API.
+  /// Two things still leave the app on purpose: an organiser's external
+  /// ticketing link, which is somebody else's site, and a card processor this
+  /// version of the app does not know about, which can only appear if one is
+  /// added server-side. Both open the web checkout rather than quietly
+  /// dropping a payment method the organiser switched on.
   ///
-  /// When it goes back on: tickets, details and Stripe payment all happen in
-  /// the app, and two things still leave it on purpose — an event whose
-  /// organiser takes PayPal, Square or Mollie (their own merchant accounts,
-  /// browser SDKs, no native equivalent, so the whole checkout opens in an
-  /// in-app browser rather than quietly dropping a method they switched on),
-  /// and an organiser's external ticketing link, which is somebody else's
-  /// site.
+  /// Still a switch, and still off-able in one build flag:
+  ///   flutter build apk --dart-define=DL_NATIVE_TICKETS=false
+  /// which puts Buy Tickets back to opening whatever `ticket_url` the events
+  /// API sends, in the device's browser. Nothing is stranded by turning it
+  /// off — a cart is only created once a buyer commits to the native path, so
+  /// the app never opens one, never reserves stock and never talks to the
+  /// checkout API.
   static const bool nativeTicketSelection = bool.fromEnvironment(
     'DL_NATIVE_TICKETS',
-    // On automatically when the app is pointed at staging, which is where it
-    // is being tested; off everywhere else until it ships.
+    defaultValue: true,
+  );
+
+  /// Whether Mollie card payments are taken in the app.
+  ///
+  /// Separate from [nativeTicketSelection] because it is the one provider
+  /// that has never taken a real payment from the app. The code is complete —
+  /// hosted page, deep-link return, verdict read back from Mollie — but
+  /// untested against a live organiser, and Mollie holds the card slot
+  /// *instead of* Stripe, so a bug here is not a degraded checkout, it is an
+  /// event that cannot sell a ticket.
+  ///
+  /// Off in production until it has been proven on staging, where it is on.
+  /// With it off a Mollie event behaves as it always has: the whole checkout
+  /// opens on the web, which works today. Flip the default once it is tested,
+  /// or try it early with
+  ///   flutter build apk --dart-define=DL_NATIVE_MOLLIE=true
+  static const bool nativeMollieCheckout = bool.fromEnvironment(
+    'DL_NATIVE_MOLLIE',
     defaultValue: AppEnvironment.useStaging,
   );
 

@@ -6,6 +6,8 @@
 /// parser is how two clients quietly stop agreeing about the same cart.
 library;
 
+import 'package:drivelife/config/feature_flags.dart';
+
 double _num(dynamic value) {
   if (value is num) return value.toDouble();
   return double.tryParse('${value ?? ''}') ?? 0;
@@ -273,6 +275,9 @@ class CheckoutInfo {
   /// Whether this event's card payments go through Square.
   bool get hasSquare => providerIds.contains('square');
 
+  /// Whether this event's card payments go through Mollie.
+  bool get hasMollie => providerIds.contains('mollie');
+
   /// The Square settings for this event's card payments.
   ///
   /// `application_id` is the PLATFORM's app, not the organiser's: the SDK
@@ -295,15 +300,24 @@ class CheckoutInfo {
 
   /// A card processor the app cannot present, named as a buyer would read it.
   ///
-  /// Square and Mollie are browser SDKs with no native equivalent, and they
-  /// occupy the card slot *instead of* Stripe — so an event using one has no
-  /// card payment the app can take, even though PayPal may still work.
-  /// Null when there is no such processor.
+  /// Null for every processor the app currently handles, which is all of them.
+  /// It stays because the card slot is filled server-side: a processor added
+  /// there arrives here as an id this version of the app has never heard of,
+  /// and an event using it has no card payment the app can take — even though
+  /// PayPal may still work. Better to say so than to show an empty screen.
   String? get cardProcessorNotInApp {
+    const handled = {'stripe', 'square', 'mollie', 'paypal'};
+
+    // Built, but switched off in production until it has taken a real
+    // payment. Until then it is a processor the app will not present, which
+    // is exactly what this reports.
+    if (hasMollie && !FeatureFlags.nativeMollieCheckout) return 'Mollie';
+
     for (final id in providerIds) {
-      // Square is handled natively now; only Mollie is left without one, by
-      // design — it hosts its own 3-D Secure page and has no mobile SDK.
-      if (id == 'mollie') return 'Mollie';
+      if (id.isEmpty || handled.contains(id)) continue;
+
+      // Capitalised rather than printed raw: a buyer reads this.
+      return id[0].toUpperCase() + id.substring(1);
     }
 
     return null;

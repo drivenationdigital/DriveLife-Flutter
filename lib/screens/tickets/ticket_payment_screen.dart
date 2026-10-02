@@ -3,8 +3,9 @@ import 'dart:io' show Platform;
 
 import 'package:drivelife/api/checkout_api.dart';
 import 'package:drivelife/config/app_environment.dart';
+import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/config/stripe_config.dart';
-import 'package:drivelife/screens/tickets/paypal_return.dart';
+import 'package:drivelife/screens/tickets/hosted_payment_return.dart';
 import 'package:drivelife/models/checkout_models.dart';
 import 'package:drivelife/screens/tickets/ticket_theme.dart';
 import 'package:flutter/material.dart';
@@ -89,10 +90,26 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
         square.locationId.isNotEmpty;
   }
 
+  /// Whether this event's card payments go through Mollie.
+  ///
+  /// Nothing to verify here, unlike the other two. There is no SDK to hand
+  /// credentials to — the buyer pays on Mollie's own page and the server holds
+  /// everything — and the provider list only names Mollie when the organiser's
+  /// config behind it is complete.
+  bool get _mollieUsable =>
+      widget.info.hasMollie && FeatureFlags.nativeMollieCheckout;
+
   /// Which processor sits behind the "Card" option, or null for none.
   String? get _cardMethod => _stripeUsable
       ? 'stripe'
-      : (_squareUsable ? 'square' : null);
+      : _squareUsable
+      ? 'square'
+      : (_mollieUsable ? 'mollie' : null);
+
+  /// The Mollie payment the buyer has been sent off to pay, while they are
+  /// away. Drives the "check now" prompt, which is the only way back if they
+  /// close the browser instead of letting it redirect.
+  String? _mollieWaitingOn;
 
   /// What the buyer is paying with.
   ///
@@ -121,7 +138,7 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
 
     // A payment screen going away must not leave a PayPal wait behind for the
     // next one to inherit.
-    PayPalReturn.stopWaiting();
+    HostedPaymentReturn.stopWaiting();
     super.dispose();
   }
 
@@ -129,6 +146,7 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
   Future<void> _pay() => switch (_method) {
     'paypal' => _payWithPayPal(),
     'square' => _payWithSquare(),
+    'mollie' => _payWithMollie(),
     _ => _payWithStripe(),
   };
 
@@ -142,7 +160,8 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
 
     if (square == null || square.applicationId.isEmpty) {
       setState(() {
-        _error = 'This event cannot be paid for in the app. Open it on the '
+        _error =
+            'This event cannot be paid for in the app. Open it on the '
             'website to finish your order — your tickets are still held.';
       });
       return;
@@ -286,7 +305,8 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
           priceStatus: totalPriceStatusFinal,
           onGooglePayNonceRequestSuccess: (result) =>
               _chargeSquareWallet(result.nonce),
-          onGooglePayNonceRequestFailure: (error) => _walletFailed(error.message),
+          onGooglePayNonceRequestFailure: (error) =>
+              _walletFailed(error.message),
           onGooglePayCanceled: _walletCancelled,
         );
         return;
@@ -318,7 +338,10 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
   }
 
   /// Sends a wallet nonce to be charged. Returns whether it went through.
-  Future<bool> _chargeSquareWallet(String nonce, {bool closeApple = true}) async {
+  Future<bool> _chargeSquareWallet(
+    String nonce, {
+    bool closeApple = true,
+  }) async {
     try {
       final result = await CheckoutApi.squarePay(
         widget.cartToken,
@@ -365,8 +388,12 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
   /// defaults for anything left unset, which is better than guessing at a
   /// value and getting a near-miss.
   Future<void> _applySquareTheme() async {
-    RGBAColor rgb(int r, int g, int b) =>
-        RGBAColor((c) => c..r = r..g = g..b = b);
+    RGBAColor rgb(int r, int g, int b) => RGBAColor(
+      (c) => c
+        ..r = r
+        ..g = g
+        ..b = b,
+    );
 
     await InAppPayments.setIOSCardEntryTheme(
       IOSTheme(
@@ -430,8 +457,7 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
     }
   }
 
-  String get _firstName =>
-      widget.buyerName.split(' ').first.trim().isEmpty
+  String get _firstName => widget.buyerName.split(' ').first.trim().isEmpty
       ? 'Guest'
       : widget.buyerName.split(' ').first.trim();
 
@@ -462,7 +488,7 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
 
       // Parked before the browser opens: PayPal can redirect back faster than
       // the launch call returns, and a wait started afterwards would miss it.
-      final returned = PayPalReturn.awaitResult();
+      final returned = HostedPaymentReturn.awaitResult('paypal');
 
       final approvalUrl = order.approveUrl;
 
@@ -486,7 +512,7 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
       }
 
       if (!launched) {
-        PayPalReturn.stopWaiting();
+        HostedPaymentReturn.stopWaiting();
         if (!mounted) return;
         setState(() {
           _busy = false;
@@ -499,7 +525,7 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
 
       if (!mounted) return;
 
-      if (outcome.cancelled || outcome.abandoned) {
+      if (!outcome.didReturn || (outcome.reference ?? '').isEmpty) {
         // Cancelling is not an error. Nothing has been charged and the cart
         // is untouched, so they can try again or switch to a card.
         setState(() => _busy = false);
@@ -511,7 +537,7 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
       final capture = await CheckoutApi.paypalCapture(
         widget.cartToken,
         widget.info.event.eid,
-        outcome.orderId!,
+        outcome.reference!,
         widget.info.event.site,
       );
 
@@ -527,7 +553,7 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
 
       await _complete(capture.transactionId, status, provider: 'paypal');
     } on CheckoutException catch (e) {
-      PayPalReturn.stopWaiting();
+      HostedPaymentReturn.stopWaiting();
       if (!mounted) return;
       setState(() {
         _busy = false;
@@ -542,11 +568,159 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
             : e.message;
       });
     } catch (_) {
-      PayPalReturn.stopWaiting();
+      HostedPaymentReturn.stopWaiting();
       if (!mounted) return;
       setState(() {
         _busy = false;
         _error = 'Something went wrong with PayPal. Please try again.';
+      });
+    }
+  }
+
+  /// Mollie: the buyer pays on Mollie's hosted page, and the verdict is read
+  /// back from Mollie afterwards.
+  ///
+  /// The one provider with no mobile SDK, by design — it hosts its own 3-D
+  /// Secure step and sends the buyer into their banking app for it. So there
+  /// is nothing to confirm in the app: a payment is opened, the buyer leaves,
+  /// and the fact that they came back says nothing about whether they paid.
+  /// Only Mollie's own answer counts, which is what [CheckoutApi.mollieStatus]
+  /// asks for.
+  Future<void> _payWithMollie() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    // Carried out to Mollie so its webhook can finish the order even if the
+    // buyer never comes back — paid, then closed the browser. Without it a
+    // paid order would sit unconfirmed until somebody noticed.
+    final form = {
+      ...widget.orderForm,
+      'payment_method': 'mollie',
+      'payment_method_title': 'Credit Card',
+    };
+
+    try {
+      final payment = await CheckoutApi.mollieCreate(
+        widget.cartToken,
+        widget.info.event.eid,
+        widget.info.event.site,
+        // Mollie has one redirect for every outcome — paid, failed and
+        // cancelled alike — so there is no cancel URL to give it, and no
+        // verdict to be read out of this.
+        returnUrl: 'drivelife://app/?dl-mollie=done',
+        form: form,
+      );
+
+      // Settled on creation, with no page to send the buyer to. Mollie only
+      // does this for a payment that skipped authentication entirely, which
+      // the app never asks for — but a dead end here would be a charged buyer
+      // with no order.
+      if (payment.checkoutUrl == null) {
+        final status = payment.paymentStatus;
+
+        if (status != 'succeeded' && status != 'processing') {
+          setState(() {
+            _busy = false;
+            _error =
+                'Mollie could not complete this payment. Please try again.';
+          });
+          return;
+        }
+
+        await _complete(payment.transactionId, status, provider: 'mollie');
+        return;
+      }
+
+      // Parked before the browser opens: the redirect can beat the launch
+      // call returning, and a wait started afterwards would miss it.
+      final returned = HostedPaymentReturn.awaitResult('mollie');
+
+      if (AppEnvironment.isStaging) {
+        debugPrint('💰 [Mollie] Opening ${payment.checkoutUrl}');
+      }
+
+      var launched = false;
+
+      for (final mode in [
+        LaunchMode.inAppBrowserView,
+        LaunchMode.externalApplication,
+      ]) {
+        try {
+          launched = await launchUrl(payment.checkoutUrl!, mode: mode);
+        } catch (_) {
+          launched = false;
+        }
+
+        if (launched) break;
+      }
+
+      if (!launched) {
+        HostedPaymentReturn.stopWaiting();
+        if (!mounted) return;
+        setState(() {
+          _busy = false;
+          _error = "We couldn't open Mollie. Please try again.";
+        });
+        return;
+      }
+
+      setState(() => _mollieWaitingOn = payment.paymentId);
+
+      final outcome = await returned;
+
+      if (!mounted) return;
+
+      setState(() => _mollieWaitingOn = null);
+
+      // Asked whether or not the buyer came back, and ignoring what they came
+      // back with. They may have paid and closed the browser, or returned
+      // without paying at all; the redirect settles neither.
+      debugPrint('💰 [Mollie] Back (returned: ${outcome.didReturn})');
+
+      final verdict = await CheckoutApi.mollieStatus(
+        widget.cartToken,
+        widget.info.event.eid,
+        payment.paymentId,
+        widget.info.event.site,
+      );
+
+      if (!mounted) return;
+
+      // Mollie's webhook got there first and the order is already written.
+      // Saving it again would make two orders out of one payment.
+      if (verdict.orderCompleted && verdict.orderId.isNotEmpty) {
+        Navigator.of(context).pop(verdict.orderId);
+        return;
+      }
+
+      final status = verdict.paymentStatus;
+
+      if (status != 'succeeded' && status != 'processing') {
+        setState(() {
+          _busy = false;
+          _error = 'Mollie did not complete this payment. Please try again.';
+        });
+        return;
+      }
+
+      await _complete(verdict.transactionId, status, provider: 'mollie');
+    } on CheckoutException catch (e) {
+      HostedPaymentReturn.stopWaiting();
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _mollieWaitingOn = null;
+        _error = e.message;
+      });
+    } catch (_) {
+      HostedPaymentReturn.stopWaiting();
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _mollieWaitingOn = null;
+        _error = 'Something went wrong with Mollie. Please try again.';
       });
     }
   }
@@ -610,9 +784,7 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
           ),
 
           applePay: Platform.isIOS
-              ? PaymentSheetApplePay(
-                  merchantCountryCode: _merchantCountry,
-                )
+              ? PaymentSheetApplePay(merchantCountryCode: _merchantCountry)
               : null,
           googlePay: Platform.isAndroid
               ? PaymentSheetGooglePay(
@@ -773,6 +945,7 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
   String get _processorName => switch (_method) {
     'paypal' => 'PayPal',
     'square' => 'Square',
+    'mollie' => 'Mollie',
     _ => 'Stripe',
   };
 
@@ -956,9 +1129,11 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
                     _methodTile(
                       id: _cardMethod ?? 'stripe',
                       label: 'Card',
-                      detail: _cardMethod == 'square'
-                          ? 'Entered securely with Square'
-                          : 'Apple Pay and Google Pay included',
+                      detail: switch (_cardMethod) {
+                        'square' => 'Entered securely with Square',
+                        'mollie' => "Entered securely on Mollie's page",
+                        _ => 'Apple Pay and Google Pay included',
+                      },
                       icon: Icons.credit_card,
                     ),
                     const SizedBox(height: 8),
@@ -1022,10 +1197,49 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
               const Center(
                 child: Text(
                   'or pay by card below',
-                  style: TextStyle(
-                    color: TicketTheme.muted,
-                    fontSize: 12.5,
-                  ),
+                  style: TextStyle(color: TicketTheme.muted, fontSize: 12.5),
+                ),
+              ),
+            ],
+
+            // The buyer is away on Mollie's page. If they close it instead
+            // of letting it redirect, nothing comes back and this screen
+            // would sit on a spinner — so there is a way to ask Mollie
+            // directly.
+            if (_mollieWaitingOn != null) ...[
+              const SizedBox(height: 14),
+              TicketTheme.card(
+                title: 'Waiting for Mollie',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Finish your payment on the Mollie page. You will come '
+                      'back here automatically.',
+                      style: TextStyle(
+                        color: TicketTheme.muted,
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: HostedPaymentReturn.stopWaiting,
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        'Already paid? Check my payment',
+                        style: TextStyle(
+                          color: TicketTheme.gold,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -1039,12 +1253,18 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
         bottomNavigationBar: TicketTheme.bar(
           label: 'Total',
           value: TicketTheme.money(widget.amount, currency),
-          action: _method == 'paypal' ? 'Pay with PayPal' : 'Pay',
+          action: switch (_method) {
+            'paypal' => 'Pay with PayPal',
+            // Says what pressing it does. It leaves the app rather than
+            // charging anything, and a button marked "Pay" that opens a
+            // browser is the kind of surprise that loses a sale.
+            'mollie' => 'Continue to Mollie',
+            _ => 'Pay',
+          },
           busy: _busy,
           onPressed: _pay,
         ),
       ),
     );
   }
-
 }
