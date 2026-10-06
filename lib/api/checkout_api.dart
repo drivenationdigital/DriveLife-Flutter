@@ -61,14 +61,22 @@ class CheckoutApi {
 
   static const Duration _timeout = Duration(seconds: 25);
 
-  /// Prints a checkout call, on staging only.
+  /// Prints a checkout call, in any build a developer is running.
   ///
-  /// The buyer-facing messages are deliberately vague — "Could not start the
-  /// PayPal payment" reads the same for a misconfigured app as for a declined
-  /// card — so without this there is nothing to debug from. Off in production
-  /// because these payloads carry a buyer's name, email and phone.
+  /// The buyer-facing messages are deliberately vague — "Ticketing service
+  /// error (HTTP 500)" reads the same for a misconfigured blog as for a
+  /// declined card — so without this there is nothing to debug from. That is
+  /// not hypothetical: a production-only `createIntent` failure (2026-10-05)
+  /// took days to place because a debug build pointed at production printed
+  /// nothing at all.
+  ///
+  /// So: on for staging and for every debug build, including a debug build
+  /// pointed at production, which is exactly when a production-only failure
+  /// has to be diagnosed. Off in release, where these payloads would carry a
+  /// real buyer's name, email and phone — which is what the original
+  /// staging-only gate was protecting, and still is.
   static void _log(String message) {
-    if (!AppEnvironment.isStaging) return;
+    if (!AppEnvironment.isStaging && !kDebugMode) return;
     debugPrint('🎟️ [Checkout] $message');
   }
 
