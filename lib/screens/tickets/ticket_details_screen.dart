@@ -245,6 +245,11 @@ class _TicketDetailsScreenState extends State<TicketDetailsScreen> {
           // uploading it again.
           if (spec.kind == UnitFieldKind.photo) continue;
 
+          // The organiser's questions are not sent one by one — the whole
+          // set goes as a single `custom_answers` value below, so the order
+          // carries each question's wording beside its answer.
+          if (spec.field.startsWith(customQuestionPrefix)) continue;
+
           await CheckoutApi.updateMeta(
             token,
             unit.pid,
@@ -253,6 +258,19 @@ class _TicketDetailsScreenState extends State<TicketDetailsScreen> {
             unit.index,
           );
         }
+
+        if (unit.ticket.customQuestions.isEmpty) continue;
+
+        await CheckoutApi.updateMeta(
+          token,
+          unit.pid,
+          'custom_answers',
+          customAnswersValue(
+            unit.ticket,
+            (field) => _unitValues['${unit.key}:$field'] ?? '',
+          ),
+          unit.index,
+        );
       }
 
       final form = _orderForm();
@@ -318,8 +336,8 @@ class _TicketDetailsScreenState extends State<TicketDetailsScreen> {
             // charged, even if the two ever disagree.
             amount: (intent?.total ?? 0) > 0 ? intent!.total : totals.total,
             orderForm: form,
-            buyerName:
-                '${_firstName.text.trim()} ${_lastName.text.trim()}'.trim(),
+            buyerName: '${_firstName.text.trim()} ${_lastName.text.trim()}'
+                .trim(),
             buyerEmail: _email.text.trim(),
             buyerPhone: _phone.text.trim(),
           ),
@@ -416,172 +434,176 @@ class _TicketDetailsScreenState extends State<TicketDetailsScreen> {
       body: Stack(
         children: [
           ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-        children: [
-          // How long the stock is held. The server reserved it when the cart
-          // was built, and a buyer filling in four tickets' worth of details
-          // deserves to know there is a clock rather than meet it as a
-          // failure at the end.
-          _ReservationTimer(expiresAt: widget.cart.reservedUntil),
-          const SizedBox(height: 14),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+            children: [
+              // How long the stock is held. The server reserved it when the cart
+              // was built, and a buyer filling in four tickets' worth of details
+              // deserves to know there is a clock rather than meet it as a
+              // failure at the end.
+              _ReservationTimer(expiresAt: widget.cart.reservedUntil),
+              const SizedBox(height: 14),
 
-          TicketTheme.card(
-            step: 1,
-            title: 'Your details',
-            child: Column(
-              children: [
-                Row(
+              TicketTheme.card(
+                step: 1,
+                title: 'Your details',
+                child: Column(
                   children: [
-                    Expanded(
-                      child: TicketTheme.field(
-                        label: 'First name',
-                        controller: _firstName,
-                        error: _errors['first'],
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TicketTheme.field(
+                            label: 'First name',
+                            controller: _firstName,
+                            error: _errors['first'],
+                            textCapitalization: TextCapitalization.words,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TicketTheme.field(
+                            label: 'Last name',
+                            controller: _lastName,
+                            error: _errors['last'],
+                            textCapitalization: TextCapitalization.words,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    TicketTheme.field(
+                      label: 'Email',
+                      controller: _email,
+                      error: _errors['email'],
+                      keyboardType: TextInputType.emailAddress,
+                      hint: 'Tickets are sent here',
+                    ),
+                    const SizedBox(height: 14),
+                    TicketTheme.field(
+                      label: 'Phone',
+                      controller: _phone,
+                      error: _errors['phone'],
+                      keyboardType: TextInputType.phone,
+                    ),
+                  ],
+                ),
+              ),
+
+              for (final unit in _units) ..._unitCard(unit),
+
+              const SizedBox(height: 14),
+              _buildTicketList(),
+
+              const SizedBox(height: 14),
+              _buildSummary(),
+
+              if (_showAttendee) ...[
+                const SizedBox(height: 14),
+                TicketTheme.card(
+                  title: 'Display details',
+                  subtitle: 'Shown on the event listing and display boards.',
+                  child: Column(
+                    children: [
+                      TicketTheme.field(
+                        label: 'Your name',
+                        controller: _attendeeName,
+                        error: _errors['att_name'],
                         textCapitalization: TextCapitalization.words,
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TicketTheme.field(
-                        label: 'Last name',
-                        controller: _lastName,
-                        error: _errors['last'],
+                      const SizedBox(height: 14),
+                      TicketTheme.field(
+                        label: 'Vehicle',
+                        controller: _attendeeVehicle,
+                        error: _errors['att_vehicle'],
                         textCapitalization: TextCapitalization.words,
+                      ),
+                      const SizedBox(height: 4),
+                      TicketTheme.checkbox(
+                        label: 'Show me on the public attendee list',
+                        value: _attendeeDisplay,
+                        onChanged: (v) => setState(() => _attendeeDisplay = v),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 14),
+              TicketTheme.card(
+                step: _showAttendee ? 5 : 4,
+                title: 'Before you go',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TicketTheme.field(
+                      label: 'How did you hear about this event? (Optional)',
+                      controller: _heardAbout,
+                    ),
+                    const SizedBox(height: 10),
+                    TicketTheme.checkbox(
+                      label:
+                          'Keep me updated about future events from this event '
+                          'organiser',
+                      value: _marketingOrganiser,
+                      onChanged: (v) => setState(() => _marketingOrganiser = v),
+                    ),
+                    TicketTheme.checkbox(
+                      label:
+                          "I'd like to hear about other future events from "
+                          'CarEvents.com',
+                      value: _marketingCarevents,
+                      onChanged: (v) => setState(() => _marketingCarevents = v),
+                    ),
+                    TicketTheme.checkbox(
+                      label: 'I accept the terms & conditions',
+                      value: _terms,
+                      error: _errors['terms'],
+                      onChanged: (v) => setState(() => _terms = v),
+                      // Readable, not just acceptable. Asking somebody to agree
+                      // to something they have no way of opening is the part of
+                      // a checkout that quietly costs it trust.
+                      richLabel: RichText(
+                        text: TextSpan(
+                          style: const TextStyle(
+                            color: TicketTheme.ink,
+                            fontSize: 14,
+                            height: 1.35,
+                          ),
+                          children: [
+                            const TextSpan(text: 'I accept the '),
+                            TextSpan(
+                              text: 'terms & conditions',
+                              style: const TextStyle(
+                                color: TicketTheme.gold,
+                                fontWeight: FontWeight.w700,
+                                decoration: TextDecoration.underline,
+                              ),
+                              recognizer: TapGestureRecognizer()
+                                ..onTap = _showTerms,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
-                TicketTheme.field(
-                  label: 'Email',
-                  controller: _email,
-                  error: _errors['email'],
-                  keyboardType: TextInputType.emailAddress,
-                  hint: 'Tickets are sent here',
-                ),
-                const SizedBox(height: 14),
-                TicketTheme.field(
-                  label: 'Phone',
-                  controller: _phone,
-                  error: _errors['phone'],
-                  keyboardType: TextInputType.phone,
-                ),
-              ],
-            ),
-          ),
-
-          for (final unit in _units) ..._unitCard(unit),
-
-          const SizedBox(height: 14),
-          _buildTicketList(),
-
-          const SizedBox(height: 14),
-          _buildSummary(),
-
-          if (_showAttendee) ...[
-            const SizedBox(height: 14),
-            TicketTheme.card(
-              title: 'Display details',
-              subtitle: 'Shown on the event listing and display boards.',
-              child: Column(
-                children: [
-                  TicketTheme.field(
-                    label: 'Your name',
-                    controller: _attendeeName,
-                    error: _errors['att_name'],
-                    textCapitalization: TextCapitalization.words,
-                  ),
-                  const SizedBox(height: 14),
-                  TicketTheme.field(
-                    label: 'Vehicle',
-                    controller: _attendeeVehicle,
-                    error: _errors['att_vehicle'],
-                    textCapitalization: TextCapitalization.words,
-                  ),
-                  const SizedBox(height: 4),
-                  TicketTheme.checkbox(
-                    label: 'Show me on the public attendee list',
-                    value: _attendeeDisplay,
-                    onChanged: (v) => setState(() => _attendeeDisplay = v),
-                  ),
-                ],
               ),
-            ),
-          ],
 
-          const SizedBox(height: 14),
-          TicketTheme.card(
-            step: _showAttendee ? 5 : 4,
-            title: 'Before you go',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TicketTheme.field(
-                  label: 'How did you hear about this event? (Optional)',
-                  controller: _heardAbout,
-                ),
-                const SizedBox(height: 10),
-                TicketTheme.checkbox(
-                  label:
-                      'Keep me updated about future events from this event '
-                      'organiser',
-                  value: _marketingOrganiser,
-                  onChanged: (v) => setState(() => _marketingOrganiser = v),
-                ),
-                TicketTheme.checkbox(
-                  label:
-                      "I'd like to hear about other future events from "
-                      'CarEvents.com',
-                  value: _marketingCarevents,
-                  onChanged: (v) => setState(() => _marketingCarevents = v),
-                ),
-                TicketTheme.checkbox(
-                  label: 'I accept the terms & conditions',
-                  value: _terms,
-                  error: _errors['terms'],
-                  onChanged: (v) => setState(() => _terms = v),
-                  // Readable, not just acceptable. Asking somebody to agree
-                  // to something they have no way of opening is the part of
-                  // a checkout that quietly costs it trust.
-                  richLabel: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                        color: TicketTheme.ink,
-                        fontSize: 14,
-                        height: 1.35,
-                      ),
-                      children: [
-                        const TextSpan(text: 'I accept the '),
-                        TextSpan(
-                          text: 'terms & conditions',
-                          style: const TextStyle(
-                            color: TicketTheme.gold,
-                            fontWeight: FontWeight.w700,
-                            decoration: TextDecoration.underline,
-                          ),
-                          recognizer: TapGestureRecognizer()
-                            ..onTap = _showTerms,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              if (_formError != null) ...[
+                const SizedBox(height: 14),
+                TicketTheme.notice(_formError!),
               ],
-            ),
+
+              TicketTheme.poweredBy(widget.info.event.companyName),
+            ],
           ),
-
-          if (_formError != null) ...[
-            const SizedBox(height: 14),
-            TicketTheme.notice(_formError!),
-          ],
-
-          TicketTheme.poweredBy(widget.info.event.companyName),
-        ],
-      ),
 
           // Over everything, because both of these reserve stock or open a
           // payment and a second tap during one is how a buyer ends up with
           // two carts.
+          // Above the keyboard, below the submitting overlay — there is
+          // nothing to dismiss once the order is on its way.
+          TicketTheme.keyboardDismissBar(context),
+
           if (_submitting) TicketTheme.overlay('Preparing your order...'),
           if (_removing) TicketTheme.overlay('Updating your order...'),
         ],
@@ -946,10 +968,7 @@ class _TicketDetailsScreenState extends State<TicketDetailsScreen> {
                   )
                 : const Text(
                     'Apply',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
                   ),
           ),
         ),
@@ -1022,13 +1041,13 @@ class _TicketDetailsScreenState extends State<TicketDetailsScreen> {
 
   Widget _unitField(CheckoutUnit unit, UnitFieldSpec spec) {
     final key = '${unit.key}:${spec.field}';
+    final isQuestion = spec.field.startsWith(customQuestionPrefix);
 
     return switch (spec.kind) {
       UnitFieldKind.checkbox => TicketTheme.checkbox(
         label: spec.label,
         value: _unitValues[key] == 'checked',
-        onChanged: (v) =>
-            setState(() => _unitValues[key] = v ? 'checked' : ''),
+        onChanged: (v) => setState(() => _unitValues[key] = v ? 'checked' : ''),
       ),
       UnitFieldKind.photo => TicketTheme.photoField(
         label: spec.label,
@@ -1041,11 +1060,16 @@ class _TicketDetailsScreenState extends State<TicketDetailsScreen> {
         label: spec.label,
         controller: _controllerFor(key),
         error: _errors[key],
+        // The organiser's own question: a sentence, answered in sentences.
+        // Title Case belongs on a name or a vehicle make, not on a reply.
+        proseLabel: isQuestion,
         keyboardType: spec.kind == UnitFieldKind.phone
             ? TextInputType.phone
             : TextInputType.text,
         textCapitalization: spec.field == 'reg'
             ? TextCapitalization.characters
+            : isQuestion
+            ? TextCapitalization.sentences
             : TextCapitalization.words,
         inputFormatters: spec.field == 'reg'
             ? [UpperCaseTextFormatter()]

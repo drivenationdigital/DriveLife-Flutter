@@ -6,7 +6,10 @@
 /// parser is how two clients quietly stop agreeing about the same cart.
 library;
 
+import 'dart:convert';
+
 import 'package:drivelife/config/feature_flags.dart';
+import 'package:flutter/foundation.dart';
 
 double _num(dynamic value) {
   if (value is num) return value.toDouble();
@@ -85,6 +88,9 @@ class CheckoutTicket {
   final TicketFlags flags;
   final String collectionInformation;
 
+  /// The organiser's own questions, asked once per admission.
+  final List<CustomQuestion> customQuestions;
+
   const CheckoutTicket({
     required this.id,
     required this.pid,
@@ -99,6 +105,7 @@ class CheckoutTicket {
     this.secretMatched = false,
     this.flags = const TicketFlags(),
     this.collectionInformation = '',
+    this.customQuestions = const [],
   });
 
   /// Can this row be added to a cart at all?
@@ -123,8 +130,49 @@ class CheckoutTicket {
         (json['flags'] as Map?)?.cast<String, dynamic>() ?? const {},
       ),
       collectionInformation: _str(json['collectionInformation']),
+      customQuestions: _questions(json['customQuestions']),
     );
   }
+}
+
+/// One question the organiser asks each buyer about each admission.
+///
+/// Configured per ticket in the dashboard ("Ask additional questions"). The
+/// id is the organiser's, not ours, and it is what the answer is filed under
+/// on the order — so it travels with the answer rather than being re-derived
+/// from the label, which the organiser can edit at any time.
+@immutable
+class CustomQuestion {
+  final String id;
+  final String label;
+
+  const CustomQuestion({required this.id, required this.label});
+}
+
+/// Reads a ticket's custom questions, skipping anything unusable.
+///
+/// Mirrors parseCustomQuestions() in the checkout proxy, including its
+/// fallback id: a question saved before ids existed has only a label, and
+/// `q0`, `q1`… by position is what the web files those answers under. A
+/// question with no label is dropped by both — there is nothing to ask.
+List<CustomQuestion> _questions(dynamic raw) {
+  if (raw is! List) return const [];
+
+  final out = <CustomQuestion>[];
+
+  for (var i = 0; i < raw.length; i++) {
+    final item = raw[i];
+    if (item is! Map) continue;
+
+    final label = _str(item['label']).trim();
+    if (label.isEmpty) continue;
+
+    final id = _str(item['id']).trim();
+
+    out.add(CustomQuestion(id: id.isEmpty ? 'q$i' : id, label: label));
+  }
+
+  return out;
 }
 
 /// The event, as the checkout describes it.
@@ -504,7 +552,47 @@ List<UnitFieldSpec> unitFieldSpecs(CheckoutTicket ticket) => [
       'Concours / special display',
       UnitFieldKind.checkbox,
     ),
+  // Last, after everything the checkout asks of its own accord. These are
+  // the organiser's questions and there can be any number of them.
+  for (final question in ticket.customQuestions)
+    UnitFieldSpec(
+      '$customQuestionPrefix${question.id}',
+      question.label,
+      UnitFieldKind.text,
+    ),
 ];
+
+/// Marks a unit field as one of the organiser's questions.
+///
+/// These do NOT sync under their own key. The whole set folds into a single
+/// `custom_answers` cart value per admission, so the order carries each
+/// question's text beside its answer — an organiser who edits a question
+/// later can still read what was actually asked. See
+/// [customAnswersValue] and syncUnitField in the web checkout, which must
+/// agree with this exactly: both clients write the same cart.
+const String customQuestionPrefix = 'cq:';
+
+/// The `custom_answers` value for one admission.
+///
+/// JSON of the answered questions as `[{id, q, a}]`, or empty when none have
+/// been answered — empty rather than `[]` so an untouched unit writes nothing
+/// rather than an empty list the organiser then has to interpret.
+String customAnswersValue(
+  CheckoutTicket ticket,
+  String Function(String field) valueOf,
+) {
+  final answered = [
+    for (final question in ticket.customQuestions)
+      if (valueOf('$customQuestionPrefix${question.id}').trim().isNotEmpty)
+        {
+          'id': question.id,
+          'q': question.label,
+          'a': valueOf('$customQuestionPrefix${question.id}').trim(),
+        },
+  ];
+
+  return answered.isEmpty ? '' : jsonEncode(answered);
+}
 
 /// One admission: a ticket, and which of that ticket's copies this is.
 ///

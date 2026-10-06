@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -27,8 +29,10 @@ abstract final class TicketTheme {
       _ => '£',
     };
 
-    return NumberFormat.currency(symbol: symbol, decimalDigits: 2)
-        .format(amount);
+    return NumberFormat.currency(
+      symbol: symbol,
+      decimalDigits: 2,
+    ).format(amount);
   }
 
   /// The bar at the top, with which step this is.
@@ -72,10 +76,7 @@ abstract final class TicketTheme {
           children: [
             for (var i = 1; i <= 3; i++)
               Expanded(
-                child: Container(
-                  height: 3,
-                  color: i <= step ? gold : line,
-                ),
+                child: Container(height: 3, color: i <= step ? gold : line),
               ),
           ],
         ),
@@ -199,11 +200,34 @@ abstract final class TicketTheme {
     required String eyebrow,
     required String title,
     String? subtitle,
+
+    /// Shown above the eyebrow, as the web checkout shows it. Skipped when
+    /// there is no image rather than leaving a gap where one would be.
+    String? imageUrl,
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
       child: Column(
         children: [
+          if (imageUrl != null && imageUrl.isNotEmpty) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                height: 96,
+                // contain, not cover: this is a logo as often as a photo, and
+                // cropping somebody's branding to fill a box is worse than
+                // letting it sit in the space it wants.
+                fit: BoxFit.contain,
+                memCacheHeight: 288,
+                // A missing image is not worth a hole in the header — the
+                // title and date below say what this is on their own.
+                errorWidget: (_, _, _) => const SizedBox.shrink(),
+                placeholder: (_, _) => const SizedBox(height: 96),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           Text(
             eyebrow.toUpperCase(),
             textAlign: TextAlign.center,
@@ -238,6 +262,60 @@ abstract final class TicketTheme {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  /// A "Done" strip that appears above the keyboard while one is open.
+  ///
+  /// iOS's phone and number pads have no return key, so a buyer who taps a
+  /// phone field is left with a keyboard and no obvious way to close it. This
+  /// is the visible answer; [field] also dismisses on a tap outside, which is
+  /// what somebody who already knows the gesture will reach for first.
+  ///
+  /// Nothing on Android, where the system back gesture closes the keyboard
+  /// and every keyboard has its own dismiss key — a second one would be
+  /// clutter.
+  ///
+  /// Goes last in a [Stack] that fills the body, so it settles against the
+  /// bottom of the space the keyboard leaves.
+  static Widget keyboardDismissBar(BuildContext context) {
+    if (!Platform.isIOS) return const SizedBox.shrink();
+
+    // The field is focused but the keyboard has not finished coming up, or is
+    // on its way out. Reading the inset rather than the focus means the strip
+    // tracks the keyboard itself and cannot be left stranded on screen.
+    if (MediaQuery.of(context).viewInsets.bottom <= 0) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Container(
+        height: 42,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        alignment: Alignment.centerRight,
+        decoration: const BoxDecoration(
+          color: Color(0xFFF4F2EC),
+          border: Border(top: BorderSide(color: line)),
+        ),
+        child: GestureDetector(
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          behavior: HitTestBehavior.opaque,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Text(
+              'Done',
+              style: TextStyle(
+                color: gold,
+                fontSize: 15.5,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -304,18 +382,33 @@ abstract final class TicketTheme {
     TextCapitalization textCapitalization = TextCapitalization.none,
     List<TextInputFormatter>? inputFormatters,
     ValueChanged<String>? onChanged,
+
+    /// The label is a sentence somebody wrote, not the name of a field.
+    ///
+    /// An organiser's custom question is prose — often a full sentence, often
+    /// long enough to wrap. Small caps at 10.5px with letter spacing is right
+    /// for "PHONE NUMBER" and close to unreadable for "Would you like to ask
+    /// the question yourself or have it asked for you?".
+    bool proseLabel = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          label.toUpperCase(),
-          style: const TextStyle(
-            color: muted,
-            fontSize: 10.5,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.8,
-          ),
+          proseLabel ? label : label.toUpperCase(),
+          style: proseLabel
+              ? const TextStyle(
+                  color: ink,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                )
+              : const TextStyle(
+                  color: muted,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                ),
         ),
         const SizedBox(height: 6),
         TextField(
@@ -324,6 +417,13 @@ abstract final class TicketTheme {
           textCapitalization: textCapitalization,
           inputFormatters: inputFormatters,
           onChanged: onChanged,
+          // Tapping the form anywhere outside the field closes the keyboard.
+          // Flutter does not do this on mobile by default, and on iOS a phone
+          // field has no return key to close it with — so without this the
+          // keyboard can only be dismissed by scrolling blind or submitting.
+          // See also [keyboardDismissBar], which makes the same escape
+          // visible rather than relying on the buyer guessing.
+          onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
           style: const TextStyle(fontSize: 15, color: ink),
           decoration: InputDecoration(
             isDense: true,
@@ -350,10 +450,7 @@ abstract final class TicketTheme {
         ),
         if (error != null) ...[
           const SizedBox(height: 5),
-          Text(
-            error,
-            style: const TextStyle(color: danger, fontSize: 12),
-          ),
+          Text(error, style: const TextStyle(color: danger, fontSize: 12)),
         ],
       ],
     );
@@ -401,7 +498,8 @@ abstract final class TicketTheme {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: richLabel ??
+                    child:
+                        richLabel ??
                         Text(
                           label,
                           style: const TextStyle(
@@ -577,7 +675,9 @@ abstract final class TicketTheme {
             child: Text(
               message,
               style: TextStyle(
-                color: isError ? const Color(0xFF8A2E24) : const Color(0xFF7A5416),
+                color: isError
+                    ? const Color(0xFF8A2E24)
+                    : const Color(0xFF7A5416),
                 fontSize: 13,
                 height: 1.4,
               ),

@@ -53,9 +53,10 @@ extension on _EventTab {
 }
 
 class _EventDetailScreenState extends State<EventDetailScreen>
-    // Several tickers over the screen's life: the controller is rebuilt once
-    // the event's dates reveal how many tabs it actually has.
-    with TickerProviderStateMixin {
+        // Several tickers over the screen's life: the controller is rebuilt once
+        // the event's dates reveal how many tabs it actually has.
+        with
+        TickerProviderStateMixin {
   late TabController _tabController;
   final PageController _imageController = PageController();
   int _currentImageIndex = 0;
@@ -272,14 +273,21 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   /// CarEvents ticketing goes to the native ticket list when that is switched
   /// on; an organiser's own ticketing link is somebody else's site and always
   /// opens in a browser.
-  Future<void> _openTickets(String ticketUrl, String title) async {
+  Future<void> _openTickets(
+    String ticketUrl,
+    String title, {
+    String? coverImage,
+  }) async {
     final eid = checkoutEidFromTicketUrl(ticketUrl);
 
     if (FeatureFlags.nativeTicketSelection && eid != null) {
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) =>
-              TicketSelectionScreen(eventEid: eid, eventTitle: title),
+          builder: (_) => TicketSelectionScreen(
+            eventEid: eid,
+            eventTitle: title,
+            eventImage: coverImage,
+          ),
         ),
       );
       return;
@@ -727,7 +735,8 @@ class _EventDetailScreenState extends State<EventDetailScreen>
 
   Widget _buildEventContent(ThemeProvider theme) {
     final event = _fullEventData!;
-    final eventId = event['id']?.toString() ?? widget.event?['id']?.toString() ?? '';
+    final eventId =
+        event['id']?.toString() ?? widget.event?['id']?.toString() ?? '';
     final eventImages = _getEventImages(event);
     final eventTitle = event['title'] ?? 'Untitled Event';
     final eventDate = _formatEventDate(event);
@@ -1016,7 +1025,12 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                   // supplies its own, and 20 here plus the gap inside the
                   // column left it floating well clear of the content it is
                   // about.
-                  padding: EdgeInsets.fromLTRB(20, 20, 20, _isPastEvent ? 0 : 20),
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    20,
+                    20,
+                    _isPastEvent ? 0 : 20,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1134,104 +1148,15 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                       // Tickets button on last year's show is worse than no
                       // button at all. The banner below says so instead.
                       if (!_isPastEvent) ...[
-                      if (registrationRequired)
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              print('Register Now');
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.grey.shade900,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            icon: const Icon(Icons.person_add),
-                            label: const Text(
-                              'Register Now',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                      const SizedBox(height: 12),
-
-                      // Edit event button
-                      // if (isEventOwner)
-                      //   SizedBox(
-                      //     width: double.infinity,
-                      //     child: ElevatedButton.icon(
-                      //       onPressed: () {
-                      //         NavigationHelper.navigateTo(
-                      //           context,
-                      //           AddEventScreen(eventId: event['id'].toString()),
-                      //         );
-                      //       },
-                      //       style: ElevatedButton.styleFrom(
-                      //         backgroundColor: Colors.blueGrey.shade700,
-                      //         foregroundColor: Colors.white,
-                      //         padding: const EdgeInsets.symmetric(vertical: 14),
-                      //         shape: RoundedRectangleBorder(
-                      //           borderRadius: BorderRadius.circular(8),
-                      //         ),
-                      //       ),
-                      //       icon: const Icon(Icons.edit),
-                      //       label: const Text(
-                      //         'Edit Event',
-                      //         style: TextStyle(
-                      //           fontSize: 16,
-                      //           fontWeight: FontWeight.w600,
-                      //         ),
-                      //       ),
-                      //     ),
-                      //   ),
-
-                      // Action Buttons
-                      if (hasTickets &&
-                          ticketUrl != null &&
-                          ticketUrl.isNotEmpty)
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () => _openTickets(
-                              ticketUrl,
-                              eventTitle.toString(),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.grey.shade900,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            icon: const Icon(Icons.confirmation_number),
-                            label: const Text(
-                              'Buy Tickets',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                      if (hasTickets) const SizedBox(height: 12),
-
-                      // Favorite and Share Buttons
-                      Row(
-                        children: [
-                          Expanded(
+                        if (registrationRequired)
+                          SizedBox(
+                            width: double.infinity,
                             child: ElevatedButton.icon(
-                              onPressed: _isFavLoading ? null : _toggleFavorite,
+                              onPressed: () {
+                                print('Register Now');
+                              },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: theme.primaryColor,
+                                backgroundColor: Colors.grey.shade900,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 14,
@@ -1240,96 +1165,194 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
-                              icon: _isFavLoading
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : Icon(
-                                      _isFavorite
-                                          ? Icons.favorite
-                                          : Icons.favorite_border,
-                                    ),
+                              icon: const Icon(Icons.person_add),
                               label: const Text(
-                                'Favourite',
+                                'Register Now',
                                 style: TextStyle(
-                                  fontSize: 15,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          if (eventUrl.isNotEmpty) ...[
+
+                        const SizedBox(height: 12),
+
+                        // Edit event button
+                        // if (isEventOwner)
+                        //   SizedBox(
+                        //     width: double.infinity,
+                        //     child: ElevatedButton.icon(
+                        //       onPressed: () {
+                        //         NavigationHelper.navigateTo(
+                        //           context,
+                        //           AddEventScreen(eventId: event['id'].toString()),
+                        //         );
+                        //       },
+                        //       style: ElevatedButton.styleFrom(
+                        //         backgroundColor: Colors.blueGrey.shade700,
+                        //         foregroundColor: Colors.white,
+                        //         padding: const EdgeInsets.symmetric(vertical: 14),
+                        //         shape: RoundedRectangleBorder(
+                        //           borderRadius: BorderRadius.circular(8),
+                        //         ),
+                        //       ),
+                        //       icon: const Icon(Icons.edit),
+                        //       label: const Text(
+                        //         'Edit Event',
+                        //         style: TextStyle(
+                        //           fontSize: 16,
+                        //           fontWeight: FontWeight.w600,
+                        //         ),
+                        //       ),
+                        //     ),
+                        //   ),
+
+                        // Action Buttons
+                        if (hasTickets &&
+                            ticketUrl != null &&
+                            ticketUrl.isNotEmpty)
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _openTickets(
+                                ticketUrl,
+                                eventTitle.toString(),
+                                coverImage: event['cover_photo']?['url']
+                                    ?.toString(),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.grey.shade900,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              icon: const Icon(Icons.confirmation_number),
+                              label: const Text(
+                                'Buy Tickets',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                        if (hasTickets) const SizedBox(height: 12),
+
+                        // Favorite and Share Buttons
+                        Row(
+                          children: [
                             Expanded(
                               child: ElevatedButton.icon(
-                                onPressed: () async {
-                                  final uri = Uri.parse(eventUrl);
-                                  if (await canLaunchUrl(uri)) {
-                                    await launchUrl(
-                                      uri,
-                                      mode: LaunchMode.externalApplication,
+                                onPressed: _isFavLoading
+                                    ? null
+                                    : _toggleFavorite,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: theme.primaryColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                icon: _isFavLoading
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Icon(
+                                        _isFavorite
+                                            ? Icons.favorite
+                                            : Icons.favorite_border,
+                                      ),
+                                label: const Text(
+                                  'Favourite',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            if (eventUrl.isNotEmpty) ...[
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () async {
+                                    final uri = Uri.parse(eventUrl);
+                                    if (await canLaunchUrl(uri)) {
+                                      await launchUrl(
+                                        uri,
+                                        mode: LaunchMode.externalApplication,
+                                      );
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: theme.primaryColor,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.laptop),
+                                  label: const Text(
+                                    'Event Website',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ] else
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () async {
+                                    final eventUrl =
+                                        'https://app.mydrivelife.com/event/$eventId?ref=share';
+                                    final shareText =
+                                        'Check out this event: $eventTitle\n$eventLocation\n$eventDate at $eventTime\n\n$eventUrl';
+                                    await Share.share(
+                                      shareText,
+                                      subject: eventTitle,
                                     );
-                                  }
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: theme.primaryColor,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: theme.primaryColor,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
                                   ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                                icon: const Icon(Icons.laptop),
-                                label: const Text(
-                                  'Event Website',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ] else
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () async {
-                                  final eventUrl = 'https://app.mydrivelife.com/event/$eventId?ref=share';
-                                  final shareText =
-                                      'Check out this event: $eventTitle\n$eventLocation\n$eventDate at $eventTime\n\n$eventUrl';
-                                  await Share.share(
-                                    shareText,
-                                    subject: eventTitle,
-                                  );
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: theme.primaryColor,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                                icon: const Icon(Icons.share),
-                                label: const Text(
-                                  'Share',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
+                                  icon: const Icon(Icons.share),
+                                  label: const Text(
+                                    'Share',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                        ],
-                      ),
+                          ],
+                        ),
                       ],
                     ],
                   ),
@@ -1362,9 +1385,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                       fontWeight: FontWeight.w600,
                       fontSize: 16,
                     ),
-                    tabs: [
-                      for (final tab in _tabs) Tab(text: tab.label),
-                    ],
+                    tabs: [for (final tab in _tabs) Tab(text: tab.label)],
                   ),
                 ),
               ],
@@ -1404,20 +1425,21 @@ class _EventDetailScreenState extends State<EventDetailScreen>
               // same layout as opening the group from the Photos tab, tag
               // strip and contributor count included, rather than a second
               // grid that looks nearly like it.
-              _EventTab.media => _isPastEvent
-                  ? GalleryViewScreen(
-                      entityId: eventId,
-                      entityType: 'event',
-                      entityTitle: eventTitle.toString(),
-                      embedded: true,
-                      // Nothing to add to or curate on an event that is over
-                      // — this tab is the record of it.
-                      readOnly: true,
-                    )
-                  : EntityGalleriesTab(
-                      entityId: eventId,
-                      primaryColor: theme.primaryColor,
-                    ),
+              _EventTab.media =>
+                _isPastEvent
+                    ? GalleryViewScreen(
+                        entityId: eventId,
+                        entityType: 'event',
+                        entityTitle: eventTitle.toString(),
+                        embedded: true,
+                        // Nothing to add to or curate on an event that is over
+                        // — this tab is the record of it.
+                        readOnly: true,
+                      )
+                    : EntityGalleriesTab(
+                        entityId: eventId,
+                        primaryColor: theme.primaryColor,
+                      ),
             },
         ],
       ),
@@ -1583,7 +1605,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
           //   onPressed: () {},
           // ),
           IconButton(
-            icon: const Icon(Icons.share, color: Colors.black),    
+            icon: const Icon(Icons.share, color: Colors.black),
             onPressed: () {
               Share.share(
                 'Check out this event: ${_fullEventData?['title'] ?? 'Untitled Event'}\n\n'

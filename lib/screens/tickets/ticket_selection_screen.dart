@@ -31,11 +31,21 @@ class TicketSelectionScreen extends StatefulWidget {
   /// A discount code to try on arrival, from a shared link.
   final String? coupon;
 
+  /// The event's cover photo, from the screen that opened this one.
+  ///
+  /// A fallback, not the first choice: an organiser who has set a checkout
+  /// logo gets that instead. It exists so the header still shows the event
+  /// when they have not, and so it shows it immediately — the cover is
+  /// already loaded on the page the buyer tapped through from, where the
+  /// logo only arrives with the checkout info.
+  final String? eventImage;
+
   const TicketSelectionScreen({
     super.key,
     required this.eventEid,
     this.eventTitle,
     this.coupon,
+    this.eventImage,
   });
 
   @override
@@ -658,7 +668,11 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
           child: Divider(height: 1, thickness: 1, color: _line),
         ),
       ),
-      body: _buildBody(),
+      // The discount and secret-code fields live in here too, so this screen
+      // needs the same way out of the keyboard as the details step.
+      body: Stack(
+        children: [_buildBody(), TicketTheme.keyboardDismissBar(context)],
+      ),
       bottomNavigationBar: _buildBar(),
     );
   }
@@ -698,6 +712,12 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
       children: [
         TicketTheme.pageHeader(
+          // The organiser's checkout logo where they set one, which is what
+          // the web checkout shows; the event's own cover otherwise, so the
+          // header is never bare.
+          imageUrl: event?.ticketsLogo?.isNotEmpty == true
+              ? event!.ticketsLogo
+              : widget.eventImage,
           eyebrow: 'Get tickets',
           title: event?.title.isNotEmpty == true
               ? event!.title
