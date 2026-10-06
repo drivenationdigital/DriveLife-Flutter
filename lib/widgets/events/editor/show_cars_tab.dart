@@ -214,7 +214,8 @@ class _InfoFieldState extends State<_InfoField> {
       children: [
         const EditorSectionHeader(
           title: 'Information for entrants',
-          subtitle: 'Shown on the application form. Arrival times, rules, what '
+          subtitle:
+              'Shown on the application form. Arrival times, rules, what '
               'to bring.',
         ),
         const SizedBox(height: 12),

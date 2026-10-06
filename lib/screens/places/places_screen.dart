@@ -68,7 +68,7 @@ class _VenuesScreenState extends State<VenuesScreen>
   @override
   void initState() {
     super.initState();
-     WidgetsBinding.instance.addPostFrameCallback((_) async {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final locationProvider = context.read<LocationAccessProvider>();
 
       // If the check hasn't run yet, wait for it. Otherwise read cached result.
@@ -84,7 +84,7 @@ class _VenuesScreenState extends State<VenuesScreen>
         _selectedLocation = hasAccess ? 'near-me' : 'national';
       });
     });
-    
+
     theme = Provider.of<ThemeProvider>(context, listen: false);
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
@@ -583,7 +583,7 @@ class _VenuesScreenState extends State<VenuesScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-             if (_showLocationBanner) ...[
+            if (_showLocationBanner) ...[
               LocationBanner(
                 onUpdate: () {
                   setState(() => _showLocationBanner = false);
@@ -594,7 +594,7 @@ class _VenuesScreenState extends State<VenuesScreen>
                 },
               ),
             ],
-            
+
             // Spacing rides with the banner: when there is nothing featured
             // the whole block disappears, instead of leaving 32pt of padding
             // wrapped around a zero-height widget.
@@ -1020,7 +1020,10 @@ class _VenuesScreenState extends State<VenuesScreen>
 
   Widget _buildVenuesList() {
     if (_filteredVenues.isEmpty) {
-      return Padding(padding: const EdgeInsets.all(16), child: _buildEmptyState());
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: _buildEmptyState(),
+      );
     }
 
     return Column(

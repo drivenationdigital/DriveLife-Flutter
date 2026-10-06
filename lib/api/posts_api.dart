@@ -186,9 +186,7 @@ class PostsAPI {
             Uri.parse(
               '$_baseUrl/wp-json/app/v2/post-poll',
             ).replace(queryParameters: {'post_id': '$postId'}),
-            headers: {
-              if (token != null) 'Authorization': 'Bearer $token',
-            },
+            headers: {if (token != null) 'Authorization': 'Bearer $token'},
           )
           .timeout(const Duration(seconds: 12));
 

@@ -65,9 +65,7 @@ class MediaAPI {
     }
 
     if (body['success'] == false) {
-      throw MediaApiException(
-        body['message']?.toString() ?? 'Request failed.',
-      );
+      throw MediaApiException(body['message']?.toString() ?? 'Request failed.');
     }
 
     return body;
@@ -83,11 +81,7 @@ class MediaAPI {
   }) async {
     print('$_base/media-matches');
     final uri = Uri.parse('$_base/media-matches').replace(
-      queryParameters: {
-        'status': status,
-        'page': '$page',
-        'limit': '$limit',
-      },
+      queryParameters: {'status': status, 'page': '$page', 'limit': '$limit'},
     );
 
     try {
@@ -95,7 +89,7 @@ class MediaAPI {
           .get(uri, headers: await _headers())
           .timeout(ApiConfig.requestTimeout);
 
-          print(response.body);
+      print(response.body);
 
       return PendingImagesResponse.fromJson(_decode(response));
     } on MediaApiException {
@@ -146,9 +140,9 @@ class MediaAPI {
     int limit = 30,
     int page = 1,
   }) async {
-    final uri = Uri.parse('$_base/media-popular').replace(
-      queryParameters: {'limit': '$limit', 'page': '$page'},
-    );
+    final uri = Uri.parse(
+      '$_base/media-popular',
+    ).replace(queryParameters: {'limit': '$limit', 'page': '$page'});
 
     try {
       final response = await http

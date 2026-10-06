@@ -105,9 +105,9 @@ class _EventCommunityGalleryScreenState
   void _uploadAll() {
     final pending = _images.where((i) => !i.isUploaded).toList();
     if (pending.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add some photos first')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Add some photos first')));
       return;
     }
 
@@ -194,7 +194,8 @@ class _EventCommunityGalleryScreenState
                   child: SizedBox(
                     width: 48,
                     height: 48,
-                    child: widget.eventCoverUrl != null &&
+                    child:
+                        widget.eventCoverUrl != null &&
                             widget.eventCoverUrl!.isNotEmpty
                         ? CachedNetworkImage(
                             imageUrl: widget.eventCoverUrl!,
@@ -202,8 +203,11 @@ class _EventCommunityGalleryScreenState
                           )
                         : Container(
                             color: _ink,
-                            child: const Icon(Icons.event,
-                                color: _gold, size: 22),
+                            child: const Icon(
+                              Icons.event,
+                              color: _gold,
+                              size: 22,
+                            ),
                           ),
                   ),
                 ),
@@ -254,8 +258,11 @@ class _EventCommunityGalleryScreenState
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.add_photo_alternate_outlined,
-                      size: 40, color: Colors.grey.shade400),
+                  Icon(
+                    Icons.add_photo_alternate_outlined,
+                    size: 40,
+                    color: Colors.grey.shade400,
+                  ),
                   const SizedBox(height: 6),
                   Text(
                     _images.isEmpty
@@ -286,16 +293,19 @@ class _EventCommunityGalleryScreenState
                   TextButton(
                     onPressed: _uploading
                         ? null
-                        : () => setState(() =>
-                            _images.removeWhere((i) => !i.isUploaded)),
+                        : () => setState(
+                            () => _images.removeWhere((i) => !i.isUploaded),
+                          ),
                     style: TextButton.styleFrom(
                       foregroundColor: _muted,
                       padding: EdgeInsets.zero,
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: const Text('Clear pending',
-                        style: TextStyle(fontSize: 12.5)),
+                    child: const Text(
+                      'Clear pending',
+                      style: TextStyle(fontSize: 12.5),
+                    ),
                   ),
               ],
             ),
@@ -336,7 +346,9 @@ class _EventCommunityGalleryScreenState
                         left: 4,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.green,
                             borderRadius: BorderRadius.circular(8),
@@ -363,8 +375,7 @@ class _EventCommunityGalleryScreenState
                         top: 4,
                         right: 4,
                         child: GestureDetector(
-                          onTap:
-                              _uploading ? null : () => _removeImage(index),
+                          onTap: _uploading ? null : () => _removeImage(index),
                           child: Container(
                             padding: const EdgeInsets.all(4),
                             decoration: const BoxDecoration(
@@ -378,8 +389,11 @@ class _EventCommunityGalleryScreenState
                                 ),
                               ],
                             ),
-                            child: const Icon(Icons.close,
-                                size: 14, color: Colors.white),
+                            child: const Icon(
+                              Icons.close,
+                              size: 14,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
@@ -403,8 +417,11 @@ class _EventCommunityGalleryScreenState
               children: [
                 Row(
                   children: [
-                    Icon(Icons.info_outline,
-                        size: 15, color: Colors.grey.shade500),
+                    Icon(
+                      Icons.info_outline,
+                      size: 15,
+                      color: Colors.grey.shade500,
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       'Community gallery',

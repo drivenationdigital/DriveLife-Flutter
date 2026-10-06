@@ -74,16 +74,16 @@ class LeaderboardEntry {
   final String displayName;
   final double score;
   final bool isCurrentUser;
-  final String? profileImage; 
-  final int? hits; 
-  final int? misses; 
+  final String? profileImage;
+  final int? hits;
+  final int? misses;
 
   const LeaderboardEntry({
     required this.rank,
     required this.displayName,
     required this.score,
     required this.isCurrentUser,
-    this.profileImage, 
+    this.profileImage,
     this.hits,
     this.misses,
   });
@@ -112,8 +112,11 @@ class SpeedwellLeaderboardResult {
 
   bool get hasError => error != null;
 
-  SpeedwellLeaderboardResult.success(this.leaderboard, this.currentUser, {this.stats})
-    : error = null;
+  SpeedwellLeaderboardResult.success(
+    this.leaderboard,
+    this.currentUser, {
+    this.stats,
+  }) : error = null;
 
   SpeedwellLeaderboardResult.failure(this.error)
     : leaderboard = const [],
@@ -390,7 +393,9 @@ class OffersApi {
           ? LeaderboardEntry.fromJson(rawCurrent)
           : null;
 
-      return SpeedwellLeaderboardResult.success(entries, currentUser,
+      return SpeedwellLeaderboardResult.success(
+        entries,
+        currentUser,
         stats: body['stats'] is Map<String, dynamic> ? body['stats'] : null,
       );
     } on http.ClientException catch (e) {

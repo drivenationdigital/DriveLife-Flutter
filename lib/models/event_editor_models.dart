@@ -1,4 +1,3 @@
-
 /// Models for the event editor sections that exist in the Next.js dashboard
 /// (`drivelife-account`) but not yet in the app: discounts, show cars, car
 /// clubs and traders.
@@ -57,6 +56,7 @@ String? _timeOf(DateTime? value) {
   final minute = value.minute.toString().padLeft(2, '0');
   return '$hour:$minute';
 }
+
 double? _double(dynamic value) => _num(value)?.toDouble();
 bool _bool(dynamic value) => value == true || value == 1 || value == '1';
 String _str(dynamic value) => value?.toString() ?? '';
@@ -145,7 +145,9 @@ class EventDiscount {
       usageCount: usageCount,
       discountGiven: discountGiven,
       applicableTicketIds: applicableTicketIds ?? this.applicableTicketIds,
-      availableFrom: availableFrom == null ? this.availableFrom : availableFrom(),
+      availableFrom: availableFrom == null
+          ? this.availableFrom
+          : availableFrom(),
       availableUntil: availableUntil == null
           ? this.availableUntil
           : availableUntil(),
@@ -424,7 +426,8 @@ class CarClubsConfig {
           ? this.applicationsClose
           : applicationsClose(),
       applicationsOpenTime: applicationsOpenTime ?? this.applicationsOpenTime,
-      applicationsCloseTime: applicationsCloseTime ?? this.applicationsCloseTime,
+      applicationsCloseTime:
+          applicationsCloseTime ?? this.applicationsCloseTime,
       limitEnabled: limitEnabled ?? this.limitEnabled,
       max: max == null ? this.max : max(),
       requireTicket: requireTicket ?? this.requireTicket,

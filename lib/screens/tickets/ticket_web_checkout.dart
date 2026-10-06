@@ -1,4 +1,5 @@
 import 'package:drivelife/api/checkout_api.dart';
+import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/config/app_environment.dart';
 import 'package:drivelife/models/user_model.dart';
 import 'package:flutter/foundation.dart';
@@ -18,14 +19,14 @@ import 'package:url_launcher/url_launcher.dart';
 /// with the browser closing over it — see the `dl-order` branch in
 /// deeplinks_helper.dart.
 ///
-/// NOT yet solved: the order does not reach the buyer's ticket section.
-/// `cc_get_tickets_for_user()` finds orders by WordPress user id, and the
-/// classic checkout stamps that from `get_current_user_id()` — a carevents.com
-/// session cookie this browser does not have. So an order bought here is
-/// reachable from the confirmation and the buyer's email, but not from the
-/// Tickets tab. Fixing it means the browser carrying a token the backend
-/// verifies, not an id on the URL; the box-office flow in embed.php
-/// (`admin_token`) is the pattern to copy.
+/// The order still lands on the buyer's account. `cc_get_tickets_for_user()`
+/// finds orders by WordPress user id, which the classic checkout stamps from
+/// `get_current_user_id()` — a session this browser does not have. So the app
+/// mints a short-lived signed claim (`app/v1/checkout-handoff`) and the
+/// checkout carries it as `dl_u`; embed.php verifies the signature before the
+/// order is written. Signed rather than encrypted on purpose: make_crypt's key
+/// is fixed and lives in the repo, so an encrypted user id would be something
+/// anyone could mint for any account.
 abstract final class TicketWebCheckout {
   const TicketWebCheckout._();
 
@@ -38,12 +39,22 @@ abstract final class TicketWebCheckout {
 
   /// Builds the checkout URL for an event.
   ///
-  /// [user] is used only to spare a signed-in buyer retyping what the app
-  /// already knows. It is prefill and nothing more: the order is attributed
-  /// server-side from the session, never from anything carried in a URL, so a
-  /// doctored link cannot put somebody else's order on an account.
-  static Uri urlFor(String eventEid, {User? user, String? coupon}) {
+  /// [user] only spares a signed-in buyer retyping what the app already
+  /// knows — it is prefill, and editable. [handoff] is the part that counts:
+  /// a signed, expiring claim the backend verifies before attributing the
+  /// order. The two are separate because one is a convenience and the other
+  /// is a fact, and a doctored URL must only ever be able to spoil the
+  /// convenience.
+  static Uri urlFor(
+    String eventEid, {
+    required String site,
+    User? user,
+    String? coupon,
+    String? handoff,
+  }) {
     final params = <String, String>{'complete': _returnLink};
+
+    if ((handoff ?? '').trim().isNotEmpty) params['dl_u'] = handoff!.trim();
 
     if (user != null) {
       void add(String key, String? value) {
@@ -51,11 +62,8 @@ abstract final class TicketWebCheckout {
         if (v.isNotEmpty) params[key] = v;
       }
 
-      // Deliberately NOT the user id. Nothing server-side can safely act on
-      // an id carried in a URL — anyone can edit it — so sending one would
-      // put a user identifier in server logs and browser history to no
-      // purpose. Attributing the order to an account needs a token the
-      // backend can verify; see the note at the top of this file.
+      // Still not the raw user id: `dl_u` above is the identity claim, and
+      // it is signed. These are only to save typing.
       add('dl_email', user.email);
       add('dl_first', user.firstName);
       add('dl_last', user.lastName);
@@ -65,8 +73,13 @@ abstract final class TicketWebCheckout {
 
     if ((coupon ?? '').trim().isNotEmpty) params['coupon'] = coupon!.trim();
 
+    // The region rides in front of the id, bare meaning UK — post ids are
+    // only unique within a blog, so a US event opened without it resolves to
+    // whichever UK event shares that id.
+    final linkEid = site == 'us' ? 'us$eventEid' : eventEid;
+
     return Uri.parse(
-      '${CheckoutApi.checkoutBaseUrl}/$eventEid',
+      '${CheckoutApi.checkoutBaseUrl}/$linkEid',
     ).replace(queryParameters: params);
   }
 
@@ -78,13 +91,27 @@ abstract final class TicketWebCheckout {
   /// still come back through the same `drivelife://` link.
   static Future<bool> open(
     String eventEid, {
+    required String site,
     User? user,
     String? coupon,
   }) async {
-    final url = urlFor(eventEid, user: user, coupon: coupon);
+    // Asked for at the last moment so it is as fresh as possible: it expires,
+    // and a token minted when the app launched could be hours old by now.
+    // Null when signed out, which is a normal guest checkout, not a failure.
+    final handoff = user == null
+        ? null
+        : await EventsAPI.getCheckoutHandoffToken();
 
-    // The query carries a buyer's email and phone, so this is logged only in
-    // a developer's build — never in a shipped one.
+    final url = urlFor(
+      eventEid,
+      site: site,
+      user: user,
+      coupon: coupon,
+      handoff: handoff,
+    );
+
+    // The query carries a buyer's email, phone and identity claim, so this is
+    // logged only in a developer's build — never in a shipped one.
     if (kDebugMode || AppEnvironment.isStaging) {
       debugPrint('🎟️ [Checkout] Opening the web checkout: $url');
     }

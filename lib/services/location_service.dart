@@ -1,5 +1,6 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+
 class LocationService {
   /// Check if location permissions are granted
   static Future<bool> hasPermission() async {

@@ -59,7 +59,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-      final theme = Provider.of<ThemeProvider>(context);
+    final theme = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
       backgroundColor: Colors.white,

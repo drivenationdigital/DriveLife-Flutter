@@ -49,11 +49,10 @@ class Analytics {
   }
 
   /// Track a screen view. [path] should look like a URL path, e.g. `/post-detail`.
-  static Future<void> trackScreen(String path, {String? title}) =>
-      _guard('trackScreen', () => _tracker.trackScreen(
-            screenName: _sanitize(path),
-            title: title,
-          ));
+  static Future<void> trackScreen(String path, {String? title}) => _guard(
+    'trackScreen',
+    () => _tracker.trackScreen(screenName: _sanitize(path), title: title),
+  );
 
   /// Track an interaction, e.g. `category: 'Post', action: 'like'`.
   static Future<void> trackEvent({
@@ -61,46 +60,53 @@ class Analytics {
     required String action,
     String? name,
     double? value,
-  }) =>
-      _guard('trackEvent', () => _tracker.trackCustomEvent(
-            category: category,
-            action: action,
-            name: name,
-            value: value,
-          ));
+  }) => _guard(
+    'trackEvent',
+    () => _tracker.trackCustomEvent(
+      category: category,
+      action: action,
+      name: name,
+      value: value,
+    ),
+  );
 
   static Future<void> trackSearch(
     String keyword, {
     String? category,
     int? numberOfHits,
-  }) =>
-      _guard('trackSearch', () => _tracker.trackSearch(
-            keyword: keyword,
-            category: category,
-            numberOfHits: numberOfHits,
-          ));
+  }) => _guard(
+    'trackSearch',
+    () => _tracker.trackSearch(
+      keyword: keyword,
+      category: category,
+      numberOfHits: numberOfHits,
+    ),
+  );
 
   static Future<void> trackShare({
     required String network,
     required String target,
-  }) =>
-      _guard('trackShare', () => _tracker.trackSocialInteraction(
-            interaction: 'share',
-            network: network,
-            target: target,
-          ));
+  }) => _guard(
+    'trackShare',
+    () => _tracker.trackSocialInteraction(
+      interaction: 'share',
+      network: network,
+      target: target,
+    ),
+  );
 
   static Future<void> trackException(
     String description, {
     bool isFatal = false,
-  }) =>
-      _guard('trackException', () => _tracker.trackException(
-            description: description,
-            isFatal: isFatal,
-          ));
+  }) => _guard(
+    'trackException',
+    () => _tracker.trackException(description: description, isFatal: isFatal),
+  );
 
-  static Future<void> trackGoal(int goal, {double? revenue}) =>
-      _guard('trackGoal', () => _tracker.trackGoal(goal: goal, revenue: revenue));
+  static Future<void> trackGoal(int goal, {double? revenue}) => _guard(
+    'trackGoal',
+    () => _tracker.trackGoal(goal: goal, revenue: revenue),
+  );
 
   /// Attach the logged-in user to the session. Call after login / profile load.
   static Future<void> setUserId(String id) =>
@@ -116,7 +122,8 @@ class Analytics {
   /// Note: the plugin's `setDispatchInterval` is broken on Android — it calls
   /// `tracker.setSessionTimeout` instead — so this is the only reliable way to
   /// force a send.
-  static Future<void> dispatch() => _guard('dispatch', () => _tracker.dispatch());
+  static Future<void> dispatch() =>
+      _guard('dispatch', () => _tracker.dispatch());
 
   /// Strips query strings so tokens carried by deep links (`?reset=`,
   /// `?verifyToken=`, `?qr=`) never reach the analytics backend.
@@ -126,7 +133,10 @@ class Analytics {
     return cleaned.startsWith('/') ? cleaned : '/$cleaned';
   }
 
-  static Future<void> _guard(String label, Future<String> Function() call) async {
+  static Future<void> _guard(
+    String label,
+    Future<String> Function() call,
+  ) async {
     if (!_ready) {
       if (debugLogging) {
         debugPrint('⚠️ [Analytics] $label skipped — tracker not configured');

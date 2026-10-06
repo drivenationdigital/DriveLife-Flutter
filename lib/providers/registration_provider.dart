@@ -206,7 +206,7 @@ class RegistrationProvider extends ChangeNotifier {
         _agreePrivacy;
   }
 
-bool validateStep2() {
+  bool validateStep2() {
     final usernameRegex = RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9_.]*[a-zA-Z0-9]$');
     final hasConsecutiveDots = _username.contains('..');
     return _username.length >= 3 &&
@@ -258,7 +258,7 @@ bool validateStep2() {
     return null;
   }
 
-String? validateUsername(String? value) {
+  String? validateUsername(String? value) {
     if (value == null || value.isEmpty) return 'Username is required';
     if (value.length < 3) return 'Username must be at least 3 characters';
     if (value.contains('..')) return 'Username cannot have consecutive dots';

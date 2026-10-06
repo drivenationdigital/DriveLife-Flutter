@@ -34,7 +34,7 @@ class _OffersBannerState extends State<OffersBanner> {
       _offers = widget.offers!;
       _loading = false;
       if (_offers.length > 1) _startAutoSlide();
-    } 
+    }
   }
 
   // on dependency change, if offers were passed via constructor, update local state
@@ -113,7 +113,7 @@ class _OffersBannerState extends State<OffersBanner> {
   //             itemCount: _offers.length,
   //             onPageChanged: (i) => setState(() => _currentPage = i),
   //             itemBuilder: (context, i) =>
-  //                 _BannerCard(offer: _offers[i], gold: theme.primaryColor, dark: theme.secondaryColor, 
+  //                 _BannerCard(offer: _offers[i], gold: theme.primaryColor, dark: theme.secondaryColor,
   //                 // onRedeem: () => {
   //                 //   Navigator.push(
   //                 //     context,
@@ -311,9 +311,7 @@ class _BannerCard extends StatelessWidget {
                         children: [
                           // "Are you at {location}?" or plain title
                           Text(
-                            hasLocation
-                                ? offer.locationName
-                                : offer.title,
+                            hasLocation ? offer.locationName : offer.title,
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,

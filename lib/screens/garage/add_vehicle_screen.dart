@@ -1396,8 +1396,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                           ),
                           value: _taggingEnabled,
                           activeThumbColor: theme.primaryColor,
-                          onChanged: (v) =>
-                              setState(() => _taggingEnabled = v),
+                          onChanged: (v) => setState(() => _taggingEnabled = v),
                         ),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),

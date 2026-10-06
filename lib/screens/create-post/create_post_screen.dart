@@ -3005,7 +3005,8 @@ class _PollSheetState extends State<_PollSheet> {
                 if (widget.initial != null)
                   TextButton(
                     // An empty map, which the composer reads as "remove".
-                    onPressed: () => Navigator.pop(context, <String, dynamic>{}),
+                    onPressed: () =>
+                        Navigator.pop(context, <String, dynamic>{}),
                     child: const Text(
                       'Remove',
                       style: TextStyle(color: Colors.red),
@@ -3027,10 +3028,7 @@ class _PollSheetState extends State<_PollSheet> {
               cursorColor: _gold,
               textCapitalization: TextCapitalization.sentences,
               onChanged: (_) => setState(() {}),
-              decoration: _dec(
-                'Question',
-                hint: 'Which one would you daily?',
-              ),
+              decoration: _dec('Question', hint: 'Which one would you daily?'),
             ),
             const SizedBox(height: 14),
 
@@ -3100,7 +3098,9 @@ class _PollSheetState extends State<_PollSheet> {
                     labelStyle: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: _days == duration.days ? Colors.white : Colors.black87,
+                      color: _days == duration.days
+                          ? Colors.white
+                          : Colors.black87,
                     ),
                     selectedColor: _gold,
                     backgroundColor: Colors.grey.shade100,

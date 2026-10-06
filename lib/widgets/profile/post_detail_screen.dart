@@ -8,7 +8,11 @@ class PostDetailScreen extends StatefulWidget {
   final String postId;
   final String? highlightCommentId; // Optional comment ID to highlight
 
-  const PostDetailScreen({super.key, required this.postId, this.highlightCommentId});
+  const PostDetailScreen({
+    super.key,
+    required this.postId,
+    this.highlightCommentId,
+  });
 
   @override
   State<PostDetailScreen> createState() => _PostDetailScreenState();
@@ -133,7 +137,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           child: Padding(
             padding: const EdgeInsets.only(bottom: 40), // Bottom spacing
             child: PostCard(
-              openCommentsOnLoad: widget.highlightCommentId != null, // Open comments if we have a comment to highlight
+              openCommentsOnLoad:
+                  widget.highlightCommentId !=
+                  null, // Open comments if we have a comment to highlight
               onEdit: () {
                 // Refresh post
                 _refreshPost();
@@ -147,9 +153,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   Navigator.pushNamed(
                     context,
                     '/club-detail',
-                    arguments: {
-                      'clubId': _post!['club_id'],
-                    },
+                    arguments: {'clubId': _post!['club_id']},
                   );
                   return;
                 }
@@ -158,13 +162,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   Navigator.pushNamed(
                     context,
                     '/venue-details',
-                    arguments: {
-                      'venueId': _post!['venue_id'],
-                    },
+                    arguments: {'venueId': _post!['venue_id']},
                   );
                   return;
                 }
-                
+
                 Navigator.pushNamed(
                   context,
                   '/view-profile',

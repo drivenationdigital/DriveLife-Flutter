@@ -69,7 +69,11 @@ class UserListView extends StatelessWidget {
                       : null,
                   backgroundColor: Colors.grey.shade300,
                   child: profileImage == null || profileImage == 'search_q'
-                      ? const Icon(Icons.person, size: 18, color: Colors.black12,)
+                      ? const Icon(
+                          Icons.person,
+                          size: 18,
+                          color: Colors.black12,
+                        )
                       : null,
                 ),
                 title: Text(

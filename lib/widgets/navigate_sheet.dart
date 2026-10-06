@@ -43,15 +43,18 @@ extension on _NavApp {
     final query = Uri.encodeComponent(address);
 
     return switch (this) {
-      _NavApp.waze => hasPoint
-          ? 'https://waze.com/ul?ll=$point&navigate=yes'
-          : 'https://waze.com/ul?q=$query&navigate=yes',
-      _NavApp.google => hasPoint
-          ? 'https://www.google.com/maps/dir/?api=1&destination=$point'
-          : 'https://www.google.com/maps/dir/?api=1&destination=$query',
-      _NavApp.apple => hasPoint
-          ? 'https://maps.apple.com/?daddr=$point&dirflg=d'
-          : 'https://maps.apple.com/?daddr=$query&dirflg=d',
+      _NavApp.waze =>
+        hasPoint
+            ? 'https://waze.com/ul?ll=$point&navigate=yes'
+            : 'https://waze.com/ul?q=$query&navigate=yes',
+      _NavApp.google =>
+        hasPoint
+            ? 'https://www.google.com/maps/dir/?api=1&destination=$point'
+            : 'https://www.google.com/maps/dir/?api=1&destination=$query',
+      _NavApp.apple =>
+        hasPoint
+            ? 'https://maps.apple.com/?daddr=$point&dirflg=d'
+            : 'https://maps.apple.com/?daddr=$query&dirflg=d',
     };
   }
 }
@@ -69,7 +72,9 @@ Future<void> showNavigateSheet(
 }) async {
   final trimmed = address.trim();
   final hasPoint =
-      latitude != null && longitude != null && (latitude != 0 || longitude != 0);
+      latitude != null &&
+      longitude != null &&
+      (latitude != 0 || longitude != 0);
 
   if (!hasPoint && trimmed.isEmpty) return;
 

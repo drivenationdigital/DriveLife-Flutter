@@ -345,10 +345,7 @@ class _Arrow extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(left: left),
       child: CustomPaint(
-        size: const Size(
-          _TipCalloutState._arrow * 2,
-          _TipCalloutState._arrow,
-        ),
+        size: const Size(_TipCalloutState._arrow * 2, _TipCalloutState._arrow),
         painter: _ArrowPainter(pointingUp: pointingUp),
       ),
     );

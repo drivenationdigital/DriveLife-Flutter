@@ -74,7 +74,7 @@ class VenueApiService {
     required String venueId,
     int page = 1,
     int perPage = 10,
-     String? kind, // 'updates' | 'community' | null
+    String? kind, // 'updates' | 'community' | null
   }) async {
     try {
       final user = await _authService.getUser();

@@ -92,8 +92,7 @@ class StoryUser {
 }
 
 class StoriesService {
-  static String get _base =>
-      '${AppEnvironment.wordpressRoot}/wp-json/app/v2';
+  static String get _base => '${AppEnvironment.wordpressRoot}/wp-json/app/v2';
   static final AuthService _authService = AuthService();
 
   static Future<Map<String, dynamic>?> getUploadUrl(String token) async {
@@ -222,11 +221,9 @@ class StoriesService {
   }
 
   // ── 6. Delete story ───────────────────────────────────────────────────────
-  static Future<bool> deleteStory({
-    required int storyId,
-  }) async {
+  static Future<bool> deleteStory({required int storyId}) async {
     try {
-       final token = await _authService.getToken();
+      final token = await _authService.getToken();
       final res = await http.delete(
         Uri.parse('$_base/stories/$storyId'),
         headers: {'Authorization': 'Bearer $token'},

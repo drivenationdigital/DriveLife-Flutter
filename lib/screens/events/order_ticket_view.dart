@@ -245,10 +245,10 @@ class _OrderTicketsPageState extends State<OrderTicketsPage> {
       onDownload: downloadSingle.isEmpty
           ? null
           : () => _openUrl(downloadSingle),
-        carMake: carMake, 
-      carModel: carModel, 
-      carReg: carReg, 
-      carClub: carClub, 
+      carMake: carMake,
+      carModel: carModel,
+      carReg: carReg,
+      carClub: carClub,
     );
   }
 }

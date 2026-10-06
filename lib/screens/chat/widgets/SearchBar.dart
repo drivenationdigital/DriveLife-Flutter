@@ -11,7 +11,8 @@ import 'package:provider/provider.dart';
 class NewChatSearchResults extends StatefulWidget {
   final String query;
   final String myUserId;
-  final void Function(String userId, String userName, String? conversationId) onDirectMessage;
+  final void Function(String userId, String userName, String? conversationId)
+  onDirectMessage;
   final void Function(UserProfile profile) onAddToGroup;
   final List<String> selectedIds; // already picked
   final int maxReached;

@@ -207,7 +207,6 @@ class _TagEntitiesScreenState extends State<TagEntitiesScreen> {
     );
   }
 
-  
   AppBar _buildAppBar() {
     return AppBar(
       backgroundColor: Colors.white,
@@ -674,10 +673,8 @@ class _SearchResultTile extends StatelessWidget {
                     ? Image.network(
                         imageUrl,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Icon(
-                          _fallbackIcon,
-                          color: Colors.grey.shade500,
-                        ),
+                        errorBuilder: (_, __, ___) =>
+                            Icon(_fallbackIcon, color: Colors.grey.shade500),
                       )
                     : Icon(_fallbackIcon, color: Colors.grey.shade500),
               ),

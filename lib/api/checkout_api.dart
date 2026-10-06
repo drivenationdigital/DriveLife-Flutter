@@ -61,6 +61,26 @@ class CheckoutApi {
 
   static const Duration _timeout = Duration(seconds: 25);
 
+  /// Which blog this checkout is talking to: 'uk' or 'us'.
+  ///
+  /// Sent on every call, because the server derives the WordPress blog from
+  /// it and a post id is only unique within a blog. Getting it wrong does not
+  /// produce an error — it produces a different event's tickets — so it is
+  /// held here rather than threaded through twenty signatures where one could
+  /// quietly be missed.
+  ///
+  /// Set by [useSite] when a checkout opens. Defaults to the UK, which holds
+  /// all but a handful of events.
+  static String _site = 'uk';
+
+  /// Points every later call at an event's own blog.
+  ///
+  /// Called once, before the first request of a checkout. One checkout runs
+  /// at a time — the buyer is on one screen — so a single value is enough.
+  static void useSite(String? site) {
+    _site = (site ?? '').trim().toLowerCase() == 'us' ? 'us' : 'uk';
+  }
+
   /// Prints a checkout call, in any build a developer is running.
   ///
   /// The buyer-facing messages are deliberately vague — "Ticketing service
@@ -103,7 +123,8 @@ class CheckoutApi {
           .post(
             Uri.parse('$baseUrl/api/checkout'),
             headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({'action': action, ...payload}),
+            // `site` first so a caller that names one explicitly still wins.
+            body: jsonEncode({'action': action, 'site': _site, ...payload}),
           )
           .timeout(_timeout);
     } on TimeoutException {

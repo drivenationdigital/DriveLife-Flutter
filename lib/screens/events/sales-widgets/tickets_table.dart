@@ -5,7 +5,18 @@ class TicketsSection extends StatefulWidget {
   final List<dynamic> tickets;
   final ThemeProvider theme;
 
-  const TicketsSection({super.key, required this.tickets, required this.theme});
+  /// The symbol for this event's own currency.
+  ///
+  /// Passed in rather than assumed: a US event's takings are dollars, and a
+  /// pound sign on them misstates what the organiser has earned.
+  final String currencySymbol;
+
+  const TicketsSection({
+    super.key,
+    required this.tickets,
+    required this.theme,
+    this.currencySymbol = '£',
+  });
 
   @override
   State<TicketsSection> createState() => _TicketsSectionState();
@@ -252,7 +263,10 @@ class _TicketsSectionState extends State<TicketsSection> {
                             _DataCell(t['email'] ?? '-', small: true),
                             _DataCell(t['phone'] ?? '-'),
                             _DataCell(t['ticket_name'] ?? '-', small: true),
-                            _DataCell('£${t['total'] ?? '0.00'}', bold: true),
+                            _DataCell(
+                              '${widget.currencySymbol}${t['total'] ?? '0.00'}',
+                              bold: true,
+                            ),
                             _DataCell(
                               carStr.isEmpty ? '-' : carStr,
                               small: true,

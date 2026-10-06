@@ -646,6 +646,34 @@ List<CheckoutUnit> cartUnits(
 /// Null for an organiser's external ticketing link, which is the discriminator
 /// that matters: those are somebody else's site and must keep opening in a
 /// browser.
+/// Which blog a CarEvents ticket URL belongs to: 'us' or 'uk'.
+///
+/// The site is already in the URL and always has been — `get_site_url()`
+/// builds `ticket_url` on the event's own blog, so the UK's path prefix is
+/// there and the US (network root) has none. Reading it from the same string
+/// the eid comes from means the two can never disagree.
+///
+/// This matters more than it looks. Post ids are only unique within a blog
+/// and `make_crypt` carries no blog, so the same eid resolves on both — to
+/// two different events. A checkout asked without a site does not fail, it
+/// sells the wrong event.
+///
+/// Defaults to 'uk' for anything unrecognised: it holds all but a handful of
+/// events, and the server refuses an ambiguous id rather than guessing.
+String checkoutSiteFromTicketUrl(String? ticketUrl) {
+  final uri = Uri.tryParse((ticketUrl ?? '').trim());
+  if (uri == null) return 'uk';
+
+  final first = uri.pathSegments.isEmpty ? '' : uri.pathSegments.first;
+
+  return switch (first.toLowerCase()) {
+    'uk' => 'uk',
+    'us' => 'us',
+    // No country segment: the network root, which is the US blog.
+    _ => 'us',
+  };
+}
+
 String? checkoutEidFromTicketUrl(String? ticketUrl) {
   if (ticketUrl == null || ticketUrl.trim().isEmpty) return null;
 

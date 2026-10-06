@@ -139,7 +139,6 @@ class ChatRepository {
     String conversationId, {
     DateTime? after,
   }) async {
-
     final currentUserId = await SupabaseTokenManager.currentUserId;
     if (currentUserId == null) {
       throw Exception('No current user ID found');
@@ -387,7 +386,6 @@ class ChatNotifier extends ChangeNotifier {
   bool get refreshing => _refreshing;
   bool get sending => _sending;
   String? get error => _error;
-  
 
   Future<void> initialize() async {
     try {
@@ -526,7 +524,7 @@ class InboxRepository {
   }
 
   /// Real-time stream that fires whenever any conversation updates.
-Stream<void> conversationUpdates(String myUserId) {
+  Stream<void> conversationUpdates(String myUserId) {
     final controller = StreamController<void>.broadcast();
 
     final channel = _db.channel('inbox:$myUserId')
@@ -601,10 +599,10 @@ class InboxNotifier extends ChangeNotifier {
         await UserProfileCache.instance.refresh(ids);
       }
 
-            // Push total unread count up to provider
+      // Push total unread count up to provider
       final total = _previews.fold<int>(0, (sum, p) => sum + p.unreadCount);
       unreadCountProvider?.update(total);
-      
+
       _loading = false;
       _error = null;
     } catch (e) {
@@ -655,7 +653,6 @@ class MessageCache {
 
   void clear(String conversationId) => _cache.remove(conversationId);
 }
-
 
 class UnreadCountProvider extends ChangeNotifier {
   int _count = 0;

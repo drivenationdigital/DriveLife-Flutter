@@ -210,7 +210,7 @@ class _PostsTabState extends State<_PostsTab>
       final pos = _scrollController.position;
       if (pos.pixels <= 0) {
         widget.pillsVisible.value = true;
-      }  else {
+      } else {
         widget.pillsVisible.value = false;
       }
       // else {

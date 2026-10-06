@@ -281,9 +281,7 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
     }
 
     // Otherwise fetch
-    final results = await UserProfileCache.instance.resolve([
-      otherId,
-    ]);
+    final results = await UserProfileCache.instance.resolve([otherId]);
     if (mounted) setState(() => _profile = results[otherId]);
   }
 

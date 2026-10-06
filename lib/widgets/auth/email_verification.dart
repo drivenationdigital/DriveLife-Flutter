@@ -108,7 +108,11 @@ class _EmailVerificationModalState extends State<EmailVerificationModal> {
         const SizedBox(height: 24),
         const Text(
           'Verifying your email...',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.black87),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: Colors.black87,
+          ),
         ),
         const SizedBox(height: 8),
         Text(
@@ -134,11 +138,7 @@ class _EmailVerificationModalState extends State<EmailVerificationModal> {
             color: theme.primaryColor.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            Icons.check_circle,
-            size: 50,
-            color: theme.primaryColor,
-          ),
+          child: Icon(Icons.check_circle, size: 50, color: theme.primaryColor),
         ),
 
         const SizedBox(height: 24),
@@ -146,7 +146,11 @@ class _EmailVerificationModalState extends State<EmailVerificationModal> {
         // Success title
         const Text(
           'Email Verified!',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
           textAlign: TextAlign.center,
         ),
 

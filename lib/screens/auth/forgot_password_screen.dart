@@ -1,4 +1,3 @@
-
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/material.dart';
@@ -29,7 +28,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-       // ✅ USE THE PROVIDED AUTHSERVICE:
+      // ✅ USE THE PROVIDED AUTHSERVICE:
       final authService = context.read<AuthService>();
 
       final result = await authService.sendPasswordReset(

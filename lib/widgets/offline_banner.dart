@@ -35,7 +35,6 @@ class OfflineBanner extends StatelessWidget {
   }
 
   Widget _withBanner(BuildContext context, ConnectivityProvider network) {
-
     final restored = network.justRestored;
     final topInset = MediaQuery.paddingOf(context).top;
 
@@ -78,7 +77,10 @@ class OfflineBanner extends StatelessWidget {
                     onTap: network.refresh,
                     borderRadius: BorderRadius.circular(999),
                     child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 3,
+                      ),
                       child: Text(
                         'Retry',
                         style: TextStyle(

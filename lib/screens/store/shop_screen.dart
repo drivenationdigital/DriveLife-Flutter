@@ -152,7 +152,7 @@ class _ShopScreenState extends State<ShopScreen>
       });
     }
   }
-  
+
   // Load banners
   Future<void> _loadBanners() async {
     setState(() => _isLoadingBanners = true);
@@ -500,28 +500,33 @@ class _ShopScreenState extends State<ShopScreen>
     // ✅ Show loading while checking region
     if (_isCheckingRegion) {
       return Scaffold(
-        appBar: widget.showAppBar ? AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          centerTitle: true,
-          leadingWidth: 96,
-          leading: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-              ),
-            ],
-          ),
-          title: Image.asset('assets/logo-dark.png', height: 18),
-          actions: [
-            SharedHeaderIcons.qrCodeIcon(),
-            SharedHeaderIcons.notificationIcon(),
-          ],
-        ): null,
+        appBar: widget.showAppBar
+            ? AppBar(
+                backgroundColor: Colors.white,
+                elevation: 0,
+                centerTitle: true,
+                leadingWidth: 96,
+                leading: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.arrow_back_ios,
+                        color: Colors.black,
+                      ),
+                      onPressed: () {
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ],
+                ),
+                title: Image.asset('assets/logo-dark.png', height: 18),
+                actions: [
+                  SharedHeaderIcons.qrCodeIcon(),
+                  SharedHeaderIcons.notificationIcon(),
+                ],
+              )
+            : null,
         backgroundColor: Colors.white,
         body: Center(
           child: CircularProgressIndicator(color: theme.primaryColor),
@@ -532,28 +537,33 @@ class _ShopScreenState extends State<ShopScreen>
     // ✅ Show region restriction message
     if (!_isUKRegion) {
       return Scaffold(
-        appBar: widget.showAppBar ? AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          centerTitle: true,
-          leadingWidth: 96,
-          leading: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-              ),
-            ],
-          ),
-          title: Image.asset('assets/logo-dark.png', height: 18),
-          actions: [
-            SharedHeaderIcons.qrCodeIcon(),
-            SharedHeaderIcons.notificationIcon(),
-          ],
-        ) : null,
+        appBar: widget.showAppBar
+            ? AppBar(
+                backgroundColor: Colors.white,
+                elevation: 0,
+                centerTitle: true,
+                leadingWidth: 96,
+                leading: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.arrow_back_ios,
+                        color: Colors.black,
+                      ),
+                      onPressed: () {
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ],
+                ),
+                title: Image.asset('assets/logo-dark.png', height: 18),
+                actions: [
+                  SharedHeaderIcons.qrCodeIcon(),
+                  SharedHeaderIcons.notificationIcon(),
+                ],
+              )
+            : null,
         backgroundColor: Colors.white,
         body: Center(
           child: Padding(
@@ -590,28 +600,30 @@ class _ShopScreenState extends State<ShopScreen>
     }
 
     return Scaffold(
-      appBar: widget.showAppBar ? AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leadingWidth: 96,
-        leading: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-              onPressed: () {
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-        title: Image.asset('assets/logo-dark.png', height: 18),
-        actions: [
-          SharedHeaderIcons.qrCodeIcon(),
-          SharedHeaderIcons.notificationIcon(),
-        ],
-      ) : null,
+      appBar: widget.showAppBar
+          ? AppBar(
+              backgroundColor: Colors.white,
+              elevation: 0,
+              centerTitle: true,
+              leadingWidth: 96,
+              leading: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+              title: Image.asset('assets/logo-dark.png', height: 18),
+              actions: [
+                SharedHeaderIcons.qrCodeIcon(),
+                SharedHeaderIcons.notificationIcon(),
+              ],
+            )
+          : null,
       backgroundColor: Colors.white,
       body: Column(
         children: [

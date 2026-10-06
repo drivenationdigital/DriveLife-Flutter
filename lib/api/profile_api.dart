@@ -65,9 +65,9 @@ class ProfileAPI {
       final deviceType = Platform.isAndroid
           ? 'android'
           : Platform.isIOS
-              ? 'ios'
-              : 'unknown';
-      
+          ? 'ios'
+          : 'unknown';
+
       final deviceInfoPlugin = DeviceInfoPlugin();
       String deviceName = 'Unknown Device';
 
@@ -85,7 +85,12 @@ class ProfileAPI {
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'user_id': userId, 'device_id': deviceToken, 'device_type': deviceType, 'device_name': deviceName}),
+        body: jsonEncode({
+          'user_id': userId,
+          'device_id': deviceToken,
+          'device_type': deviceType,
+          'device_name': deviceName,
+        }),
       );
 
       if (response.statusCode == 200) {
@@ -472,7 +477,7 @@ class ProfileAPI {
     }
   }
 
-/// Get a direct CF upload URL from your server
+  /// Get a direct CF upload URL from your server
   static Future<Map<String, dynamic>?> _getImageUploadUrl() async {
     final response = await http.post(
       Uri.parse('$_baseUrl/wp-json/app/v2/create-image-upload'),
@@ -497,11 +502,7 @@ class ProfileAPI {
       final request = http.MultipartRequest('POST', Uri.parse(uploadUrl));
 
       request.files.add(
-        http.MultipartFile.fromBytes(
-          'file',
-          imageBytes,
-          filename: fileName,
-        ),
+        http.MultipartFile.fromBytes('file', imageBytes, filename: fileName),
       );
 
       final streamedResponse = await request.send();

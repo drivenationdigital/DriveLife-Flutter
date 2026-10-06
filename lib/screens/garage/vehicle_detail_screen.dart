@@ -669,8 +669,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                                 ),
                                 const SizedBox(width: 8),
                                 Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     const Text(

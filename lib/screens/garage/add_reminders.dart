@@ -143,9 +143,16 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     try {
       // TODO: API call here
       if (_isEditMode) {
-        await ReminderApiService.updateReminder(payload, widget.reminder!['id'].toString(), currentUser.id.toString());
+        await ReminderApiService.updateReminder(
+          payload,
+          widget.reminder!['id'].toString(),
+          currentUser.id.toString(),
+        );
       } else {
-        await ReminderApiService.addReminder(payload, currentUser.id.toString());
+        await ReminderApiService.addReminder(
+          payload,
+          currentUser.id.toString(),
+        );
       }
 
       await Future.delayed(const Duration(seconds: 1)); // placeholder
@@ -207,7 +214,10 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
         ),
       );
 
-      await ReminderApiService.deleteReminder(widget.reminder!['id'].toString(), currentUser.id.toString());
+      await ReminderApiService.deleteReminder(
+        widget.reminder!['id'].toString(),
+        currentUser.id.toString(),
+      );
       await Future.delayed(const Duration(seconds: 1)); // placeholder
 
       if (!mounted) return;

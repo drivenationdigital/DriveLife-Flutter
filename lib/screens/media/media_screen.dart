@@ -539,8 +539,7 @@ class _SearchRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) =>
-                        const AllGalleriesScreen(openSearch: true),
+                    builder: (_) => const AllGalleriesScreen(openSearch: true),
                   ),
                 ),
                 child: Container(

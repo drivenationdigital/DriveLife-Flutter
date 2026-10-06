@@ -43,7 +43,7 @@ class InteractionsAPI {
     }
   }
 
- static Future<CommentsResponse> fetchComments(String postId) async {
+  static Future<CommentsResponse> fetchComments(String postId) async {
     try {
       final user = await _auth.getUser();
       if (user == null) return CommentsResponse.empty();

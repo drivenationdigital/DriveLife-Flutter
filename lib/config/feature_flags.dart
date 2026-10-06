@@ -44,9 +44,17 @@ class FeatureFlags {
   /// off — a cart is only created once a buyer commits to the native path, so
   /// the app never opens one, never reserves stock and never talks to the
   /// checkout API.
+  /// SHELVED (2026-10-06). Tickets are bought in the web container instead —
+  /// see [TicketWebCheckout] — which is one checkout to maintain rather than
+  /// two, and lets the Square SDK go (it is what currently breaks release
+  /// builds, pulling Kotlin 2.3.0 into a 2.1.0 project).
+  ///
+  /// Every screen and payment path behind this still compiles. Turn it back
+  /// on with one word here, or for a single build:
+  ///   flutter build apk --dart-define=DL_NATIVE_TICKETS=true
   static const bool nativeTicketSelection = bool.fromEnvironment(
     'DL_NATIVE_TICKETS',
-    defaultValue: true,
+    defaultValue: false,
   );
 
   /// Whether Mollie card payments are taken in the app.

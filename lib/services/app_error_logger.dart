@@ -100,5 +100,4 @@ class AppLogger {
       await prefs.setStringList(_queueKey, queue);
     } catch (_) {}
   }
-
 }

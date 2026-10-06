@@ -347,7 +347,10 @@ class MyEventsTabContent extends StatelessWidget {
                     if (FeatureFlags.eventCommunityGallery)
                       SharePhotosButton(onTap: () => onSharePhotos(event)),
                     IconButton(
-                      icon: const Icon(Icons.favorite, color: Color(0xFFB8935E)),
+                      icon: const Icon(
+                        Icons.favorite,
+                        color: Color(0xFFB8935E),
+                      ),
                       onPressed: () => onUnlikeEvent(eventId, site, index),
                     ),
                   ],

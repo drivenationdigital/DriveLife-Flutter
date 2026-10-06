@@ -6,7 +6,12 @@ class ClubInviteModal extends StatefulWidget {
   final String inviteId;
   final String notificationId;
 
-  const ClubInviteModal({required this.clubName, required this.inviteId, required this.notificationId, super.key});
+  const ClubInviteModal({
+    required this.clubName,
+    required this.inviteId,
+    required this.notificationId,
+    super.key,
+  });
 
   @override
   State<ClubInviteModal> createState() => _ClubInviteModalState();
@@ -19,7 +24,10 @@ class _ClubInviteModalState extends State<ClubInviteModal> {
   Future<void> _handleAccept() async {
     setState(() => _isLoading = true);
     try {
-      final response = await ClubApiService.acceptClubAdminInvitation(widget.inviteId,widget.notificationId);
+      final response = await ClubApiService.acceptClubAdminInvitation(
+        widget.inviteId,
+        widget.notificationId,
+      );
       if (mounted) {
         Navigator.pop(context, true);
 
@@ -37,7 +45,9 @@ class _ClubInviteModalState extends State<ClubInviteModal> {
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to accept invite: ${response.message ?? 'Unknown error'}'),
+              content: Text(
+                'Failed to accept invite: ${response.message ?? 'Unknown error'}',
+              ),
               backgroundColor: Colors.red.shade600,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(

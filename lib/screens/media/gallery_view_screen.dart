@@ -267,8 +267,7 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
       // curate this gallery". Forced off when read-only, which switches off
       // every affordance hanging from it in one place rather than gating each
       // of them separately.
-      _canCurate =
-          !widget.readOnly && response['is_event_owner'] == true;
+      _canCurate = !widget.readOnly && response['is_event_owner'] == true;
       _entityImage = _firstLinkImage(response);
       _placeName = _firstPlaceName(response);
       _entityLink = _firstEntityLink(response);
@@ -1265,10 +1264,8 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
           onShare: _sharePhoto,
           // Watermarked and size-capped by the server, not here — see
           // PhotoDownload.
-          onDownload: (p) => PhotoDownload.save(
-            context: context,
-            mediaId: p.id,
-          ),
+          onDownload: (p) =>
+              PhotoDownload.save(context: context, mediaId: p.id),
           // A like or comment in the viewer updates the grid behind it, so
           // closing the viewer does not show stale counts.
           onPhotoChanged: _updatePhoto,
@@ -1732,7 +1729,9 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
 
     for (final tag in tags) {
       if (tag.kind == TagKind.vehicle) {
-        final plate = tag.registration.isNotEmpty ? tag.registration : tag.label;
+        final plate = tag.registration.isNotEmpty
+            ? tag.registration
+            : tag.label;
         if (plate.isNotEmpty) plates.add(plate.toUpperCase());
       } else if (tag.hasMember) {
         members.add(tag.ownerId);
@@ -1874,7 +1873,9 @@ class _GalleryViewScreenState extends State<GalleryViewScreen> {
 
     for (final tag in _pendingTags) {
       if (tag.kind == TagKind.vehicle) {
-        final plate = tag.registration.isNotEmpty ? tag.registration : tag.label;
+        final plate = tag.registration.isNotEmpty
+            ? tag.registration
+            : tag.label;
         if (plate.isNotEmpty) plates.add(plate.toUpperCase());
       } else if (tag.hasMember) {
         members.add(tag.ownerId);

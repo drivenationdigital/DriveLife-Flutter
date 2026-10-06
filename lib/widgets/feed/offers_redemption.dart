@@ -9,7 +9,11 @@ class OfferRedemptionScreen extends StatefulWidget {
   final int offerId;
   final String? offerImage;
 
-  const OfferRedemptionScreen({super.key, required this.offerId, this.offerImage});
+  const OfferRedemptionScreen({
+    super.key,
+    required this.offerId,
+    this.offerImage,
+  });
 
   @override
   State<OfferRedemptionScreen> createState() => _OfferRedemptionScreenState();

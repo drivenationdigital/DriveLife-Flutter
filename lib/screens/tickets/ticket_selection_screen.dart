@@ -40,9 +40,18 @@ class TicketSelectionScreen extends StatefulWidget {
   /// logo only arrives with the checkout info.
   final String? eventImage;
 
+  /// Which blog the event lives on: 'uk' or 'us'.
+  ///
+  /// Required rather than defaulted. A post id is only unique within a blog
+  /// and the encrypted id carries no blog, so the wrong value here does not
+  /// fail — it sells a different event. Making the caller state it means a
+  /// new entry point cannot forget it by accident.
+  final String site;
+
   const TicketSelectionScreen({
     super.key,
     required this.eventEid,
+    required this.site,
     this.eventTitle,
     this.coupon,
     this.eventImage,
@@ -78,6 +87,10 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
   @override
   void initState() {
     super.initState();
+    // Before the first request, not after: the very first call is `info`,
+    // and asking the wrong blog for an event returns a different event
+    // rather than an error.
+    CheckoutApi.useSite(widget.site);
     _load();
   }
 
@@ -534,17 +547,23 @@ class _TicketSelectionScreenState extends State<TicketSelectionScreen> {
       unawaited(CheckoutApi.clearCart(opened));
     }
 
-    final url = Uri.parse('${CheckoutApi.checkoutBaseUrl}/${widget.eventEid}')
-        .replace(
-          queryParameters: {
-            'qty': selected.join(','),
-            if (_coupon != null) 'coupon': _coupon!.code,
-            if (_secretCode.isNotEmpty) 'code': _secretCode,
-            // Where the checkout sends the buyer once the order is placed. It
-            // appends order_id, which deeplinks_helper turns into their tickets.
-            'complete': 'drivelife://app/?dl-order=1',
-          },
-        );
+    // The region rides in front of the id, bare meaning UK — the same shape
+    // the dashboard's links use. Without it a US event handed to the web
+    // would open whichever UK event shares its post id.
+    final linkEid = widget.site == 'us'
+        ? 'us${widget.eventEid}'
+        : widget.eventEid;
+
+    final url = Uri.parse('${CheckoutApi.checkoutBaseUrl}/$linkEid').replace(
+      queryParameters: {
+        'qty': selected.join(','),
+        if (_coupon != null) 'coupon': _coupon!.code,
+        if (_secretCode.isNotEmpty) 'code': _secretCode,
+        // Where the checkout sends the buyer once the order is placed. It
+        // appends order_id, which deeplinks_helper turns into their tickets.
+        'complete': 'drivelife://app/?dl-order=1',
+      },
+    );
 
     var launched = false;
 

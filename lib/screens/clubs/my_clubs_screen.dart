@@ -202,7 +202,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
 
   Future<void> _loadDiscoverClubs() async {
     if (!mounted) return;
-    
+
     setState(() {
       _isDiscoverLoading = true;
       _discoverError = null;
@@ -330,7 +330,9 @@ class _MyClubsScreenState extends State<MyClubsScreen>
   Widget _buildDiscoverTab() {
     if (_isDiscoverLoading && _discoverClubs.isEmpty) {
       final theme = Provider.of<ThemeProvider>(context);
-      return Center(child: CircularProgressIndicator(color: theme.primaryColor));
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
+      );
     }
 
     if (_discoverError != null && _discoverClubs.isEmpty) {
@@ -381,7 +383,9 @@ class _MyClubsScreenState extends State<MyClubsScreen>
             if (_isDiscoverLoadingMore)
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Center(child: CircularProgressIndicator(color: theme.primaryColor)),
+                child: Center(
+                  child: CircularProgressIndicator(color: theme.primaryColor),
+                ),
               ),
             const SizedBox(height: 24),
           ],
@@ -417,64 +421,56 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     );
   }
 
-Widget _buildEmptyState() {
-  return Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
-        const SizedBox(height: 16),
-        Text(
-          'No groups found',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey.shade600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          "Start your own and bring your community together.",
-          style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-        ),
-        const SizedBox(height: 20),
-        ElevatedButton.icon(
-          onPressed: () async {
-            final result = await Navigator.pushNamed(
-              context,
-              '/add-club',
-            );
-            if (result == true && mounted) {
-              _loadMyClubs();
-            }
-          },
-          icon: const Icon(Icons.add, size: 18),
-          label: const Text('Add group'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFC4A062),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 12,
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          Text(
+            'No groups found',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade600,
             ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(999),
-            ),
-            elevation: 0,
           ),
-        ),
-      ],
-    ),
-  );
-}
+          const SizedBox(height: 8),
+          Text(
+            "Start your own and bring your community together.",
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            onPressed: () async {
+              final result = await Navigator.pushNamed(context, '/add-club');
+              if (result == true && mounted) {
+                _loadMyClubs();
+              }
+            },
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add group'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFC4A062),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+              elevation: 0,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildDiscoverClubsList() {
-    if (              _discoverClubs.isEmpty) {
+    if (_discoverClubs.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-        child: Center(
-          child: _buildEmptyState(),
-        ),
+        child: Center(child: _buildEmptyState()),
       );
     }
 
@@ -1069,7 +1065,9 @@ Widget _buildEmptyState() {
   Widget _buildMyClubsTab() {
     if (_isLoading) {
       final theme = Provider.of<ThemeProvider>(context);
-      return Center(child: CircularProgressIndicator(color: theme.primaryColor,));
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
+      );
     }
 
     if (_errorMessage != null) {
@@ -1227,12 +1225,10 @@ class _ClubCard extends StatelessWidget {
                   ),
                   Text(
                     '${club.associationType} • ${club.memberCount} member${club.memberCount == 1 ? '' : 's'}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                    ),
-                    semanticsIdentifier: '${club.associationType}, ${club.memberCount} members',
-                  )
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    semanticsIdentifier:
+                        '${club.associationType}, ${club.memberCount} members',
+                  ),
                 ],
               ),
             ),

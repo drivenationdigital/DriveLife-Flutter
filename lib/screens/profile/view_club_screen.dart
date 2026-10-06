@@ -950,7 +950,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
 
     // Owner bubbles to the top, then admins, then everyone else
     final ownerId = _clubData?['user_id'];
-      // Split into active and blocked
+    // Split into active and blocked
     final blocked = _members.where((m) => m['is_blocked'] == true).toList();
     final active = _members.where((m) => m['is_blocked'] != true).toList()
       ..sort((a, b) {
@@ -1002,7 +1002,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                 : null,
           ),
 
-         // Blocked members section (admin/owner only)
+        // Blocked members section (admin/owner only)
         if (canSeeBlocked) ...[
           const SizedBox(height: 12),
           Container(height: 8, color: const Color(0xFFF5F5F5)),
@@ -1934,7 +1934,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                   builder: (context, _) {
                     return _buildMembersPanel(
                       Provider.of<ThemeProvider>(context),
-                      scrollController
+                      scrollController,
                     );
                   },
                 ),

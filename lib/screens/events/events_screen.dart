@@ -332,7 +332,8 @@ class _EventsScreenState extends State<EventsScreen>
       var events = <Map<String, dynamic>>[];
       if (response != null && response['success'] == true) {
         events =
-            (response['data'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+            (response['data'] as List<dynamic>?)
+                ?.cast<Map<String, dynamic>>() ??
             [];
       }
 
@@ -374,7 +375,8 @@ class _EventsScreenState extends State<EventsScreen>
         );
 
         final events =
-            (response?['data'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+            (response?['data'] as List<dynamic>?)
+                ?.cast<Map<String, dynamic>>() ??
             [];
 
         if (events.isNotEmpty) {
@@ -1381,7 +1383,7 @@ class _EventsScreenState extends State<EventsScreen>
       onAddEvent: () {
         NavigationHelper.navigateTo(context, AddEventScreen());
       },
-      
+
       onEventTap: (event) {
         if (event['is_owner'] == true) {
           Navigator.pushNamed(

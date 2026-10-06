@@ -148,7 +148,7 @@ class _CreateNewsScreenState extends State<CreateNewsScreen>
         userId: userId,
         taggedEvents: [],
         taggedUsers: [],
-        taggedVehicles: []
+        taggedVehicles: [],
       );
 
       // Start background upload

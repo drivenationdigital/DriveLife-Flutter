@@ -94,7 +94,7 @@ class _AddEventScreenState extends State<AddEventScreen>
     _fetchCategories();
 
     _eventClubId = widget.clubId ?? 0; // Set club ID if provided
-    
+
     // Load event data if editing
     if (widget.eventId != null) {
       _eventID = widget.eventId;

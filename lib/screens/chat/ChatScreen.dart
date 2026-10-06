@@ -154,11 +154,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _init() async {
     String convId = widget.conversationId ?? '';
-    print(convId.isEmpty
-        ? 'No conversation ID provided, will attempt to find or create based on otherUserId'
-        : 'Conversation ID provided: $convId');
+    print(
+      convId.isEmpty
+          ? 'No conversation ID provided, will attempt to find or create based on otherUserId'
+          : 'Conversation ID provided: $convId',
+    );
 
-     // ── Show cached messages INSTANTLY before any async work ──
+    // ── Show cached messages INSTANTLY before any async work ──
     if (convId.isNotEmpty) {
       final cached = MessageCache.instance.get(convId);
       print('Cached conversation messages for $convId: ${cached?.length ?? 0}');
@@ -493,7 +495,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       appBar: _buildAppBar(theme) as PreferredSizeWidget,
       body: _notifier == null
-          ?   Column(
+          ? Column(
               children: [
                 Expanded(
                   child: _cachedMessages.isEmpty

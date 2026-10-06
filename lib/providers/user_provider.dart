@@ -44,7 +44,7 @@ class UserProvider extends ChangeNotifier {
 
           // Request and associate FCM token (notifications)
           await _setupNotifications(userId);
-          
+
           // Request and update location
           await _setupLocation(userId);
         }

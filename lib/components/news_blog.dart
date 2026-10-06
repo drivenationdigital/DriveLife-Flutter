@@ -12,7 +12,6 @@ class NewsReaderSheet extends StatefulWidget {
   final bool? isVerified;
   final String? postUserId;
 
-
   const NewsReaderSheet({
     super.key,
     required this.title,
@@ -179,7 +178,8 @@ class _NewsReaderSheetState extends State<NewsReaderSheet> {
                       ),
 
                       // Show author and date if available
-                      if (widget.username != null && widget.username!.isNotEmpty)
+                      if (widget.username != null &&
+                          widget.username!.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
                           child: Row(
@@ -237,7 +237,6 @@ class _NewsReaderSheetState extends State<NewsReaderSheet> {
                             ),
                           ),
                         ),
-
 
                       // Gold divider
                       Container(

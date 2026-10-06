@@ -347,7 +347,8 @@ class EntitySwitcherSheet extends StatelessWidget {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
+      builder: (context) =>
+          Center(child: CircularProgressIndicator(color: Color(0xFFAE9159))),
     );
 
     final index = accountManager.accounts.indexOf(account);

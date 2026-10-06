@@ -113,7 +113,7 @@ class EditProfileSettingsScreen extends StatelessWidget {
         centerTitle: true,
         title: Image.asset('assets/logo-dark.png', height: 18),
         actions: [
-           ...SharedHeaderIcons.actionIcons(
+          ...SharedHeaderIcons.actionIcons(
             iconColor: Colors.black,
             showQr: true,
             showNotifications: true,
@@ -323,10 +323,7 @@ class _FeatureTipsTile extends StatelessWidget {
                 ),
                 child: const Text(
                   'Show them again',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
                 ),
               ),
             ),

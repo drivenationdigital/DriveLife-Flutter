@@ -1,4 +1,5 @@
 import 'package:drivelife/config/app_environment.dart';
+
 class ApiConfig {
   static String get baseUrl => AppEnvironment.wordpressBase;
 

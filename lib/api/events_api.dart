@@ -261,6 +261,44 @@ class EventsAPI {
   }
 
   /// Endpoint example: /wp-json/app/v2/my-event-tickets
+  /// A short-lived signed claim naming the signed-in user.
+  ///
+  /// The ticket checkout runs on the website, in an in-app browser that
+  /// carries none of the app's session — so an order placed there would have
+  /// no account against it and could only be matched back by billing email.
+  /// This is what the checkout carries so the order lands on the right
+  /// account even if the buyer types a different address.
+  ///
+  /// Null when signed out, which is fine: buying tickets has never required
+  /// an account, and the checkout simply proceeds as a guest.
+  static Future<String?> getCheckoutHandoffToken() async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null || token.isEmpty) return null;
+
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/checkout-handoff'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode != 200) return null;
+
+      final data = jsonDecode(response.body);
+      if (data is! Map || data['success'] != true) return null;
+
+      final handoff = '${data['token'] ?? ''}'.trim();
+
+      return handoff.isEmpty ? null : handoff;
+    } catch (_) {
+      // Never fatal. Losing the attribution is a small thing next to losing
+      // the sale, so the checkout opens regardless.
+      return null;
+    }
+  }
+
   static Future<Map<String, dynamic>?> getMyEventTickets({
     String? site, // optional override, e.g. "GB"
   }) async {
@@ -961,7 +999,8 @@ class EventsAPI {
   /// Returns the JPEG bytes.
   static Future<Uint8List> downloadGalleryPhoto({required int mediaId}) async {
     final token = await _authService.getToken();
-    if (token == null) throw Exception('You need to be signed in to save photos.');
+    if (token == null)
+      throw Exception('You need to be signed in to save photos.');
 
     final uri = Uri.parse(
       '${ApiConfig.baseUrl}/wp-json/app/v2/galleries/download',
@@ -1323,7 +1362,8 @@ class EventsAPI {
     if (response.statusCode != 200) return const [];
 
     final body = jsonDecode(response.body);
-    final list = (body is Map ? body['contributors'] : null) as List? ?? const [];
+    final list =
+        (body is Map ? body['contributors'] : null) as List? ?? const [];
 
     return list
         .whereType<Map>()
@@ -1434,6 +1474,7 @@ class EventsAPI {
     String? scope,
     String? linkType,
     String? search,
+
     /// Two-letter country code. Galleries uploaded before the column existed
     /// have none, so any country filter excludes them — we do not know where
     /// they were taken and guessing would be worse than omitting them.
@@ -1784,6 +1825,7 @@ class EventsAPI {
     int page = 1,
     int perPage = 30,
     String entityType = 'event',
+
     /// Google's id for a map pin. A place has no post behind it, so it cannot
     /// be addressed by entity id the way an event or venue is.
     String? placeId,

@@ -14,7 +14,8 @@ class AppPermissionsScreen extends StatefulWidget {
   State<AppPermissionsScreen> createState() => _AppPermissionsScreenState();
 }
 
-class _AppPermissionsScreenState extends State<AppPermissionsScreen> with WidgetsBindingObserver {
+class _AppPermissionsScreenState extends State<AppPermissionsScreen>
+    with WidgetsBindingObserver {
   final Map<String, bool> _expandedStates = {
     'camera': false,
     'location': false,
@@ -30,14 +31,14 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> with Widget
     WidgetsBinding.instance.addObserver(this); // 👈
     _checkPermissions();
   }
-  
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this); // 👈
     super.dispose();
   }
 
-    // 👇 Re-check permissions when returning from Settings app
+  // 👇 Re-check permissions when returning from Settings app
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -55,7 +56,7 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> with Widget
     return status;
   }
 
-Future<void> _checkPermissions() async {
+  Future<void> _checkPermissions() async {
     final cameraStatus = await Permission.camera.status;
     final locationStatus = Platform.isIOS
         ? await Permission.locationWhenInUse.status
@@ -73,6 +74,7 @@ Future<void> _checkPermissions() async {
       );
     });
   }
+
   // Add individual request methods
   Future<void> _requestPermission(String key) async {
     PermissionStatus status;
@@ -283,7 +285,7 @@ Future<void> _checkPermissions() async {
         actions: [
           ...SharedHeaderIcons.actionIcons(
             iconColor: Colors.black,
-            showQr: true, 
+            showQr: true,
             showNotifications: true,
           ),
         ],

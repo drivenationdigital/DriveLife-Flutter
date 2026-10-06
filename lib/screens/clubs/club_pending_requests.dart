@@ -37,7 +37,6 @@ class _ClubPendingRequestsScreenState extends State<ClubPendingRequestsScreen> {
         clubPostId: widget.clubId,
       );
 
-
       if (mounted && data != null && data['success'] == true) {
         setState(() {
           _requests = List<Map<String, dynamic>>.from(data['requests'] ?? []);

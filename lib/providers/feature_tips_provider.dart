@@ -18,11 +18,7 @@ class FeatureTip {
   final String title;
   final String body;
 
-  const FeatureTip({
-    required this.id,
-    required this.title,
-    required this.body,
-  });
+  const FeatureTip({required this.id, required this.title, required this.body});
 }
 
 /// Every tip the app knows about.

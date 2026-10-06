@@ -2563,7 +2563,6 @@ class _MediaTags extends StatelessWidget {
   }
 }
 
-
 /// "This post has a poll" — the line under the likes.
 ///
 /// Renders nothing at all when the post has no poll, which is every post that
@@ -2631,8 +2630,8 @@ class _PollPrompt extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: (voted || closed)
-                      ? Colors.grey.shade700
-                      : Colors.black,
+                        ? Colors.grey.shade700
+                        : Colors.black,
                   ),
                 ),
               ),

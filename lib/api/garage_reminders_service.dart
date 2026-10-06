@@ -21,7 +21,6 @@ class ReminderApiService {
 
     return headers;
   }
-  
 
   // ── Fetch reminders for a garage ──────────────────────────────────────────
 

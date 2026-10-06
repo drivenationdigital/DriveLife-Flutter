@@ -28,7 +28,6 @@ import 'package:drivelife/providers/connectivity_provider.dart';
 import 'package:drivelife/providers/feature_tips_provider.dart';
 import 'package:drivelife/widgets/offline_banner.dart';
 
-
 // const String stripePublishableKey =
 //     'pk_test_51H0Z3HGcmkippALfD7tDQ7tvZ80SHeBBOHX6ABm1fHca3FQWPDR4DnXIZtYh1AzaWnvRXAXgBpdur4XR5ceWdHOk00PEsDjNOZ';
 // const String stripePublishableKey =
@@ -53,7 +52,6 @@ class BottomNavProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
-
 
 void main() async {
   // Ensure Flutter is initialized

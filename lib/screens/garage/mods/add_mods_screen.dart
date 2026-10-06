@@ -568,7 +568,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
                           ),
                           child: DropdownButtonFormField<String>(
                             value: _modType,
-                        dropdownColor: Colors.white,
+                            dropdownColor: Colors.white,
 
                             decoration: _dec(
                               'Upgrade Category *',

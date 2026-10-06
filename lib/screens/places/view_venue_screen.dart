@@ -1842,7 +1842,6 @@ class _ChipActionButton extends StatelessWidget {
   }
 }
 
-
 class _VenueCommunityFeed extends StatefulWidget {
   final String venueId;
   final VoidCallback onCompose;

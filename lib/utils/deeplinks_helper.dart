@@ -146,8 +146,7 @@ class DeepLinkHandler {
       //
       // Before the login check, like the order return below: buying needs no
       // account, and bouncing to a login would strand an approved payment.
-      if (params.containsKey('dl-paypal') ||
-          params.containsKey('dl-mollie')) {
+      if (params.containsKey('dl-paypal') || params.containsKey('dl-mollie')) {
         final provider = params.containsKey('dl-paypal') ? 'paypal' : 'mollie';
         final status = params['dl-$provider'] ?? '';
 
@@ -190,9 +189,7 @@ class DeepLinkHandler {
         if (orderId.isEmpty) return;
 
         navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (_) => OrderTicketsPage(orderId: orderId),
-          ),
+          MaterialPageRoute(builder: (_) => OrderTicketsPage(orderId: orderId)),
         );
         return;
       }
@@ -358,8 +355,7 @@ class DeepLinkHandler {
       // which is the whole point of sharing it — the screen itself decides
       // what a signed-out visitor may see.
       if (params.containsKey('dl-vehicle') ||
-          (uri.pathSegments.length == 2 &&
-              uri.pathSegments[0] == 'vehicle')) {
+          (uri.pathSegments.length == 2 && uri.pathSegments[0] == 'vehicle')) {
         final fromPath = uri.pathSegments.length == 2
             ? uri.pathSegments[1].split('&').first.trim()
             : null;

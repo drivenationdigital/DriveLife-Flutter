@@ -182,10 +182,7 @@ class _TraderCard extends StatelessWidget {
                     ),
                     Text(
                       category.icon.label,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: kEditorMuted,
-                      ),
+                      style: const TextStyle(fontSize: 12, color: kEditorMuted),
                     ),
                   ],
                 ),

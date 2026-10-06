@@ -13,10 +13,13 @@ class VersionCheckService {
       final platform = Platform.isIOS ? 'ios' : 'android';
 
       final res = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v2/version?platform=$platform'),
+        Uri.parse(
+          '${ApiConfig.baseUrl}/wp-json/app/v2/version?platform=$platform',
+        ),
       );
 
-      if (res.statusCode != 200) return VersionCheckResult(message: 'Test', forceUpdate: true);
+      if (res.statusCode != 200)
+        return VersionCheckResult(message: 'Test', forceUpdate: true);
 
       final data = jsonDecode(res.body);
       final latestVersion = data['latest_version'] as String;

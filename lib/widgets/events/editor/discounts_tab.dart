@@ -222,8 +222,7 @@ class _DiscountCard extends StatelessWidget {
               if (_window != null) _Chip(label: _window!, accent: accent),
               if (discount.usageLimit != null)
                 _Chip(
-                  label:
-                      '${discount.usageCount}/${discount.usageLimit} used',
+                  label: '${discount.usageCount}/${discount.usageLimit} used',
                   accent: accent,
                 ),
               if (discount.perCustomerLimit != null)
@@ -354,7 +353,10 @@ Future<EventDiscount?> _showDiscountEditor({
                         value: DiscountKind.percentage,
                         label: Text('%'),
                       ),
-                      ButtonSegment(value: DiscountKind.fixed, label: Text('£')),
+                      ButtonSegment(
+                        value: DiscountKind.fixed,
+                        label: Text('£'),
+                      ),
                     ],
                     selected: {draft.kind},
                     onSelectionChanged: (selection) => setSheetState(() {
@@ -485,7 +487,8 @@ Future<EventDiscount?> _showDiscountEditor({
                         draft.copyWith(
                           code: code.toUpperCase(),
                           amount:
-                              double.tryParse(amountController.text.trim()) ?? 0,
+                              double.tryParse(amountController.text.trim()) ??
+                              0,
                           usageLimit: () =>
                               int.tryParse(usageLimitController.text.trim()),
                           perCustomerLimit: () =>

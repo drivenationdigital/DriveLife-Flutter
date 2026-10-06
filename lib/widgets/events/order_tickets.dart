@@ -128,7 +128,6 @@ class TicketErrorState extends StatelessWidget {
   }
 }
 
-
 class DownloadAllButton extends StatelessWidget {
   final VoidCallback onPressed;
 

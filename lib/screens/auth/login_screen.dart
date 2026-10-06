@@ -117,8 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print('🔄 [LoginScreen] Building LoginScreen')
-    ;
+    print('🔄 [LoginScreen] Building LoginScreen');
     return PopScope(
       canPop: false,
       child: Scaffold(

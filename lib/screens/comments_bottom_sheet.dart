@@ -1221,9 +1221,7 @@ class _PollCard extends StatelessWidget {
     }
 
     final left = poll.timeLeftLabel;
-    final base = votes == 0
-        ? 'Be the first to vote'
-        : '$votes $plural so far';
+    final base = votes == 0 ? 'Be the first to vote' : '$votes $plural so far';
 
     return left == null ? base : '$base · $left';
   }
@@ -1248,7 +1246,9 @@ class _PollCard extends StatelessWidget {
           Row(
             children: [
               Icon(
-                poll.isClosed ? Icons.how_to_vote_outlined : Icons.poll_outlined,
+                poll.isClosed
+                    ? Icons.how_to_vote_outlined
+                    : Icons.poll_outlined,
                 size: 16,
                 color: poll.isClosed ? Colors.grey.shade600 : primaryColor,
               ),
@@ -1341,11 +1341,7 @@ class _Choice extends StatelessWidget {
   final bool busy;
   final VoidCallback onTap;
 
-  const _Choice({
-    required this.label,
-    required this.busy,
-    required this.onTap,
-  });
+  const _Choice({required this.label, required this.busy, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1580,8 +1576,9 @@ class _PollVotersSheetState extends State<_PollVotersSheet> {
           ),
 
           ...(() {
-            final picked =
-                voters.where((v) => v.optionId == option.id).toList();
+            final picked = voters
+                .where((v) => v.optionId == option.id)
+                .toList();
 
             if (picked.isEmpty) {
               return [
@@ -1589,10 +1586,7 @@ class _PollVotersSheetState extends State<_PollVotersSheet> {
                   padding: const EdgeInsets.only(bottom: 14),
                   child: Text(
                     'No votes yet',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade500,
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
                   ),
                 ),
               ];

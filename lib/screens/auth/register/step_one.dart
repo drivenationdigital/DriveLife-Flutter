@@ -241,12 +241,16 @@ class _RegisterStepOneScreenState extends State<RegisterStepOneScreen> {
                                       // Check response
                                       if (response['success'] != true) {
                                         // if network error, show snackbar
-                                        if (response['code'] == 'network_error') {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
+                                        if (response['code'] ==
+                                            'network_error') {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
                                             SnackBar(
-                                              content: Text(response['message'] ??
-                                                  'Network error, please try again'),
+                                              content: Text(
+                                                response['message'] ??
+                                                    'Network error, please try again',
+                                              ),
                                               backgroundColor: Colors.red,
                                             ),
                                           );
@@ -492,7 +496,6 @@ class _RegisterStepOneScreenState extends State<RegisterStepOneScreen> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          
           value: provider.country.isEmpty ? null : provider.country,
           dropdownColor: isDark ? Colors.grey[900] : Colors.white,
           style: TextStyle(color: isDark ? Colors.white : Colors.black),

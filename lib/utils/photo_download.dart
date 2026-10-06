@@ -66,11 +66,7 @@ class PhotoDownload {
 
       final bytes = await EventsAPI.downloadGalleryPhoto(mediaId: mediaId);
 
-      await Gal.putImageBytes(
-        bytes,
-        album: _album,
-        name: 'drivelife-$mediaId',
-      );
+      await Gal.putImageBytes(bytes, album: _album, name: 'drivelife-$mediaId');
 
       say('Saved to your photos');
       return true;

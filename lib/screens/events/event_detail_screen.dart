@@ -11,8 +11,11 @@ import 'package:drivelife/widgets/media/entity_galleries_tab.dart';
 import 'package:drivelife/widgets/navigate_sheet.dart';
 import 'package:drivelife/config/feature_flags.dart' show FeatureFlags;
 import 'package:drivelife/models/checkout_models.dart'
-    show checkoutEidFromTicketUrl;
+    show checkoutEidFromTicketUrl, checkoutSiteFromTicketUrl;
 import 'package:drivelife/screens/tickets/ticket_selection_screen.dart';
+import 'package:drivelife/main.dart' show rootScaffoldMessengerKey;
+import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/screens/tickets/ticket_web_checkout.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -273,7 +276,32 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   /// CarEvents ticketing goes to the native ticket list when that is switched
   /// on; an organiser's own ticketing link is somebody else's site and always
   /// opens in a browser.
+  /// True while the checkout is being opened.
+  ///
+  /// Launching a browser is not instant, and until it appears the button is
+  /// still sitting there looking unpressed — so an impatient buyer taps it
+  /// three more times and gets three more tabs, each with its own cart.
+  bool _openingTickets = false;
+
   Future<void> _openTickets(
+    String ticketUrl,
+    String title, {
+    String? coverImage,
+  }) async {
+    if (_openingTickets) return;
+
+    setState(() => _openingTickets = true);
+
+    try {
+      await _openTicketsInner(ticketUrl, title, coverImage: coverImage);
+    } finally {
+      // Even if it threw: a button that never comes back is worse than a
+      // checkout that failed to open.
+      if (mounted) setState(() => _openingTickets = false);
+    }
+  }
+
+  Future<void> _openTicketsInner(
     String ticketUrl,
     String title, {
     String? coverImage,
@@ -285,6 +313,10 @@ class _EventDetailScreenState extends State<EventDetailScreen>
         MaterialPageRoute(
           builder: (_) => TicketSelectionScreen(
             eventEid: eid,
+            // Read from the same URL the eid came from, so the two cannot
+            // disagree: ticket_url is built on the event's own blog, which
+            // puts the UK's path prefix in it and leaves the US root bare.
+            site: checkoutSiteFromTicketUrl(ticketUrl),
             eventTitle: title,
             eventImage: coverImage,
           ),
@@ -293,6 +325,30 @@ class _EventDetailScreenState extends State<EventDetailScreen>
       return;
     }
 
+    // CarEvents ticketing: our own checkout, so it runs in an in-app browser
+    // and brings the buyer back to their tickets on its own.
+    if (eid != null) {
+      final user = context.read<UserProvider>().user;
+
+      final opened = await TicketWebCheckout.open(
+        eid,
+        site: checkoutSiteFromTicketUrl(ticketUrl),
+        user: user,
+      );
+
+      if (!opened && mounted) {
+        rootScaffoldMessengerKey.currentState?.showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't open the checkout. Please try again."),
+          ),
+        );
+      }
+
+      return;
+    }
+
+    // An organiser's own ticketing link: somebody else's site, so it leaves
+    // the app for a real browser as it always has.
     final uri = Uri.tryParse(ticketUrl);
     if (uri == null) return;
 
@@ -1215,12 +1271,14 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
-                              onPressed: () => _openTickets(
-                                ticketUrl,
-                                eventTitle.toString(),
-                                coverImage: event['cover_photo']?['url']
-                                    ?.toString(),
-                              ),
+                              onPressed: _openingTickets
+                                  ? null
+                                  : () => _openTickets(
+                                      ticketUrl,
+                                      eventTitle.toString(),
+                                      coverImage: event['cover_photo']?['url']
+                                          ?.toString(),
+                                    ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.grey.shade900,
                                 foregroundColor: Colors.white,
@@ -1231,10 +1289,19 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
-                              icon: const Icon(Icons.confirmation_number),
-                              label: const Text(
-                                'Buy Tickets',
-                                style: TextStyle(
+                              icon: _openingTickets
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.confirmation_number),
+                              label: Text(
+                                _openingTickets ? 'Opening…' : 'Buy Tickets',
+                                style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
                                 ),

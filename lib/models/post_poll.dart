@@ -7,11 +7,7 @@ class PollOption {
   final String label;
   final int votes;
 
-  const PollOption({
-    required this.id,
-    required this.label,
-    this.votes = 0,
-  });
+  const PollOption({required this.id, required this.label, this.votes = 0});
 
   factory PollOption.fromJson(Map<String, dynamic> json) => PollOption(
     id: int.tryParse('${json['id']}') ?? 0,
@@ -94,9 +90,7 @@ class PostPoll {
   List<PollOption> get winners {
     if (options.isEmpty || totalVotes == 0) return const [];
 
-    final most = options
-        .map((o) => o.votes)
-        .reduce((a, b) => a > b ? a : b);
+    final most = options.map((o) => o.votes).reduce((a, b) => a > b ? a : b);
 
     if (most == 0) return const [];
 

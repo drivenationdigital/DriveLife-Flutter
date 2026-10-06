@@ -182,7 +182,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               textInputAction: TextInputAction.done,
               enabled: !_isLoading,
               decoration: InputDecoration(
-                    focusedBorder: OutlineInputBorder(
+                focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide(color: theme.primaryColor, width: 2),
                 ),
@@ -211,7 +211,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 if (!RegExp(r'[A-Z]').hasMatch(value)) {
                   return 'Must contain an uppercase letter';
                 }
-                if (!RegExp(r'[a-z]').hasMatch(value)){
+                if (!RegExp(r'[a-z]').hasMatch(value)) {
                   return 'Must contain a lowercase letter';
                 }
                 if (!RegExp(r'[0-9]').hasMatch(value)) {
@@ -220,7 +220,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(value)) {
                   return 'Must contain a special character';
                 }
-                
+
                 return null;
               },
               onFieldSubmitted: (_) => _resetPassword(),

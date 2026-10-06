@@ -195,7 +195,8 @@ class _CarClubsTabState extends State<CarClubsTab> {
           TextField(
             controller: _infoController,
             maxLines: 5,
-            onChanged: (value) => widget.onChanged(_config.copyWith(info: value)),
+            onChanged: (value) =>
+                widget.onChanged(_config.copyWith(info: value)),
             decoration: const InputDecoration(
               hintText: 'Stands are 6x6m, arrive before 8am…',
               border: OutlineInputBorder(),

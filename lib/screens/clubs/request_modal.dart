@@ -226,7 +226,6 @@ class _ClubRequestModalState extends State<ClubRequestModal> {
       ),
     );
   }
-  
 
   @override
   Widget build(BuildContext context) {

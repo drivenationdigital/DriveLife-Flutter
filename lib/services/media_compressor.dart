@@ -196,13 +196,21 @@ class MediaCompressor {
       }
     }
 
-    final ladder = quality == UploadQuality.high ? _highLadder : _standardLadder;
+    final ladder = quality == UploadQuality.high
+        ? _highLadder
+        : _standardLadder;
     final maxEdge = _targetMaxEdge(quality, size, uploadable);
 
     File? best;
 
     for (var attempt = 0; attempt < ladder.length; attempt++) {
-      final out = await _encode(source, size, maxEdge, ladder[attempt], attempt);
+      final out = await _encode(
+        source,
+        size,
+        maxEdge,
+        ladder[attempt],
+        attempt,
+      );
       if (out == null) break;
 
       best = out;

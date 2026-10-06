@@ -37,8 +37,9 @@ abstract final class AppEnvironment {
 
   /// The same WordPress without the country path, for the few endpoints
   /// registered at the network root rather than on a blog.
-  static String get wordpressRoot =>
-      useStaging ? 'https://staging.carevents.com' : 'https://www.carevents.com';
+  static String get wordpressRoot => useStaging
+      ? 'https://staging.carevents.com'
+      : 'https://www.carevents.com';
 
   /// The Next.js accounts app, which serves the checkout proxy at
   /// `/api/checkout`.

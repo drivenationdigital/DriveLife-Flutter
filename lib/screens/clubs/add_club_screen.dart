@@ -653,7 +653,9 @@ class _CreateClubScreenState extends State<CreateClubScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                publish ? 'Group updated successfully!' : 'Group saved as draft',
+                publish
+                    ? 'Group updated successfully!'
+                    : 'Group saved as draft',
               ),
               backgroundColor: Colors.green,
             ),

@@ -221,7 +221,7 @@ class ClubApiService {
     required String clubId,
     int page = 1,
     int perPage = 10,
-    String? kind = 'updates', // 'updates' | 'community' 
+    String? kind = 'updates', // 'updates' | 'community'
   }) async {
     try {
       final token = await AuthService().getParentUserToken();
@@ -470,7 +470,9 @@ class ClubApiService {
     try {
       final token = await AuthService().getToken();
       final response = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/club-block-user'), // adjust to your route
+        Uri.parse(
+          '${ApiConfig.baseUrl}/wp-json/app/v1/club-block-user',
+        ), // adjust to your route
         headers: {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
@@ -498,7 +500,7 @@ class ClubApiService {
 
       final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/club-unblock-user'),
-         headers: {
+        headers: {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
         },

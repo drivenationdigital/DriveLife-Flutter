@@ -335,7 +335,7 @@ class _MyDetailsScreenState extends State<MyDetailsScreen> {
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   value: _selectedCountry,
-                        dropdownColor: Colors.white,
+                  dropdownColor: Colors.white,
 
                   decoration: InputDecoration(
                     contentPadding: const EdgeInsets.symmetric(

@@ -56,7 +56,7 @@ class _UsernameScreenState extends State<UsernameScreen> {
       return;
     }
 
-   final usernameRegex = RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9_.]*[a-zA-Z0-9]$');
+    final usernameRegex = RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9_.]*[a-zA-Z0-9]$');
     final hasConsecutiveDots = _usernameController.text.contains('..');
 
     if (!usernameRegex.hasMatch(_usernameController.text) ||

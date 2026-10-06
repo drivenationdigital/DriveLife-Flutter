@@ -169,7 +169,11 @@ class BlockedMemberRow extends StatelessWidget {
   final Map<String, dynamic> member;
   final VoidCallback onUnblock;
 
-  const BlockedMemberRow({super.key, required this.member, required this.onUnblock});
+  const BlockedMemberRow({
+    super.key,
+    required this.member,
+    required this.onUnblock,
+  });
 
   @override
   Widget build(BuildContext context) {

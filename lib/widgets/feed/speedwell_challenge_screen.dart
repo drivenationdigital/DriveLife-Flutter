@@ -562,7 +562,7 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
             )
           else ...[
             // ── Column headers ───────────────────────────────────────
-           Padding(
+            Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
               child: Row(
                 children: [

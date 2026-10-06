@@ -26,6 +26,35 @@ class EventAdminPage extends StatefulWidget {
 
 class _EventAdminPageState extends State<EventAdminPage> {
   Map<String, dynamic>? _eventData;
+
+  /// The event's own site, as the server reported it.
+  ///
+  /// Not [EventAdminPage.site], which is the hint this screen *sent* — the
+  /// server resolves the blog and says which one it used, so the two cannot
+  /// drift. Null until the event loads.
+  String? get _eventSite {
+    final event = _eventData?['event'];
+    final site = event is Map ? '${event['site'] ?? ''}'.trim() : '';
+    return site.isEmpty ? null : site;
+  }
+
+  /// What money on this screen is denominated in.
+  ///
+  /// A US event's takings are dollars, and showing them with a pound sign
+  /// does not just look wrong — it misstates what the organiser has earned.
+  String get _currencySymbol {
+    final event = _eventData?['event'];
+    final given = event is Map
+        ? '${event['currency_symbol'] ?? ''}'.trim()
+        : '';
+
+    if (given.isNotEmpty) return given;
+
+    // A backend that predates the field. Fall back to the site rather than
+    // assuming sterling.
+    return _eventSite?.toUpperCase() == 'US' ? r'$' : '£';
+  }
+
   bool _isLoading = true;
   String? _error;
 
@@ -46,6 +75,8 @@ class _EventAdminPageState extends State<EventAdminPage> {
         eventId: widget.eventId,
         site: widget.site,
       );
+
+      print(data);
 
       if (mounted) {
         setState(() {
@@ -392,7 +423,7 @@ class _EventAdminPageState extends State<EventAdminPage> {
           _buildOrders(sales['orders'], theme),
           SizedBox(height: 20),
           _buildTickets(tickets, theme),
-          SizedBox(height: 100), 
+          SizedBox(height: 100),
         ],
       ),
     );
@@ -451,7 +482,17 @@ class _EventAdminPageState extends State<EventAdminPage> {
                 Navigator.pushNamed(
                   context,
                   '/event-detail',
-                  arguments: {'event': event},
+                  arguments: {
+                    // The event screen re-fetches by id, and a post id only
+                    // means anything within its own blog — without the site
+                    // it defaulted to GB and a US event previewed as
+                    // whichever UK event happened to share that id.
+                    //
+                    // Falls back to what this screen was opened with, so the
+                    // preview still points somewhere sensible against a
+                    // backend that does not send `site` yet.
+                    'event': {...event, 'site': _eventSite ?? widget.site},
+                  },
                 );
               },
               child: Row(
@@ -563,7 +604,8 @@ class _EventAdminPageState extends State<EventAdminPage> {
             Expanded(
               child: _buildSummaryCard(
                 'Value',
-                '£${sales['net_sales'].toStringAsFixed(2)}',
+                '$_currencySymbol'
+                    '${sales['net_sales'].toStringAsFixed(2)}',
                 theme,
               ),
             ),
@@ -708,11 +750,18 @@ class _EventAdminPageState extends State<EventAdminPage> {
   }
 
   Widget _buildOrders(List<dynamic> orders, ThemeProvider theme) {
-    return OrdersSection(orders: orders, theme: theme);
+    return OrdersSection(
+      orders: orders,
+      theme: theme,
+      currencySymbol: _currencySymbol,
+    );
   }
 
   Widget _buildTickets(List<dynamic> tickets, ThemeProvider theme) {
-    return TicketsSection(tickets: tickets, theme: theme);
+    return TicketsSection(
+      tickets: tickets,
+      theme: theme,
+      currencySymbol: _currencySymbol,
+    );
   }
 }
-

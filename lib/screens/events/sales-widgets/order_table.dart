@@ -39,7 +39,18 @@ class OrdersSection extends StatefulWidget {
   final List<dynamic> orders;
   final ThemeProvider theme;
 
-  const OrdersSection({super.key, required this.orders, required this.theme});
+  /// The symbol for this event's own currency.
+  ///
+  /// Passed in rather than assumed: a US event's takings are dollars, and a
+  /// pound sign on them misstates what the organiser has earned.
+  final String currencySymbol;
+
+  const OrdersSection({
+    super.key,
+    required this.orders,
+    required this.theme,
+    this.currencySymbol = '£',
+  });
 
   @override
   State<OrdersSection> createState() => OrdersSectionState();
@@ -243,7 +254,11 @@ class OrdersSectionState extends State<OrdersSection> {
               )
             else
               ..._pagedOrders.map(
-                (order) => _OrderCard(order: order, theme: widget.theme),
+                (order) => _OrderCard(
+                  order: order,
+                  theme: widget.theme,
+                  currencySymbol: widget.currencySymbol,
+                ),
               ),
             if (_filtered.isNotEmpty) _buildPagination(_filtered.length),
           ],
@@ -257,7 +272,14 @@ class _OrderCard extends StatelessWidget {
   final dynamic order;
   final ThemeProvider theme;
 
-  const _OrderCard({required this.order, required this.theme});
+  /// The symbol for this event's own currency — see [OrdersSection].
+  final String currencySymbol;
+
+  const _OrderCard({
+    required this.order,
+    required this.theme,
+    required this.currencySymbol,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -385,7 +407,7 @@ class _OrderCard extends StatelessWidget {
                     Expanded(
                       child: _StatChip(
                         label: 'Total',
-                        value: '£${total ?? '0.00'}',
+                        value: '$currencySymbol${total ?? '0.00'}',
                         icon: Icons.payments_outlined,
                         color: Colors.green[600]!,
                       ),

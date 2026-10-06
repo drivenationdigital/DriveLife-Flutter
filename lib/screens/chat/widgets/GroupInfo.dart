@@ -7,13 +7,12 @@ import 'package:drivelife/screens/chat/widgets/AddGroupMember.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-
 class GroupInfoScreen extends StatefulWidget {
   final String conversationId;
   final String myUserId;
   final String groupName;
   final List<String> participantIds;
-  final void Function(List<String> participantIds, String groupName)? onChanged; 
+  final void Function(List<String> participantIds, String groupName)? onChanged;
 
   const GroupInfoScreen({
     super.key,
@@ -174,8 +173,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           .select()
           .single();
 
-      await UserProfileCache.instance.resolve([
-        profile.id]);
+      await UserProfileCache.instance.resolve([profile.id]);
 
       setState(() => _participantIds = newIds);
       _didUpdate();

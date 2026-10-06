@@ -405,10 +405,7 @@ class _Section extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: _gold.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(999),

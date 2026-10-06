@@ -23,9 +23,7 @@ class _LikesModalState extends State<LikesModal> {
   }
 
   Future<void> _loadLikes() async {
-    final users = await PostsAPI.loadLikes(
-      postId: widget.postId,
-    );
+    final users = await PostsAPI.loadLikes(postId: widget.postId);
     if (!mounted) return;
     setState(() {
       _users = users;
@@ -36,7 +34,7 @@ class _LikesModalState extends State<LikesModal> {
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
-    
+
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.6,
@@ -85,7 +83,10 @@ class _LikesModalState extends State<LikesModal> {
           if (_isLoading)
             Padding(
               padding: EdgeInsets.symmetric(vertical: 48),
-              child: CircularProgressIndicator(strokeWidth: 2, color: theme.primaryColor),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: theme.primaryColor,
+              ),
             )
           else if (_users.isEmpty)
             Padding(

@@ -152,9 +152,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (entityType == 'gallery' ||
         entityType == 'gallery_car' ||
         (galleryId != null && '$galleryId' != '0')) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const ImagesOfYouScreen()),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const ImagesOfYouScreen()));
       return;
     }
 
@@ -592,7 +592,6 @@ class _NotificationTile extends StatelessWidget {
 
     final clubJoinRequest = notification['type'] == 'join_request';
     final clubId = entityData['club_id']?.toString() ?? '';
-
 
     return InkWell(
       onTap: onTap,
@@ -1036,4 +1035,3 @@ class _NotificationTile extends StatelessWidget {
     }
   }
 }
-
