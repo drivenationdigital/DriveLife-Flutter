@@ -204,6 +204,7 @@
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				5807E808BF96C6A92004262E /* [CP] Embed Pods Frameworks */,
 				FFBC1F9662A6A80911291843 /* [CP] Copy Pods Resources */,
+				B7A41D0C93E54F2A8C1B6E35 /* Square IAP SDK Setup */,
 			);
 			buildRules = (
 			);
@@ -291,6 +292,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin";
+		};
+		B7A41D0C93E54F2A8C1B6E35 /* Square IAP SDK Setup */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Square IAP SDK Setup";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Square ships CorePaymentCard and ThreeDS_SDK nested inside its own framework\n# bundles. Their setup script hoists them to the app Frameworks dir (so @rpath\n# resolves and Xcode-signable), re-signs them with this build identity, and\n# deletes itself when archiving (an unsigned script in the bundle is App Store\n# rejection 90035). Must run after \"[CP] Embed Pods Frameworks\".\nSETUP=\"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/SquareInAppPaymentsSDK.framework/setup\"\nif [ -f \"$SETUP\" ]; then\n  \"$SETUP\"\nelif [ -d \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/SquareInAppPaymentsSDK.framework\" ]; then\n  echo \"error: SquareInAppPaymentsSDK.framework/setup missing; nested frameworks would not be hoisted.\"\n  exit 1\nfi\n";
 		};
 		5807E808BF96C6A92004262E /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
