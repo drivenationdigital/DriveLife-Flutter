@@ -76,6 +76,27 @@ class FeatureFlags {
     defaultValue: AppEnvironment.useStaging,
   );
 
+  /// The event add/edit form, opened as the dashboard's own editor in a web
+  /// container rather than rebuilt natively.
+  ///
+  /// ON. The dashboard editor has eleven panels against add_event_screen's
+  /// one — tickets, discounts, traders and show cars among them — so this is
+  /// a gain in capability rather than a retreat, and it is one editor to
+  /// maintain instead of two drifting apart.
+  ///
+  /// [AddEventScreen] is still the fallback, not dead code: an organiser with
+  /// no dashboard session, a club event, or an edit reached without an
+  /// encrypted id all land there, and so does any device with no browser that
+  /// will host an in-app view. See openEventEditor(), which makes that call
+  /// in one place.
+  ///
+  /// Off-able for a single build if a release ever needs the old form back:
+  ///   flutter build apk --dart-define=DL_WEB_EVENT_EDITOR=false
+  static const bool webEventEditor = bool.fromEnvironment(
+    'DL_WEB_EVENT_EDITOR',
+    defaultValue: true,
+  );
+
   /// Community gallery on events: the tab on the event detail screen and the
   /// "Share photos" buttons on the events list.
   ///

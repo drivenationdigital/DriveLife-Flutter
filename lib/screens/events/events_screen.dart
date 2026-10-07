@@ -1,3 +1,4 @@
+import 'package:drivelife/screens/events/open_event_editor.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/screens/account-settings/app_permissions_screen.dart';
@@ -1381,7 +1382,7 @@ class _EventsScreenState extends State<EventsScreen>
       primaryColor: theme.primaryColor,
       onRefresh: _fetchProfileEvents,
       onAddEvent: () {
-        NavigationHelper.navigateTo(context, AddEventScreen());
+        openEventEditor(context);
       },
 
       onEventTap: (event) {

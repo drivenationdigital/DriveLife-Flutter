@@ -261,6 +261,44 @@ class EventsAPI {
   }
 
   /// Endpoint example: /wp-json/app/v2/my-event-tickets
+  /// A short-lived dashboard session, for opening the event editor in a
+  /// web container.
+  ///
+  /// Not the app's own token. The dashboard runs on a different JWT system —
+  /// different secret and a different user claim — so the app's token is not
+  /// a session there and never could be. The server trades one for the other
+  /// against the same WordPress user.
+  ///
+  /// Null when signed out or when the exchange is unavailable. The caller
+  /// must not open the editor without one: the dashboard would bounce to its
+  /// own login screen, which is not something anybody can finish inside an
+  /// in-app browser.
+  static Future<String?> getDashboardSessionToken() async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null || token.isEmpty) return null;
+
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/dashboard-session'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode != 200) return null;
+
+      final data = jsonDecode(response.body);
+      if (data is! Map || data['success'] != true) return null;
+
+      final session = '${data['token'] ?? ''}'.trim();
+
+      return session.isEmpty ? null : session;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// A short-lived signed claim naming the signed-in user.
   ///
   /// The ticket checkout runs on the website, in an in-app browser that

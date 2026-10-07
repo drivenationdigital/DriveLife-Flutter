@@ -1,3 +1,4 @@
+import 'package:drivelife/screens/events/open_event_editor.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/main.dart';
 import 'package:drivelife/models/account_model.dart';
@@ -237,8 +238,7 @@ class _HomeTabsState extends State<HomeTabs> {
           _CreateAction(
             label: 'Add Event',
             icon: Icons.calendar_today_outlined,
-            onTap: () =>
-                NavigationHelper.navigateTo(context, const AddEventScreen()),
+            onTap: () => openEventEditor(context),
           ),
           _CreateAction(
             label: 'Add Venue',

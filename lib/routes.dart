@@ -219,6 +219,10 @@ class AppRoutes {
         );
       case addEvent:
         final args = settings.arguments as Map<String, dynamic>?;
+        // Left on the native screen deliberately. This route is reached with
+        // a raw event id and no encrypted one, which the dashboard editor
+        // cannot address an event by — openEventEditor would only fall
+        // straight back here anyway.
         return _slide(
           AddEventScreen(
             eventId: args?['eventId'],

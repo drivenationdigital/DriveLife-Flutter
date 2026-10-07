@@ -1,3 +1,4 @@
+import 'package:drivelife/screens/events/open_event_editor.dart';
 import 'package:drivelife/api/offers_api_service.dart';
 import 'package:drivelife/main.dart';
 import 'package:drivelife/providers/account_provider.dart';
@@ -555,7 +556,7 @@ class _ActionPills extends StatelessWidget {
               icon: Icons.calendar_today_outlined,
               isPrimary: false,
               onTap: () {
-                NavigationHelper.navigateTo(context, const AddEventScreen());
+                openEventEditor(context);
               },
             ),
             const SizedBox(width: 8),

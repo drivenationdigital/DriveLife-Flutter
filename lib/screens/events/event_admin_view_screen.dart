@@ -1,3 +1,4 @@
+import 'package:drivelife/screens/events/open_event_editor.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
@@ -511,9 +512,14 @@ class _EventAdminPageState extends State<EventAdminPage> {
             ),
             SizedBox(height: 20),
             _buildActionButton('Edit Event', theme.primaryColor, () {
-              NavigationHelper.navigateTo(
+              openEventEditor(
                 context,
-                AddEventScreen(eventId: event['id'].toString()),
+                eventId: event['id']?.toString(),
+                // The dashboard addresses events by their encrypted id; the
+                // native screen takes the raw one. Both go, and whichever
+                // editor opens uses the one it understands.
+                eventEid: event['eid']?.toString(),
+                site: _eventSite ?? widget.site,
               );
             }),
             SizedBox(height: 12),

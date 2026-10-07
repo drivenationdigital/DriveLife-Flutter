@@ -176,6 +176,15 @@ class DeepLinkHandler {
       // Before the login check on purpose: buying tickets needs no account,
       // so bouncing a signed-out buyer to a login screen would lose the order
       // they just paid for.
+      // Back from the event editor's web container. Nothing to navigate to —
+      // the screen the organiser started from is still underneath — so this
+      // only closes the browser over it.
+      if (params.containsKey('dl-editor')) {
+        debugPrint('📝 [DeepLink] Event editor finished');
+        unawaited(closeInAppWebView());
+        return;
+      }
+
       if (params.containsKey('dl-order')) {
         final orderId = params['order_id'] ?? '';
         debugPrint('🎟️ [DeepLink] Order complete: $orderId');
