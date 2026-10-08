@@ -27,7 +27,7 @@
             "request": "launch",
             "type": "dart",
             "flutterMode": "debug",
-            "args": ["--dart-define=DL_STAGING=true"]
+            "args": ["--dart-define=DL_STAGING=true","--dart-define=DL_WEB_EVENT_OVERVIEW=true"]
         }
     ]
 }

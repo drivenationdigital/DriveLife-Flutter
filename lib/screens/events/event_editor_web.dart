@@ -1,5 +1,8 @@
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/config/app_environment.dart';
+import 'package:drivelife/config/feature_flags.dart';
+import 'package:drivelife/screens/web/web_page_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -37,7 +40,11 @@ abstract final class EventEditorWeb {
   ///
   /// Returns false when there is no usable session or no browser would take
   /// the URL, so the caller can say so rather than leaving a dead button.
-  static Future<bool> open({String? eventEid, String site = 'uk'}) async {
+  static Future<bool> open({
+    String? eventEid,
+    String site = 'uk',
+    BuildContext? context,
+  }) async {
     // Fetched at the last moment: it is good for fifteen minutes, and a token
     // minted at app launch would be long dead by the time anybody edits
     // anything.
@@ -75,6 +82,24 @@ abstract final class EventEditorWeb {
         'dl_s': session,
       },
     );
+
+    // As an app screen, where the demo flag asks for it. Needs a context to
+    // push onto, so a caller without one still gets the browser.
+    if (FeatureFlags.embeddedEditor && context != null && context.mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<Uri>(
+          builder: (_) => WebPageScreen(
+            url: url,
+            title: eventEid == null ? 'New event' : 'Edit event',
+            // The dashboard lives on the accounts host; links anywhere else
+            // are somebody's website and belong in a real browser.
+            internalHosts: {url.host},
+          ),
+        ),
+      );
+
+      return true;
+    }
 
     // Carries a session token, so only ever in a developer's build.
     if (kDebugMode || AppEnvironment.isStaging) {

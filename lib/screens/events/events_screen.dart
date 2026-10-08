@@ -1,3 +1,4 @@
+import 'package:drivelife/screens/events/open_event_overview.dart';
 import 'package:drivelife/screens/events/open_event_editor.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
@@ -1387,13 +1388,14 @@ class _EventsScreenState extends State<EventsScreen>
 
       onEventTap: (event) {
         if (event['is_owner'] == true) {
-          Navigator.pushNamed(
+          openEventOverview(
             context,
-            '/event-owner-view',
-            arguments: {
-              'eventId': event['id'].toString(),
-              'site': event['country'] ?? 'GB',
-            },
+            eventId: event['id'].toString(),
+            // The dashboard addresses events by their encrypted id; the
+            // native screen takes the raw one. Both travel, and whichever
+            // screen opens uses the one it understands.
+            eventEid: event['eid']?.toString(),
+            site: (event['country'] ?? 'GB').toString(),
           );
           return;
         }

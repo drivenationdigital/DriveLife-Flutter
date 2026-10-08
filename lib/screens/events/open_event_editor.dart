@@ -33,7 +33,11 @@ Future<void> openEventEditor(
       (!editing || (eventEid ?? '').isNotEmpty);
 
   if (canUseWeb) {
-    final opened = await EventEditorWeb.open(eventEid: eventEid, site: site);
+    final opened = await EventEditorWeb.open(
+      eventEid: eventEid,
+      site: site,
+      context: context,
+    );
 
     if (opened) return;
 

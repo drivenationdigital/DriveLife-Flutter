@@ -97,6 +97,43 @@ class FeatureFlags {
     defaultValue: true,
   );
 
+  /// Render the web event editor as an app SCREEN rather than handing it to
+  /// the system browser.
+  ///
+  /// ON, and matching the overview so both organiser screens behave alike.
+  /// The difference is all chrome: an embedded WebView wears the app's own
+  /// header and back button instead of Safari's share and "open in browser",
+  /// and the `drivelife://` finish closes a screen rather than bouncing
+  /// through the OS.
+  ///
+  /// Only safe because the editor takes no payment. The checkout must keep
+  /// using the system browser whatever happens here — PayPal refuses embedded
+  /// user agents and Apple Pay exists only in Safari. Do not generalise this
+  /// flag to cover it.
+  ///   flutter build apk --dart-define=DL_EMBEDDED_EDITOR=false
+  static const bool embeddedEditor = bool.fromEnvironment(
+    'DL_EMBEDDED_EDITOR',
+    defaultValue: true,
+  );
+
+  /// The organiser's event overview, pulled from the dashboard rather than
+  /// rendered natively by event_admin_view_screen.
+  ///
+  /// ON. The dashboard page carries orders, applications and discounts the
+  /// app has never had, and it is one screen to maintain rather than two
+  /// drifting apart.
+  ///
+  /// Knowingly traded away with it: the QR scanner in the native screen's
+  /// header, offline behaviour, and the per-region currency work on its
+  /// orders and tickets tables. event_admin_view_screen is still the
+  /// fallback — no dashboard session, or a row with no encrypted id — so
+  /// none of that is deleted, only unreachable from the events list.
+  ///   flutter build apk --dart-define=DL_WEB_EVENT_OVERVIEW=false
+  static const bool webEventOverview = bool.fromEnvironment(
+    'DL_WEB_EVENT_OVERVIEW',
+    defaultValue: true,
+  );
+
   /// Community gallery on events: the tab on the event detail screen and the
   /// "Share photos" buttons on the events list.
   ///
