@@ -3,7 +3,6 @@ import 'package:drivelife/screens/events/open_event_editor.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/screens/account-settings/app_permissions_screen.dart';
-import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/events/event_community_gallery_screen.dart';
 import 'package:drivelife/screens/events/order_ticket_view.dart';
 import 'package:drivelife/utils/date.dart';

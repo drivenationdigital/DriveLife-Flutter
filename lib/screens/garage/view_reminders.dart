@@ -73,13 +73,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
   }
 
   Widget _buildNotificationBanner() {
-    final isDenied =
-        _notificationStatus == PermissionStatus.denied ||
-        _notificationStatus == PermissionStatus.permanentlyDenied;
-    final isNotDetermined =
-        _notificationStatus == PermissionStatus.provisional ||
-        _notificationStatus == null;
-
     if (_notificationStatus == PermissionStatus.granted)
       return const SizedBox.shrink();
 

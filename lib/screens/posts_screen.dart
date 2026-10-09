@@ -4,14 +4,12 @@ import 'package:drivelife/main.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
-import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/feed/hot_right_now.dart';
 import 'package:drivelife/widgets/feed/offers_banner.dart';
 import 'package:drivelife/widgets/upload_progress_card.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 

@@ -92,24 +92,6 @@ class _EditProfileImagesScreenState extends State<EditProfileImagesScreen> {
     );
   }
 
-  /// Convert image file to base64 string
-  Future<String> _fileToBase64(File file) async {
-    try {
-      final bytes = await file.readAsBytes();
-      final base64String = base64Encode(bytes);
-
-      // Get file extension
-      final extension = file.path.split('.').last.toLowerCase();
-
-      // Create data URL with proper MIME type
-      final mimeType = _getMimeType(extension);
-      return 'data:$mimeType;base64,$base64String';
-    } catch (e) {
-      print('Error converting file to base64: $e');
-      rethrow;
-    }
-  }
-
   String _getMimeType(String extension) {
     switch (extension) {
       case 'jpg':

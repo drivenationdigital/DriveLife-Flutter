@@ -1,4 +1,3 @@
-import 'dart:ui' show FontFeature;
 import 'dart:async';
 import 'package:drivelife/api/checkout_api.dart';
 import 'package:drivelife/config/stripe_config.dart';

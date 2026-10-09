@@ -1131,13 +1131,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Color _getContrastColor(String hexColor) {
-    final color = Color(int.parse(hexColor.replaceFirst('#', '0xFF')));
-    final luminance =
-        (0.299 * color.red + 0.587 * color.green + 0.114 * color.blue) / 255;
-    return luminance > 0.5 ? Colors.black : Colors.white;
-  }
-
   String _decodeHtml(String html) => stripHtml(html);
 }
 

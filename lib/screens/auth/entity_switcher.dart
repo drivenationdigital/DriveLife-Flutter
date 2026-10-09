@@ -181,8 +181,6 @@ class EntitySwitcherSheet extends StatelessWidget {
     required List<Account> accounts,
     required Account activeAccount,
   }) {
-    final accountManager = Provider.of<AccountManager>(context, listen: false);
-
     // Get main user account for this userId
     final userAccount = accounts.firstWhere(
       (a) => a.isUserAccount && a.user.id == userId,

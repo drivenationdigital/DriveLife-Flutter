@@ -682,21 +682,6 @@ class _SpeedwellChallengeScreenState extends State<SpeedwellChallengeScreen> {
     );
   }
 
-  Widget _avatarFallback(LeaderboardEntry entry, Color? medalColor) {
-    return Center(
-      child: Text(
-        entry.displayName.isNotEmpty ? entry.displayName[0].toUpperCase() : '?',
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w800,
-          color: medalColor != null
-              ? Color.lerp(medalColor, Colors.black, 0.4)
-              : theme.primaryColor,
-        ),
-      ),
-    );
-  }
-
   Widget _buildRow(LeaderboardEntry entry) {
     final bool isMe = entry.isCurrentUser;
 

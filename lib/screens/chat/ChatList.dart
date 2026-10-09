@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';

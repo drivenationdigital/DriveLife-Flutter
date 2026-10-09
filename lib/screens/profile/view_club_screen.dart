@@ -1687,7 +1687,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     final coverImage = _clubData?['cover_image'];
     final logo = _clubData?['logo'];
     final title = (_clubData?['title'] ?? '') as String;
-    final memberCount = _clubData?['member_count'] ?? 0;
     // final clubType = _clubData?['club_type'] == '1' ? 'Private' : 'Public';
     // final location = _clubData?['location'] ?? 'National Club';
     final verified = _clubData?['is_verified'] == true;
@@ -1845,21 +1844,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         ],
       ),
     );
-  }
-
-  String _formatCount(dynamic count) {
-    final n = count is int
-        ? count
-        : int.tryParse(count?.toString() ?? '0') ?? 0;
-    if (n < 1000) return n.toString();
-    // Insert commas every 3 digits
-    final s = n.toString();
-    final buf = StringBuffer();
-    for (int i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
-      buf.write(s[i]);
-    }
-    return buf.toString();
   }
 
   Future<void> _openMembersModal() async {

@@ -1,5 +1,3 @@
-import 'package:drivelife/screens/chat/SupabaseClasses.dart';
-
 class Conversation {
   final String id;
   final List<String> participantIds;

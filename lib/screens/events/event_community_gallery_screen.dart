@@ -1,6 +1,5 @@
 import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'dart:io';
-import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/models/event_media.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
@@ -141,7 +140,6 @@ class _EventCommunityGalleryScreenState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Provider.of<ThemeProvider>(context);
     final pendingCount = _images.where((i) => !i.isUploaded).length;
 
     return Scaffold(

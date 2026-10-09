@@ -285,8 +285,6 @@ class _OrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cars = (order['car'] as List?) ?? [];
     final hasCars = cars.isNotEmpty;
-    final marketing = order['marketing']?.toString() ?? '-';
-    final source = order['source']?.toString() ?? '';
     final total = order['total'];
     final quantity = order['quantity']?.toString() ?? '0';
 

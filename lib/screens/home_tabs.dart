@@ -13,7 +13,6 @@ import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/clubs/add_club_screen.dart';
 import 'package:drivelife/screens/clubs/club_creation_screen.dart';
 import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
-import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
