@@ -170,12 +170,6 @@ PODS:
   - sqflite_darwin (0.0.4):
     - Flutter
     - FlutterMacOS
-  - square_in_app_payments (1.6.7):
-    - Flutter
-    - SquareBuyerVerificationSDK (= 1.6.7)
-    - SquareInAppPaymentsSDK (= 1.6.7)
-  - SquareBuyerVerificationSDK (1.6.7)
-  - SquareInAppPaymentsSDK (1.6.7)
   - Stripe (23.27.6):
     - StripeApplePay (= 23.27.6)
     - StripeCore (= 23.27.6)
@@ -252,7 +246,6 @@ DEPENDENCIES:
   - share_plus (from `.symlinks/plugins/share_plus/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - sqflite_darwin (from `.symlinks/plugins/sqflite_darwin/darwin`)
-  - square_in_app_payments (from `.symlinks/plugins/square_in_app_payments/ios`)
   - stripe_ios (from `.symlinks/plugins/stripe_ios/ios`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
   - video_compress (from `.symlinks/plugins/video_compress/ios`)
@@ -281,8 +274,6 @@ SPEC REPOS:
     - PromisesObjC
     - SDWebImage
     - SDWebImageWebPCoder
-    - SquareBuyerVerificationSDK
-    - SquareInAppPaymentsSDK
     - Stripe
     - StripeApplePay
     - StripeCore
@@ -347,8 +338,6 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
   sqflite_darwin:
     :path: ".symlinks/plugins/sqflite_darwin/darwin"
-  square_in_app_payments:
-    :path: ".symlinks/plugins/square_in_app_payments/ios"
   stripe_ios:
     :path: ".symlinks/plugins/stripe_ios/ios"
   url_launcher_ios:
@@ -408,9 +397,6 @@ SPEC CHECKSUMS:
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
-  square_in_app_payments: aa74685306e78d9704f2723b4dc2f4ada1a6f89e
-  SquareBuyerVerificationSDK: e4589f81dfb842c7d19134fe1d71722ae7cc8cc4
-  SquareInAppPaymentsSDK: 07eb46834e31300d27510ad3ee15940970edd327
   Stripe: 9fec845645e39f371e6898926d096fd9c2feb5a5
   stripe_ios: 5accba1ff472f89300e1676c351166f29dc93ced
   StripeApplePay: 5f017e8dfe259fafbab70137776189deef754bb2

@@ -71,16 +71,15 @@ flutter {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
-    // Square's card-entry AAR, named directly so its resources resolve at
-    // compile time. The plugin already pulls it in, but as `implementation`,
-    // which keeps it off THIS module's compile resource path — and
-    // styles.xml inherits from sqip_Theme_BaseCardEntry to theme the card
-    // screen, which then fails to link.
+    // SQUARE — dropped with the native checkout. Restoring it means putting
+    // this back alongside the sqip theme in styles.xml; the version must match
+    // square_in_app_payments' MIN_IAP_SDK_VERSION.
     //
-    // Version must match square_in_app_payments' MIN_IAP_SDK_VERSION. Gradle
-    // resolves to the higher of the two if they drift, so a mismatch is a
-    // stale comment rather than a broken build — but keep them in step.
-    implementation("com.squareup.sdk.in-app-payments:card-entry:1.6.9")
+    // Named directly so its resources resolve at compile time: the plugin
+    // pulls it in only as `implementation`, which keeps it off THIS module's
+    // compile resource path, and styles.xml inherits from
+    // sqip_Theme_BaseCardEntry to theme the card screen.
+    // implementation("com.squareup.sdk.in-app-payments:card-entry:1.6.9")
     
     // Add these for crash fix:
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22")

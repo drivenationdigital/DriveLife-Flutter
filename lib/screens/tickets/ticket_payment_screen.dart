@@ -1,4 +1,5 @@
-import 'dart:async';
+// SQUARE: only needed for unawaited() in the Square wallet init.
+// import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:drivelife/api/checkout_api.dart';
@@ -10,9 +11,14 @@ import 'package:drivelife/models/checkout_models.dart';
 import 'package:drivelife/screens/tickets/ticket_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
-import 'package:square_in_app_payments/google_pay_constants.dart';
-import 'package:square_in_app_payments/in_app_payments.dart';
-import 'package:square_in_app_payments/models.dart';
+// SQUARE — dropped with the native checkout (FeatureFlags.nativeTicketSelection).
+// Restoring it means putting back square_in_app_payments in pubspec.yaml, the
+// card-entry dependency in android/app/build.gradle.kts, sqip_Theme_CardEntry in
+// android/app/src/main/res/values/styles.xml, and the "Square IAP SDK Setup"
+// build phase in ios/Runner.xcodeproj, then uncommenting the SQUARE blocks here.
+// import 'package:square_in_app_payments/google_pay_constants.dart';
+// import 'package:square_in_app_payments/in_app_payments.dart';
+// import 'package:square_in_app_payments/models.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Step three: paying.
@@ -83,12 +89,19 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
   ///
   /// Stripe, Square and Mollie are mutually exclusive — the organiser has one
   /// card processor — so at most one of these is ever true.
-  bool get _squareUsable {
-    final square = widget.info.square;
-    return square != null &&
-        square.applicationId.isNotEmpty &&
-        square.locationId.isNotEmpty;
-  }
+  /// Always false since the SDK was dropped: a Square event now falls through
+  /// to [_cardMethod] yielding mollie or null, the same path any card processor
+  /// the app cannot handle already takes, so the buyer is sent to the web
+  /// checkout rather than shown a card form that cannot charge.
+  ///
+  /// SQUARE — restore by swapping this for the block below:
+  // bool get _squareUsable {
+  //   final square = widget.info.square;
+  //   return square != null &&
+  //       square.applicationId.isNotEmpty &&
+  //       square.locationId.isNotEmpty;
+  // }
+  bool get _squareUsable => false;
 
   /// Whether this event's card payments go through Mollie.
   ///
@@ -127,7 +140,7 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
   @override
   void initState() {
     super.initState();
-    if (_squareUsable) unawaited(_prepareSquareWallet());
+    // SQUARE: if (_squareUsable) unawaited(_prepareSquareWallet());
   }
 
   @override
@@ -145,326 +158,327 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
   /// Takes the payment with whichever method is selected.
   Future<void> _pay() => switch (_method) {
     'paypal' => _payWithPayPal(),
-    'square' => _payWithSquare(),
+    // SQUARE: 'square' => _payWithSquare(),
     'mollie' => _payWithMollie(),
     _ => _payWithStripe(),
   };
 
-  /// Square: card entry and SCA in Square's own sheet, charged server-side.
-  ///
-  /// The card never reaches our code — the SDK returns a single-use nonce and,
-  /// where the buyer's bank demands it, a verification token. Both go to the
-  /// PHP, which charges the organiser's own Square account.
-  Future<void> _payWithSquare() async {
-    final square = widget.info.square;
+  // SQUARE (payment + wallet methods) — removed with the native checkout; uncomment to restore.
+  // /// Square: card entry and SCA in Square's own sheet, charged server-side.
+  // ///
+  // /// The card never reaches our code — the SDK returns a single-use nonce and,
+  // /// where the buyer's bank demands it, a verification token. Both go to the
+  // /// PHP, which charges the organiser's own Square account.
+  // Future<void> _payWithSquare() async {
+    // final square = widget.info.square;
 
-    if (square == null || square.applicationId.isEmpty) {
-      setState(() {
-        _error =
-            'This event cannot be paid for in the app. Open it on the '
-            'website to finish your order — your tickets are still held.';
-      });
-      return;
-    }
+    // if (square == null || square.applicationId.isEmpty) {
+      // setState(() {
+        // _error =
+            // 'This event cannot be paid for in the app. Open it on the '
+            // 'website to finish your order — your tickets are still held.';
+      // });
+      // return;
+    // }
 
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
+    // setState(() {
+      // _busy = true;
+      // _error = null;
+    // });
 
-    try {
-      await InAppPayments.setSquareApplicationId(square.applicationId);
+    // try {
+      // await InAppPayments.setSquareApplicationId(square.applicationId);
 
-      // Square draws its own card screen. On iOS it is themed from here; on
-      // Android it is XML, because the SDK builds it natively before Dart
-      // gets a say — see sqip_Theme_CardEntry in styles.xml.
-      if (Platform.isIOS) await _applySquareTheme();
+      // // Square draws its own card screen. On iOS it is themed from here; on
+      // // Android it is XML, because the SDK builds it natively before Dart
+      // // gets a say — see sqip_Theme_CardEntry in styles.xml.
+      // if (Platform.isIOS) await _applySquareTheme();
 
-      await InAppPayments.startCardEntryFlowWithBuyerVerification(
-        // "Charge", not "Store": this authorises one payment of this amount
-        // rather than keeping the card on file.
-        buyerAction: 'Charge',
-        money: Money(
-          (b) => b
-            // Minor units. The figure is the one the server priced, not a
-            // total computed here.
-            ..amount = (widget.amount * 100).round()
-            ..currencyCode = widget.info.event.currency.toUpperCase(),
-        ),
-        squareLocationId: square.locationId,
-        // What Square shows the bank during verification. The details the
-        // buyer already gave, so they are not asked twice.
-        contact: Contact(
-          (b) => b
-            ..givenName = _firstName
-            ..familyName = _lastName
-            ..email = widget.buyerEmail
-            ..countryCode = _merchantCountry,
-        ),
-        onBuyerVerificationSuccess: _onSquareVerified,
-        onBuyerVerificationFailure: (error) {
-          // No showCardNonceProcessingError here — see _onSquareVerified.
-          if (!mounted) return;
-          setState(() {
-            _busy = false;
-            _error = error.message;
-          });
-        },
-        onCardEntryCancel: () {
-          // Backing out of the card sheet is not an error. Nothing was
-          // charged and the cart is untouched.
-          if (!mounted) return;
-          setState(() => _busy = false);
-        },
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = 'Something went wrong taking the payment. Please try again.';
-      });
+      // await InAppPayments.startCardEntryFlowWithBuyerVerification(
+        // // "Charge", not "Store": this authorises one payment of this amount
+        // // rather than keeping the card on file.
+        // buyerAction: 'Charge',
+        // money: Money(
+          // (b) => b
+            // // Minor units. The figure is the one the server priced, not a
+            // // total computed here.
+            // ..amount = (widget.amount * 100).round()
+            // ..currencyCode = widget.info.event.currency.toUpperCase(),
+        // ),
+        // squareLocationId: square.locationId,
+        // // What Square shows the bank during verification. The details the
+        // // buyer already gave, so they are not asked twice.
+        // contact: Contact(
+          // (b) => b
+            // ..givenName = _firstName
+            // ..familyName = _lastName
+            // ..email = widget.buyerEmail
+            // ..countryCode = _merchantCountry,
+        // ),
+        // onBuyerVerificationSuccess: _onSquareVerified,
+        // onBuyerVerificationFailure: (error) {
+          // // No showCardNonceProcessingError here — see _onSquareVerified.
+          // if (!mounted) return;
+          // setState(() {
+            // _busy = false;
+            // _error = error.message;
+          // });
+        // },
+        // onCardEntryCancel: () {
+          // // Backing out of the card sheet is not an error. Nothing was
+          // // charged and the cart is untouched.
+          // if (!mounted) return;
+          // setState(() => _busy = false);
+        // },
+      // );
+    // } catch (e) {
+      // if (!mounted) return;
+      // setState(() {
+        // _busy = false;
+        // _error = 'Something went wrong taking the payment. Please try again.';
+      // });
 
-      if (AppEnvironment.isStaging) debugPrint('💳 [Square] $e');
-    }
-  }
+      // if (AppEnvironment.isStaging) debugPrint('💳 [Square] $e');
+    // }
+  // }
 
-  /// The Apple Pay merchant identifier this app is registered under.
-  ///
-  /// The same one Stripe uses — it identifies who is ASKING the wallet, not
-  /// who is paid. Square routes the resulting token to the organiser.
-  static const String _appleMerchantId = 'merchant.com.app.carcalendar';
+  // /// The Apple Pay merchant identifier this app is registered under.
+  // ///
+  // /// The same one Stripe uses — it identifies who is ASKING the wallet, not
+  // /// who is paid. Square routes the resulting token to the organiser.
+  // static const String _appleMerchantId = 'merchant.com.app.carcalendar';
 
-  /// Whether this device can pay Square with a wallet.
-  ///
-  /// Checked once when the screen opens rather than on tap: the button has to
-  /// be there or not be there before the buyer reaches for it.
-  bool _squareWalletReady = false;
+  // /// Whether this device can pay Square with a wallet.
+  // ///
+  // /// Checked once when the screen opens rather than on tap: the button has to
+  // /// be there or not be there before the buyer reaches for it.
+  // bool _squareWalletReady = false;
 
-  /// Apple Pay on iOS, Google Pay on Android.
-  String get _walletName => Platform.isIOS ? 'Apple Pay' : 'Google Pay';
+  // /// Apple Pay on iOS, Google Pay on Android.
+  // String get _walletName => Platform.isIOS ? 'Apple Pay' : 'Google Pay';
 
-  /// Sets up Square's wallet support, if the device has any.
-  ///
-  /// Quiet on failure. A wallet is a shortcut past typing a card, never the
-  /// only way to pay — if it cannot be prepared the card form is still there,
-  /// and an error about it would be noise.
-  Future<void> _prepareSquareWallet() async {
-    final square = widget.info.square;
-    if (square == null || square.locationId.isEmpty) return;
+  // /// Sets up Square's wallet support, if the device has any.
+  // ///
+  // /// Quiet on failure. A wallet is a shortcut past typing a card, never the
+  // /// only way to pay — if it cannot be prepared the card form is still there,
+  // /// and an error about it would be noise.
+  // Future<void> _prepareSquareWallet() async {
+    // final square = widget.info.square;
+    // if (square == null || square.locationId.isEmpty) return;
 
-    try {
-      await InAppPayments.setSquareApplicationId(square.applicationId);
+    // try {
+      // await InAppPayments.setSquareApplicationId(square.applicationId);
 
-      if (Platform.isAndroid) {
-        await InAppPayments.initializeGooglePay(
-          square.locationId,
-          square.environment == 'production'
-              ? environmentProduction
-              : environmentTest,
-        );
+      // if (Platform.isAndroid) {
+        // await InAppPayments.initializeGooglePay(
+          // square.locationId,
+          // square.environment == 'production'
+              // ? environmentProduction
+              // : environmentTest,
+        // );
 
-        final ready = await InAppPayments.canUseGooglePay;
-        if (mounted) setState(() => _squareWalletReady = ready);
-        return;
-      }
+        // final ready = await InAppPayments.canUseGooglePay;
+        // if (mounted) setState(() => _squareWalletReady = ready);
+        // return;
+      // }
 
-      if (Platform.isIOS) {
-        // The same merchant id the app registers for Apple Pay elsewhere.
-        // Square routes the token to the organiser; the merchant id only
-        // identifies who is asking the wallet.
-        await InAppPayments.initializeApplePay(_appleMerchantId);
+      // if (Platform.isIOS) {
+        // // The same merchant id the app registers for Apple Pay elsewhere.
+        // // Square routes the token to the organiser; the merchant id only
+        // // identifies who is asking the wallet.
+        // await InAppPayments.initializeApplePay(_appleMerchantId);
 
-        final ready = await InAppPayments.canUseApplePay;
-        if (mounted) setState(() => _squareWalletReady = ready);
-      }
-    } catch (e) {
-      if (AppEnvironment.isStaging) debugPrint('💳 [Square] wallet: $e');
-    }
-  }
+        // final ready = await InAppPayments.canUseApplePay;
+        // if (mounted) setState(() => _squareWalletReady = ready);
+      // }
+    // } catch (e) {
+      // if (AppEnvironment.isStaging) debugPrint('💳 [Square] wallet: $e');
+    // }
+  // }
 
-  /// Pays with the device wallet through Square.
-  ///
-  /// The wallet tokenises into the same `source_id` a typed card produces, so
-  /// the server charges it identically. No buyer verification: the wallet has
-  /// already authenticated the cardholder, which is the whole point of it.
-  Future<void> _payWithSquareWallet() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
+  // /// Pays with the device wallet through Square.
+  // ///
+  // /// The wallet tokenises into the same `source_id` a typed card produces, so
+  // /// the server charges it identically. No buyer verification: the wallet has
+  // /// already authenticated the cardholder, which is the whole point of it.
+  // Future<void> _payWithSquareWallet() async {
+    // setState(() {
+      // _busy = true;
+      // _error = null;
+    // });
 
-    // Square wants the amount as a decimal string, not minor units.
-    final price = widget.amount.toStringAsFixed(2);
-    final currency = widget.info.event.currency.toUpperCase();
+    // // Square wants the amount as a decimal string, not minor units.
+    // final price = widget.amount.toStringAsFixed(2);
+    // final currency = widget.info.event.currency.toUpperCase();
 
-    try {
-      if (Platform.isAndroid) {
-        await InAppPayments.requestGooglePayNonce(
-          price: price,
-          currencyCode: currency,
-          priceStatus: totalPriceStatusFinal,
-          onGooglePayNonceRequestSuccess: (result) =>
-              _chargeSquareWallet(result.nonce),
-          onGooglePayNonceRequestFailure: (error) =>
-              _walletFailed(error.message),
-          onGooglePayCanceled: _walletCancelled,
-        );
-        return;
-      }
+    // try {
+      // if (Platform.isAndroid) {
+        // await InAppPayments.requestGooglePayNonce(
+          // price: price,
+          // currencyCode: currency,
+          // priceStatus: totalPriceStatusFinal,
+          // onGooglePayNonceRequestSuccess: (result) =>
+              // _chargeSquareWallet(result.nonce),
+          // onGooglePayNonceRequestFailure: (error) =>
+              // _walletFailed(error.message),
+          // onGooglePayCanceled: _walletCancelled,
+        // );
+        // return;
+      // }
 
-      await InAppPayments.requestApplePayNonce(
-        price: price,
-        summaryLabel: widget.info.event.title,
-        countryCode: _merchantCountry,
-        currencyCode: currency,
-        paymentType: ApplePayPaymentType.finalPayment,
-        onApplePayNonceRequestSuccess: (result) async {
-          // Apple's sheet stays up until it is told the outcome, so the
-          // charge happens first and the sheet is closed with the verdict.
-          final ok = await _chargeSquareWallet(result.nonce, closeApple: false);
+      // await InAppPayments.requestApplePayNonce(
+        // price: price,
+        // summaryLabel: widget.info.event.title,
+        // countryCode: _merchantCountry,
+        // currencyCode: currency,
+        // paymentType: ApplePayPaymentType.finalPayment,
+        // onApplePayNonceRequestSuccess: (result) async {
+          // // Apple's sheet stays up until it is told the outcome, so the
+          // // charge happens first and the sheet is closed with the verdict.
+          // final ok = await _chargeSquareWallet(result.nonce, closeApple: false);
 
-          await InAppPayments.completeApplePayAuthorization(
-            isSuccess: ok,
-            errorMessage: ok ? '' : (_error ?? 'Payment failed'),
-          );
-        },
-        onApplePayNonceRequestFailure: (error) => _walletFailed(error.message),
-        onApplePayComplete: () {},
-      );
-    } catch (e) {
-      _walletFailed('That payment could not be started. Please try again.');
-      if (AppEnvironment.isStaging) debugPrint('💳 [Square] wallet pay: $e');
-    }
-  }
+          // await InAppPayments.completeApplePayAuthorization(
+            // isSuccess: ok,
+            // errorMessage: ok ? '' : (_error ?? 'Payment failed'),
+          // );
+        // },
+        // onApplePayNonceRequestFailure: (error) => _walletFailed(error.message),
+        // onApplePayComplete: () {},
+      // );
+    // } catch (e) {
+      // _walletFailed('That payment could not be started. Please try again.');
+      // if (AppEnvironment.isStaging) debugPrint('💳 [Square] wallet pay: $e');
+    // }
+  // }
 
-  /// Sends a wallet nonce to be charged. Returns whether it went through.
-  Future<bool> _chargeSquareWallet(
-    String nonce, {
-    bool closeApple = true,
-  }) async {
-    try {
-      final result = await CheckoutApi.squarePay(
-        widget.cartToken,
-        widget.info.event.eid,
-        nonce,
-        // No verification token: the wallet authenticated the cardholder, and
-        // square.php only forwards one when it is given one.
-        '',
-        widget.info.event.site,
-      );
+  // /// Sends a wallet nonce to be charged. Returns whether it went through.
+  // Future<bool> _chargeSquareWallet(
+    // String nonce, {
+    // bool closeApple = true,
+  // }) async {
+    // try {
+      // final result = await CheckoutApi.squarePay(
+        // widget.cartToken,
+        // widget.info.event.eid,
+        // nonce,
+        // // No verification token: the wallet authenticated the cardholder, and
+        // // square.php only forwards one when it is given one.
+        // '',
+        // widget.info.event.site,
+      // );
 
-      final status = result.paymentStatus;
+      // final status = result.paymentStatus;
 
-      if (status != 'succeeded' && status != 'processing') {
-        _walletFailed('That payment was not completed. Please try again.');
-        return false;
-      }
+      // if (status != 'succeeded' && status != 'processing') {
+        // _walletFailed('That payment was not completed. Please try again.');
+        // return false;
+      // }
 
-      await _complete(result.transactionId, status, provider: 'square');
-      return true;
-    } on CheckoutException catch (e) {
-      _walletFailed(e.message);
-      return false;
-    }
-  }
+      // await _complete(result.transactionId, status, provider: 'square');
+      // return true;
+    // } on CheckoutException catch (e) {
+      // _walletFailed(e.message);
+      // return false;
+    // }
+  // }
 
-  void _walletFailed(String message) {
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      _error = message;
-    });
-  }
+  // void _walletFailed(String message) {
+    // if (!mounted) return;
+    // setState(() {
+      // _busy = false;
+      // _error = message;
+    // });
+  // }
 
-  void _walletCancelled() {
-    // Dismissing the wallet is not an error. Nothing charged, cart untouched.
-    if (!mounted) return;
-    setState(() => _busy = false);
-  }
+  // void _walletCancelled() {
+    // // Dismissing the wallet is not an error. Nothing charged, cart untouched.
+    // if (!mounted) return;
+    // setState(() => _busy = false);
+  // }
 
-  /// Dresses Square's iOS card screen in the checkout's own colours.
-  ///
-  /// Only the fields the theme actually needs. Square falls back to its own
-  /// defaults for anything left unset, which is better than guessing at a
-  /// value and getting a near-miss.
-  Future<void> _applySquareTheme() async {
-    RGBAColor rgb(int r, int g, int b) => RGBAColor(
-      (c) => c
-        ..r = r
-        ..g = g
-        ..b = b,
-    );
+  // /// Dresses Square's iOS card screen in the checkout's own colours.
+  // ///
+  // /// Only the fields the theme actually needs. Square falls back to its own
+  // /// defaults for anything left unset, which is better than guessing at a
+  // /// value and getting a near-miss.
+  // Future<void> _applySquareTheme() async {
+    // RGBAColor rgb(int r, int g, int b) => RGBAColor(
+      // (c) => c
+        // ..r = r
+        // ..g = g
+        // ..b = b,
+    // );
 
-    await InAppPayments.setIOSCardEntryTheme(
-      IOSTheme(
-        (t) => t
-          ..backgroundColor = rgb(250, 249, 247).toBuilder()
-          ..foregroundColor = rgb(255, 255, 255).toBuilder()
-          ..textColor = rgb(20, 20, 15).toBuilder()
-          ..placeholderTextColor = rgb(168, 165, 156).toBuilder()
-          // Cursor, focus and the active save button.
-          ..tintColor = rgb(196, 160, 98).toBuilder()
-          ..messageColor = rgb(122, 122, 114).toBuilder()
-          ..errorColor = rgb(192, 57, 43).toBuilder()
-          ..saveButtonTitle = 'Pay'
-          ..saveButtonTextColor = rgb(255, 255, 255).toBuilder()
-          // Light: the rest of the checkout is, and a dark keyboard over a
-          // cream form is the one place the seam would show.
-          ..keyboardAppearance = KeyboardAppearance.light,
-      ),
-    );
-  }
+    // await InAppPayments.setIOSCardEntryTheme(
+      // IOSTheme(
+        // (t) => t
+          // ..backgroundColor = rgb(250, 249, 247).toBuilder()
+          // ..foregroundColor = rgb(255, 255, 255).toBuilder()
+          // ..textColor = rgb(20, 20, 15).toBuilder()
+          // ..placeholderTextColor = rgb(168, 165, 156).toBuilder()
+          // // Cursor, focus and the active save button.
+          // ..tintColor = rgb(196, 160, 98).toBuilder()
+          // ..messageColor = rgb(122, 122, 114).toBuilder()
+          // ..errorColor = rgb(192, 57, 43).toBuilder()
+          // ..saveButtonTitle = 'Pay'
+          // ..saveButtonTextColor = rgb(255, 255, 255).toBuilder()
+          // // Light: the rest of the checkout is, and a dark keyboard over a
+          // // cream form is the one place the seam would show.
+          // ..keyboardAppearance = KeyboardAppearance.light,
+      // ),
+    // );
+  // }
 
-  /// Square has a card and, where required, the bank's blessing.
-  ///
-  /// Square's sheet has already closed by the time this runs, so neither
-  /// completeCardEntry nor showCardNonceProcessingError may be called here.
-  /// Those two belong to the plain card-entry flow, where the sheet stays
-  /// open while the app charges the nonce and they release the latch holding
-  /// it. The verification flow never creates that latch — CardEntryModule
-  /// returns Finish() as soon as a contact is set — so calling either one
-  /// throws a NullPointerException on countDownLatch.
-  ///
-  /// Anything to report therefore goes to this screen's own notice.
-  Future<void> _onSquareVerified(BuyerVerificationDetails details) async {
-    try {
-      final result = await CheckoutApi.squarePay(
-        widget.cartToken,
-        widget.info.event.eid,
-        details.nonce,
-        details.token,
-        widget.info.event.site,
-      );
+  // /// Square has a card and, where required, the bank's blessing.
+  // ///
+  // /// Square's sheet has already closed by the time this runs, so neither
+  // /// completeCardEntry nor showCardNonceProcessingError may be called here.
+  // /// Those two belong to the plain card-entry flow, where the sheet stays
+  // /// open while the app charges the nonce and they release the latch holding
+  // /// it. The verification flow never creates that latch — CardEntryModule
+  // /// returns Finish() as soon as a contact is set — so calling either one
+  // /// throws a NullPointerException on countDownLatch.
+  // ///
+  // /// Anything to report therefore goes to this screen's own notice.
+  // Future<void> _onSquareVerified(BuyerVerificationDetails details) async {
+    // try {
+      // final result = await CheckoutApi.squarePay(
+        // widget.cartToken,
+        // widget.info.event.eid,
+        // details.nonce,
+        // details.token,
+        // widget.info.event.site,
+      // );
 
-      final status = result.paymentStatus;
+      // final status = result.paymentStatus;
 
-      if (status != 'succeeded' && status != 'processing') {
-        if (!mounted) return;
-        setState(() {
-          _busy = false;
-          _error = 'That payment was not completed. Please try again.';
-        });
-        return;
-      }
+      // if (status != 'succeeded' && status != 'processing') {
+        // if (!mounted) return;
+        // setState(() {
+          // _busy = false;
+          // _error = 'That payment was not completed. Please try again.';
+        // });
+        // return;
+      // }
 
-      await _complete(result.transactionId, status, provider: 'square');
-    } on CheckoutException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = e.message;
-      });
-    }
-  }
+      // await _complete(result.transactionId, status, provider: 'square');
+    // } on CheckoutException catch (e) {
+      // if (!mounted) return;
+      // setState(() {
+        // _busy = false;
+        // _error = e.message;
+      // });
+    // }
+  // }
 
-  String get _firstName => widget.buyerName.split(' ').first.trim().isEmpty
-      ? 'Guest'
-      : widget.buyerName.split(' ').first.trim();
+  // String get _firstName => widget.buyerName.split(' ').first.trim().isEmpty
+      // ? 'Guest'
+      // : widget.buyerName.split(' ').first.trim();
 
-  String get _lastName {
-    final parts = widget.buyerName.trim().split(' ');
-    return parts.length > 1 ? parts.sublist(1).join(' ') : '';
-  }
+  // String get _lastName {
+    // final parts = widget.buyerName.trim().split(' ');
+    // return parts.length > 1 ? parts.sublist(1).join(' ') : '';
+  // }
 
   /// PayPal: open an order, let the buyer approve it on PayPal's pages, then
   /// capture it server-side.
@@ -1162,45 +1176,46 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
               ),
             ],
 
-            // Above everything else: it is a shortcut past the form, and
-            // below it the buyer has already started reading the breakdown.
-            if (_method == 'square' && _squareWalletReady) ...[
-              const SizedBox(height: 14),
-              SizedBox(
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: _busy ? null : _payWithSquareWallet,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: TicketTheme.ink,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFFE8E4DA),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  icon: Icon(
-                    Platform.isIOS
-                        ? Icons.apple
-                        : Icons.account_balance_wallet_outlined,
-                    size: 20,
-                  ),
-                  label: Text(
-                    'Pay with $_walletName',
-                    style: const TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Center(
-                child: Text(
-                  'or pay by card below',
-                  style: TextStyle(color: TicketTheme.muted, fontSize: 12.5),
-                ),
-              ),
-            ],
+            // SQUARE (wallet button) — removed with the native checkout; uncomment to restore.
+            // // Above everything else: it is a shortcut past the form, and
+            // // below it the buyer has already started reading the breakdown.
+            // if (_method == 'square' && _squareWalletReady) ...[
+              // const SizedBox(height: 14),
+              // SizedBox(
+                // height: 50,
+                // child: ElevatedButton.icon(
+                  // onPressed: _busy ? null : _payWithSquareWallet,
+                  // style: ElevatedButton.styleFrom(
+                    // backgroundColor: TicketTheme.ink,
+                    // foregroundColor: Colors.white,
+                    // disabledBackgroundColor: const Color(0xFFE8E4DA),
+                    // shape: RoundedRectangleBorder(
+                      // borderRadius: BorderRadius.circular(12),
+                    // ),
+                  // ),
+                  // icon: Icon(
+                    // Platform.isIOS
+                        // ? Icons.apple
+                        // : Icons.account_balance_wallet_outlined,
+                    // size: 20,
+                  // ),
+                  // label: Text(
+                    // 'Pay with $_walletName',
+                    // style: const TextStyle(
+                      // fontSize: 15.5,
+                      // fontWeight: FontWeight.w800,
+                    // ),
+                  // ),
+                // ),
+              // ),
+              // const SizedBox(height: 10),
+              // const Center(
+                // child: Text(
+                  // 'or pay by card below',
+                  // style: TextStyle(color: TicketTheme.muted, fontSize: 12.5),
+                // ),
+              // ),
+            // ],
 
             // The buyer is away on Mollie's page. If they close it instead
             // of letting it redirect, nothing comes back and this screen
