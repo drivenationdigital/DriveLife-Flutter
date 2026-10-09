@@ -124,6 +124,18 @@ class _WebPageScreenState extends State<WebPageScreen> {
 
   /// Decides where each navigation goes.
   Future<NavigationDecision> _onNavigate(NavigationRequest request) async {
+    // Subframes are not navigations, they are the page loading itself.
+    //
+    // iOS and Android disagree here, and the difference is not cosmetic: on
+    // Android this fires only for the main frame, while WKWebView reports
+    // every iframe and subresource through the same delegate. So a page that
+    // embeds Stripe.js — which mounts hidden iframes on js.stripe.com — had
+    // each of those read as "the user is navigating off-site", and the rule
+    // below dutifully handed js.stripe.com to Safari and left the app.
+    //
+    // Only a main-frame navigation is a decision a user made.
+    if (!request.isMainFrame) return NavigationDecision.navigate;
+
     final target = Uri.tryParse(request.url);
 
     if (target == null) return NavigationDecision.prevent;
