@@ -89,6 +89,48 @@ void main() {
       expect(find.text('Garage'), findsOneWidget);
     });
 
+    testWidgets('the ends are semicircles, not rounded corners', (
+      tester,
+    ) async {
+      // A pill, not a rounded rectangle: the radius has to be half the
+      // height, or there is a straight section between the ends and that is
+      // what the eye reads as "square".
+      final items = [
+        for (final label in ['Home', 'Discover', 'Photos', 'Garage', 'Account'])
+          DlNavItem(
+            label: label,
+            icon: (selected) => const Icon(Icons.circle, size: 22),
+          ),
+      ];
+
+      await tester.pumpWidget(
+        wrap(
+          Scaffold(
+            bottomNavigationBar: DlBottomNav(
+              items: items,
+              currentIndex: 0,
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      final bar = tester.widget<Container>(
+        find
+            .descendant(
+              of: find.byType(DlBottomNav),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+
+      final shape = (bar.decoration! as BoxDecoration).borderRadius!
+          .resolve(TextDirection.ltr);
+
+      expect(shape.topLeft.x, DlBottomNav.height / 2);
+      expect(shape.bottomRight.x, DlBottomNav.height / 2);
+    });
+
     testWidgets('the highlight travels rather than fading', (tester) async {
       final items = [
         for (final label in ['Home', 'Discover', 'Photos', 'Garage', 'Account'])

@@ -20,6 +20,12 @@ class DlTopTab {
 /// row deliberately runs off the right edge so it reads as scrollable instead
 /// of looking like a cramped segmented control.
 class DlTopTabs extends StatefulWidget {
+  /// Fixed, and declared rather than measured.
+  ///
+  /// The row rides in a sliver header, which has to know its extent before
+  /// it is laid out. 6 top padding + 8/11 around a 38 chip + 1 divider.
+  static const double height = 64;
+
   final List<DlTopTab> tabs;
   final int currentIndex;
   final ValueChanged<int> onChanged;
@@ -86,6 +92,7 @@ class _DlTopTabsState extends State<DlTopTabs> {
   Widget build(BuildContext context) {
     return Container(
       color: Colors.white,
+      height: DlTopTabs.height,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

@@ -1,6 +1,6 @@
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:drivelife/screens/store/shop_screen.dart';
-import 'package:drivelife/screens/search_screen.dart';
+import 'package:drivelife/screens/discover/discover_map_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/widgets/nav/dl_bottom_nav.dart';
 import 'package:drivelife/widgets/nav/dl_top_tabs.dart';
@@ -79,6 +79,15 @@ class _HomeTabsState extends State<HomeTabs> {
   /// reach the top. Fed by the feed, which is the only thing long enough to
   /// warrant it.
   final ChromeVisibility _chrome = ChromeVisibility();
+
+  /// Height of the header row, which [_Header] fixes.
+  static const double _headerHeight = 56;
+
+  /// True when the feed is drawing the chrome inside its own scroll view.
+  ///
+  /// Only the For You section has a scroll view to put it in. Every other
+  /// section is a different screen, so the shell draws it above them.
+  bool get _chromeIsInFeed => _currentIndex == _dHome && _homeTab == 0;
 
   /// Shared by every piece of chrome, so the header, the section tabs and
   /// the bottom bar leave and return as one movement rather than three.
@@ -184,7 +193,10 @@ class _HomeTabsState extends State<HomeTabs> {
       // nothing: the tap changed _homeTab, and the frozen IndexedStack
       // carried on showing the section it was built with.
       const SizedBox.shrink(),
-      const SearchScreen(embedded: true),
+      // Discover is the map. Search still exists and is reachable from
+      // the header; this destination is the browse-by-place view the bottom
+      // bar's compass has always implied.
+      const DiscoverMapScreen(),
       if (FeatureFlags.mediaTab) MediaScreen() else const SizedBox.shrink(),
       const GarageListScreen(embedded: true),
       if (currentAccount?.isClubAccount ?? false)
@@ -203,11 +215,46 @@ class _HomeTabsState extends State<HomeTabs> {
   /// others are off screen. Animating the content would mean rebuilding it,
   /// and losing a feed's place to gain a cross-fade is a bad trade. The
   /// movement lives in the tab row instead, which is where the eye is.
-  Widget _buildHome() {
+  /// Header and section tabs, as one block.
+  ///
+  /// Either handed to the feed to live inside its scroll view, or drawn above
+  /// the content for destinations that have no feed to put it in. One builder
+  /// so the two cannot drift apart.
+  Widget _buildChrome(ThemeProvider theme) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildHeader(theme),
+        if (_currentIndex == _dHome)
+          DlTopTabs(
+            tabs: _homeTabs,
+            currentIndex: _homeTab,
+            onChanged: (i) => setState(() => _homeTab = i),
+          ),
+      ],
+    );
+  }
+
+  /// How tall [_buildChrome] is, which a sliver header has to know up front.
+  double get _chromeHeight =>
+      _headerHeight + (_currentIndex == _dHome ? DlTopTabs.height : 0);
+
+  Widget _buildHome(ThemeProvider theme) {
     return IndexedStack(
       index: _homeTab,
       children: [
-        PostsScreen(key: _postsScreenKey, chrome: _chrome),
+        // The chrome rides inside the feed's own scroll view, so the
+        // scroll moves it. It used to collapse in a Column above the feed,
+        // which changed the viewport's height on every frame of the
+        // animation — and a viewport that resizes during a drag keeps
+        // correcting its own offset, which is what made the top of the feed
+        // feel heavy and stutter.
+        PostsScreen(
+          key: _postsScreenKey,
+          chrome: _chrome,
+          header: _buildChrome(theme),
+          headerHeight: _chromeHeight,
+        ),
         EventsScreen(),
         VenuesScreen(),
         MyClubsScreen(),
@@ -754,60 +801,28 @@ class _HomeTabsState extends State<HomeTabs> {
         // shrinking the content, which would reflow the feed on every
         // scroll direction change.
         extendBody: true,
-        body: ValueListenableBuilder<bool>(
-          valueListenable: _chrome,
-          builder: (context, chromeVisible, _) {
-            // Only Home hides its chrome. Everywhere else the header is the
-            // only navigation on screen, and a destination you cannot leave
-            // without scrolling is worse than a chunky header.
-            final canHide = _currentIndex == _dHome;
-            final showChrome = chromeVisible || !canHide;
+        body: Column(
+          children: [
+            SizedBox(height: MediaQuery.of(context).padding.top),
 
-            return Column(
-              children: [
-                SizedBox(height: MediaQuery.of(context).padding.top),
+            // Drawn here only where there is no feed to put it in. On the
+            // feed itself the chrome is a sliver, so nothing above the
+            // scroll view changes size while a finger is on the screen.
+            if (!_chromeIsInFeed) _buildChrome(theme),
 
-                // Header and section tabs collapse together: they are one
-                // block of chrome and sliding them independently reads as
-                // two separate things going wrong.
-                _Collapsible(
-                  visible: showChrome,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildHeader(theme),
-                      // Sections belong to Home. On any other destination
-                      // the row would be navigating something that is not
-                      // on screen.
-                      if (_currentIndex == _dHome)
-                        DlTopTabs(
-                          tabs: _homeTabs,
-                          currentIndex: _homeTab,
-                          onChanged: (i) {
-                            _chrome.show();
-                            setState(() => _homeTab = i);
-                          },
-                        ),
-                    ],
-                  ),
-                ),
-
-                Expanded(
-                  child: IndexedStack(
-                    index: _currentIndex,
-                    children: [
-                      // Rebuilt every frame so it tracks _homeTab. The
-                      // sections inside keep their state regardless:
-                      // Flutter reconciles them by type and position, and
-                      // the feed carries a key.
-                      _buildHome(),
-                      ..._screens.skip(1),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
+            Expanded(
+              child: IndexedStack(
+                index: _currentIndex,
+                children: [
+                  // Rebuilt every frame so it tracks _homeTab. The sections
+                  // inside keep their state regardless: Flutter reconciles
+                  // them by type and position, and the feed carries a key.
+                  _buildHome(theme),
+                  ..._screens.skip(1),
+                ],
+              ),
+            ),
+          ],
         ),
         bottomNavigationBar: ValueListenableBuilder<bool>(
           valueListenable: _chrome,
@@ -1003,6 +1018,10 @@ class _Header extends StatelessWidget {
 
   const _Header({required this.title, required this.actions});
 
+  /// Fixed height, matching _HomeTabsState._headerHeight — the sliver that
+  /// carries this has to declare its extent before layout, so the two agree
+  /// by hand.
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1010,31 +1029,6 @@ class _Header extends StatelessWidget {
       height: 56,
       padding: const EdgeInsets.only(left: 20),
       child: Row(children: [title, const Spacer(), ...actions]),
-    );
-  }
-}
-
-/// Collapses its child to nothing and back.
-///
-/// Height rather than a slide: this sits at the top of a Column, so the
-/// content below has to close the gap as it goes. A slide would leave a
-/// white band where the header used to be.
-class _Collapsible extends StatelessWidget {
-  final bool visible;
-  final Widget child;
-
-  const _Collapsible({required this.visible, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRect(
-      child: AnimatedAlign(
-        duration: _HomeTabsState._chromeDuration,
-        curve: _HomeTabsState._chromeCurve,
-        alignment: Alignment.bottomCenter,
-        heightFactor: visible ? 1 : 0,
-        child: child,
-      ),
     );
   }
 }

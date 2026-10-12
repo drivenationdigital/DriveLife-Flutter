@@ -86,6 +86,7 @@ dependencies:
   # SQUARE: dropped with the native checkout (FeatureFlags.nativeTicketSelection).
   # square_in_app_payments: ^1.7.14
   webview_flutter: ^4.14.1
+  mapbox_maps_flutter: ^3.0.1
 
 dev_dependencies:
   flutter_test:

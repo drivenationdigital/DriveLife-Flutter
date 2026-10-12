@@ -1,3 +1,5 @@
+import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
+import 'package:flutter/rendering.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:drivelife/api/offers_api_service.dart';
 import 'package:drivelife/providers/account_provider.dart';
@@ -15,11 +17,36 @@ import '../services/auth_service.dart';
 import '../components/post_card.dart';
 
 class PostsScreen extends StatefulWidget {
-  /// Told which way the feed is scrolling, so the shell can get its header
-  /// and bottom bar out of the way. Null when nothing is listening.
+  /// Told which way the feed is scrolling, so the shell can slide its
+  /// bottom bar out of the way. Null when nothing is listening.
+  ///
+  /// Only the bottom bar uses this now. The top chrome is a sliver inside
+  /// this screen's own scroll view — see [header] — which is what stopped it
+  /// resizing the viewport mid-gesture.
   final ChromeVisibility? chrome;
 
-  const PostsScreen({super.key, this.chrome});
+  /// The shell's header and section tabs, rendered inside the feed.
+  ///
+  /// Given to this screen rather than stacked above it so the SCROLL moves
+  /// it, not an animation. A collapsing widget above the feed changed the
+  /// viewport's height on every frame, and a viewport that resizes during a
+  /// drag has to keep correcting its own offset — which is what the heavy,
+  /// stuttering feel at the top of the feed was.
+  ///
+  /// Null when the shell is drawing it itself, which it does for every
+  /// destination that is not this one.
+  final Widget? header;
+
+  /// How tall [header] is. A sliver header has to declare its extent before
+  /// layout, so this cannot be measured.
+  final double headerHeight;
+
+  const PostsScreen({
+    super.key,
+    this.chrome,
+    this.header,
+    this.headerHeight = 0,
+  });
 
   @override
   State<PostsScreen> createState() => PostsScreenState();
@@ -35,6 +62,21 @@ class PostsScreenState extends State<PostsScreen>
   // NEW: shared visibility flag for the pills row. Tabs flip it on scroll;
   // the parent rebuilds only the pills wrapper via ValueListenableBuilder.
 
+  /// The feeds on offer, in the order they appear.
+  ///
+  /// Featured is hidden rather than removed: the tab, its fetch and its
+  /// backend are all intact, and putting [PostTabType.forYou] back in this
+  /// list is the only change needed to bring it back.
+  ///
+  /// The selector, the TabController's length and the TabBarView's children
+  /// all read this, so none of them can disagree about how many tabs there
+  /// are — which is the usual way a hidden tab turns into a crash.
+  static const List<PostTabType> _visibleTabs = [
+    PostTabType.latest,
+    PostTabType.following,
+    // PostTabType.forYou,
+  ];
+
   final GlobalKey<_PostsTabState> _forYouKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _latestKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _followingKey = GlobalKey<_PostsTabState>();
@@ -42,7 +84,7 @@ class PostsScreenState extends State<PostsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: _visibleTabs.length, vsync: this);
     // When the user switches tabs, reveal the pills again so they're never
     // stuck hidden on a tab that has nothing to scroll.
     // _tabController.addListener(() {
@@ -53,17 +95,15 @@ class PostsScreenState extends State<PostsScreen>
     _getCurrentTabKey().currentState?.scrollToTopAndRefresh();
   }
 
+  GlobalKey<_PostsTabState> _keyFor(PostTabType type) => switch (type) {
+    PostTabType.latest => _latestKey,
+    PostTabType.following => _followingKey,
+    PostTabType.forYou => _forYouKey,
+  };
+
   GlobalKey<_PostsTabState> _getCurrentTabKey() {
-    switch (_tabController.index) {
-      case 0:
-        return _latestKey;
-      case 1:
-        return _followingKey;
-      case 2:
-        return _forYouKey;
-      default:
-        return _latestKey;
-    }
+    final index = _tabController.index.clamp(0, _visibleTabs.length - 1);
+    return _keyFor(_visibleTabs[index]);
   }
 
   @override
@@ -106,17 +146,18 @@ class PostsScreenState extends State<PostsScreen>
     return TabBarView(
       controller: _tabController,
       physics: const NeverScrollableScrollPhysics(),
-      // Order must match _CustomTabBar._labels.
       children: [
-        for (final tab in [
-          (_latestKey, PostTabType.latest),
-          (_followingKey, PostTabType.following),
-          (_forYouKey, PostTabType.forYou),
-        ])
+        for (final type in _visibleTabs)
           _PostsTab(
-            key: tab.$1,
-            tabType: tab.$2,
-            selector: _CustomTabBar(controller: _tabController, theme: theme),
+            key: _keyFor(type),
+            tabType: type,
+            header: widget.header,
+            headerHeight: widget.headerHeight,
+            selector: _CustomTabBar(
+              controller: _tabController,
+              theme: theme,
+              tabs: _visibleTabs,
+            ),
           ),
       ],
     );
@@ -138,14 +179,28 @@ class _PostsTab extends StatefulWidget {
   /// view they happen to be pinned inside.
   final Widget selector;
 
-  const _PostsTab({super.key, required this.tabType, required this.selector});
+  /// The shell's chrome, floating above the selector. Null when the shell is
+  /// drawing it itself, which it does for every destination but this one.
+  final Widget? header;
+
+  /// How tall [header] is. A sliver header declares its extent before layout,
+  /// so this cannot be measured.
+  final double headerHeight;
+
+  const _PostsTab({
+    super.key,
+    required this.tabType,
+    required this.selector,
+    this.header,
+    this.headerHeight = 0,
+  });
 
   @override
   State<_PostsTab> createState() => _PostsTabState();
 }
 
 class _PostsTabState extends State<_PostsTab>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -385,6 +440,23 @@ class _PostsTabState extends State<_PostsTab>
           physics: const AlwaysScrollableScrollPhysics(),
           cacheExtent: 2000,
           slivers: [
+            // Floating, not pinned: it leaves as you read on and comes back
+            // the moment you scroll up, without having to reach the top.
+            //
+            // Being a sliver is the whole point. The scroll moves it, so
+            // there is no animation to run and no layout above the feed to
+            // change — the viewport keeps exactly one size for the life of
+            // the gesture.
+            if (widget.header != null && widget.headerHeight > 0)
+              SliverPersistentHeader(
+                floating: true,
+                delegate: FloatingChromeHeader(
+                  height: widget.headerHeight,
+                  vsync: this,
+                  child: widget.header!,
+                ),
+              ),
+
             // Scrolls away: a standing recommendation, not navigation, so it
             // should not hold the top of the screen for ever.
             const SliverToBoxAdapter(child: HotRightNow()),
@@ -493,12 +565,22 @@ class _PostsTabState extends State<_PostsTab>
                         );
                       },
                       onLikeChanged: (isLiked) {
-                        // FIX: Wrap mutation in setState so any widget listening
-                        // to _posts gets a proper rebuild signal
                         setState(() {
                           post['is_liked'] = isLiked;
-                          post['likes_count'] =
-                              (post['likes_count'] as int) + (isLiked ? 1 : -1);
+
+                          // Parsed, not cast. `as int` threw on any endpoint
+                          // that sent the count as a string or a double, and
+                          // which endpoint filled a given post decided
+                          // whether liking it crashed.
+                          final current = switch (post['likes_count']) {
+                            final int v => v,
+                            final num v => v.toInt(),
+                            final String v => int.tryParse(v.trim()) ?? 0,
+                            _ => 0,
+                          };
+
+                          post['likes_count'] = (current + (isLiked ? 1 : -1))
+                              .clamp(0, 9999999);
                         });
                       },
                       onDelete: scrollToTopAndRefresh,
@@ -538,11 +620,28 @@ class _CustomTabBar extends StatelessWidget {
   final TabController controller;
   final ThemeProvider theme;
 
-  const _CustomTabBar({required this.controller, required this.theme});
+  /// Which feeds to offer, in order. Comes from the screen so the pills and
+  /// the TabBarView cannot disagree about how many there are.
+  final List<PostTabType> tabs;
+
+  const _CustomTabBar({
+    required this.controller,
+    required this.theme,
+    required this.tabs,
+  });
 
   /// "Featured" is the curated tab — same feed as the old "For You", renamed.
   /// Order must match the TabBarView children in [PostsScreenState.build].
-  static const List<String> _labels = ['Latest', 'Following', 'Featured'];
+  /// What each feed is called on the pill.
+  ///
+  /// "Featured" is the curated tab — the same feed as the old "For You",
+  /// renamed. It keeps its label even while hidden, so bringing the tab back
+  /// needs no change here.
+  static const Map<PostTabType, String> _labels = {
+    PostTabType.latest: 'Latest',
+    PostTabType.following: 'Following',
+    PostTabType.forYou: 'Featured',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -554,9 +653,9 @@ class _CustomTabBar extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 7, 16, 9),
           child: Row(
             children: [
-              for (var i = 0; i < _labels.length; i++) ...[
+              for (var i = 0; i < tabs.length; i++) ...[
                 if (i > 0) const SizedBox(width: 10),
-                Expanded(child: _buildTab(i, _labels[i])),
+                Expanded(child: _buildTab(i, _labels[tabs[i]] ?? '')),
               ],
             ],
           ),

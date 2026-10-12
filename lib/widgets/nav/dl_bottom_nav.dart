@@ -24,7 +24,15 @@ class DlBottomNav extends StatelessWidget {
   final ValueChanged<int> onChanged;
 
   /// How much vertical room the bar occupies, before the safe area.
-  static const double height = 74;
+  ///
+  /// Shorter than it was. At 74 the corner radius could never catch up with
+  /// the height, so the ends read as rounded corners on a rectangle rather
+  /// than as the ends of a pill — which is the difference you can see
+  /// against Uber's.
+  static const double height = 62;
+
+  /// Inset of the travelling highlight from the bar's own edges.
+  static const double _inset = 7;
 
   /// Shared by the travelling highlight and the labels it passes under, so
   /// the colour change lands with the pill rather than trailing behind it.
@@ -43,12 +51,15 @@ class DlBottomNav extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
         child: Container(
           height: height,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(26),
+            // Half the height: a true stadium, so the ends are semicircles
+            // rather than corners. Anything less and the straight section
+            // between them is what the eye reads.
+            borderRadius: BorderRadius.circular(height / 2),
             boxShadow: [
               // Two shadows: a tight one to lift the bar off the content and
               // a wide soft one to ground it. A single shadow either looks
@@ -80,8 +91,8 @@ class DlBottomNav extends StatelessWidget {
                     duration: _duration,
                     curve: _curve,
                     left: slot * currentIndex,
-                    top: 10,
-                    bottom: 10,
+                    top: _inset,
+                    bottom: _inset,
                     width: slot,
                     child: Center(
                       child: Container(
@@ -89,10 +100,15 @@ class DlBottomNav extends StatelessWidget {
                         // than to its own label. Hugging each label would
                         // make the highlight grow and shrink as it travelled,
                         // which draws the eye to the wrong thing.
-                        width: slot - 12,
+                        width: slot - 10,
                         decoration: BoxDecoration(
                           color: const Color(0xFFF2F2F2),
-                          borderRadius: BorderRadius.circular(16),
+                          // Also a stadium, and for the same reason: a
+                          // rounded rectangle travelling inside a pill looks
+                          // like a different shape loose in the bar.
+                          borderRadius: BorderRadius.circular(
+                            (height - _inset * 2) / 2,
+                          ),
                         ),
                       ),
                     ),
@@ -146,7 +162,7 @@ class _Item extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

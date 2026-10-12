@@ -2,6 +2,7 @@ import 'package:drivelife/screens/create-post/edit_post_tags_screen.dart';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
+
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/components/news_blog.dart';
@@ -24,6 +25,27 @@ import '../api/interactions_api.dart';
 import '../screens/comments_bottom_sheet.dart';
 import '../widgets/feed/feed_video_player.dart';
 import '../widgets/profile/profile_avatar.dart';
+
+/// Decode widths for images in the feed, in physical pixels.
+///
+/// Flutter decodes a network image at its SOURCE size unless told otherwise,
+/// and holds the decoded bitmap in memory — four bytes a pixel. A 2000×1500
+/// photo is 12MB decoded, so a feed scrolling through a dozen of them is
+/// measured in hundreds of megabytes before anything has gone wrong.
+///
+/// These are the two that were uncapped. The main image already caps itself
+/// at 1400, which is about a phone's screen width in physical pixels.
+
+/// The blurred backdrop behind a post's image.
+///
+/// Deliberately tiny: it is blurred by 18 sigma before it reaches the screen,
+/// so detail is destroyed by design. 64px costs about 16KB decoded against
+/// roughly 12MB for the same photo at source — and the blur has far less to
+/// chew through, which shows up in scroll smoothness, not just memory.
+const int _blurDecodeWidth = 64;
+
+/// A 44pt avatar on a 3x screen.
+const int _avatarDecodeWidth = 132;
 
 class PostCard extends StatefulWidget {
   final Map<String, dynamic> post;
@@ -86,7 +108,7 @@ class _PostCardState extends State<PostCard>
     super.initState();
 
     _liked = widget.post['is_liked'] ?? false;
-    _likesCount = (widget.post['likes_count'] ?? 0) as int;
+    _likesCount = _asCount(widget.post['likes_count']) ?? 0;
 
     // Curated posts show "Featured" in place of the timestamp, so a post the
     // team picked weeks ago doesn't read as stale in the For You tab.
@@ -162,18 +184,30 @@ class _PostCardState extends State<PostCard>
   void didUpdateWidget(covariant PostCard oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    final updatedLiked = widget.post['is_liked'] ?? _liked;
-    final updatedLikesCount =
-        (widget.post['likes_count'] ?? _likesCount) as int;
+    // Plain assignment, NOT setState.
+    //
+    // didUpdateWidget runs while the parent is building, and setState there
+    // marks this element dirty mid-frame — "setState() or markNeedsBuild()
+    // called during build". Liking a post makes the feed rebuild every
+    // visible card, so a double tap walked straight into it.
+    //
+    // There is nothing to schedule anyway: the framework rebuilds this
+    // widget immediately after this returns.
+    _liked = widget.post['is_liked'] ?? _liked;
+    _likesCount = _asCount(widget.post['likes_count']) ?? _likesCount;
+  }
 
-    if (updatedLiked != _liked || updatedLikesCount != _likesCount) {
-      if (mounted) {
-        setState(() {
-          _liked = updatedLiked;
-          _likesCount = updatedLikesCount;
-        });
-      }
-    }
+  /// A like count from JSON, whatever shape it arrives in.
+  ///
+  /// `as int` was used in three places and throws on anything else — and this
+  /// comes from PHP, which is perfectly happy to send "12" or 12.0 for the
+  /// same field depending on the endpoint. Null when it cannot be read, so
+  /// callers keep the count they already had rather than showing a wrong one.
+  static int? _asCount(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim());
+    return null;
   }
 
   @override
@@ -266,7 +300,10 @@ class _PostCardState extends State<PostCard>
           _liked = false;
           _likesCount = (_likesCount - 1).clamp(0, 9999999);
         });
-        widget.onLikeChanged?.call(true);
+        // false, not true. Reporting a success here left the feed's own copy
+        // of the count one higher every time a like failed, and the card and
+        // the feed then disagreed for the rest of the session.
+        widget.onLikeChanged?.call(false);
       }
       return; // Skip post like API for events
     }
@@ -1657,10 +1694,15 @@ class _MediaCarousel extends StatelessWidget {
               ),
               clipBehavior: Clip.antiAlias,
               child: image != null && image.isNotEmpty
-                  ? Image.network(
-                      image,
+                  ? CachedNetworkImage(
+                      imageUrl: image,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Icon(
+                      // Image.network before: no disk cache, so every avatar
+                      // was fetched again each time it scrolled back into
+                      // view, and decoded at whatever size it was uploaded
+                      // at to fill 44 logical pixels.
+                      memCacheWidth: _avatarDecodeWidth,
+                      errorWidget: (_, __, ___) => Icon(
                         _iconForType(type),
                         color: Colors.grey.shade500,
                         size: 22,
@@ -1821,6 +1863,12 @@ class _MediaCarousel extends StatelessWidget {
                         child: CachedNetworkImage(
                           imageUrl: blurredUrl,
                           fit: BoxFit.cover,
+                          // Decoded tiny on purpose. This is a backdrop that
+                          // is blurred before anybody sees it, so resolution
+                          // buys nothing — and a feed holding several
+                          // full-size decodes for images nobody can make out
+                          // is the fastest way to run a phone out of memory.
+                          memCacheWidth: _blurDecodeWidth,
                           fadeInDuration: Duration.zero,
                           fadeOutDuration: Duration.zero,
                           errorWidget: (_, __, ___) => const SizedBox.shrink(),
@@ -1834,6 +1882,13 @@ class _MediaCarousel extends StatelessWidget {
                           child: CachedNetworkImage(
                             imageUrl: mediaUrl,
                             fit: BoxFit.cover,
+                            // Same image as the one on top, decoded again for
+                            // the backdrop — so without a cap every post in
+                            // the feed costs its full decode twice. Blurring
+                            // it afterwards makes the detail unrecoverable
+                            // anyway, and a small source makes the blur
+                            // itself cheaper to draw.
+                            memCacheWidth: _blurDecodeWidth,
                             fadeInDuration: Duration.zero,
                             errorWidget: (_, __, ___) =>
                                 const SizedBox.shrink(),
