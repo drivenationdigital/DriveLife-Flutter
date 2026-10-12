@@ -13,7 +13,10 @@ void main() {
 
     test('leaves plain text alone, so it is safe to apply while parsing', () {
       expect(decodeHtmlText('Plain Product Name'), 'Plain Product Name');
-      expect(decodeHtmlText('Café Racer — 3/4 sleeve'), 'Café Racer — 3/4 sleeve');
+      expect(
+        decodeHtmlText('Café Racer — 3/4 sleeve'),
+        'Café Racer — 3/4 sleeve',
+      );
     });
 
     test('handles null and empty', () {

@@ -8,7 +8,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 class GarageListScreen extends StatefulWidget {
-  const GarageListScreen({Key? key}) : super(key: key);
+  /// True when this is a bottom-nav destination rather than a pushed screen.
+  ///
+  /// Embedded it has no header of its own: the shell above already supplies
+  /// the logo and the actions, and its back arrow would pop the whole shell
+  /// rather than this screen — which looks like the app closing.
+  final bool embedded;
+
+  const GarageListScreen({Key? key, this.embedded = false}) : super(key: key);
 
   @override
   _GarageListScreenState createState() => _GarageListScreenState();
@@ -219,47 +226,49 @@ class _GarageListScreenState extends State<GarageListScreen> {
     final theme = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        // Use a Builder so Scaffold.of(context).openDrawer() has the right context
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        centerTitle: true, // 👈 ensures the title is centered
-        title: Image.asset('assets/logo-dark.png', height: 18),
-        actions: [
-          IconButton(
-            padding: const EdgeInsets.only(right: 14),
-            onPressed: () async {
-              final result = await NavigationHelper.navigateTo(
-                context,
-                const AddVehicleScreen(),
-              );
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              backgroundColor: Colors.white,
+              elevation: 0,
+              // Use a Builder so Scaffold.of(context).openDrawer() has the right context
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+                onPressed: () => Navigator.pop(context),
+              ),
+              centerTitle: true, // 👈 ensures the title is centered
+              title: Image.asset('assets/logo-dark.png', height: 18),
+              actions: [
+                IconButton(
+                  padding: const EdgeInsets.only(right: 14),
+                  onPressed: () async {
+                    final result = await NavigationHelper.navigateTo(
+                      context,
+                      const AddVehicleScreen(),
+                    );
 
-              // Refresh if vehicle was added
-              if (result != null) {
-                _loadGarage(true);
-              }
-            },
-            icon: Row(
-              spacing: 4,
-              children: [
-                const Icon(Icons.add, color: Colors.black, size: 20),
-                const Text(
-                  'Add',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                    // Refresh if vehicle was added
+                    if (result != null) {
+                      _loadGarage(true);
+                    }
+                  },
+                  icon: Row(
+                    spacing: 4,
+                    children: [
+                      const Icon(Icons.add, color: Colors.black, size: 20),
+                      const Text(
+                        'Add',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
-        ],
-      ),
       body: RefreshIndicator(
         onRefresh: () => _loadGarage(true),
         color: theme.primaryColor,

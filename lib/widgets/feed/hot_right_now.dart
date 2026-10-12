@@ -58,22 +58,11 @@ class HotRightNow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(
-            _horizontalPadding,
-            16,
-            _horizontalPadding,
-            12,
-          ),
-          child: Text(
-            'Hot right now',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
-            ),
-          ),
-        ),
+        // No heading. The cards say what they are, and a row of two tiles
+        // under a title reads as a section of a page rather than part of a
+        // feed — which is what it is now that the feed selector sits below
+        // it rather than above.
+        const SizedBox(height: 12),
         SizedBox(
           height: _cardHeight,
           child: ListView.separated(

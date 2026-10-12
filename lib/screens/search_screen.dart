@@ -645,7 +645,14 @@ class SearchResultsContent extends StatelessWidget {
 }
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({Key? key}) : super(key: key);
+  /// True when this is a bottom-nav destination rather than a pushed screen.
+  ///
+  /// Embedded it drops its own header: the shell above supplies the logo and
+  /// actions, and a back arrow here would pop the whole shell, which reads as
+  /// the app closing.
+  final bool embedded;
+
+  const SearchScreen({Key? key, this.embedded = false}) : super(key: key);
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -744,28 +751,30 @@ class _SearchScreenState extends State<SearchScreen>
     final theme = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leadingWidth: 96,
-        leading: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-              onPressed: () {
-                Navigator.pop(context);
-              },
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              backgroundColor: Colors.white,
+              elevation: 0,
+              centerTitle: true,
+              leadingWidth: 96,
+              leading: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+              title: Image.asset('assets/logo-dark.png', height: 18),
+              actions: [
+                SharedHeaderIcons.qrCodeIcon(),
+                SharedHeaderIcons.notificationIcon(),
+              ],
             ),
-          ],
-        ),
-        title: Image.asset('assets/logo-dark.png', height: 18),
-        actions: [
-          SharedHeaderIcons.qrCodeIcon(),
-          SharedHeaderIcons.notificationIcon(),
-        ],
-      ),
       body: SafeArea(
         child: Column(
           children: [

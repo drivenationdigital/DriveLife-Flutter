@@ -408,7 +408,11 @@ class _VenuesScreenState extends State<VenuesScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      // top: false — the shell above already holds the status bar area, and
+      // the section tabs sit between it and this screen. Claiming it again
+      // put a band of white between the tabs and the search field.
       body: SafeArea(
+        top: false,
         child: Column(
           children: [
             // Search bar

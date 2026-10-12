@@ -1,11 +1,8 @@
-import 'package:drivelife/screens/events/open_event_editor.dart';
+import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:drivelife/api/offers_api_service.dart';
-import 'package:drivelife/main.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
-import 'package:drivelife/screens/garage/garage_list_screen.dart';
-import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/feed/hot_right_now.dart';
 import 'package:drivelife/widgets/feed/offers_banner.dart';
 import 'package:drivelife/widgets/upload_progress_card.dart';
@@ -18,7 +15,11 @@ import '../services/auth_service.dart';
 import '../components/post_card.dart';
 
 class PostsScreen extends StatefulWidget {
-  const PostsScreen({super.key});
+  /// Told which way the feed is scrolling, so the shell can get its header
+  /// and bottom bar out of the way. Null when nothing is listening.
+  final ChromeVisibility? chrome;
+
+  const PostsScreen({super.key, this.chrome});
 
   @override
   State<PostsScreen> createState() => PostsScreenState();
@@ -33,7 +34,6 @@ class PostsScreenState extends State<PostsScreen>
 
   // NEW: shared visibility flag for the pills row. Tabs flip it on scroll;
   // the parent rebuilds only the pills wrapper via ValueListenableBuilder.
-  final ValueNotifier<bool> _pillsVisible = ValueNotifier<bool>(true);
 
   final GlobalKey<_PostsTabState> _forYouKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _latestKey = GlobalKey<_PostsTabState>();
@@ -46,7 +46,6 @@ class PostsScreenState extends State<PostsScreen>
     // When the user switches tabs, reveal the pills again so they're never
     // stuck hidden on a tab that has nothing to scroll.
     // _tabController.addListener(() {
-    //   if (!_tabController.indexIsChanging) _pillsVisible.value = true;
     // });
   }
 
@@ -70,7 +69,6 @@ class PostsScreenState extends State<PostsScreen>
   @override
   void dispose() {
     _tabController.dispose();
-    _pillsVisible.dispose();
     super.dispose();
   }
 
@@ -81,52 +79,46 @@ class PostsScreenState extends State<PostsScreen>
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Column(
-        children: [
-          // Pills collapse on scroll-down, expand on scroll-up.
-          ValueListenableBuilder<bool>(
-            valueListenable: _pillsVisible,
-            builder: (context, visible, _) {
-              return ClipRect(
-                child: AnimatedSize(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeInOut,
-                  alignment: Alignment.bottomCenter,
-                  child: visible
-                      ? const _ActionPills()
-                      : const SizedBox(height: 0, width: double.infinity),
-                ),
-              );
-            },
-          ),
-          // Tab bar stays pinned.
-          _CustomTabBar(controller: _tabController, theme: theme),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              physics: const NeverScrollableScrollPhysics(),
-              // Order must match _CustomTabBar._labels.
-              children: [
-                _PostsTab(
-                  key: _latestKey,
-                  tabType: PostTabType.latest,
-                  pillsVisible: _pillsVisible,
-                ),
-                _PostsTab(
-                  key: _followingKey,
-                  tabType: PostTabType.following,
-                  pillsVisible: _pillsVisible,
-                ),
-                _PostsTab(
-                  key: _forYouKey,
-                  tabType: PostTabType.forYou,
-                  pillsVisible: _pillsVisible,
-                ),
-              ],
-            ),
-          ),
-        ],
+      // One listener for all three feeds: their notifications bubble up
+      // through here, so the shell is told about whichever is showing
+      // without each tab having to know the shell exists.
+      body: NotificationListener<ScrollNotification>(
+        onNotification: widget.chrome?.handle ?? (_) => false,
+        child: _buildFeed(theme),
       ),
+    );
+  }
+
+  Widget _buildFeed(ThemeProvider theme) {
+    // Three plain scroll views, not a NestedScrollView over a TabBarView.
+    //
+    // The nested version crashed. Its coordinator keeps outer and inner
+    // scrolls in step and asserts in _getMetrics when the viewport changes
+    // size underneath it — which is exactly what the collapsing header does,
+    // on every scroll. It also needed SliverOverlapAbsorber/Injector to stop
+    // the pinned selector jumping, and the whole arrangement existed only to
+    // share one header between three tabs.
+    //
+    // Each tab now carries its own copy of that header. The hot row is
+    // static cards and the selector is the same widget in the same place, so
+    // all three look identical — and each tab keeps its own scroll position,
+    // which is what a reader would expect anyway.
+    return TabBarView(
+      controller: _tabController,
+      physics: const NeverScrollableScrollPhysics(),
+      // Order must match _CustomTabBar._labels.
+      children: [
+        for (final tab in [
+          (_latestKey, PostTabType.latest),
+          (_followingKey, PostTabType.following),
+          (_forYouKey, PostTabType.forYou),
+        ])
+          _PostsTab(
+            key: tab.$1,
+            tabType: tab.$2,
+            selector: _CustomTabBar(controller: _tabController, theme: theme),
+          ),
+      ],
     );
   }
 }
@@ -138,13 +130,15 @@ enum PostTabType { forYou, latest, following }
 
 class _PostsTab extends StatefulWidget {
   final PostTabType tabType;
-  final ValueNotifier<bool> pillsVisible; // NEW
 
-  const _PostsTab({
-    super.key,
-    required this.tabType,
-    required this.pillsVisible,
-  });
+  /// The feed selector, pinned inside this tab's own scroll view.
+  ///
+  /// Passed in rather than built here so all three tabs share one widget
+  /// definition and one TabController — they differ only in which scroll
+  /// view they happen to be pinned inside.
+  final Widget selector;
+
+  const _PostsTab({super.key, required this.tabType, required this.selector});
 
   @override
   State<_PostsTab> createState() => _PostsTabState();
@@ -155,7 +149,10 @@ class _PostsTabState extends State<_PostsTab>
   @override
   bool get wantKeepAlive => true;
 
-  // FIX: Single controller — no need for PrimaryScrollController wrapper
+  /// This feed's own scroll.
+  ///
+  /// Its own again now the NestedScrollView has gone: one controller, one
+  /// position, no coordinator to keep in step and nothing to assert about.
   final ScrollController _scrollController = ScrollController();
   final AuthService _auth = AuthService();
 
@@ -184,7 +181,8 @@ class _PostsTabState extends State<_PostsTab>
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
+    // The scroll controller is attached in didChangeDependencies: it comes
+    // from context and is not available this early.
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -198,43 +196,34 @@ class _PostsTabState extends State<_PostsTab>
     });
   }
 
-  void _onScroll() {
-    if (!mounted) return;
+  /// Loads the next page as the bottom comes into view.
+  ///
+  /// Driven by the scroll notification rather than by the controller. Each
+  /// tab now has a controller of its own, so either would work — but the
+  /// notification carries the metrics of the list that actually moved, which
+  /// keeps this correct if these feeds are ever nested or shared again.
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (!mounted) return false;
 
-    // Pill visibility — immediate (not debounced).
-    // Reverse = user dragging up (content scrolling down) → hide.
-    // Forward = user dragging down (content scrolling up) → show.
-    // Always show when at the very top.
-    if (_scrollController.hasClients) {
-      final pos = _scrollController.position;
-      if (pos.pixels <= 0) {
-        widget.pillsVisible.value = true;
-      } else {
-        widget.pillsVisible.value = false;
-      }
-      // else {
-      //   final dir = pos.userScrollDirection;
-      //   if (dir == ScrollDirection.reverse) {
-      //     widget.pillsVisible.value = false;
-      //   } else if (dir == ScrollDirection.forward) {
-      //     widget.pillsVisible.value = true;
-      //   }
-      // }
-    }
+    // Only this list's own scrolling. A horizontal notification from a
+    // carousel in a post would otherwise page the feed.
+    if (notification.metrics.axis != Axis.vertical) return false;
 
-    // Pagination — debounced (unchanged behaviour).
     if (_scrollDebounce?.isActive ?? false) _scrollDebounce!.cancel();
+
+    final metrics = notification.metrics;
 
     _scrollDebounce = Timer(const Duration(milliseconds: 200), () {
       if (!mounted) return;
-      if (_scrollController.hasClients &&
-          _scrollController.position.pixels >=
-              _scrollController.position.maxScrollExtent - 500 &&
+
+      if (metrics.pixels >= metrics.maxScrollExtent - 500 &&
           !_isLoading &&
           _hasMore) {
         _fetchPosts();
       }
     });
+
+    return false;
   }
 
   Future<void> scrollToTopAndRefresh() async {
@@ -361,6 +350,7 @@ class _PostsTabState extends State<_PostsTab>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+
     final accountManager = Provider.of<AccountManager>(context, listen: false);
     final newUserId = accountManager.activeUser?.id;
 
@@ -388,129 +378,143 @@ class _PostsTabState extends State<_PostsTab>
       color: theme.primaryColor,
       backgroundColor: theme.backgroundColor,
       onRefresh: () => _fetchPosts(refresh: true),
-      child: CustomScrollView(
-        // FIX: Removed redundant PrimaryScrollController wrapper — passing the
-        // controller directly is sufficient and avoids potential conflicts
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        cacheExtent: 2000,
-        slivers: [
-          // SliverToBoxAdapter(child: StoriesRow()),
-          // Offers and "Hot right now" both head up Latest, the landing tab.
-          // Following and Featured stay pure feeds.
-          // Tiles are still hard-coded — see HotRightNow for the TODO.
-          if (widget.tabType == _offersTab) ...[
-            SliverToBoxAdapter(child: OffersBanner(offers: _offers)),
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScrollNotification,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          cacheExtent: 2000,
+          slivers: [
+            // Scrolls away: a standing recommendation, not navigation, so it
+            // should not hold the top of the screen for ever.
             const SliverToBoxAdapter(child: HotRightNow()),
-          ],
-          Consumer<UploadPostProvider>(
-            builder: (context, uploadProvider, _) {
-              final uploads = uploadProvider.uploads;
 
-              // FIX: Side effects moved OUT of build. Use post-frame callback
-              // so we never mutate state or schedule work during paint.
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _checkUploadCompletions(uploads);
-              });
+            // Pins. This one IS navigation — losing it mid-feed would mean
+            // scrolling back to the top to change tab.
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _PinnedSelector(child: widget.selector),
+            ),
 
-              if (uploads.isEmpty) {
-                return const SliverToBoxAdapter(child: SizedBox.shrink());
-              }
+            // SliverToBoxAdapter(child: StoriesRow()),
+            // Offers and "Hot right now" both head up Latest, the landing tab.
+            // Following and Featured stay pure feeds.
+            // Tiles are still hard-coded — see HotRightNow for the TODO.
+            // HotRightNow has moved to the shell's header, above the feed
+            // selector — it belongs to the screen now, not to this one tab.
+            // The offers banner stays: it is part of the Latest feed and the
+            // other two tabs have never shown it.
+            if (widget.tabType == _offersTab)
+              SliverToBoxAdapter(child: OffersBanner(offers: _offers)),
+            Consumer<UploadPostProvider>(
+              builder: (context, uploadProvider, _) {
+                final uploads = uploadProvider.uploads;
 
-              return SliverToBoxAdapter(
-                child: Column(
-                  children: [
-                    const SizedBox(height: 8),
-                    ...uploads.entries.map(
-                      (entry) => UploadProgressCard(
-                        key: ValueKey(entry.key),
-                        uploadId: entry.key,
-                        progress: entry.value,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
+                // FIX: Side effects moved OUT of build. Use post-frame callback
+                // so we never mutate state or schedule work during paint.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _checkUploadCompletions(uploads);
+                });
 
-          // Empty state
-          if (_posts.isEmpty && !_isLoading && _isInitialized)
-            SliverFillRemaining(
-              child: Center(
-                child: Text(
-                  _getEmptyMessage(),
-                  style: const TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-              ),
-            )
-          // Initial loading state
-          else if (_posts.isEmpty && _isLoading)
-            SliverFillRemaining(
-              child: Center(
-                child: CircularProgressIndicator(
-                  color: theme.primaryColor,
-                  strokeWidth: 2.5,
-                ),
-              ),
-            )
-          // Posts list
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  if (index == _posts.length) {
-                    if (!_hasMore) return const SizedBox.shrink();
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: theme.primaryColor,
-                          strokeWidth: 2.5,
+                if (uploads.isEmpty) {
+                  return const SliverToBoxAdapter(child: SizedBox.shrink());
+                }
+
+                return SliverToBoxAdapter(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 8),
+                      ...uploads.entries.map(
+                        (entry) => UploadProgressCard(
+                          key: ValueKey(entry.key),
+                          uploadId: entry.key,
+                          progress: entry.value,
                         ),
                       ),
-                    );
-                  }
-
-                  final post = _posts[index];
-
-                  return PostCard(
-                    key: ValueKey(post['id']),
-                    post: post,
-                    onTapProfile: () {
-                      if (!mounted) return;
-                      if (post['is_event'] == true) return;
-                      Navigator.pushNamed(
-                        context,
-                        '/view-profile',
-                        arguments: {
-                          'userId': post['user_id'],
-                          'username': post['username'],
-                        },
-                      );
-                    },
-                    onLikeChanged: (isLiked) {
-                      // FIX: Wrap mutation in setState so any widget listening
-                      // to _posts gets a proper rebuild signal
-                      setState(() {
-                        post['is_liked'] = isLiked;
-                        post['likes_count'] =
-                            (post['likes_count'] as int) + (isLiked ? 1 : -1);
-                      });
-                    },
-                    onDelete: scrollToTopAndRefresh,
-                  );
-                },
-                childCount: _posts.length + (_hasMore ? 1 : 0),
-                // FIX: Let the framework manage RepaintBoundaries — removing
-                // manual RepaintBoundary wrappers and enabling the delegate flag
-                // is more efficient (avoids double boundaries)
-                addAutomaticKeepAlives: true,
-                addRepaintBoundaries: true,
-                addSemanticIndexes: false,
-              ),
+                    ],
+                  ),
+                );
+              },
             ),
-        ],
+
+            // Empty state
+            if (_posts.isEmpty && !_isLoading && _isInitialized)
+              SliverFillRemaining(
+                child: Center(
+                  child: Text(
+                    _getEmptyMessage(),
+                    style: const TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ),
+              )
+            // Initial loading state
+            else if (_posts.isEmpty && _isLoading)
+              SliverFillRemaining(
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: theme.primaryColor,
+                    strokeWidth: 2.5,
+                  ),
+                ),
+              )
+            // Posts list
+            else
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    if (index == _posts.length) {
+                      if (!_hasMore) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: theme.primaryColor,
+                            strokeWidth: 2.5,
+                          ),
+                        ),
+                      );
+                    }
+
+                    final post = _posts[index];
+
+                    return PostCard(
+                      key: ValueKey(post['id']),
+                      post: post,
+                      onTapProfile: () {
+                        if (!mounted) return;
+                        if (post['is_event'] == true) return;
+                        Navigator.pushNamed(
+                          context,
+                          '/view-profile',
+                          arguments: {
+                            'userId': post['user_id'],
+                            'username': post['username'],
+                          },
+                        );
+                      },
+                      onLikeChanged: (isLiked) {
+                        // FIX: Wrap mutation in setState so any widget listening
+                        // to _posts gets a proper rebuild signal
+                        setState(() {
+                          post['is_liked'] = isLiked;
+                          post['likes_count'] =
+                              (post['likes_count'] as int) + (isLiked ? 1 : -1);
+                        });
+                      },
+                      onDelete: scrollToTopAndRefresh,
+                    );
+                  },
+                  childCount: _posts.length + (_hasMore ? 1 : 0),
+                  // FIX: Let the framework manage RepaintBoundaries — removing
+                  // manual RepaintBoundary wrappers and enabling the delegate flag
+                  // is more efficient (avoids double boundaries)
+                  addAutomaticKeepAlives: true,
+                  addRepaintBoundaries: true,
+                  addSemanticIndexes: false,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -527,128 +531,8 @@ class _PostsTabState extends State<_PostsTab>
   }
 }
 
-class _ActionPills extends StatelessWidget {
-  const _ActionPills();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          children: [
-            _PillButton(
-              label: 'Find Events',
-              icon: Icons.search,
-              isPrimary: false,
-              onTap: () {
-                // Switch bottom nav to Events tab (index 1)
-                context.read<BottomNavProvider>().setIndex(1);
-              },
-            ),
-            const SizedBox(width: 8),
-            _PillButton(
-              label: 'Add Event',
-              icon: Icons.calendar_today_outlined,
-              isPrimary: false,
-              onTap: () {
-                openEventEditor(context);
-              },
-            ),
-            const SizedBox(width: 8),
-            _PillButton(
-              label: 'Find Venues',
-              icon: Icons.location_on_outlined,
-              isPrimary: false,
-              onTap: () {
-                // Switch bottom nav to Venues/Places tab (index 2)
-                context.read<BottomNavProvider>().setIndex(2);
-              },
-            ),
-            const SizedBox(width: 8),
-            _PillButton(
-              label: 'Find Groups',
-              icon: Icons.groups_outlined,
-              isPrimary: false,
-              onTap: () {
-                // Switch bottom nav to Clubs tab (index 3)
-                context.read<BottomNavProvider>().setIndex(3);
-              },
-            ),
-            const SizedBox(width: 8),
-            _PillButton(
-              label: 'Manage Garage',
-              icon: Icons.build_outlined,
-              isPrimary: false,
-              onTap: () {
-                NavigationHelper.navigateTo(context, const GarageListScreen());
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PillButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool isPrimary;
-  final VoidCallback onTap;
-
-  const _PillButton({
-    required this.label,
-    required this.icon,
-    required this.isPrimary,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Provider.of<ThemeProvider>(context);
-    final fg = isPrimary ? Colors.white : Colors.black;
-    final bg = isPrimary ? Colors.black : theme.subtextColor.withOpacity(0.1);
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(30),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(30),
-            border: isPrimary
-                ? null
-                : Border.all(color: Colors.grey.shade300, width: 1),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 16, color: theme.primaryColor),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: fg,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13.5,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // =====================================================================
-// UPDATED: Underline-style tab bar (Latest / Following / Featured)
+// Pill-style feed selector (Latest / Following / Featured)
 // =====================================================================
 class _CustomTabBar extends StatelessWidget {
   final TabController controller;
@@ -666,17 +550,14 @@ class _CustomTabBar extends StatelessWidget {
       animation: controller,
       builder: (context, _) {
         return Container(
-          padding: const EdgeInsets.only(top: 5),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: Colors.grey.shade200, width: 1),
-            ),
-          ),
-          // Each label takes an equal share of the width.
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 7, 16, 9),
           child: Row(
             children: [
-              for (var i = 0; i < _labels.length; i++)
+              for (var i = 0; i < _labels.length; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
                 Expanded(child: _buildTab(i, _labels[i])),
+              ],
             ],
           ),
         );
@@ -687,35 +568,78 @@ class _CustomTabBar extends StatelessWidget {
   Widget _buildTab(int index, String label) {
     final isActive = controller.index == index;
 
+    const duration = Duration(milliseconds: 220);
+    const curve = Curves.easeOutCubic;
+
     return GestureDetector(
       onTap: () => controller.animateTo(index),
       behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: isActive ? Colors.black : Colors.grey,
-                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                fontSize: 15,
-              ),
-            ),
-            const SizedBox(height: 8),
-            // Full-width underline; colour fades in/out on active state.
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOut,
-              height: 2.5,
-              width: double.infinity,
-              color: isActive ? theme.primaryColor : Colors.transparent,
-            ),
-          ],
+      child: AnimatedContainer(
+        duration: duration,
+        curve: curve,
+        height: 38,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          // Filled when selected, outlined when not. The border stays on the
+          // selected pill too, in the same colour as its fill — otherwise the
+          // two pills are different heights by a hairline and the row looks
+          // misaligned.
+          color: isActive ? const Color(0xFF111111) : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: isActive ? const Color(0xFF111111) : const Color(0xFFDDDDDD),
+            width: 1.4,
+          ),
+        ),
+        child: AnimatedDefaultTextStyle(
+          duration: duration,
+          curve: curve,
+          style: TextStyle(
+            color: isActive ? Colors.white : const Color(0xFF111111),
+            fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+            fontSize: 14,
+          ),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
       ),
     );
   }
+}
+
+/// Holds the feed selector at the top of the list once it is scrolled to.
+///
+/// A fixed height, declared up front: a persistent header must know its
+/// extent before it is laid out, and the selector is a fixed-height row of
+/// pills, so there is nothing to measure at run time.
+class _PinnedSelector extends SliverPersistentHeaderDelegate {
+  final Widget child;
+
+  /// 38 for the pills, plus the 7/9 padding the selector carries.
+  ///
+  /// Declared, not measured: a persistent header has to know its extent
+  /// before layout, so this and the selector's own sizes have to agree by
+  /// hand. Change one and change the other.
+  static const double _height = 54;
+
+  const _PinnedSelector({required this.child});
+
+  @override
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    // Opaque, always. Pinned over a scrolling feed, any transparency means
+    // posts sliding visibly underneath the pills.
+    return Material(color: Colors.white, child: child);
+  }
+
+  @override
+  bool shouldRebuild(_PinnedSelector old) => old.child != child;
 }

@@ -1,3 +1,9 @@
+import 'package:drivelife/widgets/nav/chrome_visibility.dart';
+import 'package:drivelife/screens/store/shop_screen.dart';
+import 'package:drivelife/screens/search_screen.dart';
+import 'package:drivelife/screens/garage/garage_list_screen.dart';
+import 'package:drivelife/widgets/nav/dl_bottom_nav.dart';
+import 'package:drivelife/widgets/nav/dl_top_tabs.dart';
 import 'package:drivelife/screens/events/open_event_editor.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/main.dart';
@@ -48,10 +54,51 @@ class _HomeTabsState extends State<HomeTabs> {
   // Provider-backed current tab. All existing _currentIndex references keep working.
   int get _currentIndex => context.read<BottomNavProvider>().currentIndex;
 
-  // Tab order: Home, Events, Places, Clubs, [Media], Profile.
-  // _buildBottomNav's items and the screens list in _buildScreens must both
-  // follow it. The shop is reached from the header basket button, not a tab.
-  static const int _mediaIndex = 4;
+  // Two levels of navigation, and they are not the same thing.
+  //
+  // The BOTTOM bar picks a destination: Home, Discover, Photos, Garage,
+  // Account. The TOP row picks a section WITHIN Home: For You, Events,
+  // Places, Groups. Sections used to be bottom tabs, which is why the two
+  // lists read as though they overlap — they no longer do.
+  static const List<DlTopTab> _homeTabs = [
+    DlTopTab(label: 'For You', icon: 'assets/app-icons/01-Home.svg'),
+    DlTopTab(label: 'Events', icon: 'assets/app-icons/02-Events.svg'),
+    DlTopTab(label: 'Places', icon: 'assets/app-icons/03-Venues.svg'),
+    DlTopTab(label: 'Groups', icon: 'assets/app-icons/07-groups.svg'),
+    // Last, and reachable only here: the header's basket button went when
+    // the header was rebuilt, so this is the shop's only way in.
+    DlTopTab(label: 'Shop', icon: 'assets/app-icons/04-Basket.svg'),
+  ];
+
+  /// Which section of Home is showing. Only meaningful while the Home
+  /// destination is selected.
+  int _homeTab = 0;
+
+  /// Drives the header, the section tabs and the bottom bar out of the way
+  /// while somebody is reading, and brings them back when they scroll up or
+  /// reach the top. Fed by the feed, which is the only thing long enough to
+  /// warrant it.
+  final ChromeVisibility _chrome = ChromeVisibility();
+
+  /// Shared by every piece of chrome, so the header, the section tabs and
+  /// the bottom bar leave and return as one movement rather than three.
+  /// Slow enough to read as the chrome moving rather than appearing.
+  ///
+  /// The quick version popped: at 240ms a header is simply there on the next
+  /// glance, which is what makes it feel like a layout jump rather than a
+  /// piece of the interface arriving.
+  static const Duration _chromeDuration = Duration(milliseconds: 420);
+
+  /// Decelerating, so it settles rather than stopping dead — the part that
+  /// separates "slid into place" from "snapped".
+  static const Curve _chromeCurve = Curves.easeOutCubic;
+
+  /// Destinations, in bottom-bar order.
+  static const int _dHome = 0;
+  static const int _dDiscover = 1;
+  static const int _dPhotos = 2;
+  static const int _dGarage = 3;
+  static const int _dAccount = 4;
 
   /// Profile is always the last tab. Derived rather than written down, because
   /// a hard-coded literal goes stale the moment a tab is added or hidden and
@@ -67,6 +114,12 @@ class _HomeTabsState extends State<HomeTabs> {
   final _authService = AuthService();
 
   List<Widget> _screens = [];
+
+  @override
+  void dispose() {
+    _chrome.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -122,16 +175,18 @@ class _HomeTabsState extends State<HomeTabs> {
     //   await onWordPressLoginSuccess(currentAccount.token);
     // }
 
-    final List<Widget> screens;
-
-    // Order must match the items in _buildBottomNav.
-    screens = [
-      PostsScreen(key: _postsScreenKey),
-      EventsScreen(),
-      VenuesScreen(),
-      MyClubsScreen(),
-      // InboxScreen(myUserId: currentAccount!.user.id.toString()),
-      if (FeatureFlags.mediaTab) MediaScreen(),
+    // Order must match the items in _buildBottomNav, and the indices named
+    // by the _d* constants above.
+    final screens = <Widget>[
+      // A placeholder. Home is rebuilt in build() instead, because the
+      // section it shows changes and a widget stored here would keep the
+      // index it was constructed with — which is why the top tabs did
+      // nothing: the tap changed _homeTab, and the frozen IndexedStack
+      // carried on showing the section it was built with.
+      const SizedBox.shrink(),
+      const SearchScreen(embedded: true),
+      if (FeatureFlags.mediaTab) MediaScreen() else const SizedBox.shrink(),
+      const GarageListScreen(embedded: true),
       if (currentAccount?.isClubAccount ?? false)
         ClubProfileScreen()
       else
@@ -139,6 +194,28 @@ class _HomeTabsState extends State<HomeTabs> {
     ];
 
     if (mounted) setState(() => _screens = screens);
+  }
+
+  /// The Home destination: four sections behind the top tab row.
+  ///
+  /// An IndexedStack, not a switch or an AnimatedSwitcher: each section keeps
+  /// its scroll position, its loaded pages and its controllers while the
+  /// others are off screen. Animating the content would mean rebuilding it,
+  /// and losing a feed's place to gain a cross-fade is a bad trade. The
+  /// movement lives in the tab row instead, which is where the eye is.
+  Widget _buildHome() {
+    return IndexedStack(
+      index: _homeTab,
+      children: [
+        PostsScreen(key: _postsScreenKey, chrome: _chrome),
+        EventsScreen(),
+        VenuesScreen(),
+        MyClubsScreen(),
+        // No app bar of its own: the shell above already supplies one, and
+        // the shop's own carries a back button that would pop the shell.
+        const ShopScreen(),
+      ],
+    );
   }
 
   void _reloadUserData() {
@@ -399,46 +476,42 @@ class _HomeTabsState extends State<HomeTabs> {
   }
 
   // Default app bar for all tabs
-  AppBar? _buildAppBar(ThemeProvider theme) {
-    return AppBar(
-      backgroundColor: Colors.white,
-      elevation: 0,
-      centerTitle: true,
-      leadingWidth: 96,
-      leading: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: iconSvg(
-              'assets/app-icons/header-plus.svg',
-              theme,
-              size: 20,
-              alwaysActive: true,
-            ),
-            onPressed: () => _showAddMenu(theme),
-          ),
-          SharedHeaderIcons.storeIcon(),
-        ],
-      ),
-      title: Image.asset('assets/logo-dark.png', height: 18),
+  Widget _buildHeader(ThemeProvider theme) {
+    return _Header(
+      // Left, not centred. The logo is the app saying where you are; a
+      // centred one competes with the section row below it for the eye.
+      title: Image.asset('assets/logo-dark.png', height: 20),
       actions: [
-        IconButton(
-          icon: iconSvg(
-            'assets/app-icons/header-search.svg',
+        _RoundAction(
+          child: iconSvg(
+            'assets/app-icons/header-plus.svg',
             theme,
-            size: 20,
+            size: 18,
             alwaysActive: true,
           ),
-          onPressed: () {
-            Navigator.pushNamed(context, AppRoutes.search);
-          },
+          onTap: () => _showAddMenu(theme),
         ),
-        // ✅ Using the actionIcons helper for multiple icons at once
-        ...SharedHeaderIcons.actionIcons(
-          iconColor: Colors.black,
-          showQr: false, // Already shown in leading
-          showNotifications: true,
+        const SizedBox(width: 8),
+        _RoundAction(
+          child: iconSvg(
+            'assets/app-icons/header-search.svg',
+            theme,
+            size: 18,
+            alwaysActive: true,
+          ),
+          onTap: () => Navigator.pushNamed(context, AppRoutes.search),
         ),
+        const SizedBox(width: 8),
+        _RoundAction(
+          child: iconSvg(
+            'assets/app-icons/header-notification.svg',
+            theme,
+            size: 18,
+            alwaysActive: true,
+          ),
+          onTap: () => Navigator.pushNamed(context, AppRoutes.notifications),
+        ),
+        const SizedBox(width: 16),
       ],
     );
   }
@@ -538,104 +611,74 @@ class _HomeTabsState extends State<HomeTabs> {
   }
 
   Widget _buildBottomNav(ThemeProvider theme) {
-    return BottomNavigationBar(
-      type: BottomNavigationBarType.fixed,
-      backgroundColor: Colors.white,
-      selectedItemColor: theme.primaryColor,
-      unselectedItemColor: Colors.grey,
-      selectedFontSize: 12,
-      iconSize: 28,
-      currentIndex: _currentIndex,
-      onTap: (index) {
-        final current = _currentIndex; // snapshot before mutating
+    Widget svg(String asset, bool selected) => iconSvg(
+      asset,
+      theme,
+      size: 22,
+      isActive: selected,
+      alwaysActive: selected,
+    );
 
-        if (index == _profileIndex && current == _profileIndex) {
+    return DlBottomNav(
+      currentIndex: _currentIndex,
+      onChanged: (index) {
+        final current = _currentIndex;
+
+        // Tapping the destination you are already on is a shortcut, not a
+        // no-op: Account opens the switcher, Home returns the feed to the
+        // top. Both are long-standing behaviours and worth keeping.
+        if (index == _dAccount && current == _dAccount) {
           _showAccountSwitcher();
           HapticFeedback.lightImpact();
           return;
         }
 
-        if (index == 0 && current == 0) {
-          _postsScreenKey.currentState?.scrollToTopAndRefresh();
+        if (index == _dHome && current == _dHome) {
+          if (_homeTab == 0) {
+            _postsScreenKey.currentState?.scrollToTopAndRefresh();
+          } else {
+            // Not on the feed: "home" means the first section first.
+            setState(() => _homeTab = 0);
+          }
           HapticFeedback.lightImpact();
           return;
         }
 
+        // A new destination starts with its chrome showing. The one being
+        // left may have hidden it, and nothing but the feed knows how to
+        // bring it back — so a Garage tab with no header would be stuck.
+        _chrome.reset();
         _setIndex(index);
       },
       items: [
-        BottomNavigationBarItem(
-          icon: iconSvg(
-            'assets/app-icons/01-Home.svg',
-            theme,
-            isActive: _currentIndex == 0,
-          ),
+        DlNavItem(
           label: 'Home',
+          icon: (sel) => svg('assets/app-icons/01-Home.svg', sel),
         ),
-        BottomNavigationBarItem(
-          icon: iconSvg(
-            'assets/app-icons/02-Events.svg',
-            theme,
-            isActive: _currentIndex == 1,
-          ),
-          label: 'Events',
+        DlNavItem(
+          label: 'Discover',
+          icon: (sel) => svg('assets/app-icons/header-search.svg', sel),
         ),
-        BottomNavigationBarItem(
-          icon: iconSvg(
-            'assets/app-icons/03-Venues.svg',
-            theme,
-            isActive: _currentIndex == 2,
-          ),
-          label: 'Places',
-        ),
-        BottomNavigationBarItem(
-          icon: iconSvg(
-            'assets/app-icons/07-groups.svg',
-            theme,
-            isActive: _currentIndex == 3,
-          ),
-          label: 'Groups',
-        ),
-        if (FeatureFlags.mediaTab)
-          BottomNavigationBarItem(
-            icon: Consumer<PendingTagsProvider>(
-              builder: (context, tags, child) => _BadgedIcon(
-                // Unseen rather than pending: a badge that mirrored the whole
-                // queue would never clear until every tag was answered, and a
-                // dot that is always on is one people stop reading.
-                count: tags.unseen,
-                color: theme.primaryColor,
-                child: child!,
-              ),
-              child: iconSvg(
-                // Lowercase p: this must match the file on disk exactly, since
-                // the asset bundle is case-sensitive on device.
-                'assets/app-icons/06-photo.svg',
-                theme,
-                isActive: _currentIndex == _mediaIndex,
-              ),
+        DlNavItem(
+          label: 'Photos',
+          // Carries the unseen-tag count. Unseen rather than the whole
+          // pending queue: a badge mirroring every outstanding tag would
+          // never clear, and a dot that is always on is one people stop
+          // reading.
+          icon: (sel) => Consumer<PendingTagsProvider>(
+            builder: (context, tags, child) => _BadgedIcon(
+              count: tags.unseen,
+              color: theme.primaryColor,
+              child: child!,
             ),
-            label: 'Photos',
+            child: svg('assets/app-icons/06-photo.svg', sel),
           ),
-        BottomNavigationBarItem(icon: _buildProfileIcon(), label: 'Profile'),
-
-        // BottomNavigationBarItem(
-        //   icon: Consumer<UnreadCountProvider>(
-        //     builder: (context, unread, child) {
-        //       final count = unread.count;
-        //       final icon = const Icon(Icons.chat_bubble_outline);
-        //       if (count > 0) {
-        //         return Badge(
-        //           backgroundColor: theme.primaryColor,
-        //           label: Text(count > 99 ? '99+' : '$count'),
-        //           child: icon,
-        //         );
-        //       }
-        //       return icon;
-        //     },
-        //   ),
-        //   label: 'Chat',
-        // ),
+        ),
+        DlNavItem(
+          label: 'Garage',
+          icon: (sel) => svg('assets/app-icons/05-User.svg', sel),
+        ),
+        DlNavItem(label: 'Account', icon: (_) => _buildProfileIcon()),
       ],
     );
   }
@@ -664,13 +707,22 @@ class _HomeTabsState extends State<HomeTabs> {
       );
     }
 
+    // Back unwinds the navigation one level at a time: a section first,
+    // then the destination, and only then the app. Dropping straight to the
+    // feed from deep in Groups would feel like the app lost its place.
+    final atRoot = _currentIndex == _dHome && _homeTab == 0;
+
     return PopScope(
-      canPop: _currentIndex == 0, // Only allow pop if on home tab
+      canPop: atRoot,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && _currentIndex != 0) {
-          // If we didn't pop and we're not on home, go to home
-          _setIndex(0);
+        if (didPop) return;
+
+        if (_currentIndex != _dHome) {
+          _setIndex(_dHome);
+          return;
         }
+
+        if (_homeTab != 0) setState(() => _homeTab = 0);
       },
       child: Scaffold(
         //         Consumer<ThemeProvider>(
@@ -693,9 +745,86 @@ class _HomeTabsState extends State<HomeTabs> {
         //           },
         //         ),
         //
-        appBar: _buildAppBar(theme),
-        body: IndexedStack(index: _currentIndex, children: _screens),
-        bottomNavigationBar: _buildBottomNav(theme),
+        // No Scaffold appBar: its height is fixed at build time, and this
+        // header has to be able to collapse. It lives in the body instead,
+        // under a spacer that holds the status bar area — that part never
+        // moves, or the content would jump under the clock.
+        //
+        // extendBody so the bottom bar can slide off the screen rather than
+        // shrinking the content, which would reflow the feed on every
+        // scroll direction change.
+        extendBody: true,
+        body: ValueListenableBuilder<bool>(
+          valueListenable: _chrome,
+          builder: (context, chromeVisible, _) {
+            // Only Home hides its chrome. Everywhere else the header is the
+            // only navigation on screen, and a destination you cannot leave
+            // without scrolling is worse than a chunky header.
+            final canHide = _currentIndex == _dHome;
+            final showChrome = chromeVisible || !canHide;
+
+            return Column(
+              children: [
+                SizedBox(height: MediaQuery.of(context).padding.top),
+
+                // Header and section tabs collapse together: they are one
+                // block of chrome and sliding them independently reads as
+                // two separate things going wrong.
+                _Collapsible(
+                  visible: showChrome,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildHeader(theme),
+                      // Sections belong to Home. On any other destination
+                      // the row would be navigating something that is not
+                      // on screen.
+                      if (_currentIndex == _dHome)
+                        DlTopTabs(
+                          tabs: _homeTabs,
+                          currentIndex: _homeTab,
+                          onChanged: (i) {
+                            _chrome.show();
+                            setState(() => _homeTab = i);
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+
+                Expanded(
+                  child: IndexedStack(
+                    index: _currentIndex,
+                    children: [
+                      // Rebuilt every frame so it tracks _homeTab. The
+                      // sections inside keep their state regardless:
+                      // Flutter reconciles them by type and position, and
+                      // the feed carries a key.
+                      _buildHome(),
+                      ..._screens.skip(1),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        bottomNavigationBar: ValueListenableBuilder<bool>(
+          valueListenable: _chrome,
+          builder: (context, chromeVisible, child) {
+            final showChrome = chromeVisible || _currentIndex != _dHome;
+
+            // Slides off the bottom rather than collapsing. Collapsing would
+            // change the body's height and reflow the feed mid-scroll.
+            return AnimatedSlide(
+              duration: _chromeDuration,
+              curve: _chromeCurve,
+              offset: showChrome ? Offset.zero : const Offset(0, 1.4),
+              child: child,
+            );
+          },
+          child: _buildBottomNav(theme),
+        ),
       ),
     );
   }
@@ -834,6 +963,78 @@ class _BadgedIcon extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A header action: an icon in a soft circle.
+///
+/// Circles rather than bare glyphs because the header has no other structure
+/// — against a white page three loose icons read as clutter, three discs read
+/// as a set.
+class _RoundAction extends StatelessWidget {
+  final Widget child;
+  final VoidCallback onTap;
+
+  const _RoundAction({required this.child, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF4F4F4),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(width: 40, height: 40, child: Center(child: child)),
+      ),
+    );
+  }
+}
+
+/// The home header: logo on the left, round actions on the right.
+///
+/// A plain Row rather than an AppBar, because this one has to be able to
+/// collapse — a Scaffold's appBar reserves its height for the life of the
+/// build and cannot animate to nothing.
+class _Header extends StatelessWidget {
+  final Widget title;
+  final List<Widget> actions;
+
+  const _Header({required this.title, required this.actions});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      height: 56,
+      padding: const EdgeInsets.only(left: 20),
+      child: Row(children: [title, const Spacer(), ...actions]),
+    );
+  }
+}
+
+/// Collapses its child to nothing and back.
+///
+/// Height rather than a slide: this sits at the top of a Column, so the
+/// content below has to close the gap as it goes. A slide would leave a
+/// white band where the header used to be.
+class _Collapsible extends StatelessWidget {
+  final bool visible;
+  final Widget child;
+
+  const _Collapsible({required this.visible, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: AnimatedAlign(
+        duration: _HomeTabsState._chromeDuration,
+        curve: _HomeTabsState._chromeCurve,
+        alignment: Alignment.bottomCenter,
+        heightFactor: visible ? 1 : 0,
+        child: child,
+      ),
     );
   }
 }

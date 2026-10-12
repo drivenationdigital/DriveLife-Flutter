@@ -6,7 +6,10 @@ void main() {
     test('reads the tail of what Google actually returns', () {
       // The forms Google emits, which are not the formal names.
       expect(countryFromAddress('Silverstone Circuit, Towcester, UK'), 'GB');
-      expect(countryFromAddress('Circuit of the Americas, Austin, TX, USA'), 'US');
+      expect(
+        countryFromAddress('Circuit of the Americas, Austin, TX, USA'),
+        'US',
+      );
       expect(countryFromAddress('Exhibition Place, Toronto, ON, Canada'), 'CA');
     });
 

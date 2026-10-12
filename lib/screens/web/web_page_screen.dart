@@ -207,23 +207,7 @@ class _WebPageScreenState extends State<WebPageScreen> {
           // dashboard calls itself things like "Event editor | DriveLife
           // Accounts", which is correct on the web and wrong here.
           title: widget.branded
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Image.asset('assets/logo-dark.png', height: 16),
-                    const SizedBox(height: 2),
-                    Text(
-                      widget.title,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8A8A),
-                        letterSpacing: 0.2,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                )
+              ? Image.asset('assets/logo-dark.png', height: 18)
               : Text(
                   _pageTitle?.trim().isNotEmpty == true
                       ? _pageTitle!

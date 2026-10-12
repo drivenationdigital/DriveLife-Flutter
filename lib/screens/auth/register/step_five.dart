@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:drivelife/api/profile_api.dart';
 import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';

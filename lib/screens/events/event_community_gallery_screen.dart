@@ -1,7 +1,6 @@
 import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'dart:io';
 import 'package:drivelife/models/event_media.dart';
-import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
