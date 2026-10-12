@@ -83,7 +83,8 @@ dependencies:
   path_provider: ^2.1.6
   gal: ^2.3.3
   connectivity_plus: ^7.3.1
-  square_in_app_payments: ^1.7.14
+  # SQUARE: dropped with the native checkout (FeatureFlags.nativeTicketSelection).
+  # square_in_app_payments: ^1.7.14
   webview_flutter: ^4.14.1
 
 dev_dependencies:
