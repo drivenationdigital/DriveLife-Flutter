@@ -8,21 +8,21 @@
             "name": "drivelife",
             "request": "launch",
             "type": "dart",
-            "args": ["--dart-define=MAPBOX_TOKEN=pk.eyJ1Ijoia2VzaDY3IiwiYSI6ImNtdjVlZ2p0NDAwZGsyenNnNDh3dTg4a2kifQ.-5QfbBQCV0a7DA1fv28Sgg"]
+            "args": ["--dart-define=MAPBOX_TOKEN=pk.XXXX"]
         },
         {
             "name": "drivelife (profile mode)",
             "request": "launch",
             "type": "dart",
             "flutterMode": "profile",
-            "args": ["--dart-define=MAPBOX_TOKEN=pk.eyJ1Ijoia2VzaDY3IiwiYSI6ImNtdjVlZ2p0NDAwZGsyenNnNDh3dTg4a2kifQ.-5QfbBQCV0a7DA1fv28Sgg"]
+            "args": ["--dart-define=MAPBOX_TOKEN=pk.XXXX"]
         },
         {
             "name": "drivelife (release mode)",
             "request": "launch",
             "type": "dart",
             "flutterMode": "release",
-            "args": ["--dart-define=MAPBOX_TOKEN=pk.eyJ1Ijoia2VzaDY3IiwiYSI6ImNtdjVlZ2p0NDAwZGsyenNnNDh3dTg4a2kifQ.-5QfbBQCV0a7DA1fv28Sgg"]
+            "args": ["--dart-define=MAPBOX_TOKEN=pk.XXXX"]
         },
         // Staging mode
         {
