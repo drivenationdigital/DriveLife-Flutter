@@ -6,13 +6,16 @@ import 'package:drivelife/api/places_api.dart';
 import 'package:drivelife/config/mapbox_config.dart';
 import 'package:drivelife/services/location_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
 
 import 'discover_filters.dart';
 import 'discover_place.dart';
 import 'discover_pins.dart';
 import 'discover_sheet.dart';
+import 'discover_tips.dart';
 
 /// Discover: everything nearby, on one map.
 ///
@@ -24,10 +27,40 @@ import 'discover_sheet.dart';
 /// gives native clustering, draws entirely on the GPU, and redraws by handing
 /// the source a new string.
 ///
-/// **The results and the pins are one list.** [_places] feeds both; the
-/// category filter is applied to the map with a style expression and to the
-/// sheet with a `where`, from the same enum. There is no way for the sheet to
-/// claim a count the map does not show.
+/// **The results and the pins are one list.** `discoverVisible` produces it
+/// once, and it is both the sheet's contents and the map source's features.
+///
+/// It has to be the source, not a filter on the pin layer: clustering is
+/// computed on the source before any layer filter runs, so a filtered layer
+/// over a full source gives cluster badges that count results the map is not
+/// drawing. That is exactly what happened — picking "Events" left the venues
+/// inside each cluster in its total.
+/// Why the map cannot show where you are.
+///
+/// Three separate states rather than one "no access" flag, because the way
+/// out of each is different: turning the device's location services back on,
+/// granting a permission that can still be asked for, or opening the system
+/// settings for one that cannot. A single flag would offer the wrong button
+/// two times out of three.
+enum DiscoverAccess {
+  /// The first check has not finished. Distinct from denied so the screen
+  /// does not flash a permission prompt before it knows one is needed.
+  checking,
+
+  granted,
+
+  /// Location is switched off for the whole device.
+  servicesOff,
+
+  /// Refused, but can be asked again.
+  denied,
+
+  /// Refused permanently. Only the system settings can undo this; asking
+  /// again returns immediately without showing anything, which looks to the
+  /// user like a dead button.
+  deniedForever,
+}
+
 class DiscoverMapScreen extends StatefulWidget {
   const DiscoverMapScreen({super.key});
 
@@ -35,7 +68,8 @@ class DiscoverMapScreen extends StatefulWidget {
   State<DiscoverMapScreen> createState() => _DiscoverMapScreenState();
 }
 
-class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
+class _DiscoverMapScreenState extends State<DiscoverMapScreen>
+    with WidgetsBindingObserver {
   static const String _sourceId = 'dl-discover';
   static const String _clusterLayerId = 'dl-discover-clusters';
   static const String _countLayerId = 'dl-discover-cluster-count';
@@ -82,6 +116,21 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
   bool _loading = false;
   String _query = '';
 
+  DiscoverAccess _access = DiscoverAccess.checking;
+
+  /// Whether the tour has been considered this session. The style can load
+  /// more than once — it reloads with the style, and on some devices again
+  /// after a backgrounding — and the tour should not reappear each time.
+  bool _tipsOffered = false;
+
+  /// Whether the camera has been put over the user yet.
+  ///
+  /// The fix and the map's style arrive in whichever order they please, and
+  /// the camera can only be moved once both have. Whichever lands second does
+  /// the centring; this stops the first one being undone, and stops a later
+  /// reload dragging the camera back after the user has panned away.
+  bool _centred = false;
+
   double? _lat;
   double? _lng;
   String _locationLabel = 'Near me';
@@ -107,40 +156,152 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
   void initState() {
     super.initState();
     // The token is read and applied once in main(), before runApp.
-    _locate();
+    WidgetsBinding.instance.addObserver(this);
+    _checkAccess();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Granting the permission happens in the system settings, in another app.
+    // Without re-checking on the way back, the user returns to the same
+    // "enable location" screen they just satisfied and concludes it is broken.
+    if (state == AppLifecycleState.resumed &&
+        _access != DiscoverAccess.granted) {
+      _checkAccess(request: false);
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchDebounce?.cancel();
     _searchController.dispose();
     _pinAt.dispose();
     super.dispose();
   }
 
+  // ── may we know where we are ──────────────────────────────────────────
+
+  /// Works out whether a position can be had, and asks for it if so.
+  ///
+  /// [request] is false when returning from the system settings: the OS
+  /// prompt can only be raised from a user action, and firing it on every
+  /// resume would pop a dialog at someone who has just dismissed one.
+  Future<void> _checkAccess({bool request = true}) async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      if (mounted) setState(() => _access = DiscoverAccess.servicesOff);
+      return;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied && request) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (!mounted) return;
+
+    final access = switch (permission) {
+      LocationPermission.always ||
+      LocationPermission.whileInUse => DiscoverAccess.granted,
+      LocationPermission.deniedForever => DiscoverAccess.deniedForever,
+      // unableToDetermine behaves like a refusal that can be retried, which
+      // is the only useful thing to offer for it.
+      _ => DiscoverAccess.denied,
+    };
+
+    final wasGranted = _access == DiscoverAccess.granted;
+    setState(() => _access = access);
+
+    // Only on the transition into granted. Re-running on every resume would
+    // refetch and yank the camera back every time the app is foregrounded.
+    if (access == DiscoverAccess.granted && !wasGranted) await _locate();
+  }
+
+  /// Offers the tour, the first time someone gets this far.
+  ///
+  /// After the style has loaded rather than in initState, so the tips appear
+  /// over a drawn map instead of a grey rectangle — and so someone who never
+  /// gets past the location gate is not shown a tour of a page they cannot
+  /// use yet.
+  Future<void> _maybeShowTips() async {
+    if (_tipsOffered || !mounted) return;
+    _tipsOffered = true;
+
+    if (!await DiscoverTips.shouldShow()) return;
+    if (!mounted) return;
+
+    await showDiscoverTips(context);
+  }
+
+  /// Opens the right system screen for the current obstacle.
+  Future<void> _resolveAccess() async {
+    switch (_access) {
+      case DiscoverAccess.servicesOff:
+        await Geolocator.openLocationSettings();
+      case DiscoverAccess.deniedForever:
+        await Geolocator.openAppSettings();
+      case DiscoverAccess.denied:
+        // Still askable, so ask rather than sending them to settings.
+        await _checkAccess();
+      case DiscoverAccess.checking:
+      case DiscoverAccess.granted:
+        break;
+    }
+  }
+
   // ── where we are ──────────────────────────────────────────────────────
 
-  Future<void> _locate({bool recentre = false}) async {
+  /// Finds the device, moves the map onto it, and loads what is around it.
+  ///
+  /// Always centres. It used to take a `recentre` flag that the opening call
+  /// left false, so the only thing that moved the camera on launch was the
+  /// style-loaded handler — and that only fired the move if the fix had
+  /// already arrived. A fix takes longer than a style load, so on a cold open
+  /// neither ran and the map sat on Mapbox's default world view until the
+  /// user centred it by hand.
+  Future<void> _locate() async {
     _followingDevice = true;
+
+    // Whatever was selected belongs to wherever the map used to be. Flying
+    // somewhere else leaves its card on screen describing a pin that is no
+    // longer under it, and — if the pin lands off screen — with its close
+    // button out of reach too. The search-a-location path already did this;
+    // going back to the device did not.
+    _clearSelection();
+
     final coords = await LocationService.getCoordinates();
     if (!mounted) return;
 
     if (coords == null) {
-      // No fix: still load something. A national search beats an empty map,
-      // and the chip says that "Near me" is not what is being shown.
+      // Permission is granted but no fix came back - indoors, or the first
+      // read after a cold boot. Load something rather than nothing, and say
+      // in the chip that this is not "near me".
       setState(() => _locationLabel = 'United Kingdom');
       await _load();
       return;
     }
 
+    final lat = coords['latitude']!;
+    final lng = coords['longitude']!;
+
     setState(() {
-      _lat = coords['latitude'];
-      _lng = coords['longitude'];
+      _lat = lat;
+      _lng = lng;
     });
 
-    unawaited(_describe(coords['latitude']!, coords['longitude']!));
-    if (recentre) await _flyTo(coords['latitude']!, coords['longitude']!);
+    unawaited(_describe(lat, lng));
+    await _centreOnUser();
     await _load();
+  }
+
+  /// Puts the camera over the device, once there is both a fix and a map.
+  ///
+  /// Called from whichever of those two arrives second. Guarded by [_centred]
+  /// so a later reload cannot drag the camera back after the user has panned
+  /// somewhere else.
+  Future<void> _centreOnUser() async {
+    if (_centred || _map == null || _lat == null || _lng == null) return;
+    _centred = true;
+    await _flyTo(_lat!, _lng!);
   }
 
   /// Turns the fix into something a human recognises — "Teesside", not
@@ -330,7 +491,7 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
       mb.SymbolLayer(
         id: _pinLayerId,
         sourceId: _sourceId,
-        filter: _pinFilter(),
+        filter: _pinFilter,
         iconImageExpression: const ['get', 'icon'],
         iconAnchor: mb.IconAnchor.BOTTOM,
         // Pins must not be dropped when they collide. A map that silently
@@ -359,54 +520,52 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
       ),
     );
 
+    // Press and hold anywhere to search there.
+    //
+    // The same path as picking a place in the location sheet — it sets the
+    // centre and refetches — so there is nothing special about the results,
+    // only about how the point was chosen. Useful for the places that have
+    // no name worth typing: a stretch of coast, a junction, a meet spot.
+    map.addInteraction(
+      mb.LongTapInteraction.onMap((context) => _searchAt(context.point)),
+    );
+
     // Tapping the map itself clears the selection, so the callout can be
     // dismissed without hunting for a close button. Pin and cluster taps
     // stop propagating, so this only fires on a tap that hit neither.
     map.addInteraction(
-      mb.TapInteraction.onMap((_) {
-        if (_selected != null) setState(() => _selected = null);
-      }, stopPropagation: false),
+      mb.TapInteraction.onMap((_) => _clearSelection(), stopPropagation: false),
     );
 
     _styleReady = true;
     await _push();
-    if (_lat != null && _lng != null) await _flyTo(_lat!, _lng!);
+    unawaited(_maybeShowTips());
+    // If the fix got here first, this is the half that centres the map.
+    await _centreOnUser();
   }
 
-  /// Which pins the map draws, as a style expression.
+  /// Which pins the map draws: the ones that are not clusters.
   ///
-  /// Clusters are excluded here and drawn by their own layer. The category
-  /// filter is applied in the same expression so switching chips is a
-  /// property change on an existing layer, not a rebuild of the source.
-  List<Object> _pinFilter() {
-    const notACluster = <Object>[
-      '!',
-      ['has', 'point_count'],
-    ];
+  /// Categories are not filtered here. They decide what goes into the source
+  /// instead — see [_geojson] — so that the clusters agree with the pins.
+  static const List<Object> _pinFilter = <Object>[
+    '!',
+    ['has', 'point_count'],
+  ];
 
-    // The chip row focuses one category; the filter sheet decides which are
-    // enabled at all. A focused category is always one of the enabled ones,
-    // so the narrower of the two is what the map draws.
-    final shown = _category != null
-        ? <DiscoverKind>{_category!}
-        : _filters.kinds;
-
-    return <Object>[
-      'all',
-      notACluster,
-      <Object>[
-        'match',
-        const ['get', 'kind'],
-        [for (final k in shown) k.name],
-        true,
-        false,
-      ],
-    ];
-  }
-
+  /// The visible results as GeoJSON.
+  ///
+  /// [_visible], not [_places]: the source has to hold the filtered set
+  /// rather than everything, because clustering is computed on the source
+  /// before any layer filter runs. Filtering the pins in the layer and
+  /// leaving the source full meant a cluster's point_count counted results
+  /// that were not being drawn — pick "Events" and the badge still included
+  /// the venues inside it — and the search box, which never had a layer
+  /// filter at all, narrowed the list while the map carried on showing
+  /// everything.
   String _geojson() => jsonEncode({
     'type': 'FeatureCollection',
-    'features': [for (final p in _places) p.toFeature()],
+    'features': [for (final p in _visible) p.toFeature()],
   });
 
   /// Hands the source its new contents.
@@ -418,10 +577,14 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
     await _map?.setStyleSourceProperty(_sourceId, 'data', _geojson());
   }
 
-  Future<void> _applyCategoryFilter() async {
-    if (!_styleReady) return;
-    await _map?.setStyleLayerProperty(_pinLayerId, 'filter', _pinFilter());
-  }
+  /// Re-renders the map for a change that did not need the server.
+  ///
+  /// A category chip, a filter-sheet change or a search term all alter which
+  /// results are on offer, and all three go through here so the pins, the
+  /// clusters and the list cannot disagree. Re-encoding a few hundred
+  /// features and letting Mapbox re-cluster them is cheap, and much easier to
+  /// reason about than keeping a layer filter and the cluster maths in step.
+  Future<void> _refreshMap() => _push();
 
   Future<void> _flyTo(
     double lat,
@@ -495,6 +658,12 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
     }
   }
 
+  /// Puts the map back to having nothing selected.
+  void _clearSelection() {
+    _pinAt.value = null;
+    if (_selected != null && mounted) setState(() => _selected = null);
+  }
+
   void _select(DiscoverPlace place) {
     // Dropped, not kept. The old position belongs to the previous pin, and
     // showing the new card there for a frame makes it visibly jump.
@@ -529,22 +698,18 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
   /// instead would make every number on the row describe the category
   /// already selected - tap "Events" and "All" would start reporting the
   /// number of events.
-  List<DiscoverPlace> get _matching {
-    final q = _query.trim().toLowerCase();
-    return _places.where((p) {
-      if (!_filters.kinds.contains(p.kind)) return false;
-      if (q.isEmpty) return true;
-      return p.title.toLowerCase().contains(q) ||
-          (p.subtitle?.toLowerCase().contains(q) ?? false);
-    }).toList();
-  }
+  List<DiscoverPlace> get _matching =>
+      discoverVisible(_places, kinds: _filters.kinds, query: _query);
 
   /// The results the user is actually being shown: [_matching], narrowed to
-  /// the focused category. The single source for the map, the sheet and the
-  /// "N nearby" heading.
-  List<DiscoverPlace> get _visible => _category == null
-      ? _matching
-      : _matching.where((p) => p.kind == _category).toList();
+  /// the focused category. The single source for the map's GeoJSON, the
+  /// sheet and the "N nearby" heading.
+  List<DiscoverPlace> get _visible => discoverVisible(
+    _places,
+    kinds: _filters.kinds,
+    category: _category,
+    query: _query,
+  );
 
   // ── chrome ────────────────────────────────────────────────────────────
 
@@ -553,7 +718,12 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
     // Filtering is local, so this is only to avoid rebuilding the list on
     // every keystroke while a finger is still moving across the keyboard.
     _searchDebounce = Timer(const Duration(milliseconds: 180), () {
-      if (mounted) setState(() => _query = value);
+      if (!mounted) return;
+      setState(() => _query = value);
+      // The search narrows the pins as well as the list. It used to narrow
+      // only the list, so typing left the sheet saying "2 nearby" over a map
+      // still showing forty pins.
+      _refreshMap();
     });
   }
 
@@ -588,8 +758,34 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
     if (refetch) {
       await _load();
     } else {
-      await _applyCategoryFilter();
+      await _refreshMap();
     }
+  }
+
+  /// Searches around a point on the map, from a long press.
+  Future<void> _searchAt(mb.Point point) async {
+    final lat = point.coordinates.lat.toDouble();
+    final lng = point.coordinates.lng.toDouble();
+
+    // Confirms the press landed, before the fetch that follows has anything
+    // to show. Without it a long press looks like it did nothing for as long
+    // as the request takes.
+    HapticFeedback.mediumImpact();
+
+    setState(() {
+      _followingDevice = false;
+      _lat = lat;
+      _lng = lng;
+      _locationLabel = 'This area';
+      _selected = null;
+    });
+    _pinAt.value = null;
+
+    // Named afterwards, not before: reverse geocoding is a platform call and
+    // waiting for it would hold up the results. The chip reads "This area"
+    // until the name arrives, and keeps it if none does.
+    unawaited(_describe(lat, lng));
+    await _load();
   }
 
   /// Re-centres the map on a place the user searched for.
@@ -603,7 +799,8 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
     if (result == null || !mounted) return;
 
     if (result.isCurrent) {
-      await _locate(recentre: true);
+      _centred = false;
+      await _locate();
       return;
     }
 
@@ -615,6 +812,8 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
       _selected = null;
     });
 
+    // Asked for explicitly, so it moves the camera whatever _centred says.
+    _centred = true;
     await _flyTo(result.latitude, result.longitude);
     await _load();
   }
@@ -636,10 +835,7 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
         child: DiscoverCallout(
           place: place,
           pointsDown: at.pointsDown,
-          onClose: () {
-            _pinAt.value = null;
-            setState(() => _selected = null);
-          },
+          onClose: _clearSelection,
           onOpen: () => openPlace(context, place),
         ),
       ),
@@ -649,6 +845,13 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
   @override
   Widget build(BuildContext context) {
     if (!MapboxConfig.isConfigured) return const _MissingToken();
+
+    // Discover is built entirely around "what is near me", so there is
+    // nothing to show without a position: every fetch is a radius around a
+    // point, and the categories, counts and distances all describe it.
+    if (_access != DiscoverAccess.granted) {
+      return DiscoverLocationGate(access: _access, onResolve: _resolveAccess);
+    }
 
     final matching = _matching;
     final visible = _category == null
@@ -703,7 +906,7 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
                 _category = kind;
                 if (kind != null && _selected?.kind != kind) _selected = null;
               });
-              _applyCategoryFilter();
+              _refreshMap();
             },
           ),
 
@@ -711,7 +914,12 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
             right: 16,
             bottom: aboveSheet,
             child: _MapButtons(
-              onLocate: () => _locate(recentre: true),
+              onLocate: () {
+                // An explicit request to go back to the device, so the
+                // one-shot centring guard is lifted for it.
+                _centred = false;
+                _locate();
+              },
               onFirst: visible.isEmpty ? null : () => _select(visible.first),
             ),
           ),
@@ -740,6 +948,7 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
             selected: _selected,
             onTap: _select,
             onOpen: (p) => openPlace(context, p),
+            onHelp: () => showDiscoverTips(context),
           ),
         ],
       ),
@@ -1133,6 +1342,128 @@ class _MapButtons extends StatelessWidget {
             width: 46,
             height: 46,
             child: Icon(icon, size: 20, color: const Color(0xFF1C1C1E)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown in place of the map until location is available.
+///
+/// A whole-page gate rather than a banner because there is no usable half of
+/// this screen without a position: every result is a radius around one.
+class DiscoverLocationGate extends StatelessWidget {
+  final DiscoverAccess access;
+  final Future<void> Function() onResolve;
+
+  const DiscoverLocationGate({
+    super.key,
+    required this.access,
+    required this.onResolve,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (access == DiscoverAccess.checking) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+
+    // Each obstacle gets the words and the button that actually clear it.
+    // "Open settings" for something still askable sends people on a detour,
+    // and "Allow" for a permanently refused permission is a button that
+    // visibly does nothing.
+    final (String body, String action) = switch (access) {
+      DiscoverAccess.servicesOff => (
+        'Location is switched off on this device. Turn it on to see what is '
+            'happening near you.',
+        'Open location settings',
+      ),
+      DiscoverAccess.deniedForever => (
+        'DriveLife does not have permission to use your location. You can '
+            'turn it on in Settings.',
+        'Open settings',
+      ),
+      _ => (
+        'Discover shows events, venues and businesses around you. Allow '
+            'location access to see what is nearby.',
+        'Allow location',
+      ),
+    };
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(32, 24, 32, 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 76,
+                  height: 76,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF4F4F4),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.location_on_outlined,
+                    size: 34,
+                    color: Color(0xFF1C1C1E),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Turn on location',
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1C1C1E),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  body,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    height: 1.45,
+                    color: Color(0xFF8A8A8E),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF1C1C1E),
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                    onPressed: onResolve,
+                    child: Text(
+                      action,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'The screen unlocks itself when you come back.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11.5, color: Color(0xFFB0B0B4)),
+                ),
+              ],
+            ),
           ),
         ),
       ),

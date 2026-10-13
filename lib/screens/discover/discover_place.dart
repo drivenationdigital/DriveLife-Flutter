@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 /// What a pin on the Discover map can be.
 ///
@@ -81,6 +82,10 @@ class DiscoverPlace {
   /// return it.
   final double? distance;
 
+  /// When the event starts. Null for anything that is not an event — a venue
+  /// is open whenever it is open and has no single date to show.
+  final DateTime? startsAt;
+
   /// 'GB' or 'US'. Carried because a post id is only unique within its blog,
   /// so opening the detail screen needs both.
   final String? site;
@@ -104,6 +109,7 @@ class DiscoverPlace {
     this.thumbnail,
     this.distance,
     this.site,
+    this.startsAt,
   });
 
   /// A coordinate from JSON, or null if it is not one.
@@ -122,6 +128,37 @@ class DiscoverPlace {
     };
     if (parsed == null || parsed == 0 || parsed.isNaN) return null;
     return parsed;
+  }
+
+  /// Reads the date format the events endpoint sends.
+  ///
+  /// That is `MM/DD/YYYY HH:MM` — month first, built by PHP with
+  /// `date('m/d/Y', ...)`. DateTime.parse rejects it outright, and anything
+  /// that guessed day-first would read 01/02 as 1 February rather than
+  /// 2 January and be wrong for the first twelve days of every month without
+  /// ever looking wrong.
+  ///
+  /// Null for anything unparseable, which simply leaves the date off the card
+  /// rather than showing a wrong one.
+  static DateTime? _date(dynamic value) {
+    if (value == null) return null;
+
+    final parts = '$value'.trim().split(' ').first.split('/');
+    if (parts.length != 3) return null;
+
+    final month = int.tryParse(parts[0]);
+    final day = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (month == null || day == null || year == null) return null;
+    if (month < 1 || month > 12 || day < 1 || day > 31 || year < 2000) {
+      return null;
+    }
+
+    final date = DateTime(year, month, day);
+    // DateTime rolls 31 February over into March rather than refusing it, so
+    // check the parts survived the trip.
+    if (date.month != month || date.day != day) return null;
+    return date;
   }
 
   static String? _text(dynamic value) {
@@ -148,6 +185,7 @@ class DiscoverPlace {
       latitude: lat,
       longitude: lng,
       site: _text(json['site']),
+      startsAt: _date(json['start_date']),
       raw: json,
     );
   }
@@ -196,4 +234,51 @@ class DiscoverPlace {
       'coordinates': [longitude, latitude],
     },
   };
+}
+
+/// The places on offer, after the filter sheet, the chip row and the search
+/// box have each had their say.
+///
+/// One function, used for both the map's GeoJSON source and the results
+/// sheet. That is the point: the pins, the cluster counts and the "N nearby"
+/// heading are three views of this list, and when they were computed
+/// separately they disagreed — the clusters counted categories that were
+/// filtered out, because clustering runs on the source before any layer
+/// filter, and the search box narrowed the list while the map showed
+/// everything.
+///
+/// [kinds] is what the filter sheet allows; [category] is the single chip
+/// focused in the row above the map, or null for all of them; [query] matches
+/// a title or its subtitle, case-insensitively.
+List<DiscoverPlace> discoverVisible(
+  List<DiscoverPlace> places, {
+  required Set<DiscoverKind> kinds,
+  DiscoverKind? category,
+  String query = '',
+}) {
+  final q = query.trim().toLowerCase();
+
+  return places.where((p) {
+    if (!kinds.contains(p.kind)) return false;
+    if (category != null && p.kind != category) return false;
+    if (q.isEmpty) return true;
+    return p.title.toLowerCase().contains(q) ||
+        (p.subtitle?.toLowerCase().contains(q) ?? false);
+  }).toList();
+}
+
+/// An event's date, as it reads on a result card.
+///
+/// "Sat 18 Oct", with the year appended only when it is not the current one.
+/// The cards are narrow and the date shares its line with the location, so
+/// four characters of "2026" on every row — which is nearly always this year
+/// — would push the place name out for nothing.
+///
+/// Null when there is no date, which is every venue.
+String? discoverDateLabel(DateTime? when, {DateTime? now}) {
+  if (when == null) return null;
+
+  final today = now ?? DateTime.now();
+  final format = when.year == today.year ? 'EEE d MMM' : 'EEE d MMM yy';
+  return DateFormat(format).format(when);
 }

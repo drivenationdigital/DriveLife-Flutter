@@ -66,6 +66,11 @@ class DiscoverResultsSheet extends StatefulWidget {
   final ValueChanged<DiscoverPlace> onTap;
   final ValueChanged<DiscoverPlace> onOpen;
 
+  /// Reopens the page tour. It sits in this header because the map's own
+  /// chrome already carries a search field, a location button and a filter
+  /// button, and a fourth control up there would crowd it.
+  final VoidCallback onHelp;
+
   const DiscoverResultsSheet({
     super.key,
     required this.places,
@@ -74,6 +79,7 @@ class DiscoverResultsSheet extends StatefulWidget {
     required this.selected,
     required this.onTap,
     required this.onOpen,
+    required this.onHelp,
   });
 
   @override
@@ -174,6 +180,7 @@ class _DiscoverResultsSheetState extends State<DiscoverResultsSheet> {
                   count: widget.places.length,
                   summary: widget.filters.summary,
                   loading: widget.loading,
+                  onHelp: widget.onHelp,
                 ),
                 if (widget.places.isEmpty && !widget.loading)
                   const _Empty()
@@ -233,11 +240,13 @@ class _Header extends StatelessWidget {
   final int count;
   final String summary;
   final bool loading;
+  final VoidCallback onHelp;
 
   const _Header({
     required this.count,
     required this.summary,
     required this.loading,
+    required this.onHelp,
   });
 
   @override
@@ -275,6 +284,19 @@ class _Header extends StatelessWidget {
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            GestureDetector(
+              onTap: onHelp,
+              behavior: HitTestBehavior.opaque,
+              child: const Padding(
+                padding: EdgeInsets.only(left: 8, top: 2, bottom: 8),
+                child: Icon(
+                  Icons.help_outline_rounded,
+                  size: 19,
+                  color: Color(0xFFB0B0B4),
+                ),
+              ),
             ),
         ],
       ),
@@ -472,6 +494,10 @@ class _Summary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final distance = place.distance;
+    final date = discoverDateLabel(place.startsAt);
+
+    // Nothing to draw on the second line if the place has neither.
+    final detail = date ?? place.subtitle;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -520,10 +546,31 @@ class _Summary extends StatelessWidget {
             color: Color(0xFF1C1C1E),
           ),
         ),
-        if (place.subtitle != null) ...[
+        if (detail != null) ...[
           const SizedBox(height: 2),
-          Text(
-            place.subtitle!,
+          // The date leads, then where it is. An event is chosen by when
+          // first — a show next Saturday is a different proposition from the
+          // same show in March, however near it is.
+          //
+          // One line, so a long venue name is what gets truncated rather than
+          // the date disappearing off the end. Venues have no date and this
+          // is just their location, as before.
+          Text.rich(
+            TextSpan(
+              children: [
+                if (date != null)
+                  TextSpan(
+                    text: date,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF5E5E63),
+                    ),
+                  ),
+                if (date != null && place.subtitle != null)
+                  const TextSpan(text: '  ·  '),
+                if (place.subtitle != null) TextSpan(text: place.subtitle),
+              ],
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 12, color: Color(0xFF8A8A8E)),
