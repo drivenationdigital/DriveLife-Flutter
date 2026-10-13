@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
 
+import 'discover_filters.dart';
 import 'discover_place.dart';
 import 'discover_pins.dart';
 import 'discover_sheet.dart';
@@ -54,14 +55,43 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
   DiscoverKind? _category;
   DiscoverPlace? _selected;
 
+  /// Where the selected pin currently is on screen, in logical pixels.
+  ///
+  /// The callout is positioned from this rather than parked at a fixed
+  /// height, so it stays attached to its pin while the map moves. Null when
+  /// nothing is selected, or while the projection has not been taken yet.
+  ///
+  /// A ValueNotifier rather than a field behind setState, because this
+  /// changes on every frame of a pan. setState would rebuild the whole
+  /// screen at that rate — the chrome, the map widget and, worst of all, the
+  /// results sheet, whose children being rebuilt mid-gesture is what made it
+  /// impossible to drag open in the first place. Only the callout needs to
+  /// move, so only the callout rebuilds.
+  final ValueNotifier<Offset?> _pinAt = ValueNotifier<Offset?>(null);
+
+  /// True while a projection is in flight.
+  ///
+  /// pixelForCoordinate is a call across the platform channel and the camera
+  /// reports a change every frame of a pan. Queuing one per frame would build
+  /// a backlog that arrives after the gesture has finished, so a frame that
+  /// finds one already running simply skips: the next camera change takes a
+  /// fresh reading, and the only cost of dropping one is a callout a frame
+  /// behind the map.
+  bool _projecting = false;
+
   bool _loading = false;
   String _query = '';
 
   double? _lat;
   double? _lng;
   String _locationLabel = 'Near me';
-  int _radius = 25;
-  String _dateFilter = 'anytime';
+
+  /// Whether [_lat]/[_lng] came from the device or from a place the user
+  /// searched for. A searched centre must survive a refetch, so "my location"
+  /// only re-reads the GPS when this is true.
+  bool _followingDevice = true;
+
+  DiscoverFilters _filters = DiscoverFilters.initial;
 
   /// Guards against an old response overwriting a newer one.
   ///
@@ -84,12 +114,14 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
   void dispose() {
     _searchDebounce?.cancel();
     _searchController.dispose();
+    _pinAt.dispose();
     super.dispose();
   }
 
   // ── where we are ──────────────────────────────────────────────────────
 
   Future<void> _locate({bool recentre = false}) async {
+    _followingDevice = true;
     final coords = await LocationService.getCoordinates();
     if (!mounted) return;
 
@@ -144,6 +176,20 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
     final id = ++_fetchId;
     setState(() => _loading = true);
 
+    // 'custom' rather than 'near-me', whenever a centre is known.
+    //
+    // This is not a preference, it is the only way the coordinates are read.
+    // On 'near-me' the server ignores the latitude and longitude in the
+    // request entirely and uses the last_location stored on the user's
+    // profile - so searching for a town moved the camera and changed nothing
+    // else. 'custom' is the one branch that honours what is sent.
+    //
+    // It also means the search follows the map: whatever the user is looking
+    // at is what gets searched, rather than where their profile says they
+    // live.
+    final centred = _lat != null && _lng != null;
+    final where = centred ? 'custom' : 'near-me';
+
     // Both at once. They hit different post types and neither depends on the
     // other, so waiting for one before starting the other would double the
     // time the map sits empty.
@@ -151,19 +197,29 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
       EventsAPI.getEvents(
         page: 1,
         limit: 100,
-        location: 'near-me',
-        dateFilter: _dateFilter,
+        location: where,
+        dateFilter: _filters.date,
+        customDateFrom: _filters.range?.start,
+        customDateTo: _filters.range?.end,
         latitude: _lat,
         longitude: _lng,
-        radius: _radius,
+        customLocation: centred ? _locationLabel : null,
+        customLat: _lat,
+        customLng: _lng,
+        // The server otherwise pins 'custom' to 15 miles for events and 50
+        // for venues, whatever the distance filter says.
+        radiusMiles: _filters.radius,
       ),
       VenueApiService.getTrendingVenues(
         page: 1,
         limit: 100,
-        location: 'near-me',
+        location: where,
         latitude: _lat,
         longitude: _lng,
-        radius: _radius,
+        customLocation: centred ? _locationLabel : null,
+        customLat: _lat,
+        customLng: _lng,
+        radiusMiles: _filters.radius,
       ),
     ]);
 
@@ -327,14 +383,23 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
       '!',
       ['has', 'point_count'],
     ];
-    if (_category == null) return notACluster;
+
+    // The chip row focuses one category; the filter sheet decides which are
+    // enabled at all. A focused category is always one of the enabled ones,
+    // so the narrower of the two is what the map draws.
+    final shown = _category != null
+        ? <DiscoverKind>{_category!}
+        : _filters.kinds;
+
     return <Object>[
       'all',
       notACluster,
       <Object>[
-        '==',
+        'match',
         const ['get', 'kind'],
-        _category!.name,
+        [for (final k in shown) k.name],
+        true,
+        false,
       ],
     ];
   }
@@ -355,21 +420,27 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
 
   Future<void> _applyCategoryFilter() async {
     if (!_styleReady) return;
-    await _map?.setStyleLayerProperty(
-      _pinLayerId,
-      'filter',
-      _pinFilter(),
-    );
+    await _map?.setStyleLayerProperty(_pinLayerId, 'filter', _pinFilter());
   }
 
-  Future<void> _flyTo(double lat, double lng, {double? zoom}) async {
+  Future<void> _flyTo(
+    double lat,
+    double lng, {
+    double? zoom,
+    mb.MbxEdgeInsets? padding,
+  }) async {
     await _map?.flyTo(
       mb.CameraOptions(
         center: mb.Point(coordinates: mb.Position(lng, lat)),
         zoom: zoom ?? 10.5,
+        padding: padding,
       ),
       mb.MapAnimationOptions(duration: 900),
     );
+    // The camera stops reporting changes once it arrives, so take a final
+    // reading: without it the callout is left where the animation last
+    // reported, a frame short of where the pin ended up.
+    await _trackPin();
   }
 
   Future<void> _zoomIn(mb.Point at) async {
@@ -392,27 +463,88 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
     }
   }
 
-  void _select(DiscoverPlace place) {
-    setState(() => _selected = place);
-    // Lift the pin clear of the sheet and the callout. Without the nudge the
-    // thing just selected sits underneath the card describing it.
-    _flyTo(place.latitude - 0.012, place.longitude, zoom: 12.5);
+  /// Re-reads where the selected pin sits on screen.
+  Future<void> _trackPin() async {
+    final map = _map;
+    final place = _selected;
+
+    if (map == null || place == null) {
+      _pinAt.value = null;
+      return;
+    }
+    if (_projecting) return;
+
+    _projecting = true;
+    try {
+      final at = await map.pixelForCoordinate(
+        mb.Point(coordinates: mb.Position(place.longitude, place.latitude)),
+      );
+      // The selection can change, or the screen can go, while this is in the
+      // air. Writing the answer then would put the callout on the wrong pin.
+      if (!mounted || !identical(_selected, place)) return;
+
+      // ValueNotifier already drops a write that equals the current value,
+      // so a still camera costs nothing.
+      _pinAt.value = Offset(at.x, at.y);
+    } catch (_) {
+      // Projection fails if it is asked before the camera settles. The
+      // callout keeps its last position until the next camera change, which
+      // is a frame away.
+    } finally {
+      _projecting = false;
+    }
   }
 
-  /// The results the user is actually being shown, after the category chip
-  /// and the search box. The single source for every count on screen.
-  List<DiscoverPlace> get _visible {
+  void _select(DiscoverPlace place) {
+    // Dropped, not kept. The old position belongs to the previous pin, and
+    // showing the new card there for a frame makes it visibly jump.
+    _pinAt.value = null;
+    setState(() => _selected = place);
+
+    // Centred within the part of the map that is actually visible, rather
+    // than within the window - camera padding does this honestly, where the
+    // old trick of flying to a slightly different latitude guessed at it and
+    // guessed differently at every zoom level.
+    _flyTo(
+      place.latitude,
+      place.longitude,
+      zoom: 12.5,
+      padding: mb.MbxEdgeInsets(
+        // Clear of the search bar and chips above...
+        top: MediaQuery.paddingOf(context).top + 120,
+        left: 0,
+        // ...and of the results sheet below.
+        bottom:
+            MediaQuery.sizeOf(context).height *
+            DiscoverResultsSheet.collapsedFor(context),
+        right: 0,
+      ),
+    );
+  }
+
+  /// Everything the filter sheet and the search box allow, before the chip
+  /// row narrows it to one category.
+  ///
+  /// This is what the chip counts are drawn from. Counting [_visible]
+  /// instead would make every number on the row describe the category
+  /// already selected - tap "Events" and "All" would start reporting the
+  /// number of events.
+  List<DiscoverPlace> get _matching {
     final q = _query.trim().toLowerCase();
     return _places.where((p) {
-      if (_category != null && p.kind != _category) return false;
+      if (!_filters.kinds.contains(p.kind)) return false;
       if (q.isEmpty) return true;
       return p.title.toLowerCase().contains(q) ||
           (p.subtitle?.toLowerCase().contains(q) ?? false);
     }).toList();
   }
 
-  int _countOf(DiscoverKind kind) =>
-      _places.where((p) => p.kind == kind).length;
+  /// The results the user is actually being shown: [_matching], narrowed to
+  /// the focused category. The single source for the map, the sheet and the
+  /// "N nearby" heading.
+  List<DiscoverPlace> get _visible => _category == null
+      ? _matching
+      : _matching.where((p) => p.kind == _category).toList();
 
   // ── chrome ────────────────────────────────────────────────────────────
 
@@ -429,29 +561,104 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
     final result = await showModalBottomSheet<DiscoverFilters>(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (_) => DiscoverFilterSheet(
-        initial: DiscoverFilters(radius: _radius, date: _dateFilter),
+        initial: _filters,
+        countFor: (kinds) =>
+            _places.where((p) => kinds.contains(p.kind)).length,
       ),
     );
     if (result == null || !mounted) return;
-    if (result.radius == _radius && result.date == _dateFilter) return;
+
+    final refetch = result.needsRefetch(_filters);
+    setState(() {
+      _filters = result;
+      // A category the user has just switched off must not stay focused in
+      // the chip row, or the map would show nothing with no way back.
+      if (_category != null && !result.kinds.contains(_category!)) {
+        _category = null;
+      }
+      if (_selected != null && !result.kinds.contains(_selected!.kind)) {
+        _selected = null;
+      }
+    });
+
+    // Categories are applied client-side, so only a radius or date change
+    // costs a round trip.
+    if (refetch) {
+      await _load();
+    } else {
+      await _applyCategoryFilter();
+    }
+  }
+
+  /// Re-centres the map on a place the user searched for.
+  Future<void> _openLocationSearch() async {
+    final result = await showModalBottomSheet<DiscoverLocation>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => DiscoverLocationSheet(current: _locationLabel),
+    );
+    if (result == null || !mounted) return;
+
+    if (result.isCurrent) {
+      await _locate(recentre: true);
+      return;
+    }
 
     setState(() {
-      _radius = result.radius;
-      _dateFilter = result.date;
+      _followingDevice = false;
+      _lat = result.latitude;
+      _lng = result.longitude;
+      _locationLabel = result.label;
+      _selected = null;
     });
+
+    await _flyTo(result.latitude, result.longitude);
     await _load();
+  }
+
+  /// The selected pin's card, placed against that pin.
+  List<Widget> _buildCallout(DiscoverPlace place, Offset pin) {
+    final at = DiscoverCallout.placeFor(
+      pin: pin,
+      screen: MediaQuery.sizeOf(context),
+      // What the chrome occupies: status bar, search bar, category chips.
+      chrome: MediaQuery.paddingOf(context).top + 110,
+    );
+    if (at == null) return const [];
+
+    return [
+      Positioned(
+        left: at.left,
+        top: at.top,
+        child: DiscoverCallout(
+          place: place,
+          pointsDown: at.pointsDown,
+          onClose: () {
+            _pinAt.value = null;
+            setState(() => _selected = null);
+          },
+          onOpen: () => openPlace(context, place),
+        ),
+      ),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
     if (!MapboxConfig.isConfigured) return const _MissingToken();
 
-    final visible = _visible;
+    final matching = _matching;
+    final visible = _category == null
+        ? matching
+        : matching.where((p) => p.kind == _category).toList();
     final screenHeight = MediaQuery.sizeOf(context).height;
 
     // Keeps the floating controls clear of the sheet's resting height.
-    final aboveSheet = screenHeight * DiscoverResultsSheet.collapsed + 12;
+    final aboveSheet =
+        screenHeight * DiscoverResultsSheet.collapsedFor(context) + 12;
 
     return Scaffold(
       backgroundColor: const Color(0xFFEDEDED),
@@ -469,18 +676,27 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
               styleUri: MapboxConfig.styleUri,
               onMapCreated: _onMapCreated,
               onStyleLoadedListener: _onStyleLoaded,
+              // Every pan and zoom moves the selected pin on screen, and the
+              // callout is pinned to it, so it has to be re-projected as the
+              // camera moves. _trackPin drops frames rather than queue them.
+              onCameraChangeListener: (_) => _trackPin(),
             ),
           ),
 
           _DiscoverChrome(
             controller: _searchController,
             locationLabel: _locationLabel,
+            following: _followingDevice,
             category: _category,
-            countOf: _countOf,
-            total: _places.length,
+            kinds: _filters.kinds,
+            // Closed over the list build already computed, and counted the
+            // same way the sheet counts - so a chip saying 3 opens a list
+            // of 3.
+            countOf: (kind) => matching.where((p) => p.kind == kind).length,
+            total: matching.length,
             loading: _loading,
             onSearch: _onSearchChanged,
-            onLocationTap: () => _locate(recentre: true),
+            onLocationTap: _openLocationSearch,
             onFilters: _openFilters,
             onCategory: (kind) {
               setState(() {
@@ -500,23 +716,27 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
             ),
           ),
 
+          // Fills the stack so the callout can be positioned anywhere in
+          // it, but paints nothing of its own — an empty Stack does not
+          // absorb hits, so map gestures pass straight through.
           if (_selected != null)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: aboveSheet + 60,
-              child: DiscoverCallout(
-                place: _selected!,
-                onClose: () => setState(() => _selected = null),
-                onOpen: () => openPlace(context, _selected!),
+            Positioned.fill(
+              child: ValueListenableBuilder<Offset?>(
+                valueListenable: _pinAt,
+                builder: (context, pin, _) {
+                  final selected = _selected;
+                  if (pin == null || selected == null) {
+                    return const SizedBox.shrink();
+                  }
+                  return Stack(children: _buildCallout(selected, pin));
+                },
               ),
             ),
 
           DiscoverResultsSheet(
             places: visible,
             loading: _loading,
-            radius: _radius,
-            dateFilter: _dateFilter,
+            filters: _filters,
             selected: _selected,
             onTap: _select,
             onOpen: (p) => openPlace(context, p),
@@ -546,14 +766,29 @@ void openPlace(BuildContext context, DiscoverPlace place) {
         '/venue-details',
         arguments: {'venueId': place.id},
       );
+
+    // Nothing can produce one of these yet, so nothing can tap one. Listed
+    // rather than defaulted: when a post type does appear, the compiler asks
+    // for its route here instead of silently doing nothing.
+    case DiscoverKind.business:
+    case DiscoverKind.location:
+      break;
   }
 }
 
-/// The search bar, location chip, filter button and category row.
+/// The search bar, location button, filter button and category row.
+///
+/// The bar is split in two with a divider down the middle, and the halves do
+/// different jobs: the left filters the loaded results by title, the right
+/// opens a location search that moves the map. One field doing both was the
+/// ambiguity worth removing - typing "Croft" could mean the circuit or the
+/// village, and only the user knows which.
 class _DiscoverChrome extends StatelessWidget {
   final TextEditingController controller;
   final String locationLabel;
+  final bool following;
   final DiscoverKind? category;
+  final Set<DiscoverKind> kinds;
   final int Function(DiscoverKind) countOf;
   final int total;
   final bool loading;
@@ -565,7 +800,9 @@ class _DiscoverChrome extends StatelessWidget {
   const _DiscoverChrome({
     required this.controller,
     required this.locationLabel,
+    required this.following,
     required this.category,
+    required this.kinds,
     required this.countOf,
     required this.total,
     required this.loading,
@@ -577,13 +814,18 @@ class _DiscoverChrome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // top: true, and nothing above it. The shell gives this destination the
+    // whole screen - no status-bar spacer, no app header - so this SafeArea
+    // is the only thing holding the bar clear of the clock. While the shell
+    // was also inserting a spacer the two stacked, which is what pushed the
+    // bar down the screen.
     return SafeArea(
       bottom: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Row(
               children: [
                 Expanded(
@@ -607,7 +849,7 @@ class _DiscoverChrome extends StatelessWidget {
                             decoration: const InputDecoration(
                               isDense: true,
                               border: InputBorder.none,
-                              hintText: 'Search nearby',
+                              hintText: 'Search events, venues...',
                               hintStyle: TextStyle(
                                 fontSize: 15,
                                 color: Color(0xFF8A8A8E),
@@ -615,12 +857,20 @@ class _DiscoverChrome extends StatelessWidget {
                             ),
                           ),
                         ),
-                        _LocationChip(
+                        // The seam. Without it the two halves read as one
+                        // field with a decoration stuck on the end, and the
+                        // right half does not look tappable.
+                        Container(
+                          width: 1,
+                          height: 24,
+                          color: const Color(0xFFE6E6E6),
+                        ),
+                        _LocationButton(
                           label: locationLabel,
                           loading: loading,
+                          following: following,
                           onTap: onLocationTap,
                         ),
-                        const SizedBox(width: 6),
                       ],
                     ),
                   ),
@@ -633,6 +883,7 @@ class _DiscoverChrome extends StatelessWidget {
                     onPressed: onFilters,
                     icon: const Icon(Icons.tune_rounded, size: 21),
                     color: const Color(0xFF1C1C1E),
+                    tooltip: 'Filters',
                   ),
                 ),
               ],
@@ -653,18 +904,83 @@ class _DiscoverChrome extends StatelessWidget {
                   selected: category == null,
                   onTap: () => onCategory(null),
                 ),
+                // Only the categories the filter sheet has switched on. A
+                // chip for something the sheet is hiding would offer a count
+                // the map does not draw.
                 for (final kind in DiscoverKind.values)
-                  _CategoryChip(
-                    label: kind.label,
-                    count: countOf(kind),
-                    dot: kind.colour,
-                    selected: category == kind,
-                    onTap: () => onCategory(kind),
-                  ),
+                  if (kinds.contains(kind))
+                    _CategoryChip(
+                      label: kind.label,
+                      count: countOf(kind),
+                      dot: kind.colour,
+                      selected: category == kind,
+                      onTap: () => onCategory(kind),
+                    ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The right-hand half of the search bar: where the map is centred, and the
+/// way to change it.
+class _LocationButton extends StatelessWidget {
+  final String label;
+  final bool loading;
+  final bool following;
+  final VoidCallback onTap;
+
+  const _LocationButton({
+    required this.label,
+    required this.loading,
+    required this.following,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: const BorderRadius.horizontal(right: Radius.circular(26)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(11, 8, 15, 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (loading)
+              const SizedBox(
+                width: 13,
+                height: 13,
+                child: CircularProgressIndicator(strokeWidth: 1.6),
+              )
+            else
+              Icon(
+                // A crosshair while the map is following the device, a pin
+                // once a place has been searched for - so it is clear at a
+                // glance whether "nearby" still means near you.
+                following ? Icons.my_location_rounded : Icons.place_rounded,
+                size: 15,
+                color: const Color(0xFFB08E4F),
+              ),
+            const SizedBox(width: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 92),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1C1C1E),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -696,64 +1012,6 @@ class _Floating extends StatelessWidget {
         ],
       ),
       child: child,
-    );
-  }
-}
-
-class _LocationChip extends StatelessWidget {
-  final String label;
-  final bool loading;
-  final VoidCallback onTap;
-
-  const _LocationChip({
-    required this.label,
-    required this.loading,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2F2F2),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (loading)
-              const SizedBox(
-                width: 12,
-                height: 12,
-                child: CircularProgressIndicator(strokeWidth: 1.6),
-              )
-            else
-              const Icon(
-                Icons.place_rounded,
-                size: 14,
-                color: Color(0xFF1C1C1E),
-              ),
-            const SizedBox(width: 5),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 86),
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1C1C1E),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -899,7 +1157,11 @@ class _MissingToken extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.map_outlined, size: 48, color: Color(0xFF9A9A9A)),
+              const Icon(
+                Icons.map_outlined,
+                size: 48,
+                color: Color(0xFF9A9A9A),
+              ),
               const SizedBox(height: 16),
               const Text(
                 'Map unavailable',

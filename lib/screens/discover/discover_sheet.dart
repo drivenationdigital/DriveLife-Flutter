@@ -1,32 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import 'discover_filters.dart';
 import 'discover_place.dart';
-
-/// The radius and date the map is searching with.
-@immutable
-class DiscoverFilters {
-  final int radius;
-  final String date;
-
-  const DiscoverFilters({required this.radius, required this.date});
-
-  /// How the sheet's subtitle reads: "Within 25 mi · This weekend".
-  String get summary => 'Within $radius mi · ${dateLabels[date] ?? 'Any time'}';
-
-  /// The date windows the events endpoint understands, keyed by the value it
-  /// expects. Venues have no dates and ignore this entirely.
-  static const Map<String, String> dateLabels = {
-    'anytime': 'Any time',
-    'today': 'Today',
-    'tomorrow': 'Tomorrow',
-    'this-week': 'This week',
-    'this-weekend': 'This weekend',
-    'this-month': 'This month',
-  };
-
-  static const List<int> radii = [10, 25, 50, 100];
-}
 
 /// The results, as a sheet that can be dragged up over the map.
 ///
@@ -35,15 +11,57 @@ class DiscoverFilters {
 /// the same [places], so the count in the header is always the number of
 /// things you can actually reach.
 class DiscoverResultsSheet extends StatefulWidget {
-  /// Resting height, as a fraction of the screen. Also used by the map screen
-  /// to keep its floating buttons clear of it, so it lives here rather than
-  /// being written down in two places.
-  static const double collapsed = 0.24;
+  /// How much room the floating bottom nav needs at the foot of the sheet,
+  /// and under anything else that floats over the map. The bar is drawn on
+  /// top of this screen, not above it, so nothing reserves this space
+  /// automatically.
+  static const double footerClearance = 86;
+
+  /// The grabber, the header and one row of cards - what the sheet shows at
+  /// rest.
+  static const double _restingContent = 30 + 56 + 96;
+
+  /// A fixed allowance for the home indicator, instead of the measured
+  /// inset.
+  ///
+  /// Measuring would be more precise and is the wrong trade. See
+  /// [collapsedFor]: this feeds minChildSize, which must never move, and the
+  /// measured inset moves — `padding.bottom` collapses to zero under a
+  /// keyboard, and Scaffold rewrites the MediaQuery around its own body, so
+  /// even viewPadding is not dependable from in here. Being 34 logical pixels
+  /// out on a device with no home indicator costs a little slack at the foot
+  /// of the sheet. Being wrong by any amount at the wrong moment costs the
+  /// whole sheet.
+  static const double _assumedBottomInset = 34;
+
+  /// Resting height, as the fraction of the screen that content needs.
+  ///
+  /// Derived rather than written down as a constant. DraggableScrollableSheet
+  /// only speaks in fractions of the screen, and a fraction that leaves room
+  /// for the cards and the floating nav on a tall phone hides the cards
+  /// behind the nav on a short one. The map screen reads this too, to keep
+  /// its own floating buttons above the sheet.
+  ///
+  /// Depends on the screen's height and nothing else, because this value
+  /// becomes the sheet's minChildSize and DraggableScrollableSheet cannot
+  /// have its minimum changed underneath it: the controller keeps the extent
+  /// it already had, that extent is now out of bounds, and the sheet stops
+  /// responding to drags entirely.
+  ///
+  /// That is not hypothetical. This was computed from the measured bottom
+  /// inset, opening the location search focuses a text field, and a keyboard
+  /// takes `padding.bottom` to zero — so every location search shifted the
+  /// minimum and after a few the sheet could not be opened at all.
+  static double collapsedFor(BuildContext context) {
+    final needed = _restingContent + footerClearance + _assumedBottomInset;
+    // Never more than half the screen: on a very small display the cards are
+    // worth less than the map they would be covering.
+    return (needed / MediaQuery.sizeOf(context).height).clamp(0.2, 0.5);
+  }
 
   final List<DiscoverPlace> places;
   final bool loading;
-  final int radius;
-  final String dateFilter;
+  final DiscoverFilters filters;
   final DiscoverPlace? selected;
   final ValueChanged<DiscoverPlace> onTap;
   final ValueChanged<DiscoverPlace> onOpen;
@@ -52,8 +70,7 @@ class DiscoverResultsSheet extends StatefulWidget {
     super.key,
     required this.places,
     required this.loading,
-    required this.radius,
-    required this.dateFilter,
+    required this.filters,
     required this.selected,
     required this.onTap,
     required this.onOpen,
@@ -73,85 +90,119 @@ class _DiscoverResultsSheetState extends State<DiscoverResultsSheet> {
   bool _asList = false;
 
   @override
-  void initState() {
-    super.initState();
-    _controller.addListener(_onExtentChanged);
-  }
-
-  @override
   void dispose() {
-    _controller.removeListener(_onExtentChanged);
     _controller.dispose();
     super.dispose();
   }
 
-  void _onExtentChanged() {
-    if (!_controller.isAttached) return;
+  /// Switches between the card strip and the list, once the sheet has
+  /// settled.
+  ///
+  /// Driven by ScrollEndNotification rather than by listening to the extent
+  /// as it changes, and that is the whole point. The two layouts have
+  /// different children, so swapping them rebuilds the ListView this gesture
+  /// is being fed through — which cancels the drag. Watching the extent live
+  /// meant the swap happened the instant it crossed [_listAbove], mid-drag,
+  /// killing the gesture and letting the sheet snap back to the bottom.
+  ///
+  /// The sheet could therefore never be opened past that threshold at all: it
+  /// was not stuck, it was being interrupted at exactly the same height every
+  /// time.
+  ///
+  /// Waiting for the scroll to end also reads better. The content settles
+  /// once, after the sheet arrives, instead of reshuffling under the finger
+  /// on the way.
+  bool _onScrollEnd(ScrollEndNotification _) {
+    if (!_controller.isAttached) return false;
     final asList = _controller.size >= _listAbove;
-    if (asList != _asList) setState(() => _asList = asList);
+    if (asList != _asList) {
+      // Deferred: this fires from within the scroll's own notification
+      // dispatch, and rebuilding the scrollable from inside that is the
+      // "setState() or markNeedsBuild() called during build" crash.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _asList = asList);
+      });
+    }
+    return false;
   }
 
   @override
   Widget build(BuildContext context) {
-    final filters = DiscoverFilters(
-      radius: widget.radius,
-      date: widget.dateFilter,
-    );
+    final collapsed = DiscoverResultsSheet.collapsedFor(context);
 
     return DraggableScrollableSheet(
+      // Deliberately NOT keyed on the resting height. Re-keying builds a
+      // second DraggableScrollableSheet before the first is disposed, and
+      // both reach for this controller: "Draggable scrollable controller is
+      // already attached to a sheet". The guarantee that keeps this safe is
+      // that collapsedFor cannot change, not a key that recreates the sheet
+      // when it does.
       controller: _controller,
-      initialChildSize: DiscoverResultsSheet.collapsed,
-      minChildSize: DiscoverResultsSheet.collapsed,
+      initialChildSize: collapsed,
+      minChildSize: collapsed,
       maxChildSize: 0.9,
       snap: true,
-      snapSizes: const [DiscoverResultsSheet.collapsed, 0.55, 0.9],
+      // Ascending, as snapSizes requires. collapsedFor clamps at 0.5, so the
+      // resting height can never overtake the middle stop.
+      snapSizes: [collapsed, 0.55, 0.9],
       builder: (context, scrollController) {
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(24),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 22,
-                offset: const Offset(0, -4),
+        return NotificationListener<ScrollEndNotification>(
+          onNotification: _onScrollEnd,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
               ),
-            ],
-          ),
-          // The ListView owns the controller, which is what makes the whole
-          // sheet draggable: without a scrollable attached to it the sheet
-          // can only be moved by its handle.
-          child: ListView(
-            controller: scrollController,
-            padding: EdgeInsets.zero,
-            children: [
-              const _Grabber(),
-              _Header(
-                count: widget.places.length,
-                summary: filters.summary,
-                loading: widget.loading,
-              ),
-              if (widget.places.isEmpty && !widget.loading)
-                const _Empty()
-              else if (_asList)
-                for (final place in widget.places)
-                  _ResultRow(
-                    place: place,
-                    selected: place.id == widget.selected?.id,
-                    onTap: () => widget.onTap(place),
-                    onOpen: () => widget.onOpen(place),
-                  )
-              else
-                _CardStrip(
-                  places: widget.places,
-                  selected: widget.selected,
-                  onTap: widget.onTap,
-                  onOpen: widget.onOpen,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 22,
+                  offset: const Offset(0, -4),
                 ),
-              SizedBox(height: MediaQuery.paddingOf(context).bottom + 12),
-            ],
+              ],
+            ),
+            // The ListView owns the controller, which is what makes the whole
+            // sheet draggable: without a scrollable attached to it the sheet
+            // can only be moved by its handle.
+            child: ListView(
+              controller: scrollController,
+              padding: EdgeInsets.zero,
+              children: [
+                const _Grabber(),
+                _Header(
+                  count: widget.places.length,
+                  summary: widget.filters.summary,
+                  loading: widget.loading,
+                ),
+                if (widget.places.isEmpty && !widget.loading)
+                  const _Empty()
+                else if (_asList)
+                  for (final place in widget.places)
+                    _ResultRow(
+                      place: place,
+                      selected: place.id == widget.selected?.id,
+                      onTap: () => widget.onTap(place),
+                      onOpen: () => widget.onOpen(place),
+                    )
+                else
+                  _CardStrip(
+                    places: widget.places,
+                    selected: widget.selected,
+                    onTap: widget.onTap,
+                    onOpen: widget.onOpen,
+                  ),
+                // Clears the floating bottom bar, which the shell draws
+                // over this sheet rather than above it. viewPadding for the
+                // same reason collapsedFor uses it: this has to agree with the
+                // height that was reserved, keyboard or no keyboard.
+                SizedBox(
+                  height:
+                      MediaQuery.viewPaddingOf(context).bottom +
+                      DiscoverResultsSheet.footerClearance,
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -381,7 +432,11 @@ class _Thumb extends StatelessWidget {
     final placeholder = ColoredBox(
       color: place.kind.colour.withValues(alpha: 0.12),
       child: Center(
-        child: Icon(place.kind.icon, size: size * 0.34, color: place.kind.colour),
+        child: Icon(
+          place.kind.icon,
+          size: size * 0.34,
+          color: place.kind.colour,
+        ),
       ),
     );
 
@@ -449,10 +504,7 @@ class _Summary extends StatelessWidget {
               ),
               Text(
                 '${distance.toStringAsFixed(distance < 10 ? 1 : 0)} mi',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Color(0xFF8A8A8E),
-                ),
+                style: const TextStyle(fontSize: 11, color: Color(0xFF8A8A8E)),
               ),
             ],
           ],
@@ -482,186 +534,190 @@ class _Summary extends StatelessWidget {
   }
 }
 
-/// The card for the pin the user just tapped.
+/// Where a callout goes, worked out from where its pin is.
+@immutable
+class CalloutPlacement {
+  final double left;
+  final double top;
+
+  /// True when the card sits above its pin, so the tail points down at it.
+  final bool pointsDown;
+
+  const CalloutPlacement({
+    required this.left,
+    required this.top,
+    required this.pointsDown,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      other is CalloutPlacement &&
+      other.left == left &&
+      other.top == top &&
+      other.pointsDown == pointsDown;
+
+  @override
+  int get hashCode => Object.hash(left, top, pointsDown);
+
+  @override
+  String toString() =>
+      'CalloutPlacement(left: $left, top: $top, pointsDown: $pointsDown)';
+}
+
+/// The card for the pin the user just tapped, anchored to that pin.
 ///
-/// Floats above the sheet rather than being anchored to the pin itself.
-/// Anchoring would mean projecting the coordinate to a screen point on every
-/// camera frame — jittery during a fling, and a bubble that small is an
-/// awkward tap target. Maps and Apple Maps both do it this way.
+/// Fixed size on purpose. The map screen projects the pin's coordinate to a
+/// screen point and places this relative to it, which means it has to know how
+/// big this is before it is laid out — a card that measured itself could only
+/// be positioned a frame late, and would visibly jump.
 class DiscoverCallout extends StatelessWidget {
+  static const double width = 272;
+  static const double height = 78;
+
+  /// The gap between the pin and the card, and the height of the tail that
+  /// crosses it.
+  static const double tail = 8;
+
+  /// How far the pin's art rises above the coordinate it marks. Its anchor is
+  /// its point, so the card has to clear the pin, not the coordinate.
+  static const double pinHeight = 44;
+
+  /// Keeps the card off the very edge of the screen.
+  static const double margin = 12;
+
+  /// Where to put the card for a pin at [pin] on a [screen]-sized display.
+  ///
+  /// Above the pin by preference and below it when there is no room above —
+  /// what every map app does, and what decides which way the tail points.
+  /// [chrome] is the height taken by the search bar and chips, which the card
+  /// must not slide under.
+  ///
+  /// Null when the pin is off screen. The alternative is a card pinned to the
+  /// edge pointing at something that is not there.
+  static CalloutPlacement? placeFor({
+    required Offset pin,
+    required Size screen,
+    required double chrome,
+  }) {
+    if (pin.dx < -margin ||
+        pin.dx > screen.width + margin ||
+        pin.dy < -margin ||
+        pin.dy > screen.height + margin) {
+      return null;
+    }
+
+    final above = pin.dy - pinHeight - height - tail;
+    final pointsDown = above >= chrome;
+
+    // Centred on the pin, then pulled back inside the screen. A pin near the
+    // edge still gets its whole card; only the tail stops lining up with the
+    // middle of it, which is much the lesser problem.
+    final rightmost = screen.width - width - margin;
+
+    return CalloutPlacement(
+      left: rightmost <= margin
+          ? margin
+          : (pin.dx - width / 2).clamp(margin, rightmost),
+      top: pointsDown ? above : pin.dy + tail,
+      pointsDown: pointsDown,
+    );
+  }
+
   final DiscoverPlace place;
+
+  /// True when the card sits above the pin, which points the tail downwards.
+  final bool pointsDown;
+
   final VoidCallback onClose;
   final VoidCallback onOpen;
 
   const DiscoverCallout({
     super.key,
     required this.place,
+    required this.pointsDown,
     required this.onClose,
     required this.onOpen,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    final card = Material(
       elevation: 8,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       shadowColor: Colors.black.withValues(alpha: 0.3),
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         onTap: onOpen,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
-            children: [
-              _Thumb(place: place, size: 56),
-              const SizedBox(width: 12),
-              Expanded(child: _Summary(place: place)),
-              IconButton(
-                onPressed: onClose,
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(
-                  Icons.close_rounded,
-                  size: 18,
-                  color: Color(0xFF8A8A8E),
+        child: SizedBox(
+          height: height,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                _Thumb(place: place, size: 58),
+                const SizedBox(width: 10),
+                Expanded(child: _Summary(place: place)),
+                GestureDetector(
+                  onTap: onClose,
+                  behavior: HitTestBehavior.opaque,
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 17,
+                      color: Color(0xFF8A8A8E),
+                    ),
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Radius and date, as a modal sheet.
-///
-/// Returns null when dismissed without applying, so the caller can tell
-/// "cancelled" from "applied the same values".
-class DiscoverFilterSheet extends StatefulWidget {
-  final DiscoverFilters initial;
-
-  const DiscoverFilterSheet({super.key, required this.initial});
-
-  @override
-  State<DiscoverFilterSheet> createState() => _DiscoverFilterSheetState();
-}
-
-class _DiscoverFilterSheetState extends State<DiscoverFilterSheet> {
-  late int _radius = widget.initial.radius;
-  late String _date = widget.initial.date;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-        20,
-        12,
-        20,
-        MediaQuery.paddingOf(context).bottom + 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Center(child: _Grabber()),
-          const SizedBox(height: 4),
-          const Text(
-            'Distance',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final r in DiscoverFilters.radii)
-                _Choice(
-                  label: '$r mi',
-                  selected: r == _radius,
-                  onTap: () => setState(() => _radius = r),
-                ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'When',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Applies to events. Venues are always shown.',
-            style: TextStyle(fontSize: 11.5, color: Color(0xFF8A8A8E)),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final entry in DiscoverFilters.dateLabels.entries)
-                _Choice(
-                  label: entry.value,
-                  selected: entry.key == _date,
-                  onTap: () => setState(() => _date = entry.key),
-                ),
-            ],
-          ),
-          const SizedBox(height: 22),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF1C1C1E),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              onPressed: () => Navigator.pop(
-                context,
-                DiscoverFilters(radius: _radius, date: _date),
-              ),
-              child: const Text('Show results'),
+              ],
             ),
           ),
-        ],
+        ),
+      ),
+    );
+
+    // The tail is what makes this read as belonging to one pin rather than
+    // floating over the map near several of them.
+    final spike = CustomPaint(
+      size: Size(16, tail),
+      painter: _TailPainter(pointsDown: pointsDown),
+    );
+
+    return SizedBox(
+      width: width,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: pointsDown ? [card, spike] : [spike, card],
       ),
     );
   }
 }
 
-class _Choice extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+class _TailPainter extends CustomPainter {
+  final bool pointsDown;
 
-  const _Choice({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+  const _TailPainter({required this.pointsDown});
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F2),
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : const Color(0xFF1C1C1E),
-          ),
-        ),
-      ),
-    );
+  void paint(Canvas canvas, Size size) {
+    final path = Path();
+    if (pointsDown) {
+      path
+        ..moveTo(size.width / 2 - 8, 0)
+        ..lineTo(size.width / 2, size.height)
+        ..lineTo(size.width / 2 + 8, 0);
+    } else {
+      path
+        ..moveTo(size.width / 2 - 8, size.height)
+        ..lineTo(size.width / 2, 0)
+        ..lineTo(size.width / 2 + 8, size.height);
+    }
+    path.close();
+
+    canvas.drawShadow(path, Colors.black.withValues(alpha: 0.3), 3, false);
+    canvas.drawPath(path, Paint()..color = Colors.white);
   }
+
+  @override
+  bool shouldRepaint(_TailPainter old) => old.pointsDown != pointsDown;
 }

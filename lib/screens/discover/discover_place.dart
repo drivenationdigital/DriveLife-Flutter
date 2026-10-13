@@ -2,27 +2,47 @@ import 'package:flutter/material.dart';
 
 /// What a pin on the Discover map can be.
 ///
-/// The mock also shows a "Business" category. There is no `business` post type
-/// in WordPress yet — only `events`, `clubs` and `venues` — so adding a chip
-/// for it would mean a filter that is permanently empty. It joins this enum,
-/// and the chip row and the map pick it up automatically, the day the post
-/// type and its radius query exist.
+/// Four categories, because that is what the design shows. Only two of them
+/// have anything behind them: WordPress has `events` and `venues` post types
+/// with coordinates and a radius query, and nothing for businesses or
+/// standalone locations. Those two are wired up end to end — chip, colour,
+/// pin image, filter row — and simply fetch nothing, so the day a post type
+/// exists the only change is the fetch itself.
+///
+/// [backed] is what tells them apart, and it is the honest bit: an unbacked
+/// category reads "Coming soon" in the filters rather than "0", because 0
+/// claims we looked and there was nothing there.
 enum DiscoverKind {
   event(
     label: 'Events',
-    colour: Color(0xFFD9A441),
+    colour: Color(0xFFC4A86A),
     icon: Icons.calendar_today_rounded,
+    backed: true,
   ),
   venue(
     label: 'Venues',
     colour: Color(0xFF1C1C1E),
     icon: Icons.storefront_rounded,
+    backed: true,
+  ),
+  business(
+    label: 'Businesses',
+    colour: Color(0xFF5B7FA3),
+    icon: Icons.build_rounded,
+    backed: false,
+  ),
+  location(
+    label: 'Locations',
+    colour: Color(0xFF4E8C5A),
+    icon: Icons.place_rounded,
+    backed: false,
   );
 
   const DiscoverKind({
     required this.label,
     required this.colour,
     required this.icon,
+    required this.backed,
   });
 
   final String label;
@@ -32,6 +52,9 @@ enum DiscoverKind {
   final Color colour;
 
   final IconData icon;
+
+  /// Whether anything on the server can actually return one of these.
+  final bool backed;
 
   /// The id this kind's pin image is registered under in the map style, which
   /// is also what each feature carries in its `icon` property.

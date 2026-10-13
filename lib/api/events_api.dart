@@ -30,6 +30,10 @@ class EventsAPI {
     String? customLocation, // NEW
     double? customLat, // NEW
     double? customLng, // NEW
+    /// An exact search radius in miles, overriding the one the server infers
+    /// from [location]. Null for every caller that wants the old behaviour,
+    /// where the location keyword decides.
+    int? radiusMiles,
   }) async {
     try {
       final token = await _authService.getToken();
@@ -104,6 +108,18 @@ class EventsAPI {
             filters['event_end'] = _formatDate(sunday);
             filters['event_date'] = ['this-weekend'];
             break;
+          case 'this-week':
+          case 'this-month':
+            // Only the key. The server computes the window for every
+            // non-custom filter from event_date[0] and overwrites whatever
+            // start and end were sent, so working them out again here would
+            // be a second, divergent definition of "this month".
+            //
+            // Without these cases both fell to the default below and came
+            // back as "anytime" -- the filter looked applied and did
+            // nothing.
+            filters['event_date'] = [dateFilter.toLowerCase()];
+            break;
           case 'custom': // NEW
             // Pass custom dates if provided
             filters['event_date'] = ['custom'];
@@ -166,6 +182,8 @@ class EventsAPI {
         }
         filters['radius'] = radius;
       }
+
+      if (radiusMiles != null) filters['radius_miles'] = radiusMiles;
 
       queryParams['filters'] = jsonEncode(filters);
       queryParams['version'] = '2';

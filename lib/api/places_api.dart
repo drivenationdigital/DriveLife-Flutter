@@ -175,6 +175,9 @@ class VenueApiService {
     String? customLocation,
     double? customLat,
     double? customLng,
+    /// An exact search radius in miles, overriding the one the server infers
+    /// from [location]. Null for every caller that wants the old behaviour.
+    int? radiusMiles,
   }) async {
     try {
       final token = await _authService.getToken();
@@ -262,6 +265,8 @@ class VenueApiService {
         }
         filters['radius'] = radius;
       }
+
+      if (radiusMiles != null) filters['radius_miles'] = radiusMiles;
 
       queryParams['filters'] = jsonEncode(filters);
 

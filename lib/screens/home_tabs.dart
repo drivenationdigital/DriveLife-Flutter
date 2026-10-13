@@ -89,6 +89,20 @@ class _HomeTabsState extends State<HomeTabs> {
   /// section is a different screen, so the shell draws it above them.
   bool get _chromeIsInFeed => _currentIndex == _dHome && _homeTab == 0;
 
+  /// Whether the current destination draws edge to edge, under the status
+  /// bar, with no app header above it.
+  ///
+  /// Discover is a map: a header and a status-bar spacer above it would cost
+  /// ~110px of the thing the screen exists to show, and the map's own search
+  /// bar already floats over the top. The bottom bar still floats over it, so
+  /// the destination is reachable - this hides the chrome above the content,
+  /// not the navigation.
+  ///
+  /// Such a destination handles its own insets. Discover's search bar sits in
+  /// a SafeArea of its own; while the spacer below was also being drawn, the
+  /// two stacked and left a gap the height of the status bar.
+  bool get _isFullBleed => _currentIndex == _dDiscover;
+
   /// Shared by every piece of chrome, so the header, the section tabs and
   /// the bottom bar leave and return as one movement rather than three.
   /// Slow enough to read as the chrome moving rather than appearing.
@@ -803,12 +817,14 @@ class _HomeTabsState extends State<HomeTabs> {
         extendBody: true,
         body: Column(
           children: [
-            SizedBox(height: MediaQuery.of(context).padding.top),
+            if (!_isFullBleed) ...[
+              SizedBox(height: MediaQuery.of(context).padding.top),
 
-            // Drawn here only where there is no feed to put it in. On the
-            // feed itself the chrome is a sliver, so nothing above the
-            // scroll view changes size while a finger is on the screen.
-            if (!_chromeIsInFeed) _buildChrome(theme),
+              // Drawn here only where there is no feed to put it in. On the
+              // feed itself the chrome is a sliver, so nothing above the
+              // scroll view changes size while a finger is on the screen.
+              if (!_chromeIsInFeed) _buildChrome(theme),
+            ],
 
             Expanded(
               child: IndexedStack(

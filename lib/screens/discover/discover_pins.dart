@@ -60,7 +60,12 @@ abstract final class DiscoverPins {
       ..lineTo(radius + radius * 0.42, radius + radius * 0.78)
       ..close();
 
-    canvas.drawShadow(body, Colors.black.withValues(alpha: 0.4), 3 * pixelRatio, false);
+    canvas.drawShadow(
+      body,
+      Colors.black.withValues(alpha: 0.4),
+      3 * pixelRatio,
+      false,
+    );
     canvas.drawPath(body, Paint()..color = kind.colour);
 
     // A white rim, so a dark pin still reads against dark map features and
