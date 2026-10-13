@@ -23,6 +23,7 @@ import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:drivelife/config/mapbox_config.dart';
 import 'package:drivelife/config/app_environment.dart';
 import 'package:drivelife/providers/connectivity_provider.dart';
 import 'package:drivelife/providers/feature_tips_provider.dart';
@@ -56,6 +57,12 @@ class BottomNavProvider extends ChangeNotifier {
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Reads assets/config/mapbox.json and hands the token to the Maps SDK.
+  // Before runApp so the Discover map is ready the moment it is opened, and
+  // never throws — a missing token leaves that one screen explaining itself
+  // rather than stopping launch.
+  await MapboxConfig.load();
 
   final accountManager = AccountManager();
   await accountManager.loadAccounts();

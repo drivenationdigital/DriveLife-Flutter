@@ -106,7 +106,7 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen> {
   @override
   void initState() {
     super.initState();
-    MapboxConfig.ensureInitialised();
+    // The token is read and applied once in main(), before runApp.
     _locate();
   }
 
@@ -1169,8 +1169,9 @@ class _MissingToken extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'This build was compiled without a Mapbox access token.\n'
-                'Rebuild with --dart-define=MAPBOX_TOKEN=pk.…',
+                'No Mapbox access token was found.\n'
+                'Add one to assets/config/mapbox.json as\n'
+                '{"accessToken": "pk...."}',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
               ),

@@ -54,3 +54,7 @@ php-api/
 drivelife-accounts-api/
 get-tickets/
 ticketing/
+
+# The Mapbox access token. The example is committed so the shape is
+# discoverable; the real one never is.
+assets/config/mapbox.json
