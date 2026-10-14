@@ -26,6 +26,12 @@ enum DiscoverKind {
     icon: Icons.storefront_rounded,
     backed: true,
   ),
+  track(
+    label: 'Tracks',
+    colour: Color(0xFFB4452F),
+    icon: Icons.sports_score_rounded,
+    backed: true,
+  ),
   business(
     label: 'Businesses',
     colour: Color(0xFF5B7FA3),
@@ -164,7 +170,11 @@ class DiscoverPlace {
   static String? _text(dynamic value) {
     if (value == null) return null;
     final s = '$value'.trim();
-    return s.isEmpty ? null : s;
+    // "false" as well as empty: PHP's wp_get_attachment_image_url returns
+    // false for a missing attachment, which encodes as `false` and arrives
+    // here as a four-letter string that is then handed to an image loader.
+    if (s.isEmpty || s == 'null' || s == 'false') return null;
+    return s;
   }
 
   /// Reads an item from `app/v2/get-events-trending`.
@@ -192,8 +202,8 @@ class DiscoverPlace {
 
   /// Reads an item from `app/v2/get-venues-trending`.
   ///
-  /// Note the capital `ID`: the venues endpoint returns the raw column name
-  /// where the events endpoint lower-cases it.
+  /// Note the capital `ID`: this endpoint returns the raw column name where
+  /// the events endpoint lower-cases it.
   static DiscoverPlace? fromVenue(Map<String, dynamic> json) {
     final lat = _coord(json['latitude']);
     final lng = _coord(json['longitude']);
@@ -204,6 +214,30 @@ class DiscoverPlace {
       kind: DiscoverKind.venue,
       title: _text(json['title']) ?? 'Untitled venue',
       subtitle: _text(json['venue_location']),
+      thumbnail: _text(json['cover_image']) ?? _text(json['logo']),
+      latitude: lat,
+      longitude: lng,
+      distance: _coord(json['distance']),
+      site: _text(json['site']),
+      raw: json,
+    );
+  }
+
+  /// Reads an item from `app/v2/get-tracks-trending`.
+  ///
+  /// A separate endpoint from venues with its own field names, so a separate
+  /// reader. The shared version of these two is what put the user's venues
+  /// under "My tracks".
+  static DiscoverPlace? fromTrack(Map<String, dynamic> json) {
+    final lat = _coord(json['latitude']);
+    final lng = _coord(json['longitude']);
+    if (lat == null || lng == null) return null;
+
+    return DiscoverPlace(
+      id: '${json['ID'] ?? json['id']}',
+      kind: DiscoverKind.track,
+      title: _text(json['title']) ?? 'Untitled track',
+      subtitle: _text(json['track_location']),
       thumbnail: _text(json['cover_image']) ?? _text(json['logo']),
       latitude: lat,
       longitude: lng,

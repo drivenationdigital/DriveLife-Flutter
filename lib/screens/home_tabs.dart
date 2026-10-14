@@ -16,6 +16,8 @@ import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/auth/entity_switcher.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/clubs/add_club_screen.dart';
+import 'package:drivelife/screens/places/coming_soon_screen.dart';
+import 'package:drivelife/screens/tracks/tracks_screen.dart';
 import 'package:drivelife/screens/clubs/club_creation_screen.dart';
 import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
@@ -63,6 +65,8 @@ class _HomeTabsState extends State<HomeTabs> {
     DlTopTab(label: 'For You', icon: 'assets/app-icons/01-Home.svg'),
     DlTopTab(label: 'Events', icon: 'assets/app-icons/02-Events.svg'),
     DlTopTab(label: 'Places', icon: 'assets/app-icons/03-Venues.svg'),
+    DlTopTab(label: 'Businesses', icon: 'assets/app-icons/03-Venues.svg'),
+    DlTopTab(label: 'Tracks', icon: 'assets/app-icons/02-Events.svg'),
     // Groups is not here: it is a bottom-bar destination again. Listing it
     // in both would mean two routes to the same screen, each with its own
     // scroll position and its own loaded list.
@@ -140,6 +144,7 @@ class _HomeTabsState extends State<HomeTabs> {
     }
     context.read<BottomNavProvider>().setIndex(index);
   }
+
   final GlobalKey<PostsScreenState> _postsScreenKey =
       GlobalKey<PostsScreenState>();
 
@@ -216,8 +221,12 @@ class _HomeTabsState extends State<HomeTabs> {
       // nothing: the tap changed _homeTab, and the frozen IndexedStack
       // carried on showing the section it was built with.
       const SizedBox.shrink(),
-      // A placeholder. Discover is built in build() instead, and not until
-      // it has been opened at least once — see [_buildDiscover].
+      // A placeholder, and it has to be here rather than just commented
+      // out: every entry below it is addressed by its position, so dropping
+      // the slot silently moved Groups onto Photos, Photos onto Account and
+      // Account off the end of the list. Discover itself is built in
+      // build() — see [_buildDiscover].
+      const SizedBox.shrink(),
 
       // Groups, back as its own destination rather than a section of Home.
       MyClubsScreen(),
@@ -230,6 +239,37 @@ class _HomeTabsState extends State<HomeTabs> {
 
     if (mounted) setState(() => _screens = screens);
   }
+
+  /// The destinations, in bottom-bar order.
+  ///
+  /// Asserted against the number of items in the bar, because the two are
+  /// matched by position and nothing else. Getting them out of step does not
+  /// fail loudly — it silently shifts every destination after the gap onto
+  /// its neighbour's tab and drops the last one off the end, which is
+  /// exactly what a missing placeholder here did once already.
+  Widget _buildDestinations(ThemeProvider theme) {
+    final destinations = <Widget>[
+      // Rebuilt every frame so it tracks _homeTab. The sections inside keep
+      // their state regardless: Flutter reconciles them by type and
+      // position, and the feed carries a key.
+      _buildHome(theme),
+      _buildDiscover(),
+      ..._screens.skip(2),
+    ];
+
+    assert(
+      destinations.length == _navItemCount,
+      'The bottom bar has $_navItemCount items but there are '
+      '${destinations.length} destinations. They are matched by position, so '
+      'a mismatch sends taps to the wrong screen.',
+    );
+
+    return IndexedStack(index: _currentIndex, children: destinations);
+  }
+
+  /// How many items the bottom bar shows. Kept beside the [_d*] constants it
+  /// has to agree with.
+  static const int _navItemCount = _dAccount + 1;
 
   /// Whether Discover has ever been opened.
   ///
@@ -279,28 +319,46 @@ class _HomeTabsState extends State<HomeTabs> {
       _headerHeight + (_currentIndex == _dHome ? DlTopTabs.height : 0);
 
   Widget _buildHome(ThemeProvider theme) {
-    return IndexedStack(
-      index: _homeTab,
-      children: [
-        // The chrome rides inside the feed's own scroll view, so the
-        // scroll moves it. It used to collapse in a Column above the feed,
-        // which changed the viewport's height on every frame of the
-        // animation — and a viewport that resizes during a drag keeps
-        // correcting its own offset, which is what made the top of the feed
-        // feel heavy and stutter.
-        PostsScreen(
-          key: _postsScreenKey,
-          chrome: _chrome,
-          header: _buildChrome(theme),
-          headerHeight: _chromeHeight,
-        ),
-        EventsScreen(),
-        VenuesScreen(),
-        // No app bar of its own: the shell above already supplies one, and
-        // the shop's own carries a back button that would pop the shell.
-        const ShopScreen(),
-      ],
+    final sections = <Widget>[
+      // The chrome rides inside the feed's own scroll view, so the
+      // scroll moves it. It used to collapse in a Column above the feed,
+      // which changed the viewport's height on every frame of the
+      // animation — and a viewport that resizes during a drag keeps
+      // correcting its own offset, which is what made the top of the feed
+      // feel heavy and stutter.
+      PostsScreen(
+        key: _postsScreenKey,
+        chrome: _chrome,
+        header: _buildChrome(theme),
+        headerHeight: _chromeHeight,
+      ),
+      EventsScreen(),
+      const VenuesScreen(),
+
+      // There is no `businesses` post type in WordPress yet, so this says
+      // so rather than running a search that can only ever come back empty.
+      // "No businesses found" reads as "none near you"; this reads as what
+      // is actually true. Swap it for a VenuesScreen(postType: 'businesses')
+      // — the server already accepts that — the day the post type exists.
+      const ComingSoonScreen(title: 'Businesses'),
+
+      // Tracks have their own screen and their own endpoints. They were
+      // briefly the venues screen with a post type argument, which listed
+      // the user's venues under "My tracks" and could not open any of them.
+      const TracksScreen(),
+
+      // No app bar of its own: the shell above already supplies one, and
+      // the shop's own carries a back button that would pop the shell.
+      const ShopScreen(),
+    ];
+
+    assert(
+      sections.length == _homeTabs.length,
+      'Home has ${_homeTabs.length} tabs but ${sections.length} sections. '
+      'They are matched by position, so a mismatch shows the wrong one.',
     );
+
+    return IndexedStack(index: _homeTab, children: sections);
   }
 
   void _reloadUserData() {
@@ -850,19 +908,7 @@ class _HomeTabsState extends State<HomeTabs> {
               if (!_chromeIsInFeed) _buildChrome(theme),
             ],
 
-            Expanded(
-              child: IndexedStack(
-                index: _currentIndex,
-                children: [
-                  // Rebuilt every frame so it tracks _homeTab. The sections
-                  // inside keep their state regardless: Flutter reconciles
-                  // them by type and position, and the feed carries a key.
-                  _buildHome(theme),
-                  _buildDiscover(),
-                  ..._screens.skip(2),
-                ],
-              ),
-            ),
+            Expanded(child: _buildDestinations(theme)),
           ],
         ),
         bottomNavigationBar: ValueListenableBuilder<bool>(

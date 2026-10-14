@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/api/places_api.dart';
+import 'package:drivelife/api/tracks_api.dart';
 import 'package:drivelife/config/mapbox_config.dart';
 import 'package:drivelife/services/location_service.dart';
 import 'package:flutter/material.dart';
@@ -74,6 +75,9 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
   static const String _clusterLayerId = 'dl-discover-clusters';
   static const String _countLayerId = 'dl-discover-cluster-count';
   static const String _pinLayerId = 'dl-discover-pins';
+
+  /// The zoom past which clustering stops. See the source's clusterMaxZoom.
+  static const double _clusterMaxZoom = 19;
 
   /// Where the map opens before a fix arrives. The middle of the UK, zoomed
   /// out far enough to be honest about not knowing yet rather than claiming a
@@ -401,6 +405,17 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
         customLng: _lng,
         radiusMiles: _filters.radius,
       ),
+      // Tracks have their own endpoint, because they are not venues: their
+      // owners, followers and events all live under different fields.
+      TracksApiService.getTracks(
+        page: 1,
+        limit: 100,
+        location: where,
+        latitude: _lat,
+        longitude: _lng,
+        customLocation: centred ? _locationLabel : null,
+        radiusMiles: _filters.radius,
+      ),
     ]);
 
     if (!mounted || id != _fetchId) return;
@@ -408,6 +423,7 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
     final places = <DiscoverPlace>[
       ..._read(responses[0], DiscoverPlace.fromEvent),
       ..._read(responses[1], DiscoverPlace.fromVenue),
+      ..._read(responses[2], DiscoverPlace.fromTrack),
     ];
 
     setState(() {
@@ -465,9 +481,20 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
         // Roughly one pin's width: close enough that overlapping pins merge,
         // far enough that two distinct venues on one street do not.
         clusterRadius: 48,
-        // Past this, show the individual pins — by street level a cluster is
-        // hiding things the user has already zoomed in to find.
-        clusterMaxZoom: 13,
+        // Deliberately high.
+        //
+        // Clustering used to stop at zoom 13, which is fine for pins that are
+        // merely near each other — they separate as you zoom and the cluster
+        // has done its job. It is wrong for pins at the SAME place: a venue
+        // with 41 events has 41 identical coordinates, so past 13 they became
+        // 41 pins drawn exactly on top of one another. One tappable dot, 40
+        // results invisible, and no amount of zooming would ever reveal them.
+        //
+        // Kept clustered, they stay a badge reading 41, which is both honest
+        // and tappable — see [_onClusterTap]. Pins that genuinely are apart
+        // still split on the way in, because supercluster splits whenever the
+        // geometry allows regardless of this ceiling.
+        clusterMaxZoom: _clusterMaxZoom,
       ),
     );
 
@@ -530,12 +557,11 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
       ),
     );
 
-    // Tapping a cluster zooms into it, which is the only sensible thing a
-    // cluster can do.
+    // Tapping a cluster either zooms into it or opens it as a list.
     map.addInteraction(
       mb.TapInteraction(
         mb.FeaturesetDescriptor(layerId: _clusterLayerId),
-        (_, context) => _zoomIn(context.point),
+        (feature, context) => _onClusterTap(feature, context.point),
       ),
     );
 
@@ -625,11 +651,140 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
     await _trackPin();
   }
 
-  Future<void> _zoomIn(mb.Point at) async {
-    final camera = await _map?.getCameraState();
-    await _map?.flyTo(
-      mb.CameraOptions(center: at, zoom: (camera?.zoom ?? 10) + 2.2),
-      mb.MapAnimationOptions(duration: 600),
+  /// What tapping a cluster does.
+  ///
+  /// Zooming in is the obvious answer and it is only right some of the time.
+  /// A cluster of pins that are near each other splits when you get close
+  /// enough, and Mapbox will say exactly which zoom that happens at. A
+  /// cluster of pins at the SAME coordinate — a venue with 41 events on it —
+  /// never splits at any zoom, and zooming into one is an invitation to keep
+  /// tapping while nothing happens.
+  ///
+  /// So: ask what zoom would split it. If that is a zoom worth going to, go.
+  /// If it is not, the cluster is as separated as it will ever be, and the
+  /// only way to show what is inside it is to list it.
+  Future<void> _onClusterTap(
+    mb.TypedFeaturesetFeature feature,
+    mb.Point at,
+  ) async {
+    final map = _map;
+    if (map == null) return;
+
+    final clusterId = feature.properties['cluster_id'];
+    if (clusterId == null) return;
+
+    final count = switch (feature.properties['point_count']) {
+      final int v => v,
+      final num v => v.toInt(),
+      final String v => int.tryParse(v) ?? 0,
+      _ => 0,
+    };
+
+    // Rebuilt rather than passed through: the extension APIs want a plain
+    // GeoJSON feature, and what the tap hands over is a typed wrapper.
+    final geo = <String?, Object?>{
+      'type': 'Feature',
+      'id': clusterId,
+      'properties': <String?, Object?>{
+        'cluster': true,
+        'cluster_id': clusterId,
+        'point_count': count,
+      },
+      'geometry': <String?, Object?>{
+        'type': 'Point',
+        'coordinates': <Object?>[at.coordinates.lng, at.coordinates.lat],
+      },
+    };
+
+    double? expansion;
+    try {
+      final result = await map.getGeoJsonClusterExpansionZoom(_sourceId, geo);
+      expansion = double.tryParse(result.value ?? '');
+    } catch (_) {
+      // Treated as "cannot expand", which falls through to the list — the
+      // outcome that always shows the user something.
+    }
+
+    final current = (await map.getCameraState()).zoom;
+
+    if (!mounted) return;
+
+    // Worth zooming to only if it is both reachable and actually closer in.
+    // A cluster that splits at zoom 19.5 is one of the co-located kind.
+    if (expansion != null &&
+        expansion <= _clusterMaxZoom &&
+        expansion > current) {
+      await _flyTo(
+        at.coordinates.lat.toDouble(),
+        at.coordinates.lng.toDouble(),
+        // A little past the split, so the pins are visibly apart on arrival
+        // rather than exactly on the threshold.
+        zoom: expansion + 0.4,
+      );
+      return;
+    }
+
+    await _openClusterList(geo, count);
+  }
+
+  /// Lists what is inside a cluster that will not come apart.
+  Future<void> _openClusterList(
+    Map<String?, Object?> cluster,
+    int count,
+  ) async {
+    final map = _map;
+    if (map == null) return;
+
+    List<Map<String?, Object?>?>? leaves;
+    try {
+      // A limit, because a cluster can hold the whole country at low zoom and
+      // nobody scrolls 2,000 rows. 250 is far past what anyone will read.
+      final result = await map.getGeoJsonClusterLeaves(
+        _sourceId,
+        cluster,
+        250,
+        0,
+      );
+      leaves = result.featureCollection;
+    } catch (_) {
+      return;
+    }
+
+    if (!mounted || leaves == null || leaves.isEmpty) return;
+
+    // The leaves carry only the handful of properties the source was built
+    // with, so they are matched back to the full results rather than
+    // rendered from. Keyed on kind and id together: a post id is only unique
+    // within its type, and a venue and a track can share one.
+    final wanted = <String>{};
+    for (final leaf in leaves) {
+      final properties = leaf?['properties'];
+      if (properties is! Map) continue;
+      wanted.add('${properties['kind']}-${properties['id']}');
+    }
+
+    final inside = _visible
+        .where((p) => wanted.contains('${p.kind.name}-${p.id}'))
+        .toList();
+
+    if (!mounted || inside.isEmpty) return;
+
+    _pinAt.value = null;
+    if (_selected != null) setState(() => _selected = null);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => DiscoverClusterSheet(
+        places: inside,
+        // The badge's own number, which can exceed what was fetched.
+        total: count,
+        onOpen: (place) {
+          Navigator.pop(context);
+          openPlace(context, place);
+        },
+      ),
     );
   }
 
@@ -1026,6 +1181,14 @@ void openPlace(BuildContext context, DiscoverPlace place) {
         context,
         '/venue-details',
         arguments: {'venueId': place.id},
+      );
+    case DiscoverKind.track:
+      Navigator.pushNamed(
+        context,
+        '/track-details',
+        // The site the pin came from, so the server looks on the right blog
+        // first. A post id is only unique within one.
+        arguments: {'trackId': place.id, 'site': place.site},
       );
 
     // Nothing can produce one of these yet, so nothing can tap one. Listed

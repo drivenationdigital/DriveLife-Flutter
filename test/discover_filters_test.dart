@@ -95,12 +95,57 @@ void main() {
       expect(DiscoverFilters.initial.radius, 25);
       expect(DiscoverFilters.radii, contains(25));
     });
+
+    test('offers a national range', () {
+      expect(DiscoverFilters.radii, contains(DiscoverFilters.national));
+      // Last, so the list reads as increasing distance.
+      expect(DiscoverFilters.radii.last, DiscoverFilters.national);
+    });
+
+    test('national is the radius the server already means by it', () {
+      // get_radius_for_location('national') is 2000 miles. Matching it keeps
+      // the map and the list screens showing the same thing.
+      expect(DiscoverFilters.national, 2000);
+    });
+
+    test('every distance reads as a distance except national', () {
+      for (final r in DiscoverFilters.radii) {
+        final label = DiscoverFilters.radiusLabel(r);
+        if (r == DiscoverFilters.national) {
+          // "2000 mi" is a strange way to write "everywhere".
+          expect(label, 'National');
+        } else {
+          expect(label, '$r mi');
+        }
+      }
+    });
+
+    test('the summary says nationwide rather than a mileage', () {
+      final f = DiscoverFilters.initial.copyWith(
+        radius: DiscoverFilters.national,
+      );
+      expect(f.summary, 'Nationwide · Any time');
+    });
+
+    test('changing to national still refetches', () {
+      // Radius is a query parameter, so it cannot be applied to the loaded
+      // page the way a category can.
+      final base = DiscoverFilters.initial;
+      final national = base.copyWith(radius: DiscoverFilters.national);
+      expect(national.needsRefetch(base), isTrue);
+    });
   });
 
   group('categories', () {
-    test('only events and venues have a data source', () {
+    test('only the types WordPress actually has are backed', () {
+      // Businesses and locations have no post type behind them, so they read
+      // "Coming soon" in the filters rather than claiming a count of 0.
       final backed = DiscoverKind.values.where((k) => k.backed).toSet();
-      expect(backed, {DiscoverKind.event, DiscoverKind.venue});
+      expect(backed, {
+        DiscoverKind.event,
+        DiscoverKind.venue,
+        DiscoverKind.track,
+      });
     });
 
     test('every category has its own pin image id', () {

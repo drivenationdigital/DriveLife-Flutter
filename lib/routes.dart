@@ -14,6 +14,7 @@ import 'package:drivelife/screens/events/add_event_screen.dart';
 import 'package:drivelife/screens/events/event_admin_view_screen.dart';
 import 'package:drivelife/screens/events/event_detail_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
+import 'package:drivelife/screens/tracks/view_track_screen.dart';
 import 'package:drivelife/screens/media/images_of_you_screen.dart';
 import 'package:drivelife/screens/media/media_screen.dart';
 import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
@@ -75,6 +76,7 @@ class AppRoutes {
   static const String orderSuccess = '/order-success';
   static const String orderDetails = '/order-details';
   static const String venueDetails = '/venue-details';
+  static const String trackDetails = '/track-details';
   static const String galleryDetail = '/gallery-detail';
   static const String createVenue = '/create-venue';
   static const String eventOwnerView = '/event-owner-view';
@@ -308,6 +310,16 @@ class AppRoutes {
             initialPhotoId: photoId,
           ),
         );
+      case trackDetails:
+        final args = settings.arguments as Map<String, dynamic>;
+        return _slide(
+          TrackDetailScreen(
+            // Same string-or-int shrug as venues: whatever the JSON held.
+            trackId: '${args['trackId'] ?? ''}',
+            site: args['site'] as String?,
+          ),
+        );
+
       case venueDetails:
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(

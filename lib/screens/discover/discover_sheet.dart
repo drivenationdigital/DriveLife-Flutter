@@ -768,3 +768,100 @@ class _TailPainter extends CustomPainter {
   @override
   bool shouldRepaint(_TailPainter old) => old.pointsDown != pointsDown;
 }
+
+/// What is inside a cluster that will not come apart.
+///
+/// Some pins share a coordinate exactly — a venue with forty events on it has
+/// forty identical positions — so zooming can never separate them. Without
+/// this they were one tappable dot hiding everything underneath, and the only
+/// honest way to show the rest is to list them.
+class DiscoverClusterSheet extends StatelessWidget {
+  final List<DiscoverPlace> places;
+
+  /// What the badge said. Can exceed [places] when the cluster holds more
+  /// than was worth fetching, which the header then says out loud rather
+  /// than quietly showing a different number than the one just tapped.
+  final int total;
+
+  final ValueChanged<DiscoverPlace> onOpen;
+
+  const DiscoverClusterSheet({
+    super.key,
+    required this.places,
+    required this.total,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Everything in a cluster is at or around one spot, so the place name is
+    // the heading if they agree on one.
+    final where = places.map((p) => p.subtitle).whereType<String>().toSet();
+    final heading = where.length == 1 ? where.single : 'In this area';
+
+    final shown = places.length;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.55,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, controller) => DecoratedBox(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            const _Grabber(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    heading,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1C1C1E),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    shown < total
+                        ? '$shown of $total results here'
+                        : '$total ${total == 1 ? 'result' : 'results'} here',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: Color(0xFF8A8A8E),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Color(0xFFEFEFEF)),
+            Expanded(
+              child: ListView.builder(
+                controller: controller,
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.viewPaddingOf(context).bottom + 16,
+                ),
+                itemCount: places.length,
+                itemBuilder: (context, i) => _ResultRow(
+                  place: places[i],
+                  selected: false,
+                  onTap: () => onOpen(places[i]),
+                  onOpen: () => onOpen(places[i]),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

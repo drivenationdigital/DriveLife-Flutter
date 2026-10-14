@@ -66,7 +66,9 @@ class DiscoverFilters {
       range?.end != other.range?.end;
 
   /// How the sheet's subtitle reads: "Within 25 mi · This weekend".
-  String get summary => 'Within $radius mi · $dateLabel';
+  String get summary => radius == national
+      ? 'Nationwide · $dateLabel'
+      : 'Within $radius mi · $dateLabel';
 
   String get dateLabel {
     if (date == customDate && range != null) {
@@ -101,7 +103,20 @@ class DiscoverFilters {
     'anytime': 'Any time',
   };
 
-  static const List<int> radii = [5, 10, 25, 50];
+  /// "National", as a radius.
+  ///
+  /// 2000 miles rather than a separate mode, because the server already
+  /// treats its own `national` keyword as a 2000-mile radius — so this needs
+  /// nothing new behind it and cannot disagree with what the list screens do.
+  /// It comfortably covers either country.
+  static const int national = 2000;
+
+  static const List<int> radii = [5, 10, 25, 50, national];
+
+  /// What a radius is called on a chip. Only [national] is not a number of
+  /// miles, and "2000 mi" would be a strange way to write it.
+  static String radiusLabel(int radius) =>
+      radius == national ? 'National' : '$radius mi';
 }
 
 /// The filter sheet.
@@ -288,7 +303,7 @@ class _DiscoverFilterSheetState extends State<DiscoverFilterSheet> {
               children: [
                 const _SectionLabel('Distance'),
                 Text(
-                  '${_filters.radius} mi',
+                  DiscoverFilters.radiusLabel(_filters.radius),
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -298,21 +313,20 @@ class _DiscoverFilterSheetState extends State<DiscoverFilterSheet> {
               ],
             ),
             const SizedBox(height: 10),
-            Row(
+            // Wrap rather than a Row of Expanded. Five equal fifths of a
+            // phone's width is about 60 pixels, and "National" does not fit
+            // in that — it would have been squeezed to a sliver or clipped.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                for (final r in DiscoverFilters.radii) ...[
-                  Expanded(
-                    child: _Pill(
-                      label: '$r mi',
-                      centred: true,
-                      selected: r == _filters.radius,
-                      onTap: () => setState(
-                        () => _filters = _filters.copyWith(radius: r),
-                      ),
-                    ),
+                for (final r in DiscoverFilters.radii)
+                  _Pill(
+                    label: DiscoverFilters.radiusLabel(r),
+                    selected: r == _filters.radius,
+                    onTap: () =>
+                        setState(() => _filters = _filters.copyWith(radius: r)),
                   ),
-                  if (r != DiscoverFilters.radii.last) const SizedBox(width: 8),
-                ],
               ],
             ),
 
@@ -448,14 +462,12 @@ class _Pill extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final IconData? icon;
-  final bool centred;
 
   const _Pill({
     required this.label,
     required this.selected,
     required this.onTap,
     this.icon,
-    this.centred = false,
   });
 
   @override
@@ -464,11 +476,7 @@ class _Pill extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        padding: EdgeInsets.symmetric(
-          horizontal: centred ? 6 : 15,
-          vertical: 11,
-        ),
-        alignment: centred ? Alignment.center : null,
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
         decoration: BoxDecoration(
           color: selected ? const Color(0xFF1C1C1E) : Colors.white,
           borderRadius: BorderRadius.circular(22),

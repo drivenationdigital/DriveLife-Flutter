@@ -24,6 +24,10 @@ class VenuesScreen extends StatefulWidget {
 
 class _VenuesScreenState extends State<VenuesScreen>
     with SingleTickerProviderStateMixin {
+  /// What this screen lists. Kept as a field rather than written out in a
+  /// dozen strings, which is how it came to say "Venues" on the tracks page.
+  static const String _them = 'Venues';
+  static const String _themLower = 'venues';
   late TabController _tabController;
   late ThemeProvider theme;
   final TextEditingController _searchController = TextEditingController();
@@ -199,7 +203,7 @@ class _VenuesScreenState extends State<VenuesScreen>
       } else {
         if (!mounted) return;
         setState(() {
-          _errorMessage = 'Failed to load venues';
+          _errorMessage = 'Failed to load $_themLower';
           _isLoading = false;
         });
       }
@@ -207,7 +211,7 @@ class _VenuesScreenState extends State<VenuesScreen>
       print('Error loading venues: $e');
       if (!mounted) return;
       setState(() {
-        _errorMessage = 'Error loading venues. Please try again.';
+        _errorMessage = 'Error loading $_themLower. Please try again.';
         _isLoading = false;
       });
     }
@@ -311,7 +315,7 @@ class _VenuesScreenState extends State<VenuesScreen>
       print('Error searching venues: $e');
       if (!mounted) return;
       setState(() {
-        _errorMessage = 'Error searching venues. Please try again.';
+        _errorMessage = 'Error searching $_themLower. Please try again.';
         _isLoading = false;
       });
     }
@@ -443,7 +447,7 @@ class _VenuesScreenState extends State<VenuesScreen>
         controller: _searchController,
         onChanged: _onSearchChanged,
         decoration: InputDecoration(
-          hintText: 'Search venues',
+          hintText: 'Search $_themLower',
           hintStyle: TextStyle(color: Colors.grey.shade400),
           prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
           suffixIcon: _searchController.text.isNotEmpty
@@ -483,14 +487,16 @@ class _VenuesScreenState extends State<VenuesScreen>
         labelColor: theme.primaryColor,
         unselectedLabelColor: theme.subtextColor,
         labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-        tabs: const [
+        // Not const any more: the labels name whatever this screen is
+        // listing, which is not known until it is built.
+        tabs: [
           Tab(
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.location_on, size: 16),
-                SizedBox(width: 4),
-                Text('Find Venues'),
+                const Icon(Icons.location_on, size: 16),
+                const SizedBox(width: 4),
+                Text('Find $_them'),
               ],
             ),
           ),
@@ -498,9 +504,9 @@ class _VenuesScreenState extends State<VenuesScreen>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.favorite, size: 16),
-                SizedBox(width: 4),
-                Text('My Venues'),
+                const Icon(Icons.favorite, size: 16),
+                const SizedBox(width: 4),
+                Text('My $_them'),
               ],
             ),
           ),
@@ -526,7 +532,7 @@ class _VenuesScreenState extends State<VenuesScreen>
             Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
             const SizedBox(height: 16),
             Text(
-              'No venues found',
+              'No $_themLower found',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -1104,7 +1110,7 @@ class _VenuesScreenState extends State<VenuesScreen>
             ),
             const SizedBox(height: 16),
             Text(
-              'No venues found',
+              'No $_themLower found',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -1148,7 +1154,7 @@ class _VenuesScreenState extends State<VenuesScreen>
                 children: [
                   const SizedBox(width: 8),
                   Text(
-                    'My Venues',
+                    'My $_them',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -1191,7 +1197,7 @@ class _VenuesScreenState extends State<VenuesScreen>
                     children: [
                       const SizedBox(width: 8),
                       Text(
-                        'Followed Venues',
+                        'Followed $_them',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -1323,7 +1329,7 @@ class _VenuesScreenState extends State<VenuesScreen>
           Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
           const SizedBox(height: 16),
           Text(
-            'No venues found',
+            'No $_themLower found',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
