@@ -134,8 +134,12 @@ class _HomeTabsState extends State<HomeTabs> {
   /// tab. Only read while [_screens] is non-empty — build() returns early
   /// otherwise, so the nav never sees an empty list.
   int get _profileIndex => _screens.length - 1;
-  void _setIndex(int index) =>
-      context.read<BottomNavProvider>().setIndex(index);
+  void _setIndex(int index) {
+    if (index == _dDiscover && !_discoverOpened) {
+      setState(() => _discoverOpened = true);
+    }
+    context.read<BottomNavProvider>().setIndex(index);
+  }
   final GlobalKey<PostsScreenState> _postsScreenKey =
       GlobalKey<PostsScreenState>();
 
@@ -212,10 +216,8 @@ class _HomeTabsState extends State<HomeTabs> {
       // nothing: the tap changed _homeTab, and the frozen IndexedStack
       // carried on showing the section it was built with.
       const SizedBox.shrink(),
-      // Discover is the map. Search still exists and is reachable from
-      // the header; this destination is the browse-by-place view the bottom
-      // bar's compass has always implied.
-      const DiscoverMapScreen(),
+      // A placeholder. Discover is built in build() instead, and not until
+      // it has been opened at least once — see [_buildDiscover].
 
       // Groups, back as its own destination rather than a section of Home.
       MyClubsScreen(),
@@ -228,6 +230,22 @@ class _HomeTabsState extends State<HomeTabs> {
 
     if (mounted) setState(() => _screens = screens);
   }
+
+  /// Whether Discover has ever been opened.
+  ///
+  /// Everything in the IndexedStack is built whether or not it is the one
+  /// showing, and Discover is a native Mapbox view: built on launch it
+  /// loads a style and starts pulling tiles for a page nobody has asked for,
+  /// and — because its page tour fires when the style finishes loading — it
+  /// put that tour on top of the home feed.
+  ///
+  /// So it is built on first visit and kept afterwards, which also means
+  /// someone who never opens Discover never pays for a map.
+  bool _discoverOpened = false;
+
+  /// The Discover destination, once it has been asked for.
+  Widget _buildDiscover() =>
+      _discoverOpened ? const DiscoverMapScreen() : const SizedBox.shrink();
 
   /// The Home destination: four sections behind the top tab row.
   ///
@@ -840,7 +858,8 @@ class _HomeTabsState extends State<HomeTabs> {
                   // inside keep their state regardless: Flutter reconciles
                   // them by type and position, and the feed carries a key.
                   _buildHome(theme),
-                  ..._screens.skip(1),
+                  _buildDiscover(),
+                  ..._screens.skip(2),
                 ],
               ),
             ),

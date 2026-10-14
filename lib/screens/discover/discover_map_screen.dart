@@ -208,6 +208,25 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
       _ => DiscoverAccess.denied,
     };
 
+    // Seeded before the map is built, not after.
+    //
+    // getLastKnownPosition is a cached read with no GPS wait, so the first
+    // frame of the map can already be over roughly the right place while
+    // the real fix is still being acquired. Without it the map is built
+    // with no position at all and has to fly in from the globe.
+    if (access == DiscoverAccess.granted && _lat == null) {
+      try {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null && mounted) {
+          _lat = last.latitude;
+          _lng = last.longitude;
+        }
+      } catch (_) {
+        // No cached fix, or the platform refused. The fallback covers it.
+      }
+      if (!mounted) return;
+    }
+
     final wasGranted = _access == DiscoverAccess.granted;
     setState(() => _access = access);
 
@@ -842,6 +861,18 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
     ];
   }
 
+  /// Where the map opens, worked out once.
+  ///
+  /// Held in a field rather than rebuilt in build(), because MapWidget
+  /// re-applies its viewport whenever the value differs from the last one it
+  /// saw. Rebuilt from _lat each frame, every pan the user made would be
+  /// undone the next time anything called setState — the camera would snap
+  /// back to wherever the device was.
+  ///
+  /// Null until the first build after access is granted, by which point
+  /// _checkAccess has usually seeded a last-known position.
+  mb.CameraViewportState? _initialViewport;
+
   @override
   Widget build(BuildContext context) {
     if (!MapboxConfig.isConfigured) return const _MissingToken();
@@ -852,6 +883,14 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
     if (_access != DiscoverAccess.granted) {
       return DiscoverLocationGate(access: _access, onResolve: _resolveAccess);
     }
+
+    // Fixed on the first build of the map and never recomputed.
+    _initialViewport ??= mb.CameraViewportState(
+      center: _lat != null && _lng != null
+          ? mb.Point(coordinates: mb.Position(_lng!, _lat!))
+          : _fallbackCentre,
+      zoom: _lat != null ? 10.5 : 5.0,
+    );
 
     final matching = _matching;
     final visible = _category == null
@@ -877,6 +916,19 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
               // ignore: experimental_member_use
               androidHostingMode: mb.AndroidPlatformViewHostingMode.HC,
               styleUri: MapboxConfig.styleUri,
+              // Without this the map opens on Mapbox's default camera, which
+              // is the whole globe at zoom 0 — and it stays there until both
+              // a fix and a style load have completed. On iOS the first fix
+              // is slow enough to watch that happen.
+              //
+              // By the time this is built a position is usually already
+              // known: _checkAccess seeds one from the last known location
+              // before granting. Where it is not, the regional fallback is
+              // still a map of somewhere rather than a view from orbit.
+              //
+              // v3 takes an initial camera as a viewport state rather than
+              // CameraOptions, which is only for moving one that exists.
+              viewport: _initialViewport,
               onMapCreated: _onMapCreated,
               onStyleLoadedListener: _onStyleLoaded,
               // Every pan and zoom moves the selected pin on screen, and the
