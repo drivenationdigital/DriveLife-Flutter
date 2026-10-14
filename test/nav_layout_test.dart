@@ -66,7 +66,7 @@ void main() {
   group('DlBottomNav', () {
     testWidgets('lays out five destinations', (tester) async {
       final items = [
-        for (final label in ['Home', 'Discover', 'Photos', 'Garage', 'Account'])
+        for (final label in ['Home', 'Discover', 'Groups', 'Photos', 'Account'])
           DlNavItem(
             label: label,
             icon: (selected) => const Icon(Icons.circle, size: 22),
@@ -86,7 +86,90 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Garage'), findsOneWidget);
+      expect(find.text('Groups'), findsOneWidget);
+    });
+
+    testWidgets('fits six destinations on a narrow phone', (tester) async {
+      // The bar ships with five destinations; this is the headroom test.
+      // Six on the narrowest phone still in use leaves roughly 44 logical
+      // pixels a slot, and "Discover" does not fit in that at full size — so
+      // the label scales down rather than overflowing, which in release is a
+      // silently clipped word and in debug a yellow-and-black stripe across
+      // the navigation.
+      tester.view
+        ..devicePixelRatio = 1.0
+        ..physicalSize = const Size(320, 568);
+      addTearDown(tester.view.reset);
+
+      final items = [
+        for (final label in [
+          'Home',
+          'Discover',
+          'Groups',
+          'Photos',
+          'Garage',
+          'Account',
+        ])
+          DlNavItem(
+            label: label,
+            icon: (selected) => const Icon(Icons.circle, size: 22),
+          ),
+      ];
+
+      await tester.pumpWidget(
+        wrap(
+          Scaffold(
+            bottomNavigationBar: DlBottomNav(
+              items: items,
+              currentIndex: 0,
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      for (final label in ['Home', 'Discover', 'Groups', 'Account']) {
+        expect(find.text(label), findsOneWidget);
+      }
+    });
+
+    testWidgets('every destination is reachable by tap', (tester) async {
+      // An index that does not match what was tapped is the classic way a
+      // reordered bar breaks: the labels move and the handlers do not.
+      final tapped = <int>[];
+      final items = [
+        for (final label in [
+          'Home',
+          'Discover',
+          'Groups',
+          'Photos',
+          'Account',
+        ])
+          DlNavItem(
+            label: label,
+            icon: (selected) => const Icon(Icons.circle, size: 22),
+          ),
+      ];
+
+      await tester.pumpWidget(
+        wrap(
+          Scaffold(
+            bottomNavigationBar: DlBottomNav(
+              items: items,
+              currentIndex: 0,
+              onChanged: tapped.add,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Groups'));
+      await tester.tap(find.text('Account'));
+      await tester.pump();
+
+      // Groups is the middle of five, Account the last.
+      expect(tapped, [2, 4]);
     });
 
     testWidgets('the ends are semicircles, not rounded corners', (
@@ -96,7 +179,7 @@ void main() {
       // height, or there is a straight section between the ends and that is
       // what the eye reads as "square".
       final items = [
-        for (final label in ['Home', 'Discover', 'Photos', 'Garage', 'Account'])
+        for (final label in ['Home', 'Discover', 'Groups', 'Photos', 'Account'])
           DlNavItem(
             label: label,
             icon: (selected) => const Icon(Icons.circle, size: 22),
@@ -133,7 +216,7 @@ void main() {
 
     testWidgets('the highlight travels rather than fading', (tester) async {
       final items = [
-        for (final label in ['Home', 'Discover', 'Photos', 'Garage', 'Account'])
+        for (final label in ['Home', 'Discover', 'Groups', 'Photos', 'Account'])
           DlNavItem(
             label: label,
             icon: (selected) => const Icon(Icons.circle, size: 22),

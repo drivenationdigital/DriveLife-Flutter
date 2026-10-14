@@ -53,7 +53,7 @@ class PostsScreen extends StatefulWidget {
 }
 
 class PostsScreenState extends State<PostsScreen>
-    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+    with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -77,6 +77,14 @@ class PostsScreenState extends State<PostsScreen>
     // PostTabType.forYou,
   ];
 
+  /// The feed's scroll, now that there is only one of them.
+  ///
+  /// It used to be one per tab, inside three separate scroll views. The
+  /// header, the hot row and the feed selector were duplicated into each of
+  /// those, so switching tab replaced all of it — the whole panel changed
+  /// when only the posts should have.
+  final ScrollController _scroll = ScrollController();
+
   final GlobalKey<_PostsTabState> _forYouKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _latestKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _followingKey = GlobalKey<_PostsTabState>();
@@ -85,14 +93,41 @@ class PostsScreenState extends State<PostsScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: _visibleTabs.length, vsync: this);
-    // When the user switches tabs, reveal the pills again so they're never
-    // stuck hidden on a tab that has nothing to scroll.
-    // _tabController.addListener(() {
-    // });
+    // Swapping which feed is on show is this widget's job now that they
+    // share one scroll view, so it has to rebuild when the index changes.
+    _tabController.addListener(_onTabChanged);
   }
 
+  /// Which feeds have been opened at least once.
+  ///
+  /// Slivers in one scroll view are all built, where a TabBarView built its
+  /// pages lazily — so without this, opening the feed would fire a request
+  /// for every tab at once, including ones the user may never look at. A
+  /// feed joins the set when it is first selected and stays, which is what
+  /// makes coming back to it free.
+  late final Set<PostTabType> _opened = {_visibleTabs.first};
+
+  void _onTabChanged() {
+    if (!mounted) return;
+    setState(() => _opened.add(_visibleTabs[_tabController.index]));
+  }
+
+  /// The feed currently on show.
+  _PostsTabState? get _activeTab => _getCurrentTabKey().currentState;
+
+  /// Takes the feed back to the top and reloads it.
+  ///
+  /// The scroll belongs to this screen now and the posts belong to the tab,
+  /// so this does the first half and hands over the second.
   Future<void> scrollToTopAndRefresh() async {
-    _getCurrentTabKey().currentState?.scrollToTopAndRefresh();
+    if (_scroll.hasClients) {
+      await _scroll.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+    await _activeTab?.refresh();
   }
 
   GlobalKey<_PostsTabState> _keyFor(PostTabType type) => switch (type) {
@@ -108,7 +143,9 @@ class PostsScreenState extends State<PostsScreen>
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -130,36 +167,92 @@ class PostsScreenState extends State<PostsScreen>
   }
 
   Widget _buildFeed(ThemeProvider theme) {
-    // Three plain scroll views, not a NestedScrollView over a TabBarView.
+    // One scroll view for all three feeds, not a TabBarView of three.
     //
-    // The nested version crashed. Its coordinator keeps outer and inner
-    // scrolls in step and asserts in _getMetrics when the viewport changes
-    // size underneath it — which is exactly what the collapsing header does,
-    // on every scroll. It also needed SliverOverlapAbsorber/Injector to stop
-    // the pinned selector jumping, and the whole arrangement existed only to
-    // share one header between three tabs.
+    // Each tab used to carry its own copy of the header, the hot row and the
+    // selector inside its own CustomScrollView, so switching feed slid the
+    // entire page sideways and replaced every part of it. Only the posts
+    // should change.
     //
-    // Each tab now carries its own copy of that header. The hot row is
-    // static cards and the selector is the same widget in the same place, so
-    // all three look identical — and each tab keeps its own scroll position,
-    // which is what a reader would expect anyway.
-    return TabBarView(
-      controller: _tabController,
-      physics: const NeverScrollableScrollPhysics(),
-      children: [
-        for (final type in _visibleTabs)
-          _PostsTab(
-            key: _keyFor(type),
-            tabType: type,
-            header: widget.header,
-            headerHeight: widget.headerHeight,
-            selector: _CustomTabBar(
-              controller: _tabController,
-              theme: theme,
-              tabs: _visibleTabs,
+    // So those three live here, once, and each feed contributes nothing but
+    // its own posts. The feed that is not showing stays in the tree —
+    // SliverOffstage does not lay it out, but its element is still mounted,
+    // so its loaded posts and its paging survive a switch and coming back
+    // costs nothing.
+    //
+    // Not a NestedScrollView, which is the usual way to share a header: its
+    // coordinator asserts in _getMetrics when the viewport changes size
+    // underneath it, and that is what crashed the earlier version of this
+    // screen.
+    final active =
+        _visibleTabs[_tabController.index.clamp(0, _visibleTabs.length - 1)];
+
+    return RefreshIndicator(
+      color: theme.primaryColor,
+      backgroundColor: theme.backgroundColor,
+      // Awaited, not fired. `() async => f()` completes as soon as the
+      // call is made, so the spinner vanished a frame after it appeared
+      // rather than when the posts arrived.
+      onRefresh: () async {
+        await _activeTab?.refresh();
+      },
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          // Vertical only: a carousel inside a post card would otherwise
+          // page the feed sideways into loading more.
+          if (notification.metrics.axis == Axis.vertical) {
+            _activeTab?.onScroll(notification.metrics);
+          }
+          return false;
+        },
+        child: CustomScrollView(
+          controller: _scroll,
+          physics: const AlwaysScrollableScrollPhysics(),
+          cacheExtent: 2000,
+          slivers: [
+            // Floating, not pinned: it leaves as you read on and comes back
+            // the moment you scroll up, without having to reach the top.
+            //
+            // Being a sliver is the whole point. The scroll moves it, so
+            // there is no animation to run and no layout above the feed to
+            // change — the viewport keeps exactly one size for the life of
+            // the gesture.
+            if (widget.header != null && widget.headerHeight > 0)
+              SliverPersistentHeader(
+                floating: true,
+                delegate: FloatingChromeHeader(
+                  height: widget.headerHeight,
+                  vsync: this,
+                  child: widget.header!,
+                ),
+              ),
+
+            // Scrolls away: a standing recommendation, not navigation, so it
+            // should not hold the top of the screen for ever.
+            const SliverToBoxAdapter(child: HotRightNow()),
+
+            // Pins. This one IS navigation — losing it mid-feed would mean
+            // scrolling back to the top to change feed.
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _PinnedSelector(
+                child: _CustomTabBar(
+                  controller: _tabController,
+                  theme: theme,
+                  tabs: _visibleTabs,
+                ),
+              ),
             ),
-          ),
-      ],
+
+            for (final type in _visibleTabs)
+              if (_opened.contains(type))
+                SliverOffstage(
+                  offstage: type != active,
+                  sliver: _PostsTab(key: _keyFor(type), tabType: type),
+                ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -169,46 +262,22 @@ class PostsScreenState extends State<PostsScreen>
 /// feeds they always were.
 enum PostTabType { forYou, latest, following }
 
+/// One feed's worth of posts, as slivers.
+///
+/// Builds a sliver, not a box: it is placed directly into the screen's shared
+/// CustomScrollView, below the header and selector that all three feeds have
+/// in common. It owns its posts, its paging and its refresh, and nothing
+/// about the scroll — that belongs to the screen, because all three share it.
 class _PostsTab extends StatefulWidget {
   final PostTabType tabType;
 
-  /// The feed selector, pinned inside this tab's own scroll view.
-  ///
-  /// Passed in rather than built here so all three tabs share one widget
-  /// definition and one TabController — they differ only in which scroll
-  /// view they happen to be pinned inside.
-  final Widget selector;
-
-  /// The shell's chrome, floating above the selector. Null when the shell is
-  /// drawing it itself, which it does for every destination but this one.
-  final Widget? header;
-
-  /// How tall [header] is. A sliver header declares its extent before layout,
-  /// so this cannot be measured.
-  final double headerHeight;
-
-  const _PostsTab({
-    super.key,
-    required this.tabType,
-    required this.selector,
-    this.header,
-    this.headerHeight = 0,
-  });
+  const _PostsTab({super.key, required this.tabType});
 
   @override
   State<_PostsTab> createState() => _PostsTabState();
 }
 
-class _PostsTabState extends State<_PostsTab>
-    with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  /// This feed's own scroll.
-  ///
-  /// Its own again now the NestedScrollView has gone: one controller, one
-  /// position, no coordinator to keep in step and nothing to assert about.
-  final ScrollController _scrollController = ScrollController();
+class _PostsTabState extends State<_PostsTab> {
   final AuthService _auth = AuthService();
 
   /// Which tab carries the offers banner and the "Hot right now" row.
@@ -257,16 +326,15 @@ class _PostsTabState extends State<_PostsTab>
   /// tab now has a controller of its own, so either would work — but the
   /// notification carries the metrics of the list that actually moved, which
   /// keeps this correct if these feeds are ever nested or shared again.
-  bool _onScrollNotification(ScrollNotification notification) {
-    if (!mounted) return false;
-
-    // Only this list's own scrolling. A horizontal notification from a
-    // carousel in a post would otherwise page the feed.
-    if (notification.metrics.axis != Axis.vertical) return false;
+  /// Loads the next page as the end of the list comes into view.
+  ///
+  /// Called by the screen, which owns the only scroll view, and only for the
+  /// feed currently on show — an offstage feed has no metrics worth acting on
+  /// and would page itself on someone else's scrolling.
+  void onScroll(ScrollMetrics metrics) {
+    if (!mounted) return;
 
     if (_scrollDebounce?.isActive ?? false) _scrollDebounce!.cancel();
-
-    final metrics = notification.metrics;
 
     _scrollDebounce = Timer(const Duration(milliseconds: 200), () {
       if (!mounted) return;
@@ -277,21 +345,10 @@ class _PostsTabState extends State<_PostsTab>
         _fetchPosts();
       }
     });
-
-    return false;
   }
 
-  Future<void> scrollToTopAndRefresh() async {
-    if (!mounted) return;
-    if (_scrollController.hasClients) {
-      await _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
-    await _fetchPosts(refresh: true);
-  }
+  /// Reloads this feed from the first page. The screen scrolls; this fetches.
+  Future<void> refresh() => _fetchPosts(refresh: true);
 
   Future<void> _fetchPosts({bool refresh = false}) async {
     if (!mounted || _isLoading) return;
@@ -420,184 +477,146 @@ class _PostsTabState extends State<_PostsTab>
   @override
   void dispose() {
     _scrollDebounce?.cancel();
-    _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
     final theme = Provider.of<ThemeProvider>(context);
 
-    return RefreshIndicator(
-      color: theme.primaryColor,
-      backgroundColor: theme.backgroundColor,
-      onRefresh: () => _fetchPosts(refresh: true),
-      child: NotificationListener<ScrollNotification>(
-        onNotification: _onScrollNotification,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          cacheExtent: 2000,
-          slivers: [
-            // Floating, not pinned: it leaves as you read on and comes back
-            // the moment you scroll up, without having to reach the top.
-            //
-            // Being a sliver is the whole point. The scroll moves it, so
-            // there is no animation to run and no layout above the feed to
-            // change — the viewport keeps exactly one size for the life of
-            // the gesture.
-            if (widget.header != null && widget.headerHeight > 0)
-              SliverPersistentHeader(
-                floating: true,
-                delegate: FloatingChromeHeader(
-                  height: widget.headerHeight,
-                  vsync: this,
-                  child: widget.header!,
-                ),
+    // A group, so that several slivers can be handed to the screen's scroll
+    // view as one — and so the whole feed can be taken offstage together
+    // when another one is selected.
+    return SliverMainAxisGroup(
+      slivers: [
+        // SliverToBoxAdapter(child: StoriesRow()),
+        // Offers and "Hot right now" both head up Latest, the landing tab.
+        // Following and Featured stay pure feeds.
+        // Tiles are still hard-coded — see HotRightNow for the TODO.
+        // HotRightNow has moved to the shell's header, above the feed
+        // selector — it belongs to the screen now, not to this one tab.
+        // The offers banner stays: it is part of the Latest feed and the
+        // other two tabs have never shown it.
+        if (widget.tabType == _offersTab)
+          SliverToBoxAdapter(child: OffersBanner(offers: _offers)),
+        Consumer<UploadPostProvider>(
+          builder: (context, uploadProvider, _) {
+            final uploads = uploadProvider.uploads;
+
+            // FIX: Side effects moved OUT of build. Use post-frame callback
+            // so we never mutate state or schedule work during paint.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _checkUploadCompletions(uploads);
+            });
+
+            if (uploads.isEmpty) {
+              return const SliverToBoxAdapter(child: SizedBox.shrink());
+            }
+
+            return SliverToBoxAdapter(
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  ...uploads.entries.map(
+                    (entry) => UploadProgressCard(
+                      key: ValueKey(entry.key),
+                      uploadId: entry.key,
+                      progress: entry.value,
+                    ),
+                  ),
+                ],
               ),
+            );
+          },
+        ),
 
-            // Scrolls away: a standing recommendation, not navigation, so it
-            // should not hold the top of the screen for ever.
-            const SliverToBoxAdapter(child: HotRightNow()),
-
-            // Pins. This one IS navigation — losing it mid-feed would mean
-            // scrolling back to the top to change tab.
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _PinnedSelector(child: widget.selector),
+        // Empty state
+        if (_posts.isEmpty && !_isLoading && _isInitialized)
+          SliverFillRemaining(
+            child: Center(
+              child: Text(
+                _getEmptyMessage(),
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
+              ),
             ),
-
-            // SliverToBoxAdapter(child: StoriesRow()),
-            // Offers and "Hot right now" both head up Latest, the landing tab.
-            // Following and Featured stay pure feeds.
-            // Tiles are still hard-coded — see HotRightNow for the TODO.
-            // HotRightNow has moved to the shell's header, above the feed
-            // selector — it belongs to the screen now, not to this one tab.
-            // The offers banner stays: it is part of the Latest feed and the
-            // other two tabs have never shown it.
-            if (widget.tabType == _offersTab)
-              SliverToBoxAdapter(child: OffersBanner(offers: _offers)),
-            Consumer<UploadPostProvider>(
-              builder: (context, uploadProvider, _) {
-                final uploads = uploadProvider.uploads;
-
-                // FIX: Side effects moved OUT of build. Use post-frame callback
-                // so we never mutate state or schedule work during paint.
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _checkUploadCompletions(uploads);
-                });
-
-                if (uploads.isEmpty) {
-                  return const SliverToBoxAdapter(child: SizedBox.shrink());
+          )
+        // Initial loading state
+        else if (_posts.isEmpty && _isLoading)
+          SliverFillRemaining(
+            child: Center(
+              child: CircularProgressIndicator(
+                color: theme.primaryColor,
+                strokeWidth: 2.5,
+              ),
+            ),
+          )
+        // Posts list
+        else
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                if (index == _posts.length) {
+                  if (!_hasMore) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: theme.primaryColor,
+                        strokeWidth: 2.5,
+                      ),
+                    ),
+                  );
                 }
 
-                return SliverToBoxAdapter(
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 8),
-                      ...uploads.entries.map(
-                        (entry) => UploadProgressCard(
-                          key: ValueKey(entry.key),
-                          uploadId: entry.key,
-                          progress: entry.value,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                final post = _posts[index];
 
-            // Empty state
-            if (_posts.isEmpty && !_isLoading && _isInitialized)
-              SliverFillRemaining(
-                child: Center(
-                  child: Text(
-                    _getEmptyMessage(),
-                    style: const TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                ),
-              )
-            // Initial loading state
-            else if (_posts.isEmpty && _isLoading)
-              SliverFillRemaining(
-                child: Center(
-                  child: CircularProgressIndicator(
-                    color: theme.primaryColor,
-                    strokeWidth: 2.5,
-                  ),
-                ),
-              )
-            // Posts list
-            else
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    if (index == _posts.length) {
-                      if (!_hasMore) return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 24),
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            color: theme.primaryColor,
-                            strokeWidth: 2.5,
-                          ),
-                        ),
-                      );
-                    }
-
-                    final post = _posts[index];
-
-                    return PostCard(
-                      key: ValueKey(post['id']),
-                      post: post,
-                      onTapProfile: () {
-                        if (!mounted) return;
-                        if (post['is_event'] == true) return;
-                        Navigator.pushNamed(
-                          context,
-                          '/view-profile',
-                          arguments: {
-                            'userId': post['user_id'],
-                            'username': post['username'],
-                          },
-                        );
+                return PostCard(
+                  key: ValueKey(post['id']),
+                  post: post,
+                  onTapProfile: () {
+                    if (!mounted) return;
+                    if (post['is_event'] == true) return;
+                    Navigator.pushNamed(
+                      context,
+                      '/view-profile',
+                      arguments: {
+                        'userId': post['user_id'],
+                        'username': post['username'],
                       },
-                      onLikeChanged: (isLiked) {
-                        setState(() {
-                          post['is_liked'] = isLiked;
-
-                          // Parsed, not cast. `as int` threw on any endpoint
-                          // that sent the count as a string or a double, and
-                          // which endpoint filled a given post decided
-                          // whether liking it crashed.
-                          final current = switch (post['likes_count']) {
-                            final int v => v,
-                            final num v => v.toInt(),
-                            final String v => int.tryParse(v.trim()) ?? 0,
-                            _ => 0,
-                          };
-
-                          post['likes_count'] = (current + (isLiked ? 1 : -1))
-                              .clamp(0, 9999999);
-                        });
-                      },
-                      onDelete: scrollToTopAndRefresh,
                     );
                   },
-                  childCount: _posts.length + (_hasMore ? 1 : 0),
-                  // FIX: Let the framework manage RepaintBoundaries — removing
-                  // manual RepaintBoundary wrappers and enabling the delegate flag
-                  // is more efficient (avoids double boundaries)
-                  addAutomaticKeepAlives: true,
-                  addRepaintBoundaries: true,
-                  addSemanticIndexes: false,
-                ),
-              ),
-          ],
-        ),
-      ),
+                  onLikeChanged: (isLiked) {
+                    setState(() {
+                      post['is_liked'] = isLiked;
+
+                      // Parsed, not cast. `as int` threw on any endpoint
+                      // that sent the count as a string or a double, and
+                      // which endpoint filled a given post decided
+                      // whether liking it crashed.
+                      final current = switch (post['likes_count']) {
+                        final int v => v,
+                        final num v => v.toInt(),
+                        final String v => int.tryParse(v.trim()) ?? 0,
+                        _ => 0,
+                      };
+
+                      post['likes_count'] = (current + (isLiked ? 1 : -1))
+                          .clamp(0, 9999999);
+                    });
+                  },
+                  onDelete: refresh,
+                );
+              },
+              childCount: _posts.length + (_hasMore ? 1 : 0),
+              // FIX: Let the framework manage RepaintBoundaries — removing
+              // manual RepaintBoundary wrappers and enabling the delegate flag
+              // is more efficient (avoids double boundaries)
+              addAutomaticKeepAlives: true,
+              addRepaintBoundaries: true,
+              addSemanticIndexes: false,
+            ),
+          ),
+      ],
     );
   }
 
@@ -671,7 +690,10 @@ class _CustomTabBar extends StatelessWidget {
     const curve = Curves.easeOutCubic;
 
     return GestureDetector(
-      onTap: () => controller.animateTo(index),
+      // index, not animateTo. There is no page to slide any more: the
+      // feeds share one scroll view and only the posts below the selector
+      // change, so an animation here would move nothing and just delay it.
+      onTap: () => controller.index = index,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: duration,

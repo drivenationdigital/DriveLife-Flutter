@@ -162,7 +162,10 @@ class _Item extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          // Tighter than it looks it should be. Six destinations on a narrow
+          // phone leave about 44 logical pixels a slot, and the padding is
+          // the first thing that has to give.
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -178,7 +181,19 @@ class _Item extends StatelessWidget {
                       ? const Color(0xFF111111)
                       : const Color(0xFF9A9A9A),
                 ),
-                child: Text(item.label),
+                // Shrinks to fit rather than wrapping or clipping. At six
+                // destinations "Discover" is wider than its slot on a small
+                // screen; scaling it down keeps the word readable, where an
+                // ellipsis would turn it into "Disco…" and a wrap would make
+                // one item taller than the rest.
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    item.label,
+                    maxLines: 1,
+                    softWrap: false,
+                  ),
+                ),
               ),
             ],
           ),

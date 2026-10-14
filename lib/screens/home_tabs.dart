@@ -1,7 +1,6 @@
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/screens/discover/discover_map_screen.dart';
-import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/widgets/nav/dl_bottom_nav.dart';
 import 'package:drivelife/widgets/nav/dl_top_tabs.dart';
 import 'package:drivelife/screens/events/open_event_editor.dart';
@@ -64,7 +63,9 @@ class _HomeTabsState extends State<HomeTabs> {
     DlTopTab(label: 'For You', icon: 'assets/app-icons/01-Home.svg'),
     DlTopTab(label: 'Events', icon: 'assets/app-icons/02-Events.svg'),
     DlTopTab(label: 'Places', icon: 'assets/app-icons/03-Venues.svg'),
-    DlTopTab(label: 'Groups', icon: 'assets/app-icons/07-groups.svg'),
+    // Groups is not here: it is a bottom-bar destination again. Listing it
+    // in both would mean two routes to the same screen, each with its own
+    // scroll position and its own loaded list.
     // Last, and reachable only here: the header's basket button went when
     // the header was rebuilt, so this is the shop's only way in.
     DlTopTab(label: 'Shop', icon: 'assets/app-icons/04-Basket.svg'),
@@ -119,9 +120,13 @@ class _HomeTabsState extends State<HomeTabs> {
   /// Destinations, in bottom-bar order.
   static const int _dHome = 0;
   static const int _dDiscover = 1;
-  static const int _dPhotos = 2;
-  static const int _dGarage = 3;
+  static const int _dGroups = 2;
+  static const int _dPhotos = 3;
   static const int _dAccount = 4;
+
+  // Garage is no longer a destination. It is still reachable from a profile,
+  // from the "Hot right now" row and by the /garage-list route, so nothing
+  // has been lost — it just no longer costs a fifth of the bar.
 
   /// Profile is always the last tab. Derived rather than written down, because
   /// a hard-coded literal goes stale the moment a tab is added or hidden and
@@ -211,8 +216,10 @@ class _HomeTabsState extends State<HomeTabs> {
       // the header; this destination is the browse-by-place view the bottom
       // bar's compass has always implied.
       const DiscoverMapScreen(),
+
+      // Groups, back as its own destination rather than a section of Home.
+      MyClubsScreen(),
       if (FeatureFlags.mediaTab) MediaScreen() else const SizedBox.shrink(),
-      const GarageListScreen(embedded: true),
       if (currentAccount?.isClubAccount ?? false)
         ClubProfileScreen()
       else
@@ -271,7 +278,6 @@ class _HomeTabsState extends State<HomeTabs> {
         ),
         EventsScreen(),
         VenuesScreen(),
-        MyClubsScreen(),
         // No app bar of its own: the shell above already supplies one, and
         // the shop's own carries a back button that would pop the shell.
         const ShopScreen(),
@@ -721,6 +727,10 @@ class _HomeTabsState extends State<HomeTabs> {
           icon: (sel) => svg('assets/app-icons/header-search.svg', sel),
         ),
         DlNavItem(
+          label: 'Groups',
+          icon: (sel) => svg('assets/app-icons/07-groups.svg', sel),
+        ),
+        DlNavItem(
           label: 'Photos',
           // Carries the unseen-tag count. Unseen rather than the whole
           // pending queue: a badge mirroring every outstanding tag would
@@ -734,10 +744,6 @@ class _HomeTabsState extends State<HomeTabs> {
             ),
             child: svg('assets/app-icons/06-photo.svg', sel),
           ),
-        ),
-        DlNavItem(
-          label: 'Garage',
-          icon: (sel) => svg('assets/app-icons/05-User.svg', sel),
         ),
         DlNavItem(label: 'Account', icon: (_) => _buildProfileIcon()),
       ],
