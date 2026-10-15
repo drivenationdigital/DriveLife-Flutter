@@ -139,10 +139,20 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
                   _meta(),
                   _headline(),
                   if (widget.excerpt != null) _standfirst(),
-                  _byline(),
                   if (widget.imageUrls.isNotEmpty) _hero(context),
                   if (widget.imageCaption != null) _credit(),
                   _body(),
+                  // Last, under the article and whatever sources it ends
+                  // with. Who filed a story is worth knowing once you have
+                  // read it; above the picture it only delayed the reading.
+                  const Divider(
+                    height: 36,
+                    thickness: 1,
+                    indent: 20,
+                    endIndent: 20,
+                    color: Color(0xFFEFEFEF),
+                  ),
+                  _byline(),
                 ],
               ),
             ),

@@ -423,7 +423,36 @@ class _PostCardState extends State<PostCard>
   /// feed — DriveLife news. There is no row to like, comment on or bookmark.
   bool get _isExternal => widget.post['is_external'] == true;
 
-  /// The "Read more" button on a news card, and the article it opens.
+  /// Opens the article.
+  ///
+  /// One method, because two things lead here: the "Read more" button and
+  /// the picture above it. Building the route in both places would be the
+  /// kind of duplication that drifts the first time a field is added.
+  void _openArticle() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => NewsArticleScreen(
+          title: _str(widget.post['caption']) ?? 'News',
+          htmlContent: _str(widget.post['news_content']) ?? '',
+          date: _str(widget.post['post_date']) ?? '',
+          imageUrls: _media
+              .map((m) => '${m['media_url'] ?? ''}')
+              .where((url) => url.isNotEmpty)
+              .toList(),
+          username: _str(widget.post['username']),
+          isVerified: widget.post['user_verified'] == true,
+          postUserId: _str(widget.post['user_id']),
+          category: _str(widget.post['news_category']),
+          excerpt: _str(widget.post['news_excerpt']),
+          imageCaption: _str(widget.post['news_image_caption']),
+          readMinutes: _asCount(widget.post['news_read_minutes']),
+          articleUrl: _str(widget.post['news_url']),
+        ),
+      ),
+    );
+  }
+
+  /// The "Read more" button on a news card.
   ///
   /// Built here rather than inside _PostActions because everything it needs
   /// is already on widget.post. Passing a dozen article fields down into the
@@ -435,27 +464,7 @@ class _PostCardState extends State<PostCard>
       child: Align(
         alignment: Alignment.centerLeft,
         child: GestureDetector(
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => NewsArticleScreen(
-                title: _str(widget.post['caption']) ?? 'News',
-                htmlContent: _str(widget.post['news_content']) ?? '',
-                date: _str(widget.post['post_date']) ?? '',
-                imageUrls: _media
-                    .map((m) => '${m['media_url'] ?? ''}')
-                    .where((url) => url.isNotEmpty)
-                    .toList(),
-                username: _str(widget.post['username']),
-                isVerified: widget.post['user_verified'] == true,
-                postUserId: _str(widget.post['user_id']),
-                category: _str(widget.post['news_category']),
-                excerpt: _str(widget.post['news_excerpt']),
-                imageCaption: _str(widget.post['news_image_caption']),
-                readMinutes: _asCount(widget.post['news_read_minutes']),
-                articleUrl: _str(widget.post['news_url']),
-              ),
-            ),
-          ),
+          onTap: _openArticle,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
             decoration: BoxDecoration(
@@ -907,6 +916,10 @@ class _PostCardState extends State<PostCard>
                     _preloadMedia(_media, i);
                   },
                   onDoubleTap: _handleDoubleTap,
+                  // The picture is the biggest thing on a news card and the
+                  // likeliest thing to be aimed at, so it opens the article
+                  // rather than doing nothing.
+                  onTap: widget.post['is_news'] == true ? _openArticle : null,
                   onSwipeChanged: (allow) {
                     if (mounted) setState(() => _allowSwipe = allow);
                   },
@@ -984,6 +997,7 @@ class _PostCardState extends State<PostCard>
                   commentsEnabled:
                       widget.post['is_news'] != true &&
                       widget.post['is_event'] != true,
+                  isNews: widget.post['is_news'] == true,
                   username: widget.post['username'] ?? '',
                   caption: widget.post['caption'] ?? '',
                   commentsCount: widget.post['comments_count'] ?? 0,
@@ -1602,6 +1616,10 @@ class _MediaCarousel extends StatelessWidget {
   final Animation<double> heartAnimation;
   final AnimationController heartController;
   final Function(int) onPageChanged;
+
+  /// A single tap, when there is somewhere for it to go. Null on an ordinary
+  /// post, where tapping a photo does nothing and should keep doing nothing.
+  final VoidCallback? onTap;
   final VoidCallback onDoubleTap;
   final Function(bool) onSwipeChanged;
 
@@ -1615,6 +1633,7 @@ class _MediaCarousel extends StatelessWidget {
     required this.heartController,
     required this.onPageChanged,
     required this.onDoubleTap,
+    this.onTap,
     required this.onSwipeChanged,
   });
 
@@ -1924,6 +1943,7 @@ class _MediaCarousel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      onTap: onTap,
       onDoubleTap: onDoubleTap,
       child: Stack(
         alignment: Alignment.center,
@@ -2334,6 +2354,13 @@ class _PostActions extends StatelessWidget {
 
 // Caption section remains the same
 class _PostCaptionSection extends StatefulWidget {
+  /// True on a news card, where the caption is the article's headline.
+  ///
+  /// It is set as the heading in place of the author's name rather than
+  /// under it: the name is already in the byline at the top of the card, and
+  /// a story is found by its headline, not by who filed it.
+  final bool isNews;
+
   final String username;
   final String caption;
   final int commentsCount;
@@ -2348,6 +2375,7 @@ class _PostCaptionSection extends StatefulWidget {
   const _PostCaptionSection({
     required this.username,
     required this.caption,
+    this.isNews = false,
     required this.commentsCount,
     required this.onViewComments,
     this.commentsEnabled = true,
@@ -2412,7 +2440,7 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
       children: [
         // ── Username + caption (non-event) ───────────────────────
         if (!widget.isEvent) ...[
-          if (username.isNotEmpty)
+          if (username.isNotEmpty && !widget.isNews)
             Text(
               username,
               style: const TextStyle(
@@ -2421,7 +2449,19 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
                 fontSize: 14,
               ),
             ),
-          if (caption.isNotEmpty) ...[
+
+          // The headline, where an ordinary post has its author's name.
+          if (widget.isNews && caption.isNotEmpty)
+            Text(
+              caption,
+              style: const TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                height: 1.3,
+              ),
+            )
+          else if (caption.isNotEmpty) ...[
             const SizedBox(height: 4),
             FormattedText(
               text: caption,
