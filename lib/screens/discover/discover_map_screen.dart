@@ -89,6 +89,20 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
   mb.MapboxMap? _map;
   bool _styleReady = false;
 
+  /// Whether the map-level tap handlers are registered.
+  ///
+  /// Interactions belong to the map, not the style, so a style reload does not
+  /// drop them — registering them per style load would stack a second handler
+  /// on every pin tap. Reset in [_onMapCreated], which is the only place a new
+  /// map (and so a fresh, empty interaction list) appears.
+  bool _interactionsReady = false;
+
+  /// Guards [_onStyleLoaded] against overlapping runs.
+  ///
+  /// It awaits on nearly every line, so a second StyleLoaded arriving mid-run
+  /// would interleave with the first and install everything twice.
+  bool _installingStyle = false;
+
   List<DiscoverPlace> _places = const [];
   DiscoverKind? _category;
   DiscoverPlace? _selected;
@@ -458,6 +472,8 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
 
   Future<void> _onMapCreated(mb.MapboxMap map) async {
     _map = map;
+    // A new map carries no interactions, whatever the old one had.
+    _interactionsReady = false;
     await map.location.updateSettings(
       mb.LocationComponentSettings(enabled: true, pulsingEnabled: true),
     );
@@ -467,11 +483,31 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
 
   Future<void> _onStyleLoaded(mb.StyleLoadedEventData _) async {
     final map = _map;
-    if (map == null || !mounted) return;
+    if (map == null || !mounted || _installingStyle) return;
+    _installingStyle = true;
+    try {
+      await _installStyle(map);
+    } finally {
+      _installingStyle = false;
+    }
+  }
 
+  Future<void> _installStyle(mb.MapboxMap map) async {
     // A style reload drops every image, source and layer that was added to
     // it, so all of this has to be redone rather than done once.
     await DiscoverPins.register(map, MediaQuery.devicePixelRatioOf(context));
+
+    // StyleLoaded also fires for a style that is ALREADY carrying our source —
+    // it is not only emitted after a reload wiped things — and adding a source
+    // that exists throws ("Source 'dl-discover' already exists"). So clear ours
+    // out first rather than assuming either state. Layers before the source:
+    // a source cannot be removed while a layer still references it.
+    for (final id in const [_pinLayerId, _countLayerId, _clusterLayerId]) {
+      if (await map.styleLayerExists(id)) await map.removeStyleLayer(id);
+    }
+    if (await map.styleSourceExists(_sourceId)) {
+      await map.removeStyleSource(_sourceId);
+    }
 
     await map.addSource(
       mb.GeoJsonSource(
@@ -548,6 +584,20 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
       ),
     );
 
+    // Once per map, not per style load — see [_interactionsReady].
+    if (!_interactionsReady) {
+      _interactionsReady = true;
+      _addInteractions(map);
+    }
+
+    _styleReady = true;
+    await _push();
+    unawaited(_maybeShowTips());
+    // If the fix got here first, this is the half that centres the map.
+    await _centreOnUser();
+  }
+
+  void _addInteractions(mb.MapboxMap map) {
     // Tapping a pin selects it. Registered against the layer id, so taps on
     // empty map or on Mapbox's own POIs fall through untouched.
     map.addInteraction(
@@ -581,12 +631,6 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
     map.addInteraction(
       mb.TapInteraction.onMap((_) => _clearSelection(), stopPropagation: false),
     );
-
-    _styleReady = true;
-    await _push();
-    unawaited(_maybeShowTips());
-    // If the fix got here first, this is the half that centres the map.
-    await _centreOnUser();
   }
 
   /// Which pins the map draws: the ones that are not clusters.
