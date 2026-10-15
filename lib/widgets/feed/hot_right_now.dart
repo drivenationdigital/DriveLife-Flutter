@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 /// A horizontally scrolling row of shortcuts shown at the top of the feed.
 ///
 /// The tiles are hard-coded for now — swap [_items] for API data when the
-/// endpoint exists. Each tile renders its [_HotItem.imageUrl] when one is set
+/// endpoint exists. Each tile renders its [HotShortcut.imagePath] when one is set
 /// and falls back to a dark gradient otherwise, so the row looks right before
 /// any imagery is wired up.
 ///
@@ -24,26 +24,41 @@ class HotRightNow extends StatelessWidget {
   static const double _horizontalPadding = 16;
 
   // TODO: replace with real data when the endpoint exists.
-  static final List<_HotItem> _items = [
-    _HotItem(
+  //
+  // Destinations are named, never numbered. These used to be bare 1, 2, 3
+  // from an older bottom bar where they meant Events, Venues and Clubs.
+  // Events and Venues have since become sections of Home and the bar has been
+  // reordered twice, so the numbers stayed valid and quietly started meaning
+  // something else. Nothing crashed, which is why it survived two rounds of
+  // changes before anyone noticed.
+  //
+  // test/hot_shortcuts_test.dart holds each tile to where it should go.
+  @visibleForTesting
+  static final List<HotShortcut> items = [
+    HotShortcut(
       title: 'Find Events',
       imagePath: 'assets/hot-images/01-events-b.jpg',
-      // Events tab (bottom nav index 1)
-      onTap: (context) => context.read<BottomNavProvider>().setIndex(1),
+      // Events is a section of Home, so this has to set both.
+      onTap: (context) => context.read<BottomNavProvider>().openHomeSection(
+        BottomNavProvider.events,
+      ),
     ),
-    _HotItem(
+    HotShortcut(
       title: 'Popular Venues',
       imagePath: 'assets/hot-images/02-venues.jpg',
-      // Venues/Places tab (bottom nav index 2)
-      onTap: (context) => context.read<BottomNavProvider>().setIndex(2),
+      // Places is a section of Home, so this has to set both.
+      onTap: (context) => context.read<BottomNavProvider>().openHomeSection(
+        BottomNavProvider.places,
+      ),
     ),
-    _HotItem(
+    HotShortcut(
       title: 'Discover Groups',
       imagePath: 'assets/hot-images/03-clubs.jpg',
-      // Clubs tab (bottom nav index 3)
-      onTap: (context) => context.read<BottomNavProvider>().setIndex(3),
+      // Groups is a destination of its own again, not a section of Home.
+      onTap: (context) =>
+          context.read<BottomNavProvider>().setIndex(BottomNavProvider.groups),
     ),
-    _HotItem(
+    HotShortcut(
       title: 'Your Garage',
       imagePath: 'assets/hot-images/04-garage.jpg',
       onTap: (context) =>
@@ -53,7 +68,7 @@ class HotRightNow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (_items.isEmpty) return const SizedBox.shrink();
+    if (items.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -68,9 +83,9 @@ class HotRightNow extends StatelessWidget {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: _horizontalPadding),
-            itemCount: _items.length,
+            itemCount: items.length,
             separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, index) => _HotCard(item: _items[index]),
+            itemBuilder: (context, index) => _HotCard(item: items[index]),
           ),
         ),
         const SizedBox(height: 16),
@@ -79,16 +94,17 @@ class HotRightNow extends StatelessWidget {
   }
 }
 
-class _HotItem {
+/// One tile in the row, and where tapping it goes.
+class HotShortcut {
   final String title;
   final void Function(BuildContext context) onTap;
   final String? imagePath;
 
-  _HotItem({required this.title, required this.onTap, this.imagePath});
+  HotShortcut({required this.title, required this.onTap, this.imagePath});
 }
 
 class _HotCard extends StatelessWidget {
-  final _HotItem item;
+  final HotShortcut item;
 
   const _HotCard({required this.item});
 

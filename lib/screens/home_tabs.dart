@@ -77,7 +77,14 @@ class _HomeTabsState extends State<HomeTabs> {
 
   /// Which section of Home is showing. Only meaningful while the Home
   /// destination is selected.
-  int _homeTab = 0;
+  /// Which section of Home is showing.
+  ///
+  /// Held by the provider rather than here, so anything in the app can send
+  /// the user to a section by name. See BottomNavProvider.openHomeSection.
+  int get _homeTab => context.read<BottomNavProvider>().homeSection;
+
+  void _setHomeTab(int section) =>
+      context.read<BottomNavProvider>().openHomeSection(section);
 
   /// Drives the header, the section tabs and the bottom bar out of the way
   /// while somebody is reading, and brings them back when they scroll up or
@@ -122,11 +129,11 @@ class _HomeTabsState extends State<HomeTabs> {
   static const Curve _chromeCurve = Curves.easeOutCubic;
 
   /// Destinations, in bottom-bar order.
-  static const int _dHome = 0;
-  static const int _dDiscover = 1;
-  static const int _dGroups = 2;
-  static const int _dPhotos = 3;
-  static const int _dAccount = 4;
+  static const int _dHome = BottomNavProvider.home;
+  static const int _dDiscover = BottomNavProvider.discover;
+  static const int _dGroups = BottomNavProvider.groups;
+  static const int _dPhotos = BottomNavProvider.photos;
+  static const int _dAccount = BottomNavProvider.account;
 
   // Garage is no longer a destination. It is still reachable from a profile,
   // from the "Hot right now" row and by the /garage-list route, so nothing
@@ -269,7 +276,7 @@ class _HomeTabsState extends State<HomeTabs> {
 
   /// How many items the bottom bar shows. Kept beside the [_d*] constants it
   /// has to agree with.
-  static const int _navItemCount = _dAccount + 1;
+  static const int _navItemCount = BottomNavProvider.destinationCount;
 
   /// Whether Discover has ever been opened.
   ///
@@ -308,7 +315,7 @@ class _HomeTabsState extends State<HomeTabs> {
           DlTopTabs(
             tabs: _homeTabs,
             currentIndex: _homeTab,
-            onChanged: (i) => setState(() => _homeTab = i),
+            onChanged: _setHomeTab,
           ),
       ],
     );
@@ -352,6 +359,12 @@ class _HomeTabsState extends State<HomeTabs> {
       const ShopScreen(),
     ];
 
+    assert(
+      _homeTabs.length == BottomNavProvider.sectionCount,
+      'Home has ${_homeTabs.length} tabs but BottomNavProvider names '
+      '${BottomNavProvider.sectionCount}. Anything navigating by name would '
+      'land on the wrong one.',
+    );
     assert(
       sections.length == _homeTabs.length,
       'Home has ${_homeTabs.length} tabs but ${sections.length} sections. '
@@ -781,7 +794,7 @@ class _HomeTabsState extends State<HomeTabs> {
             _postsScreenKey.currentState?.scrollToTopAndRefresh();
           } else {
             // Not on the feed: "home" means the first section first.
-            setState(() => _homeTab = 0);
+            _setHomeTab(BottomNavProvider.forYou);
           }
           HapticFeedback.lightImpact();
           return;
@@ -865,7 +878,9 @@ class _HomeTabsState extends State<HomeTabs> {
           return;
         }
 
-        if (_homeTab != 0) setState(() => _homeTab = 0);
+        if (_homeTab != BottomNavProvider.forYou) {
+          _setHomeTab(BottomNavProvider.forYou);
+        }
       },
       child: Scaffold(
         //         Consumer<ThemeProvider>(

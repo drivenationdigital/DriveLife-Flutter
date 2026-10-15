@@ -106,12 +106,12 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
     if (url == null || url.trim().isEmpty) return;
 
     final text = url.trim();
-    final uri = Uri.tryParse(
-      // Fields like this are typed by hand into WordPress and arrive as
-      // "example.com" as often as a full URL. Without a scheme, launchUrl
-      // treats it as a relative path and silently does nothing.
-      text.startsWith('http') ? text : 'https://$text',
-    );
+
+    // mailto: and tel: are built here and arrive complete. Everything else
+    // is normalised by the server, which knows that an Instagram field holds
+    // a handle as often as a link — prefixing "https://" to "@croftcircuit"
+    // produces an address that goes nowhere.
+    final uri = Uri.tryParse(text.contains(':') ? text : 'https://$text');
     if (uri == null) return;
 
     await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -121,6 +121,26 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
     if (value == null) return null;
     final s = '$value'.trim();
     return s.isEmpty ? null : s;
+  }
+
+  /// The track's disciplines, as labels.
+  List<String> _types(Map<String, dynamic> track) {
+    final value = track['types'];
+    if (value is! List) return const [];
+    return value.map(_text).whereType<String>().toList(growable: false);
+  }
+
+  /// What the website shows under the title: the disciplines, then the two
+  /// numbers a driver checks before booking a day.
+  List<(IconData, String)> _facts(Map<String, dynamic> track) {
+    final length = _text(track['track_length']);
+    final noise = _text(track['noise_limit']);
+
+    return [
+      for (final type in _types(track)) (Icons.sports_score_rounded, type),
+      if (length != null) (Icons.straighten_rounded, length),
+      if (noise != null) (Icons.volume_up_rounded, noise),
+    ];
   }
 
   String? _image(dynamic value) {
@@ -296,6 +316,20 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
                     color: Color(0xFF1C1C1E),
                   ),
                 ),
+                if (_facts(track).isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  // All of them, wrapped. A track can be a race circuit and
+                  // a drag strip and a skid pan, and which disciplines it
+                  // runs is most of what someone wants to know about it.
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final fact in _facts(track))
+                        _TypeBadge(label: fact.$2, icon: fact.$1),
+                    ],
+                  ),
+                ],
                 if (location != null) ...[
                   const SizedBox(height: 4),
                   Row(
@@ -562,6 +596,40 @@ class _EventRow extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// One of a track's disciplines, as it reads on the page.
+class _TypeBadge extends StatelessWidget {
+  final String label;
+  final IconData icon;
+
+  const _TypeBadge({required this.label, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: const Color(0xFFD9B978)),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ],
       ),
     );
   }

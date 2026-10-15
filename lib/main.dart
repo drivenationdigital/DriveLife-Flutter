@@ -43,13 +43,62 @@ final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 final AnalyticsRouteObserver analyticsObserver = AnalyticsRouteObserver();
 final rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
+/// Where the app currently is: which bottom-bar destination, and which
+/// section of Home within it.
+///
+/// Both live here, and both have names. The Home section used to be private
+/// state inside the shell, which meant anything else that wanted to send the
+/// user to Events had no way to say so and used a bare bottom-bar index
+/// instead — and when the bar was reordered, "Find Events" quietly started
+/// opening the map. Naming the destinations is what stops that happening
+/// again: `BottomNavProvider.events` cannot drift, where `1` can.
 class BottomNavProvider extends ChangeNotifier {
-  int _currentIndex = 0;
+  // ── bottom bar destinations, in the order they appear ──────────────
+  static const int home = 0;
+  static const int discover = 1;
+  static const int groups = 2;
+  static const int photos = 3;
+  static const int account = 4;
+
+  /// How many destinations there are. The shell asserts its own list
+  /// against this, because the two are matched by position.
+  static const int destinationCount = account + 1;
+
+  // ── sections of Home, in the order of its top tab row ──────────────
+  static const int forYou = 0;
+  static const int events = 1;
+  static const int places = 2;
+  static const int businesses = 3;
+  static const int tracks = 4;
+  static const int shop = 5;
+
+  static const int sectionCount = shop + 1;
+
+  int _currentIndex = home;
+  int _homeSection = forYou;
+
   int get currentIndex => _currentIndex;
+
+  /// Which section of Home is showing. Only meaningful while [currentIndex]
+  /// is [home], but kept across visits elsewhere so returning to Home lands
+  /// where it was left.
+  int get homeSection => _homeSection;
 
   void setIndex(int index) {
     if (_currentIndex == index) return;
     _currentIndex = index;
+    notifyListeners();
+  }
+
+  /// Shows a section of Home, switching to Home if it is not already there.
+  ///
+  /// One call rather than two, because the two have to happen together:
+  /// setting the section while on another destination changes nothing
+  /// visible, and switching to Home first shows the old section for a frame.
+  void openHomeSection(int section) {
+    if (_currentIndex == home && _homeSection == section) return;
+    _currentIndex = home;
+    _homeSection = section;
     notifyListeners();
   }
 }

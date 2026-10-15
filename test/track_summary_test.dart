@@ -85,6 +85,34 @@ void main() {
     });
   });
 
+  group('track types', () {
+    test('reads the disciplines a track runs', () {
+      // A track can be several at once — the admin screen says so: "tick
+      // everything that applies - a venue can be a race circuit and a drag
+      // strip" — so this is always a list.
+      final json = row()..['types'] = ['Race circuit', 'Drag strip'];
+
+      expect(TrackSummary.fromJson(json).types, ['Race circuit', 'Drag strip']);
+    });
+
+    test('is empty when the field is absent', () {
+      // The field is found by its label on the server, and a track that has
+      // never been given a type simply has none. No badges is tidier than a
+      // wrong badge.
+      expect(TrackSummary.fromJson(row()).types, isEmpty);
+    });
+
+    test('survives a field that is not a list', () {
+      final json = row()..['types'] = 'Race circuit';
+      expect(TrackSummary.fromJson(json).types, isEmpty);
+    });
+
+    test('drops blanks rather than showing an empty badge', () {
+      final json = row()..['types'] = ['Race circuit', '', null, 'null'];
+      expect(TrackSummary.fromJson(json).types, ['Race circuit']);
+    });
+  });
+
   group('map pins', () {
     test('reads a track onto the map', () {
       final place = DiscoverPlace.fromTrack(row())!;

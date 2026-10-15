@@ -15,6 +15,10 @@ class TrackSummary {
   final double? distance;
   final String? site;
 
+  /// "Race circuit", "Drag strip", and so on. A track can be several at once,
+  /// which is why this is a list rather than one value.
+  final List<String> types;
+
   const TrackSummary({
     required this.id,
     required this.title,
@@ -22,6 +26,7 @@ class TrackSummary {
     this.image,
     this.distance,
     this.site,
+    this.types = const [],
   });
 
   static String? _text(dynamic value) {
@@ -52,6 +57,12 @@ class TrackSummary {
     return null;
   }
 
+  /// The track types, dropping anything that is not a usable label.
+  static List<String> _types(dynamic value) {
+    if (value is! List) return const [];
+    return value.map(_text).whereType<String>().toList(growable: false);
+  }
+
   factory TrackSummary.fromJson(Map<String, dynamic> json) {
     return TrackSummary(
       // Capital ID: the server returns the raw column name.
@@ -61,6 +72,7 @@ class TrackSummary {
       image: _url(json['cover_image']) ?? _url(json['logo']),
       distance: _number(json['distance']),
       site: _text(json['site']),
+      types: _types(json['types']),
     );
   }
 }
@@ -547,6 +559,24 @@ class _TrackCard extends StatelessWidget {
                           color: Color(0xFF1C1C1E),
                         ),
                       ),
+                      if (track.types.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        // One, not all of them: a card is not the place for
+                        // a track's full list of disciplines, and the first
+                        // is the one the admin screen lists first.
+                        Text(
+                          track.types.length == 1
+                              ? track.types.first
+                              : '${track.types.first} +${track.types.length - 1}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFB08E4F),
+                          ),
+                        ),
+                      ],
                       if (track.location != null) ...[
                         const SizedBox(height: 4),
                         Text(
