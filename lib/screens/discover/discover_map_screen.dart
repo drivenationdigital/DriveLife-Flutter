@@ -1171,7 +1171,6 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
                 _centred = false;
                 _locate();
               },
-              onFirst: visible.isEmpty ? null : () => _select(visible.first),
             ),
           ),
 
@@ -1569,23 +1568,20 @@ class _CategoryChip extends StatelessWidget {
 }
 
 /// My-location and jump-to-first-result, stacked at the right edge.
+/// The my-location button.
+///
+/// There used to be a list button under it, which selected the first result.
+/// The sheet below already lists everything and can be dragged up, so it was
+/// a second way to do something there was already a better way to do — and it
+/// sat over the map it was competing with.
 class _MapButtons extends StatelessWidget {
   final VoidCallback onLocate;
-  final VoidCallback? onFirst;
 
-  const _MapButtons({required this.onLocate, required this.onFirst});
+  const _MapButtons({required this.onLocate});
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _round(Icons.my_location_rounded, onLocate),
-        const SizedBox(height: 10),
-        _round(Icons.format_list_bulleted_rounded, onFirst),
-      ],
-    );
-  }
+  Widget build(BuildContext context) =>
+      _round(Icons.my_location_rounded, onLocate);
 
   Widget _round(IconData icon, VoidCallback? onTap) {
     return Opacity(

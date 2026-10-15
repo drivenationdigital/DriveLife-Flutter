@@ -38,8 +38,10 @@ void main() {
       expect(BottomNavProvider.forYou, 0);
       expect(BottomNavProvider.events, 1);
       expect(BottomNavProvider.places, 2);
-      expect(BottomNavProvider.businesses, 3);
-      expect(BottomNavProvider.tracks, 4);
+      // Tracks before Businesses: one has somewhere to go, the other is a
+      // "coming soon" page.
+      expect(BottomNavProvider.tracks, 3);
+      expect(BottomNavProvider.businesses, 4);
       expect(BottomNavProvider.shop, 5);
     });
 

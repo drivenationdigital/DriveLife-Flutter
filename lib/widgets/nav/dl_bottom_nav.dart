@@ -188,11 +188,7 @@ class _Item extends StatelessWidget {
                 // one item taller than the rest.
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Text(
-                    item.label,
-                    maxLines: 1,
-                    softWrap: false,
-                  ),
+                  child: Text(item.label, maxLines: 1, softWrap: false),
                 ),
               ),
             ],

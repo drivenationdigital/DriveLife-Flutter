@@ -7,10 +7,22 @@ import 'package:flutter_svg/flutter_svg.dart';
 class DlTopTab {
   final String label;
 
-  /// Path to an SVG in assets/app-icons.
-  final String icon;
+  /// Path to an SVG in assets/app-icons. Null when [glyph] is used instead.
+  final String? icon;
 
-  const DlTopTab({required this.label, required this.icon});
+  /// A Material icon, for tabs that have no SVG drawn for them yet.
+  ///
+  /// Both exist because the icon set is incomplete: there is no chequered
+  /// flag or briefcase in assets/app-icons, and waiting for one would mean
+  /// two tabs sharing the Places pin and meaning nothing by it. A tab with a
+  /// glyph swaps to an SVG by changing this one line.
+  final IconData? glyph;
+
+  const DlTopTab({required this.label, this.icon, this.glyph})
+    : assert(
+        icon != null || glyph != null,
+        'A tab needs something to draw: an SVG path or a Material icon.',
+      );
 }
 
 /// The section switcher that sits under the header.
@@ -173,19 +185,27 @@ class _Tab extends StatelessWidget {
                       borderRadius: BorderRadius.circular(11),
                     ),
                     child: Center(
-                      child: SvgPicture.asset(
-                        tab.icon,
-                        width: 18,
-                        height: 18,
-                        colorFilter: ColorFilter.mode(
-                          // Gold on black reads as the brand; grey on grey
-                          // would be invisible at this size.
-                          selected
-                              ? const Color(0xFFC9A449)
-                              : const Color(0xFF9A9A9A),
-                          BlendMode.srcIn,
-                        ),
-                      ),
+                      // Gold on black reads as the brand; grey on grey would
+                      // be invisible at this size.
+                      child: tab.icon != null
+                          ? SvgPicture.asset(
+                              tab.icon!,
+                              width: 18,
+                              height: 18,
+                              colorFilter: ColorFilter.mode(
+                                selected
+                                    ? const Color(0xFFC9A449)
+                                    : const Color(0xFF9A9A9A),
+                                BlendMode.srcIn,
+                              ),
+                            )
+                          : Icon(
+                              tab.glyph,
+                              size: 18,
+                              color: selected
+                                  ? const Color(0xFFC9A449)
+                                  : const Color(0xFF9A9A9A),
+                            ),
                     ),
                   ),
                   const SizedBox(width: 10),

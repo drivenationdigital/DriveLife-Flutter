@@ -5,7 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/api/posts_api.dart';
-import 'package:drivelife/components/news_blog.dart';
+import 'package:drivelife/components/news_article_screen.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/create-post/edit_post_screen.dart';
@@ -197,6 +197,16 @@ class _PostCardState extends State<PostCard>
     _likesCount = _asCount(widget.post['likes_count']) ?? _likesCount;
   }
 
+  /// A string from JSON, or null when there is nothing in it.
+  ///
+  /// PHP sends an absent field as null and an empty one as "", and both mean
+  /// the same thing to a reader: do not draw it.
+  static String? _str(dynamic value) {
+    if (value == null) return null;
+    final text = '$value'.trim();
+    return text.isEmpty || text == 'null' ? null : text;
+  }
+
   /// A like count from JSON, whatever shape it arrives in.
   ///
   /// `as int` was used in three places and throws on anything else — and this
@@ -308,7 +318,7 @@ class _PostCardState extends State<PostCard>
       return; // Skip post like API for events
     }
 
-    final res = await InteractionsAPI.maybeLikePost(widget.post['id']);
+    final res = await InteractionsAPI.maybeLikePost('${widget.post['id']}');
 
     if (!mounted) return;
 
@@ -347,7 +357,7 @@ class _PostCardState extends State<PostCard>
       return; // Skip post like API for events
     }
 
-    final res = await InteractionsAPI.maybeLikePost(widget.post['id']);
+    final res = await InteractionsAPI.maybeLikePost('${widget.post['id']}');
 
     if (!mounted) return;
 
@@ -409,7 +419,87 @@ class _PostCardState extends State<PostCard>
     );
   }
 
+  /// Whether this post lives on another site and only passes through the
+  /// feed — DriveLife news. There is no row to like, comment on or bookmark.
+  bool get _isExternal => widget.post['is_external'] == true;
+
+  /// The "Read more" button on a news card, and the article it opens.
+  ///
+  /// Built here rather than inside _PostActions because everything it needs
+  /// is already on widget.post. Passing a dozen article fields down into the
+  /// actions row only to hand them straight back to a sheet was indirection
+  /// for its own sake.
+  Widget _buildReadMore() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: GestureDetector(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => NewsArticleScreen(
+                title: _str(widget.post['caption']) ?? 'News',
+                htmlContent: _str(widget.post['news_content']) ?? '',
+                date: _str(widget.post['post_date']) ?? '',
+                imageUrls: _media
+                    .map((m) => '${m['media_url'] ?? ''}')
+                    .where((url) => url.isNotEmpty)
+                    .toList(),
+                username: _str(widget.post['username']),
+                isVerified: widget.post['user_verified'] == true,
+                postUserId: _str(widget.post['user_id']),
+                category: _str(widget.post['news_category']),
+                excerpt: _str(widget.post['news_excerpt']),
+                imageCaption: _str(widget.post['news_image_caption']),
+                readMinutes: _asCount(widget.post['news_read_minutes']),
+                articleUrl: _str(widget.post['news_url']),
+              ),
+            ),
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+            decoration: BoxDecoration(
+              color: const Color(0xFFAE9159),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFAE9159).withValues(alpha: 0.35),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Read more',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13.5,
+                  ),
+                ),
+                SizedBox(width: 6),
+                Icon(
+                  Icons.arrow_forward_rounded,
+                  size: 15,
+                  color: Colors.white,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _handleDoubleTap() async {
+    // Hiding the like button was not enough: a double tap reaches the same
+    // code by another route, and on an external post it sent a like for an
+    // id that is not in ce_social_posts.
+    if (_isExternal) return;
+
     HapticFeedback.heavyImpact();
     if (!_liked) {
       await _optimisticLike();
@@ -707,6 +797,7 @@ class _PostCardState extends State<PostCard>
               },
               currentUserId: user?.id,
               postUserId: widget.post['user_id'],
+              isExternal: _isExternal,
               onTapProfile: widget.onTapProfile,
               onSettings: _showPostOptions,
               primaryColor: theme.primaryColor,
@@ -750,14 +841,9 @@ class _PostCardState extends State<PostCard>
                 },
                 onCommentTap: () => _openComments(context),
                 onShareTap: _sharePost,
-                newsTitle: null,
                 isNews: false,
                 isEvent: false,
                 eventId: null,
-                newsContent: null,
-                newsDate: widget.post['post_date'],
-                newsImageUrls: const [],
-                creatorProfileImage: widget.post['user_profile_image'],
                 username: widget.post['username'] ?? '',
                 isVerified: widget.post['user_verified'] == true,
                 postUserId: widget.post['user_id'],
@@ -766,28 +852,33 @@ class _PostCardState extends State<PostCard>
               ),
             ),
 
-            GestureDetector(
-              onTap: (_likesCount > 0 && widget.post['is_event'] != true)
-                  ? () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (_) => LikesModal(postId: widget.post['id']),
-                      );
-                    }
-                  : null,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  '$_likesCount likes',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black,
+            // No like count on an external post. DriveLife news lives on
+            // another site and has no row to like, so the only number it
+            // could ever show is nought — which reads as "nobody liked
+            // this" rather than "this cannot be liked".
+            if (!_isExternal)
+              GestureDetector(
+                onTap: (_likesCount > 0 && widget.post['is_event'] != true)
+                    ? () {
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) => LikesModal(postId: widget.post['id']),
+                        );
+                      }
+                    : null,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    '$_likesCount likes',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
+                    ),
                   ),
                 ),
               ),
-            ),
 
             // A poll on this post, directly under the likes. Without it the
             // only sign that a post asked you something was opening the
@@ -832,21 +923,12 @@ class _PostCardState extends State<PostCard>
                 },
                 onCommentTap: () => _openComments(context),
                 onShareTap: _sharePost,
-                newsTitle: widget.post['is_news'] == true
-                    ? widget.post['caption'] ?? 'News'
-                    : null,
                 isNews: widget.post['is_news'] == true,
+                isExternal: widget.post['is_external'] == true,
                 isEvent: widget.post['is_event'] == true,
                 eventId: widget.post['is_event'] == true
                     ? widget.post['id']
                     : null,
-                newsContent: widget.post['news_content'], // HTML from ACF
-                newsDate: widget.post['post_date'],
-                newsImageUrls: _media
-                    .map((m) => m['media_url'])
-                    .whereType<String>()
-                    .toList(),
-                creatorProfileImage: widget.post['user_profile_image'],
                 username: widget.post['username'] ?? '',
                 isVerified: widget.post['user_verified'] == true,
                 postUserId: widget.post['user_id'],
@@ -855,28 +937,33 @@ class _PostCardState extends State<PostCard>
               ),
             ),
 
-            GestureDetector(
-              onTap: (_likesCount > 0 && widget.post['is_event'] != true)
-                  ? () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (_) => LikesModal(postId: widget.post['id']),
-                      );
-                    }
-                  : null,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  '$_likesCount likes',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black,
+            // No like count on an external post. DriveLife news lives on
+            // another site and has no row to like, so the only number it
+            // could ever show is nought — which reads as "nobody liked
+            // this" rather than "this cannot be liked".
+            if (!_isExternal)
+              GestureDetector(
+                onTap: (_likesCount > 0 && widget.post['is_event'] != true)
+                    ? () {
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) => LikesModal(postId: widget.post['id']),
+                        );
+                      }
+                    : null,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    '$_likesCount likes',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
+                    ),
                   ),
                 ),
               ),
-            ),
 
             // A poll on this post, directly under the likes. Without it the
             // only sign that a post asked you something was opening the
@@ -910,6 +997,14 @@ class _PostCardState extends State<PostCard>
               ),
             ),
 
+            // Under the caption, not in the actions row.
+            //
+            // It is the one thing to do with a news card, so it reads as the
+            // end of the card rather than as one control among several — and
+            // in the row it sat to the right of icons that do not apply to
+            // news, which left it looking like an afterthought.
+            if (widget.post['is_news'] == true) _buildReadMore(),
+
             const SizedBox(height: 10),
           ],
         ],
@@ -920,6 +1015,10 @@ class _PostCardState extends State<PostCard>
 
 // ✅ Extracted header as stateless widget
 class _PostHeader extends StatelessWidget {
+  /// True for a post that lives on another site and only passes through the
+  /// feed. It cannot be owned, edited or deleted from here.
+  final bool isExternal;
+
   final String? profileImage;
   final String username;
   final bool isVerified;
@@ -936,6 +1035,7 @@ class _PostHeader extends StatelessWidget {
   final void Function(dynamic userId)? onUserTap;
 
   const _PostHeader({
+    this.isExternal = false,
     required this.profileImage,
     required this.username,
     required this.isVerified,
@@ -1365,7 +1465,14 @@ class _PostHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isOwnPost = postUserId.toString() == currentUserId.toString();
+    // Never your own, however the ids line up.
+    //
+    // DriveLife news is attributed to the drivelife account, so for whoever
+    // is signed in as that account these would otherwise come out as their
+    // own posts — with an edit-and-delete menu acting on an article that has
+    // no row here to edit or delete.
+    final isOwnPost =
+        !isExternal && postUserId.toString() == currentUserId.toString();
 
     // ── Event collab layout ──────────────────────────────────────
     if (isEvent && eventOrganisers != null && eventOrganisers!.isNotEmpty) {
@@ -2040,12 +2147,13 @@ class _PostActions extends StatelessWidget {
   final VoidCallback onCommentTap;
   final VoidCallback onShareTap;
   final bool isNews;
+
+  /// True for a post that lives on another site and only passes through this
+  /// feed — DriveLife news. It has no row in ce_social_posts, so there is
+  /// nothing to like, comment on or bookmark.
+  final bool isExternal;
+
   final bool isEvent;
-  final String? newsTitle;
-  final String? newsContent;
-  final String? newsDate;
-  final List<String> newsImageUrls; // pass your media urls
-  final String? creatorProfileImage;
   final String? username;
   final bool? isVerified;
   final dynamic postUserId;
@@ -2059,12 +2167,8 @@ class _PostActions extends StatelessWidget {
     required this.onCommentTap,
     required this.onShareTap,
     this.isNews = false,
+    this.isExternal = false,
     this.isEvent = false,
-    this.newsTitle,
-    this.newsContent,
-    this.newsDate,
-    this.newsImageUrls = const [],
-    this.creatorProfileImage,
     this.username,
     this.isVerified,
     this.postUserId,
@@ -2079,18 +2183,22 @@ class _PostActions extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: onLikeTap,
-            child: SvgPicture.asset(
-              liked ? 'assets/svgs/heart_full.svg' : 'assets/svgs/heart.svg',
-              width: 24,
-              height: 24,
-              colorFilter: ColorFilter.mode(
-                liked ? Colors.red : Colors.black,
-                BlendMode.srcIn,
+          // Not on an external post. DriveLife news is read live from
+          // drive-life.com and has no row in ce_social_posts to like — the
+          // tap would write against an id that does not exist there.
+          if (!isExternal)
+            GestureDetector(
+              onTap: onLikeTap,
+              child: SvgPicture.asset(
+                liked ? 'assets/svgs/heart_full.svg' : 'assets/svgs/heart.svg',
+                width: 24,
+                height: 24,
+                colorFilter: ColorFilter.mode(
+                  liked ? Colors.red : Colors.black,
+                  BlendMode.srcIn,
+                ),
               ),
             ),
-          ),
           if (!isNews && !isEvent) ...[
             const SizedBox(width: 16),
             GestureDetector(
@@ -2106,19 +2214,25 @@ class _PostActions extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(width: 16),
-          GestureDetector(
-            onTap: onShareTap,
-            child: SvgPicture.asset(
-              'assets/app-icons/share.svg',
-              width: 24,
-              height: 24,
-              colorFilter: const ColorFilter.mode(
-                Colors.black,
-                BlendMode.srcIn,
+          // Not on an external post. Sharing builds an
+          // app.mydrivelife.com/post/<id> deep link, and a DriveLife news
+          // article has no post of that kind to open — the link resolves to
+          // nothing. The article's own URL is shared from the reader instead.
+          if (!isExternal) ...[
+            const SizedBox(width: 16),
+            GestureDetector(
+              onTap: onShareTap,
+              child: SvgPicture.asset(
+                'assets/app-icons/share.svg',
+                width: 24,
+                height: 24,
+                colorFilter: const ColorFilter.mode(
+                  Colors.black,
+                  BlendMode.srcIn,
+                ),
               ),
             ),
-          ),
+          ],
 
           // ↓ News Read More button
           if (isEvent) ...[
@@ -2203,55 +2317,6 @@ class _PostActions extends StatelessWidget {
                 child: Text(
                   asc_link_type == 'video' ? 'Watch Video' : 'See More',
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ),
-            ),
-          ],
-          if (isNews) ...[
-            const Spacer(),
-            GestureDetector(
-              onTap: () {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true, // full height
-                  backgroundColor: Colors.transparent,
-                  useSafeArea: true,
-                  builder: (_) => NewsReaderSheet(
-                    title: newsTitle ?? '',
-                    htmlContent: newsContent ?? '',
-                    date: newsDate ?? '',
-                    imageUrls: newsImageUrls,
-                    creatorProfileImage: creatorProfileImage,
-                    username: username,
-                    isVerified: isVerified,
-                    postUserId: postUserId,
-                  ),
-                );
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFAE9159),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFAE9159).withOpacity(0.35),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: const Text(
-                  'Read More',
-                  style: TextStyle(
                     color: Colors.white,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,

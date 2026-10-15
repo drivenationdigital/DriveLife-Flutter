@@ -1,3 +1,5 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:drivelife/api/notifications_api.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/screens/discover/discover_map_screen.dart';
@@ -48,7 +50,7 @@ class HomeTabs extends StatefulWidget {
   State<HomeTabs> createState() => _HomeTabsState();
 }
 
-class _HomeTabsState extends State<HomeTabs> {
+class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   // int _currentIndex = 0;
   AccountType? _lastAccountType;
 
@@ -65,8 +67,14 @@ class _HomeTabsState extends State<HomeTabs> {
     DlTopTab(label: 'For You', icon: 'assets/app-icons/01-Home.svg'),
     DlTopTab(label: 'Events', icon: 'assets/app-icons/02-Events.svg'),
     DlTopTab(label: 'Places', icon: 'assets/app-icons/03-Venues.svg'),
-    DlTopTab(label: 'Businesses', icon: 'assets/app-icons/03-Venues.svg'),
-    DlTopTab(label: 'Tracks', icon: 'assets/app-icons/02-Events.svg'),
+    // Tracks before Businesses: one has somewhere to go, the other is still
+    // a "coming soon" page.
+    //
+    // Cupertino glyphs because assets/app-icons has no flag or building.
+    // They shared the Places pin until now, which told the user nothing
+    // about either.
+    DlTopTab(label: 'Tracks & Raceways', glyph: CupertinoIcons.flag),
+    DlTopTab(label: 'Businesses', glyph: CupertinoIcons.building_2_fill),
     // Groups is not here: it is a bottom-bar destination again. Listing it
     // in both would mean two routes to the same screen, each with its own
     // scroll position and its own loaded list.
@@ -162,12 +170,25 @@ class _HomeTabsState extends State<HomeTabs> {
   @override
   void dispose() {
     _chrome.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadNotificationCount();
+    }
   }
 
   @override
   void initState() {
     super.initState();
+
+    // Notifications arrive while the app is in the background, so the count
+    // is re-read on the way back rather than only at launch.
+    WidgetsBinding.instance.addObserver(this);
+    _loadNotificationCount();
 
     _buildScreens();
     _reloadUserData();
@@ -278,6 +299,25 @@ class _HomeTabsState extends State<HomeTabs> {
   /// has to agree with.
   static const int _navItemCount = BottomNavProvider.destinationCount;
 
+  /// How many notifications are unread.
+  ///
+  /// The bell had no badge at all — the count endpoint and its Dart method
+  /// both existed, but the only caller was shared_header_actions.dart, the
+  /// header this one replaced. So it was not broken so much as never
+  /// reconnected.
+  int _notificationCount = 0;
+
+  /// Re-reads the unread count.
+  ///
+  /// Called on launch, when the app comes back to the foreground, and on
+  /// returning from the notifications screen — which marks everything read,
+  /// so without that last one the badge would sit there after being cleared.
+  Future<void> _loadNotificationCount() async {
+    final count = await NotificationsAPI.getNotificationCount();
+    if (!mounted || count == _notificationCount) return;
+    setState(() => _notificationCount = count);
+  }
+
   /// Whether Discover has ever been opened.
   ///
   /// Everything in the IndexedStack is built whether or not it is the one
@@ -342,17 +382,17 @@ class _HomeTabsState extends State<HomeTabs> {
       EventsScreen(),
       const VenuesScreen(),
 
+      // Tracks have their own screen and their own endpoints. They were
+      // briefly the venues screen with a post type argument, which listed
+      // the user's venues under "My tracks" and could not open any of them.
+      const TracksScreen(),
+
       // There is no `businesses` post type in WordPress yet, so this says
       // so rather than running a search that can only ever come back empty.
       // "No businesses found" reads as "none near you"; this reads as what
       // is actually true. Swap it for a VenuesScreen(postType: 'businesses')
       // — the server already accepts that — the day the post type exists.
       const ComingSoonScreen(title: 'Businesses'),
-
-      // Tracks have their own screen and their own endpoints. They were
-      // briefly the venues screen with a post type argument, which listed
-      // the user's venues under "My tracks" and could not open any of them.
-      const TracksScreen(),
 
       // No app bar of its own: the shell above already supplies one, and
       // the shop's own carries a back button that would pop the shell.
@@ -659,13 +699,23 @@ class _HomeTabsState extends State<HomeTabs> {
         ),
         const SizedBox(width: 8),
         _RoundAction(
-          child: iconSvg(
-            'assets/app-icons/header-notification.svg',
-            theme,
-            size: 18,
-            alwaysActive: true,
+          child: _BadgedIcon(
+            count: _notificationCount,
+            color: theme.primaryColor,
+            child: iconSvg(
+              'assets/app-icons/header-notification.svg',
+              theme,
+              size: 18,
+              alwaysActive: true,
+            ),
           ),
-          onTap: () => Navigator.pushNamed(context, AppRoutes.notifications),
+          onTap: () async {
+            await Navigator.pushNamed(context, AppRoutes.notifications);
+            // That screen marks everything read on its way in, so the badge
+            // has to be re-read on the way out or it keeps a count that is
+            // no longer true.
+            await _loadNotificationCount();
+          },
         ),
         const SizedBox(width: 16),
       ],

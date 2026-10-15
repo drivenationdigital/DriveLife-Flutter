@@ -68,8 +68,8 @@ class BottomNavProvider extends ChangeNotifier {
   static const int forYou = 0;
   static const int events = 1;
   static const int places = 2;
-  static const int businesses = 3;
-  static const int tracks = 4;
+  static const int tracks = 3;
+  static const int businesses = 4;
   static const int shop = 5;
 
   static const int sectionCount = shop + 1;
