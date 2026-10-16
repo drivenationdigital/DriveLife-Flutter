@@ -6,6 +6,8 @@ import 'package:flutter_html/flutter_html.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../utils/html_text.dart';
+
 import 'news_comments.dart';
 
 /// A news article, read full screen.
@@ -556,7 +558,12 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       child: Html(
-        data: widget.htmlContent,
+        // Same treatment as a venue description, for the same reason: a
+        // venue page went down inside flutter_html's CSS parser over a
+        // style attribute pasted out of a word processor, and these
+        // articles come from the same kind of editor. The style map below
+        // is this screen's own idea of how an article should read.
+        data: withoutInlineStyles(widget.htmlContent),
         onLinkTap: (url, _, _) async {
           if (url == null) return;
           final uri = Uri.tryParse(url);

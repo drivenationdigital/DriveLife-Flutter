@@ -1,4 +1,5 @@
 import 'package:drivelife/providers/cart_provider.dart';
+import 'package:drivelife/utils/crash_trace.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/pending_tags_provider.dart';
@@ -106,6 +107,11 @@ class BottomNavProvider extends ChangeNotifier {
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Reprints build-time crashes with our own frames and the widget the
+  // framework blames, because the default dump is forty frames of
+  // Element.inflateWidget with nothing of ours in it. Debug only.
+  installCrashTrace();
 
   // Reads assets/config/mapbox.json and hands the token to the Maps SDK.
   // Before runApp so the Discover map is ready the moment it is opened, and

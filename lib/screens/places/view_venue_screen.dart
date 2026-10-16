@@ -4,8 +4,10 @@ import 'package:drivelife/models/venue_view_model.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/places/add_venue_screen.dart';
+import 'package:drivelife/utils/crash_trace.dart';
 import 'package:drivelife/utils/html_text.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
@@ -423,17 +425,32 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
                       controller: _tabController,
                       physics: const NeverScrollableScrollPhysics(),
                       children: [
-                        _buildAboutPanel(theme),
-                        _buildUpdatesScroll(theme),
-                        _buildEventsPanel(theme),
-                        _VenueCommunityFeed(
-                          venueId: widget.venueId,
-                          onCompose: _handleCreateVenuePost,
+                        CrashTrace(
+                          label: 'venue/about',
+                          child: _buildAboutPanel(theme),
                         ),
-                        EntityGalleriesTab(
-                          entityId: widget.venueId,
-                          entityType: 'venue',
-                          primaryColor: theme.primaryColor,
+                        CrashTrace(
+                          label: 'venue/updates',
+                          child: _buildUpdatesScroll(theme),
+                        ),
+                        CrashTrace(
+                          label: 'venue/events',
+                          child: _buildEventsPanel(theme),
+                        ),
+                        CrashTrace(
+                          label: 'venue/posts',
+                          child: _VenueCommunityFeed(
+                            venueId: widget.venueId,
+                            onCompose: _handleCreateVenuePost,
+                          ),
+                        ),
+                        CrashTrace(
+                          label: 'venue/media',
+                          child: EntityGalleriesTab(
+                            entityId: widget.venueId,
+                            entityType: 'venue',
+                            primaryColor: theme.primaryColor,
+                          ),
                         ),
                       ],
                     ),
@@ -679,6 +696,16 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
     final logo = _venue?.logo.url;
     final cover = _venue?.coverPhoto.url;
 
+    if (kDebugMode) {
+      debugPrint(
+        '🔎 venue header: id=${_venue?.id} owner=${_venue?.isOwner} '
+        'logo=${logo?.isNotEmpty} cover=${cover?.isNotEmpty} '
+        'lat=${_venue?.latitude} lng=${_venue?.longitude} '
+        'loc="${_venue?.location}" desc=${_venue?.description?.length} '
+        'events=${_venue?.events.length}',
+      );
+    }
+
     return SafeArea(
       bottom: false,
       child: Stack(
@@ -913,6 +940,14 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
   /// Returns nothing at all when there is nothing to show, so a venue with
   /// no contact details does not get an empty band under its name.
   Widget _buildContactChips() {
+    if (kDebugMode) {
+      debugPrint(
+        '🔎 venue contacts: web=${_venue?.website} mail=${_venue?.venueEmail} '
+        'tel=${_venue?.venuePhone} fb=${_venue?.facebook} '
+        'ig=${_venue?.instagram}',
+      );
+    }
+
     final chips = <Widget>[];
 
     void add(IconData icon, String label, String? value, VoidCallback onTap) {
@@ -1413,6 +1448,17 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
   // ── About tab ──────────────────────────────────────────────────────────
 
   Widget _buildAboutPanel(ThemeProvider theme) {
+    if (kDebugMode) {
+      final desc = _venue?.description ?? '';
+      debugPrint(
+        '🔎 about: renderable=${htmlIsRenderable(desc)} len=${desc.length} '
+        'tags=${_tagsIn(desc)} stripped=${withoutInlineStyles(desc).length}',
+      );
+      debugPrint(
+        '🔎 about html: ${desc.length > 400 ? desc.substring(0, 400) : desc}',
+      );
+    }
+
     final hasFacebook =
         _venue?.facebook != null && _venue!.facebook!.isNotEmpty;
     final hasInstagram =
@@ -1428,7 +1474,9 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
       // status bar, and takes care of its own inset.
       padding: const EdgeInsets.only(bottom: 100),
       children: [
-        _buildHeaderArea(theme),
+        CrashTrace(label: 'about/header', child: _buildHeaderArea(theme)),
+
+        const CrashTrace(label: 'about/after-header', child: SizedBox.shrink()),
 
         if (_venue!.description != null && _venue!.description!.isNotEmpty) ...[
           Padding(
@@ -1462,7 +1510,12 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
                     ),
                   )
                 : Html(
-                    data: _venue!.description!,
+                    // Stripped of the CSS the editor pasted in. The style
+                    // map below is this app's idea of how a description
+                    // should look; a line height from a word processor is
+                    // not, and flutter_html's CSS parser is where a venue
+                    // page carrying one went down. See withoutInlineStyles.
+                    data: withoutInlineStyles(_venue!.description),
                     style: {
                       "body": Style(
                         margin: Margins.zero,
@@ -1494,6 +1547,8 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
           ),
           const SizedBox(height: 24),
         ],
+
+        const CrashTrace(label: 'about/location', child: SizedBox.shrink()),
 
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -1549,6 +1604,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
             hasEmail ||
             hasPhone) ...[
           const SizedBox(height: 24),
+          const CrashTrace(label: 'about/links', child: SizedBox.shrink()),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             child: Text(
@@ -1599,6 +1655,19 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
         ],
       ],
     );
+  }
+
+  /// Every distinct tag name in [html], for the log.
+  static String _tagsIn(String html) {
+    final tags =
+        RegExp(r'<\s*([a-zA-Z][a-zA-Z0-9]*)')
+            .allMatches(html)
+            .map((m) => m.group(1)!.toLowerCase())
+            .toSet()
+            .toList()
+          ..sort();
+
+    return tags.join(',');
   }
 
   Widget _aboutLinkRow(

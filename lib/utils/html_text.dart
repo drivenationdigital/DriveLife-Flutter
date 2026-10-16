@@ -87,3 +87,44 @@ bool htmlIsRenderable(String? html) {
 
   return true;
 }
+
+/// Matches a whole tag, opening or closing.
+final RegExp _anyTag = RegExp(r'<[^>]*>');
+
+/// Matches an inline `style` or `class` attribute, quoted either way.
+final RegExp _inlineAttr = RegExp(
+  r'''\s(?:style|class)\s*=\s*(?:"[^"]*"|'[^']*')''',
+  caseSensitive: false,
+);
+
+/// Strips inline `style` and `class` attributes out of CMS HTML.
+///
+/// flutter_html parses every inline style through its own CSS parser, and
+/// that parser is where this app's venue pages were dying. The markup that
+/// did it was a single `<p>` — nothing exotic in the tags at all — carrying
+/// a style attribute pasted out of a word processor:
+///
+///     <p class="p1" style="margin-bottom: 0px; font-variant-numeric: normal;
+///     font-variant-east-asian: normal; font-kerning: auto;
+///     font-optical-sizing: auto; font-variation-settings: normal;
+///     font-stretch: normal; line-height: normal;">
+///
+/// Whichever of those properties it choked on is beside the point: the fix
+/// is not to hand it CSS we did not write. Every call site already gives the
+/// renderer a `style:` map of its own, so the inline declarations were only
+/// ever fighting with it — a line height pasted from Pages is not a decision
+/// anyone made about how this app should look.
+///
+/// `class` goes too. There is no stylesheet here for a class to name, so it
+/// is bytes the parser reads and discards.
+String withoutInlineStyles(String? html) {
+  if (html == null || html.isEmpty) return '';
+
+  // Inside tags only. Run across the whole string, the attribute pattern
+  // also matches the words `style="x"` written in the prose itself, and
+  // quietly eats them out of the sentence.
+  return html.replaceAllMapped(
+    _anyTag,
+    (match) => match.group(0)!.replaceAll(_inlineAttr, ''),
+  );
+}
