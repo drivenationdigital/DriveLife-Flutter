@@ -280,82 +280,135 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
     );
   }
 
+  /// Logo, name, disciplines, where it is, how many follow it, and one
+  /// button.
+  ///
+  /// Centred, with the logo above the name rather than beside it. The logo
+  /// was a 60px thumbnail in the corner of a left-aligned block, which is
+  /// the shape of a list row — fine in a list, but this is the track's own
+  /// page and the badge is what identifies it. The same composition as a
+  /// venue's page, so the two do not feel like different apps.
   Widget _identity(Map<String, dynamic> track) {
     final logo = _image(track['logo']);
     final location = _text(track['location']);
+    final followers = _followerCount(track);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (logo != null) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: CachedNetworkImage(
-                imageUrl: logo,
-                width: 60,
-                height: 60,
-                fit: BoxFit.cover,
-                memCacheWidth: (60 * MediaQuery.devicePixelRatioOf(context))
-                    .round(),
-                errorWidget: (_, _, _) => const SizedBox.shrink(),
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _text(track['title']) ?? 'Track',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1C1C1E),
+            Center(
+              child: Container(
+                width: 104,
+                height: 104,
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: CachedNetworkImage(
+                    imageUrl: logo,
+                    fit: BoxFit.cover,
+                    memCacheWidth:
+                        (104 * MediaQuery.devicePixelRatioOf(context)).round(),
+                    errorWidget: (_, _, _) => const SizedBox.shrink(),
                   ),
                 ),
-                if (_facts(track).isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  // All of them, wrapped. A track can be a race circuit and
-                  // a drag strip and a skid pan, and which disciplines it
-                  // runs is most of what someone wants to know about it.
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final fact in _facts(track))
-                        _TypeBadge(label: fact.$2, icon: fact.$1),
-                    ],
-                  ),
-                ],
-                if (location != null) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.place_outlined,
-                        size: 14,
-                        color: Color(0xFF8A8A8E),
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          location,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF8A8A8E),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
+
+          Text(
+            _text(track['title']) ?? 'Track',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 25,
+              fontWeight: FontWeight.w800,
+              height: 1.15,
+              color: Color(0xFF1C1C1E),
             ),
           ),
-          const SizedBox(width: 12),
+
+          if (_facts(track).isNotEmpty) ...[
+            const SizedBox(height: 10),
+            // All of them. A track can be a race circuit and a drag strip
+            // and a skid pan, and which disciplines it runs is most of what
+            // someone wants to know about it.
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final fact in _facts(track))
+                  _TypeBadge(label: fact.$2, icon: fact.$1),
+              ],
+            ),
+          ],
+
+          if (location != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.place_outlined,
+                  size: 14,
+                  color: Color(0xFF8A8A8E),
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    location,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF8A8A8E),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+
+          // Hidden rather than shown as 0. A track nobody follows yet does
+          // not need to say so under its own name.
+          if (followers != null && followers > 0) ...[
+            const SizedBox(height: 10),
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: _grouped(followers),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1C1C1E),
+                    ),
+                  ),
+                  const TextSpan(
+                    text: ' followers',
+                    style: TextStyle(color: Color(0xFF8A8A8E)),
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14.5),
+            ),
+          ],
+
+          const SizedBox(height: 16),
+
           _FollowButton(
             following: _following,
             busy: _followBusy,
@@ -364,6 +417,35 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
         ],
       ),
     );
+  }
+
+  /// How many follow this track, or null when the API did not say.
+  ///
+  /// The field has been spelled both ways over the life of the endpoint, so
+  /// both are accepted rather than the count quietly disappearing.
+  static int? _followerCount(Map<String, dynamic> track) {
+    final raw = track['follower_count'] ?? track['followers_count'];
+
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim());
+
+    return null;
+  }
+
+  /// 2418 as "2,418". Written out rather than pulled from intl, which this
+  /// screen does not otherwise need and which is a lot of locale data to
+  /// carry for one separator.
+  static String _grouped(int value) {
+    final digits = value.toString();
+    final out = StringBuffer();
+
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+      out.write(digits[i]);
+    }
+
+    return out.toString();
   }
 
   Widget _links(Map<String, dynamic> track) {
@@ -476,12 +558,23 @@ class _FollowButton extends StatelessWidget {
             ? const Color(0xFFF2F2F2)
             : const Color(0xFF1C1C1E),
         foregroundColor: following ? const Color(0xFF1C1C1E) : Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        // Full width now, so the padding sets the height and the stretch
+        // above sets the width.
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
-      child: Text(
-        following ? 'Following' : 'Follow',
-        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (following) ...[
+            const Icon(Icons.check_rounded, size: 17),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            following ? 'Following' : 'Follow',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+        ],
       ),
     );
   }

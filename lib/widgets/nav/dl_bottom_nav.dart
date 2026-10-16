@@ -25,14 +25,23 @@ class DlBottomNav extends StatelessWidget {
 
   /// How much vertical room the bar occupies, before the safe area.
   ///
-  /// Shorter than it was. At 74 the corner radius could never catch up with
-  /// the height, so the ends read as rounded corners on a rectangle rather
-  /// than as the ends of a pill — which is the difference you can see
-  /// against Uber's.
-  static const double height = 62;
+  /// Set by what has to fit inside the travelling highlight, not picked by
+  /// eye. The highlight is [height] minus twice [_inset], and it has to
+  /// clear a 22px icon, a 4px gap and a line of 11px text — 39 in all — with
+  /// enough room left that the label is not touching the grey.
+  ///
+  ///   66 - (6 * 2) = 54, and (54 - 39) / 2 = 7.5 above and below.
+  ///
+  /// It was 62 with a 7px inset, which left 4.5, and at 4.5 the descender of
+  /// a word like "Account" sits all but on the edge of the pill.
+  ///
+  /// Still a stadium at this height, which is the other constraint: the
+  /// radius is half the height, so the ends stay semicircles rather than
+  /// becoming rounded corners on a rectangle.
+  static const double height = 66;
 
   /// Inset of the travelling highlight from the bar's own edges.
-  static const double _inset = 7;
+  static const double _inset = 6;
 
   /// Shared by the travelling highlight and the labels it passes under, so
   /// the colour change lands with the pill rather than trailing behind it.

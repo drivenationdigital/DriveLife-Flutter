@@ -2,6 +2,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/tracks_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
+import 'package:drivelife/widgets/listing/listing_card.dart';
+import 'package:drivelife/widgets/listing/listing_chips.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -255,12 +257,34 @@ class _TracksScreenState extends State<TracksScreen>
             labelColor: theme.primaryColor,
             unselectedLabelColor: theme.subtextColor,
             labelStyle: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+            unselectedLabelStyle: const TextStyle(
               fontWeight: FontWeight.w600,
-              fontSize: 15,
+              fontSize: 16,
             ),
             tabs: const [
-              Tab(text: 'Find tracks'),
-              Tab(text: 'My tracks'),
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.explore_outlined, size: 18),
+                    SizedBox(width: 6),
+                    Text('Discover'),
+                  ],
+                ),
+              ),
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bookmark_border_rounded, size: 18),
+                    SizedBox(width: 6),
+                    Text('My Tracks'),
+                  ],
+                ),
+              ),
             ],
           ),
           Expanded(
@@ -309,49 +333,24 @@ class _TracksScreenState extends State<TracksScreen>
     );
   }
 
+  /// The distance pills.
+  ///
+  /// The shared [ListingChips], the same row Places uses, so the two
+  /// listing screens do not drift into two slightly different pills.
   Widget _ranges(ThemeProvider theme) {
-    return SizedBox(
-      height: 42,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        itemCount: TrackRange.all.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, i) {
-          final range = TrackRange.all[i];
-          final selected = range.value == _range;
-
-          return GestureDetector(
-            onTap: () {
-              if (selected) return;
-              setState(() => _range = range.value);
-              _loadNearby();
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              padding: const EdgeInsets.symmetric(horizontal: 15),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: selected ? const Color(0xFF1C1C1E) : Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: selected
-                      ? const Color(0xFF1C1C1E)
-                      : const Color(0xFFE6E6E6),
-                  width: 1.4,
-                ),
-              ),
-              child: Text(
-                range.label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: selected ? Colors.white : const Color(0xFF1C1C1E),
-                ),
-              ),
-            ),
-          );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: ListingChips(
+        selected: _range,
+        onChanged: (value) {
+          if (value == _range) return;
+          setState(() => _range = value);
+          _loadNearby();
         },
+        chips: [
+          for (final range in TrackRange.all)
+            ListingChip(label: range.label, value: range.value),
+        ],
       ),
     );
   }
@@ -388,24 +387,60 @@ class _TracksScreenState extends State<TracksScreen>
     return RefreshIndicator(
       color: theme.primaryColor,
       onRefresh: _loadNearby,
-      child: ListView.builder(
+      // Two to a row, as Places lists its venues. A circuit is recognised
+      // from its photograph long before its address is read, and at two
+      // columns twice as many are on screen.
+      child: CustomScrollView(
         controller: _scroll,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        itemCount: _nearby.length + (_loadingMore ? 1 : 0),
-        itemBuilder: (context, i) {
-          if (i == _nearby.length) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                child: CircularProgressIndicator(
-                  color: theme.primaryColor,
-                  strokeWidth: 2.5,
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            sliver: SliverLayoutBuilder(
+              builder: (context, constraints) {
+                const gap = 12.0;
+                final cardWidth = (constraints.crossAxisExtent - gap) / 2;
+
+                return SliverGrid(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: gap,
+                    mainAxisSpacing: gap,
+                    childAspectRatio:
+                        cardWidth / (cardWidth / 1.35 + _cardChrome),
+                  ),
+                  delegate: SliverChildBuilderDelegate((context, i) {
+                    final track = _nearby[i];
+
+                    return ListingCard(
+                      imageUrl: track.image ?? '',
+                      title: track.title,
+                      // The track type reads better than the address here —
+                      // "Race Circuit" is what someone is scanning for, and
+                      // the address is on the track's own page.
+                      subtitle: track.types.isNotEmpty
+                          ? track.types.join(' · ')
+                          : track.location,
+                      onTap: () => _open(track),
+                    );
+                  }, childCount: _nearby.length),
+                );
+              },
+            ),
+          ),
+          if (_loadingMore)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: theme.primaryColor,
+                    strokeWidth: 2.5,
+                  ),
                 ),
               ),
-            );
-          }
-          return _TrackCard(track: _nearby[i], onTap: () => _open(_nearby[i]));
-        },
+            ),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
       ),
     );
   }
@@ -441,6 +476,10 @@ class _TracksScreenState extends State<TracksScreen>
     );
   }
 }
+
+/// Everything in a [ListingCard] below the picture, in logical pixels.
+/// The same stack Places measures — see _listingCardChrome there.
+const double _cardChrome = 156;
 
 class _GroupTitle extends StatelessWidget {
   final String text;

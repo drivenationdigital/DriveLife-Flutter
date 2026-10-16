@@ -13,6 +13,7 @@ import 'package:drivelife/screens/profile/edit_profile_settings_screen.dart';
 import 'package:drivelife/screens/profile/followers_screen.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:drivelife/widgets/profile/profile_avatar.dart';
+import 'package:drivelife/widgets/image_viewer_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -1512,6 +1513,26 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     return null;
   }
 
+  /// Opens a picture full screen.
+  ///
+  /// The app's own [ImageViewerScreen], the same one the event gallery and
+  /// the shop use — a black page that zooms and swipes, with a close button.
+  /// The avatar used to open a bespoke Dialog instead: a rounded card that
+  /// did not zoom, and the cover did not open at all.
+  void _openImage(dynamic url) {
+    final value = (url is List && url.isNotEmpty ? url.first : url)
+        ?.toString()
+        .trim();
+
+    if (value == null || value.isEmpty) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ImageViewerScreen(images: [value]),
+      ),
+    );
+  }
+
   Widget _buildProfileHeader(ThemeProvider theme) {
     return Consumer<UserProvider>(
       builder: (context, userProvider, child) {
@@ -1527,101 +1548,30 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                 alignment: Alignment.bottomCenter,
                 children: [
                   // Cover image
-                  Container(
-                    height: 140,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      image: _getCoverImageUrl() != null
-                          ? DecorationImage(
-                              image: NetworkImage(_getCoverImageUrl()!),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
-                      color: _userProfile!['cover_image'] == null
-                          ? theme.primaryColor.withOpacity(0.1)
-                          : null,
-                    ),
-                  ),
-
-                  // ✅ White overlay gradient
-                  if (_userProfile!['cover_image'] != null &&
-                      _userProfile!['cover_image'].toString().isNotEmpty)
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        height: 60,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              theme.cardColor.withOpacity(0.6),
-                              theme.cardColor,
-                            ],
-                          ),
-                        ),
+                  GestureDetector(
+                    onTap: () => _openImage(_getCoverImageUrl()),
+                    child: Container(
+                      height: 140,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        image: _getCoverImageUrl() != null
+                            ? DecorationImage(
+                                image: NetworkImage(_getCoverImageUrl()!),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                        color: _userProfile!['cover_image'] == null
+                            ? theme.primaryColor.withOpacity(0.1)
+                            : null,
                       ),
                     ),
+                  ),
 
                   // ✅ Floating avatar (only this element overlaps)
                   Positioned(
                     bottom: -50,
                     child: GestureDetector(
-                      onTap: () {
-                        final imageUrl = _userProfile!['profile_image'];
-                        if (imageUrl == null || imageUrl.toString().isEmpty)
-                          return;
-                        showDialog(
-                          context: context,
-                          builder: (_) => Dialog(
-                            backgroundColor: Colors.transparent,
-                            insetPadding: const EdgeInsets.all(16),
-                            child: Stack(
-                              alignment: Alignment.topRight,
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: Image.network(
-                                    imageUrl,
-                                    fit: BoxFit.contain,
-                                    loadingBuilder: (_, child, progress) {
-                                      if (progress == null) return child;
-                                      return Container(
-                                        height: 300,
-                                        color: Colors.black,
-                                        child: const Center(
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                                GestureDetector(
-                                  onTap: () => Navigator.pop(context),
-                                  child: Container(
-                                    margin: const EdgeInsets.all(8),
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: const BoxDecoration(
-                                      color: Colors.black54,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      Icons.close,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
+                      onTap: () => _openImage(_userProfile!['profile_image']),
                       child: Container(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,

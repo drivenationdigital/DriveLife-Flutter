@@ -66,8 +66,13 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
   @override
   void initState() {
     super.initState();
-    // Updates, Events, Community, Gallery, About — keep in step with the
+    // About, Updates, Events, Community, Gallery — keep in step with the
     // TabBarView children and the segmented nav below.
+    //
+    // About leads because it answers the question that brought anyone here:
+    // what this place is, where it is and how to reach it. Updates leads
+    // with whatever was posted last, which on a venue that posts rarely is
+    // an empty tab under the name of a place you have never heard of.
     _tabController = TabController(
       length: 5,
       vsync: this,
@@ -399,19 +404,25 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
     return AnimatedBuilder(
       animation: _tabController,
       builder: (context, _) {
-        final isUpdates = _tabController.index == 0;
+        // The first tab carries the whole header — cover, logo, name,
+        // follow, contacts — and the rest get the compact one. It follows
+        // the position rather than the tab, so moving About to the front
+        // moved the header with it rather than leaving whoever lands here
+        // looking at a venue page with no venue on it.
+        final isFirstTab = _tabController.index == 0;
         return Scaffold(
           backgroundColor: Colors.white,
           body: Stack(
             children: [
               Column(
                 children: [
-                  if (!isUpdates) _buildCompactHeader(theme),
+                  if (!isFirstTab) _buildCompactHeader(theme),
                   Expanded(
                     child: TabBarView(
                       controller: _tabController,
                       physics: const NeverScrollableScrollPhysics(),
                       children: [
+                        _buildAboutPanel(theme),
                         _buildUpdatesScroll(theme),
                         _buildEventsPanel(theme),
                         _VenueCommunityFeed(
@@ -423,13 +434,14 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
                           entityType: 'venue',
                           primaryColor: theme.primaryColor,
                         ),
-                        _buildAboutPanel(theme),
                       ],
                     ),
                   ),
                 ],
               ),
-              if (isUpdates) _buildTopOverlay(context),
+              // The back, bookmark and share buttons float over the cover
+              // photo, so they belong to the tab that has one.
+              if (isFirstTab) _buildTopOverlay(context),
               Positioned(
                 left: 0,
                 right: 0,
@@ -707,8 +719,9 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: _ink,
-                    fontSize: 22,
+                    fontSize: 25,
                     fontWeight: FontWeight.w800,
+                    height: 1.15,
                   ),
                 ),
               ),
@@ -776,6 +789,14 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _buildActionRow(theme),
               ),
+
+              // Breaks its own padding on purpose: the chips scroll, and a
+              // row that starts and stops at the screen edge is the only
+              // thing that says so.
+              if (_venue?.isOwner != true) ...[
+                const SizedBox(height: 12),
+                _buildContactChips(),
+              ],
 
               const SizedBox(height: 20),
             ],
@@ -862,20 +883,100 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
       );
     }
 
-    // Non-owner: Follow + More
-    return Row(
-      children: [
-        Expanded(
-          child: _PrimaryActionButton(
-            icon: _isFollowing ? Icons.check : Icons.add,
-            label: _isFollowing ? 'Following' : 'Follow',
-            onTap: _toggleFollow,
-            secondary: _isFollowing,
-          ),
+    // Non-owner: Follow, full width.
+    //
+    // On its own, with no "More" beside it. The links it used to share the
+    // row with are now a row of their own below, where they can be read
+    // instead of being guessed at behind a word.
+    return SizedBox(
+      width: double.infinity,
+      child: _PrimaryActionButton(
+        icon: _isFollowing ? Icons.check : Icons.add,
+        label: _isFollowing ? 'Following' : 'Follow',
+        onTap: _toggleFollow,
+        secondary: _isFollowing,
+      ),
+    );
+  }
+
+  /// Website, email, phone and socials, as a row of chips.
+  ///
+  /// Out of the "More" sheet and onto the page. Whether a venue has a phone
+  /// number is the sort of thing worth knowing without tapping anything, and
+  /// a sheet called "More" said nothing about what was inside it.
+  ///
+  /// Scrolls rather than wrapping: a venue with all five would otherwise
+  /// make this block twice as tall as one with two, and push the About text
+  /// down the page by a different amount on every venue.
+  ///
+  /// Returns nothing at all when there is nothing to show, so a venue with
+  /// no contact details does not get an empty band under its name.
+  Widget _buildContactChips() {
+    final chips = <Widget>[];
+
+    void add(IconData icon, String label, String? value, VoidCallback onTap) {
+      if (value == null || value.trim().isEmpty) return;
+      chips.add(
+        _ChipActionButton(
+          icon: icon,
+          label: label,
+          onTap: onTap,
+          outlined: true,
         ),
-        const SizedBox(width: 8),
-        moreButton,
-      ],
+      );
+    }
+
+    add(
+      Icons.language_outlined,
+      'Website',
+      _venue?.website,
+      () => launchUrl(
+        Uri.parse(_venue!.website!),
+        mode: LaunchMode.externalApplication,
+      ),
+    );
+    add(
+      Icons.mail_outline_rounded,
+      'Email',
+      _venue?.venueEmail,
+      () => launchUrl(Uri(scheme: 'mailto', path: _venue!.venueEmail!)),
+    );
+    add(
+      Icons.phone_outlined,
+      'Call',
+      _venue?.venuePhone,
+      () => launchUrl(Uri(scheme: 'tel', path: _venue!.venuePhone!)),
+    );
+    add(
+      Icons.facebook,
+      'Facebook',
+      _venue?.facebook,
+      () => launchUrl(
+        Uri.parse(_venue!.facebook!),
+        mode: LaunchMode.externalApplication,
+      ),
+    );
+    add(
+      Icons.camera_alt_outlined,
+      'Instagram',
+      _venue?.instagram,
+      () => launchUrl(
+        Uri.parse(_venue!.instagram!),
+        mode: LaunchMode.externalApplication,
+      ),
+    );
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: 44,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: chips.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        itemBuilder: (context, i) => chips[i],
+      ),
     );
   }
 
@@ -1041,7 +1142,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
     if (_loadingPosts && _posts.isEmpty && !_postsLoaded) {
       return CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(child: _buildHeaderArea(theme)),
           SliverFillRemaining(
             hasScrollBody: false,
             child: Padding(
@@ -1063,8 +1163,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
       child: CustomScrollView(
         controller: _updatesScrollController,
         slivers: [
-          SliverToBoxAdapter(child: _buildHeaderArea(theme)),
-
           if (!hasPosts)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -1325,8 +1423,12 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
         _venue?.venuePhone != null && _venue!.venuePhone!.isNotEmpty;
 
     return ListView(
-      padding: const EdgeInsets.only(top: 8, bottom: 100),
+      // No top padding: the header runs to the top of the screen, under the
+      // status bar, and takes care of its own inset.
+      padding: const EdgeInsets.only(bottom: 100),
       children: [
+        _buildHeaderArea(theme),
+
         if (_venue!.description != null && _venue!.description!.isNotEmpty) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
@@ -1557,11 +1659,11 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
           padding: const EdgeInsets.all(4),
           child: Row(
             children: [
-              _segButton(label: 'Updates', index: 0),
-              _segButton(label: 'Events', index: 1),
-              _segButton(label: 'Posts', index: 2),
-              _segButton(label: 'Media', index: 3),
-              _segButton(label: 'About', index: 4),
+              _segButton(label: 'About', index: 0),
+              _segButton(label: 'Updates', index: 1),
+              _segButton(label: 'Events', index: 2),
+              _segButton(label: 'Posts', index: 3),
+              _segButton(label: 'Media', index: 4),
             ],
           ),
         ),
@@ -1801,37 +1903,60 @@ class _ChipActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
+  /// Outlined and fully rounded, instead of filled grey with soft corners.
+  ///
+  /// The contact row uses it. Those chips sit on white directly under the
+  /// Follow button, and filled grey at that size read as five more buttons
+  /// competing with it — an outline says "a link" where a fill says "do
+  /// this". The corners go all the way round for the same reason: it is the
+  /// shape the rest of the app gives to things that are tapped and not
+  /// pressed.
+  ///
+  /// Left off elsewhere, so "More" keeps the soft-cornered fill it shares
+  /// with the Create Post and Edit buttons beside it.
+  final bool outlined;
+
+  static const double _height = 44;
+
   const _ChipActionButton({
     required this.icon,
     required this.label,
     required this.onTap,
+    this.outlined = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Half the height when outlined: a true stadium, so the ends are
+    // semicircles rather than corners.
+    final radius = BorderRadius.circular(outlined ? _height / 2 : 12);
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: radius,
         child: Container(
-          height: 44,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          height: _height,
+          padding: EdgeInsets.symmetric(horizontal: outlined ? 18 : 14),
           decoration: BoxDecoration(
-            color: _chip,
-            borderRadius: BorderRadius.circular(12),
+            color: outlined ? Colors.white : _chip,
+            borderRadius: radius,
+            border: outlined
+                ? Border.all(color: const Color(0xFFE3E3E3))
+                : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: _ink, size: 16),
-              const SizedBox(width: 6),
+              Icon(icon, color: _ink, size: outlined ? 18 : 16),
+              SizedBox(width: outlined ? 8 : 6),
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   color: _ink,
                   fontWeight: FontWeight.w700,
-                  fontSize: 14,
+                  fontSize: outlined ? 15 : 14,
                 ),
               ),
             ],

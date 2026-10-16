@@ -8,6 +8,9 @@ import 'package:drivelife/screens/account-settings/app_permissions_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/events/filter_bottom_sheet.dart';
+import 'package:drivelife/widgets/listing/featured_card.dart';
+import 'package:drivelife/widgets/listing/listing_card.dart';
+import 'package:drivelife/widgets/listing/listing_chips.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/models/venue_model.dart';
 import 'package:geolocator/geolocator.dart';
@@ -28,6 +31,10 @@ class _VenuesScreenState extends State<VenuesScreen>
   /// dozen strings, which is how it came to say "Venues" on the tracks page.
   static const String _them = 'Venues';
   static const String _themLower = 'venues';
+
+  /// How tall the featured carousel is. Named because the loading state,
+  /// the cards and the gap below it all have to agree.
+  static const double _featuredHeight = 172;
   late TabController _tabController;
   late ThemeProvider theme;
   final TextEditingController _searchController = TextEditingController();
@@ -67,7 +74,7 @@ class _VenuesScreenState extends State<VenuesScreen>
   String? _selectedLocation = 'near-me';
   bool _showLocationBanner = false;
 
-  List<Map<String, String>> _banners = [];
+  List<Map<String, String?>> _banners = [];
 
   @override
   void initState() {
@@ -135,6 +142,28 @@ class _VenuesScreenState extends State<VenuesScreen>
   /// so an empty response left the placeholder spinner turning forever.
   bool _loadingBanners = true;
 
+  /// The first of [keys] this row actually has something under.
+  ///
+  /// The featured endpoint is not the same shape as the listing one and has
+  /// changed names over time, so the card asks for what it wants and takes
+  /// whichever spelling turns up rather than showing a blank line.
+  static String? _firstNonEmpty(dynamic row, List<String> keys) {
+    if (row is! Map) return null;
+
+    for (final key in keys) {
+      final value = row[key];
+      if (value == null) continue;
+
+      final text = value is Map
+          ? (value['address'] ?? value['name'] ?? '').toString()
+          : value.toString();
+
+      if (text.trim().isNotEmpty && text != 'null') return text.trim();
+    }
+
+    return null;
+  }
+
   Future<void> _loadFeaturedVenues() async {
     try {
       final result = await VenueApiService.getFeaturedVenues();
@@ -142,11 +171,25 @@ class _VenuesScreenState extends State<VenuesScreen>
 
       setState(() {
         _banners = (result ?? [])
-            .map<Map<String, String>>(
+            .map<Map<String, String?>>(
               (venue) => {
                 'image': venue['banner_image'] ?? '',
                 'title': venue['name'] ?? '',
                 'id': venue['id'].toString(),
+                // Both optional, and the card drops whichever is missing
+                // rather than leaving an empty line where it would have
+                // been.
+                'kicker': _firstNonEmpty(venue, const [
+                  'category',
+                  'venue_type',
+                  'type',
+                ]),
+                'location': _firstNonEmpty(venue, const [
+                  'location',
+                  'venue_location',
+                  'address',
+                  'town',
+                ]),
               },
             )
             // A banner with no image is just a grey box taking up 150pt.
@@ -474,6 +517,12 @@ class _VenuesScreenState extends State<VenuesScreen>
     );
   }
 
+  /// "Discover" and "My Places", not "Find Venues" and "My Venues".
+  ///
+  /// The screen is reused for tracks, where "Find Tracks" read fine but "My
+  /// Tracks" sat next to a page about places. These two name what the tabs
+  /// DO — look around, or go to the ones you kept — which holds whatever
+  /// the screen is listing.
   Widget _buildTabBar() {
     return Container(
       decoration: BoxDecoration(
@@ -486,17 +535,19 @@ class _VenuesScreenState extends State<VenuesScreen>
         indicatorWeight: 3,
         labelColor: theme.primaryColor,
         unselectedLabelColor: theme.subtextColor,
-        labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-        // Not const any more: the labels name whatever this screen is
-        // listing, which is not known until it is built.
-        tabs: [
+        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        unselectedLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 16,
+        ),
+        tabs: const [
           Tab(
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.location_on, size: 16),
-                const SizedBox(width: 4),
-                Text('Find $_them'),
+                Icon(Icons.explore_outlined, size: 18),
+                SizedBox(width: 6),
+                Text('Discover'),
               ],
             ),
           ),
@@ -504,9 +555,9 @@ class _VenuesScreenState extends State<VenuesScreen>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.favorite, size: 16),
-                const SizedBox(width: 4),
-                Text('My $_them'),
+                Icon(Icons.bookmark_border_rounded, size: 18),
+                SizedBox(width: 6),
+                Text('My Places'),
               ],
             ),
           ),
@@ -637,11 +688,16 @@ class _VenuesScreenState extends State<VenuesScreen>
     );
   }
 
+  /// The featured carousel.
+  ///
+  /// Peeking rather than full width: the next card showing at the edge is
+  /// the only thing that says the row scrolls, and without it people take
+  /// the first card for a banner.
   Widget _buildBanner() {
     // Still waiting — a spinner is honest here.
     if (_loadingBanners) {
       return const SizedBox(
-        height: 150,
+        height: _featuredHeight,
         child: Center(
           child: CircularProgressIndicator(color: Color(0xFFAE9159)),
         ),
@@ -649,85 +705,34 @@ class _VenuesScreenState extends State<VenuesScreen>
     }
 
     // Loaded, and there is nothing featured. Take up no room rather than
-    // leaving a 150pt band — or, as before this, a spinner that never stopped
-    // because the empty case never finished loading. The spacing either side
-    // is dropped at the call site, since shrink() only collapses this widget.
+    // leaving a band of empty. The spacing either side is dropped at the
+    // call site, since shrink() only collapses this widget.
     if (_banners.isEmpty) return const SizedBox.shrink();
 
+    final width = MediaQuery.sizeOf(context).width * 0.8;
+
     return SizedBox(
-      height: 150,
-      child: ListView.builder(
+      height: _featuredHeight,
+      child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: _banners.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
           final banner = _banners[index];
-          return GestureDetector(
-            onTap: () => {
-              Navigator.pushNamed(
+
+          return SizedBox(
+            width: width,
+            child: FeaturedCard(
+              imageUrl: banner['image'] ?? '',
+              title: banner['title'] ?? '',
+              kicker: banner['kicker'],
+              subtitle: banner['location'],
+              subtitleIcon: Icons.location_on_outlined,
+              onTap: () => Navigator.pushNamed(
                 context,
                 AppRoutes.venueDetails,
                 arguments: {'venueId': banner['id']},
-              ),
-            },
-            child: Container(
-              width: MediaQuery.of(context).size.width * 0.85,
-              margin: const EdgeInsets.only(right: 12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.network(
-                      banner['image']!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: Colors.grey.shade200,
-                          child: Icon(
-                            Icons.image_not_supported,
-                            color: Colors.grey.shade400,
-                            size: 40,
-                          ),
-                        );
-                      },
-                    ),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withOpacity(0.7),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // Changed positioning to center the title
-                    Center(
-                      child: Text(
-                        banner['title']!,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          shadows: [Shadow(color: Colors.black, blurRadius: 4)],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
             ),
           );
@@ -921,56 +926,6 @@ class _VenuesScreenState extends State<VenuesScreen>
   }
 
   // Filter Button Widget
-  Widget _buildFilterButton(String label, String value, VoidCallback onTap) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      value,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Colors.black,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.keyboard_arrow_down,
-                color: Colors.grey.shade600,
-                size: 20,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   void _showCategoryFilter() {
     showModalBottomSheet(
       context: context,
@@ -995,39 +950,104 @@ class _VenuesScreenState extends State<VenuesScreen>
     );
   }
 
+  /// The distance pills.
+  ///
+  /// Pills rather than the two dropdown buttons that were here. A dropdown
+  /// hides its options behind a tap and a sheet; for four distances the
+  /// whole decision fits on screen, and the one in force is readable without
+  /// opening anything.
+  ///
+  /// Category keeps its sheet, as the last pill. It has a dozen values and a
+  /// free-text location among them, which is more than a row can hold — but
+  /// it belongs in the same row, in the same shape, rather than left behind
+  /// as the last dropdown on the screen.
   Widget _buildFilters() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          _buildFilterButton(
-            'Category',
-            _selectedCategory == 'race-tracks'
-                ? 'Race Tracks'
-                : _selectedCategory == 'car-shows'
-                ? 'Car Shows'
-                : 'All',
-            () => _showCategoryFilter(),
+    return Row(
+      children: [
+        Expanded(
+          child: ListingChips(
+            selected: _selectedLocation ?? 'near-me',
+            onChanged: (value) {
+              // The last pill is not a distance — it opens the place
+              // search, and only sets the filter once somewhere is picked.
+              if (value == 'custom') {
+                _showLocationFilter(theme);
+                return;
+              }
+
+              if (value == _selectedLocation) return;
+              setState(() => _selectedLocation = value);
+              _onFilterChanged();
+            },
+            chips: [
+              const ListingChip(label: 'Near me', value: 'near-me'),
+              const ListingChip(label: '50 miles', value: '50-miles'),
+              const ListingChip(label: '100 miles', value: '100-miles'),
+              const ListingChip(label: 'National', value: 'national'),
+              // Shows where it is pointed once it is pointed somewhere,
+              // because "Custom" tells you a choice was made but not what.
+              ListingChip(
+                label: _customLocationName ?? 'Somewhere else',
+                value: 'custom',
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          _buildFilterButton(
-            'Location',
-            _selectedLocation == 'national'
-                ? 'National'
-                : _selectedLocation == 'near-me'
-                ? 'Near me'
-                : _selectedLocation == '50-miles'
-                ? '50 Miles'
-                : _selectedLocation == '100-miles'
-                ? '100 Miles'
-                : _customLocationName ?? 'Custom',
-            () => _showLocationFilter(theme),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, right: 16),
+          child: _buildCategoryPill(),
+        ),
+      ],
+    );
+  }
+
+  /// The category sheet, as a pill that shows what is chosen.
+  Widget _buildCategoryPill() {
+    final label = _selectedCategory == 'race-tracks'
+        ? 'Race Tracks'
+        : _selectedCategory == 'car-shows'
+        ? 'Car Shows'
+        : 'All';
+
+    final isFiltered = _selectedCategory != null && _selectedCategory != 'all';
+
+    return Material(
+      color: isFiltered ? const Color(0xFF111111) : const Color(0xFFF2F2F2),
+      borderRadius: BorderRadius.circular(21),
+      child: InkWell(
+        onTap: _showCategoryFilter,
+        borderRadius: BorderRadius.circular(21),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.tune_rounded,
+                size: 16,
+                color: isFiltered ? Colors.white : const Color(0xFF3A3A3A),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: isFiltered ? FontWeight.w700 : FontWeight.w500,
+                  color: isFiltered ? Colors.white : const Color(0xFF3A3A3A),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
+  /// The results, two to a row.
+  ///
+  /// A grid rather than the full-width rows this used to be. A place is
+  /// chosen off its photograph more than off its address, and at two columns
+  /// twice as many photographs are on screen at once.
   Widget _buildVenuesList() {
     if (_filteredVenues.isEmpty) {
       return Padding(
@@ -1036,15 +1056,59 @@ class _VenuesScreenState extends State<VenuesScreen>
       );
     }
 
-    return Column(
-      children: _filteredVenues.map((venue) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: VenueCard(venue: venue, onTap: () => _onVenueTap(venue)),
-        );
-      }).toList(),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const gap = 12.0;
+          final cardWidth = (constraints.maxWidth - gap) / 2;
+
+          return GridView.builder(
+            // Inside the page's own scroll view, so it lays out all of its
+            // children and leaves the scrolling to the parent. Two scrollable
+            // areas sharing a gesture is the thing that makes a grid inside a
+            // page feel broken.
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            itemCount: _filteredVenues.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: gap,
+              mainAxisSpacing: gap,
+              // Worked out rather than guessed, and from the real width, so
+              // it holds on a small phone and a tablet alike. The card is a
+              // 1.35 picture over a fixed stack of text and a button; see
+              // _listingCardChrome for where the number comes from.
+              childAspectRatio:
+                  cardWidth / (cardWidth / 1.35 + _listingCardChrome),
+            ),
+            itemBuilder: (context, i) {
+              final venue = _filteredVenues[i];
+
+              return ListingCard(
+                imageUrl: venue.coverImage,
+                title: venue.title,
+                subtitle: venue.venueLocation,
+                onTap: () => _onVenueTap(venue),
+              );
+            },
+          );
+        },
+      ),
     );
   }
+
+  /// Everything in a [ListingCard] below the picture, in logical pixels.
+  ///
+  ///   12 padding + 39 title (two lines at 15.5/1.25)
+  ///    + 6 gap + 37 subtitle (two lines at 13.5/1.35)
+  ///    + 12 gap + 38 button + 12 padding
+  ///
+  /// Sized for the tallest case so a two-line name never overflows. A card
+  /// with a short name simply has room to spare under its button, which the
+  /// Column leaves at the bottom rather than stretching into.
+  static const double _listingCardChrome = 156;
 
   Widget _createVenueSection() {
     return Container(
