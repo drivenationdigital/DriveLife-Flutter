@@ -774,37 +774,22 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
                         horizontal: 6,
                         vertical: 4,
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.location_on_outlined,
-                            size: 14,
-                            color: _gold,
-                          ),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              _venue!.location,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: _muted,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          // Says what the tap does, without spending a line
-                          // on the word "directions" beside a long address.
-                          const Icon(
-                            Icons.directions_outlined,
-                            size: 15,
-                            color: _gold,
-                          ),
-                        ],
+                      // The address on its own, centred under a centred
+                      // name. The pin and the directions arrow that used to
+                      // sit either side of it each said what the line
+                      // already said, and between them they pushed the text
+                      // off centre. Tapping it still opens directions — the
+                      // whole line is the target.
+                      child: Text(
+                        _venue!.location,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: _muted,
+                          fontSize: 14,
+                          height: 1.35,
+                        ),
                       ),
                     ),
                   ),
@@ -1459,16 +1444,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
       );
     }
 
-    final hasFacebook =
-        _venue?.facebook != null && _venue!.facebook!.isNotEmpty;
-    final hasInstagram =
-        _venue?.instagram != null && _venue!.instagram!.isNotEmpty;
-    final hasWebsite = _venue?.website != null && _venue!.website!.isNotEmpty;
-    final hasEmail =
-        _venue?.venueEmail != null && _venue!.venueEmail!.isNotEmpty;
-    final hasPhone =
-        _venue?.venuePhone != null && _venue!.venuePhone!.isNotEmpty;
-
     return ListView(
       // No top padding: the header runs to the top of the screen, under the
       // status bar, and takes care of its own inset.
@@ -1548,111 +1523,12 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
           const SizedBox(height: 24),
         ],
 
-        const CrashTrace(label: 'about/location', child: SizedBox.shrink()),
-
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-          child: Text(
-            'LOCATION',
-            style: TextStyle(
-              color: Colors.grey.shade500,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: _gold.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.location_on, color: _gold, size: 18),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _venue!.location,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade700,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        if (hasFacebook ||
-            hasInstagram ||
-            hasWebsite ||
-            hasEmail ||
-            hasPhone) ...[
-          const SizedBox(height: 24),
-          const CrashTrace(label: 'about/links', child: SizedBox.shrink()),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Text(
-              'CONTACT & LINKS',
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-          if (hasWebsite)
-            _aboutLinkRow(
-              Icons.language,
-              'Website',
-              _venue!.website!,
-              () => launchUrl(Uri.parse(_venue!.website!)),
-            ),
-          if (hasInstagram)
-            _aboutLinkRow(
-              Icons.camera_alt_outlined,
-              'Instagram',
-              _venue!.instagram!,
-              () => launchUrl(Uri.parse(_venue!.instagram!)),
-            ),
-          if (hasFacebook)
-            _aboutLinkRow(
-              Icons.facebook,
-              'Facebook',
-              _venue!.facebook!,
-              () => launchUrl(Uri.parse(_venue!.facebook!)),
-            ),
-          if (hasEmail)
-            _aboutLinkRow(
-              Icons.email_outlined,
-              'Email',
-              _venue!.venueEmail!,
-              () => launchUrl(Uri(scheme: 'mailto', path: _venue!.venueEmail!)),
-            ),
-          if (hasPhone)
-            _aboutLinkRow(
-              Icons.phone_outlined,
-              'Phone',
-              _venue!.venuePhone!,
-              () => launchUrl(Uri(scheme: 'tel', path: _venue!.venuePhone!)),
-            ),
-        ],
+        // No LOCATION or CONTACT & LINKS sections.
+        //
+        // Both repeated what the header above them already shows: the
+        // address sits under the name, and the links are the row of chips
+        // beside it. Having them again below the description made About
+        // read as two screens stacked, and the lower one was the stale copy.
       ],
     );
   }
@@ -1668,62 +1544,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
           ..sort();
 
     return tags.join(',');
-  }
-
-  Widget _aboutLinkRow(
-    IconData icon,
-    String label,
-    String value,
-    VoidCallback onTap,
-  ) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: _gold.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Icon(icon, size: 16, color: _gold),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: _ink,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _buildBottomSegmentedNav(ThemeProvider theme) {

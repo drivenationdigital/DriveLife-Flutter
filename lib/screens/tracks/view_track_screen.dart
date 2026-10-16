@@ -123,26 +123,8 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
     return s.isEmpty ? null : s;
   }
 
-  /// The track's disciplines, as labels.
-  List<String> _types(Map<String, dynamic> track) {
-    final value = track['types'];
-    if (value is! List) return const [];
-    return value.map(_text).whereType<String>().toList(growable: false);
-  }
-
   /// What the website shows under the title: the disciplines, then the two
   /// numbers a driver checks before booking a day.
-  List<(IconData, String)> _facts(Map<String, dynamic> track) {
-    final length = _text(track['track_length']);
-    final noise = _text(track['noise_limit']);
-
-    return [
-      for (final type in _types(track)) (Icons.sports_score_rounded, type),
-      if (length != null) (Icons.straighten_rounded, length),
-      if (noise != null) (Icons.volume_up_rounded, noise),
-    ];
-  }
-
   String? _image(dynamic value) {
     if (value is Map) return _text(value['url']);
     return _text(value);
@@ -236,9 +218,13 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
 
   Widget _header(Map<String, dynamic> track) {
     final cover = _image(track['cover_photo']);
+    final logo = _image(track['logo']);
 
     return SliverAppBar(
-      expandedHeight: 220,
+      // Room for the logo to hang below the photograph without the name
+      // starting underneath it. The cover is 220 and the badge overhangs by
+      // half of its 104, so the bar is 220 + 52.
+      expandedHeight: 272,
       pinned: true,
       backgroundColor: Colors.white,
       foregroundColor: Colors.white,
@@ -274,62 +260,74 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
                 ),
               ),
             ),
+
+            // White below the photo, so the overhanging logo sits on the
+            // page rather than on a strip of cover photo stretched to fill
+            // the extra height.
+            const Align(
+              alignment: Alignment.bottomCenter,
+              child: SizedBox(
+                height: 52,
+                child: ColoredBox(
+                  color: Colors.white,
+                  child: SizedBox.expand(),
+                ),
+              ),
+            ),
+
+            if (logo != null)
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  width: 104,
+                  height: 104,
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: CachedNetworkImage(
+                      imageUrl: logo,
+                      fit: BoxFit.cover,
+                      memCacheWidth:
+                          (104 * MediaQuery.devicePixelRatioOf(context))
+                              .round(),
+                      errorWidget: (_, _, _) => const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  /// Logo, name, disciplines, where it is, how many follow it, and one
-  /// button.
+  /// Name, where it is, and one button.
   ///
-  /// Centred, with the logo above the name rather than beside it. The logo
-  /// was a 60px thumbnail in the corner of a left-aligned block, which is
-  /// the shape of a list row — fine in a list, but this is the track's own
-  /// page and the badge is what identifies it. The same composition as a
-  /// venue's page, so the two do not feel like different apps.
+  /// The logo is not here any more — it sits in [_header], overlapping the
+  /// bottom of the cover photo, which is where a venue's is. Two pages for
+  /// the same kind of place should not put the same badge in two different
+  /// positions.
   Widget _identity(Map<String, dynamic> track) {
-    final logo = _image(track['logo']);
     final location = _text(track['location']);
-    final followers = _followerCount(track);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      // Only 8 at the top: the logo overhangs the cover by half its height
+      // and this block starts underneath it.
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (logo != null) ...[
-            Center(
-              child: Container(
-                width: 104,
-                height: 104,
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 14,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: CachedNetworkImage(
-                    imageUrl: logo,
-                    fit: BoxFit.cover,
-                    memCacheWidth:
-                        (104 * MediaQuery.devicePixelRatioOf(context)).round(),
-                    errorWidget: (_, _, _) => const SizedBox.shrink(),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
-
           Text(
             _text(track['title']) ?? 'Track',
             textAlign: TextAlign.center,
@@ -341,69 +339,22 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
             ),
           ),
 
-          if (_facts(track).isNotEmpty) ...[
-            const SizedBox(height: 10),
-            // All of them. A track can be a race circuit and a drag strip
-            // and a skid pan, and which disciplines it runs is most of what
-            // someone wants to know about it.
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final fact in _facts(track))
-                  _TypeBadge(label: fact.$2, icon: fact.$1),
-              ],
-            ),
-          ],
-
+          // No discipline badges and no pin beside the address.
+          //
+          // The badges repeated what the track types section further down
+          // already lists, and the pin said what an address says by being
+          // an address. Between them they filled the space under the name
+          // that the name wants.
           if (location != null) ...[
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.place_outlined,
-                  size: 14,
-                  color: Color(0xFF8A8A8E),
-                ),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    location,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF8A8A8E),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-
-          // Hidden rather than shown as 0. A track nobody follows yet does
-          // not need to say so under its own name.
-          if (followers != null && followers > 0) ...[
-            const SizedBox(height: 10),
-            Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: _grouped(followers),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1C1C1E),
-                    ),
-                  ),
-                  const TextSpan(
-                    text: ' followers',
-                    style: TextStyle(color: Color(0xFF8A8A8E)),
-                  ),
-                ],
-              ),
+            const SizedBox(height: 8),
+            Text(
+              location,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14.5),
+              style: const TextStyle(
+                fontSize: 14,
+                height: 1.35,
+                color: Color(0xFF8A8A8E),
+              ),
             ),
           ],
 
@@ -421,8 +372,12 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
 
   /// How many follow this track, or null when the API did not say.
   ///
+  /// Unused while the count is hidden from the profile — see _identity.
+  /// Kept rather than deleted because hiding it was a "for now".
+  ///
   /// The field has been spelled both ways over the life of the endpoint, so
   /// both are accepted rather than the count quietly disappearing.
+  // ignore: unused_element
   static int? _followerCount(Map<String, dynamic> track) {
     final raw = track['follower_count'] ?? track['followers_count'];
 
@@ -436,6 +391,8 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
   /// 2418 as "2,418". Written out rather than pulled from intl, which this
   /// screen does not otherwise need and which is a lot of locale data to
   /// carry for one separator.
+  /// Unused while the follower count is hidden. See _followerCount.
+  // ignore: unused_element
   static String _grouped(int value) {
     final digits = value.toString();
     final out = StringBuffer();
@@ -689,40 +646,6 @@ class _EventRow extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// One of a track's disciplines, as it reads on the page.
-class _TypeBadge extends StatelessWidget {
-  final String label;
-  final IconData icon;
-
-  const _TypeBadge({required this.label, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: const Color(0xFFD9B978)),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
-        ],
       ),
     );
   }

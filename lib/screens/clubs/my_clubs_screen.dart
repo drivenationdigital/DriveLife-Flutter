@@ -9,6 +9,8 @@ import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/screens/profile/view_club_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/events/filter_bottom_sheet.dart';
+import 'package:drivelife/widgets/listing/featured_card.dart';
+import 'package:drivelife/widgets/listing/listing_card.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/api/club_api_service.dart';
 import 'package:geolocator/geolocator.dart';
@@ -470,6 +472,11 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     );
   }
 
+  /// The clubs, two to a row.
+  ///
+  /// A grid rather than the full-width rows this used to be — a club is
+  /// picked off its photograph as much as its name, and at two columns
+  /// twice as many are on screen.
   Widget _buildDiscoverClubsList() {
     if (_discoverClubs.isEmpty) {
       return Padding(
@@ -478,28 +485,58 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       );
     }
 
-    return Column(
-      children: _discoverClubs.map((club) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: _DiscoverClubCard(
-            club: club as Map<String, dynamic>,
-            primaryColor: theme.primaryColor,
-            onView: () {
-              NavigationHelper.navigateTo(
-                context,
-                ClubViewScreen(
-                  clubPostId: club['ID'],
-                  isOwnClub: false,
-                  showAppBar: true,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const gap = 12.0;
+          final cardWidth = (constraints.maxWidth - gap) / 2;
+
+          return GridView.builder(
+            // Inside the page's own scroll view, so it lays all of its
+            // children out and leaves the scrolling to the parent.
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            itemCount: _discoverClubs.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: gap,
+              mainAxisSpacing: gap,
+              childAspectRatio: cardWidth / (cardWidth / 1.35 + _cardChrome),
+            ),
+            itemBuilder: (context, i) {
+              final club = _discoverClubs[i] as Map<String, dynamic>;
+
+              return ListingCard(
+                imageUrl: _clubImage(club),
+                title: _clubText(club['title']),
+                onTap: () => NavigationHelper.navigateTo(
+                  context,
+                  ClubViewScreen(
+                    clubPostId: club['ID'],
+                    isOwnClub: false,
+                    showAppBar: true,
+                  ),
                 ),
               );
             },
-          ),
-        );
-      }).toList(),
+          );
+        },
+      ),
     );
   }
+
+  /// Everything in a club card below the picture, in logical pixels.
+  ///
+  ///   12 padding + 39 name (two lines at 15.5/1.25)
+  ///    + 12 gap + 38 button + 12 padding
+  ///
+  /// Shorter than the venues one, which leaves room for an address line.
+  /// A club card carries its name and nothing else, as the design has it —
+  /// the type and the region are on the featured card above and on the
+  /// club's own page.
+  static const double _cardChrome = 113;
 
   Widget _buildSearchResultsView() {
     if (_isSearchLoading && _searchResults.isEmpty) {
@@ -600,15 +637,19 @@ class _MyClubsScreenState extends State<MyClubsScreen>
         indicatorWeight: 3,
         labelColor: theme.primaryColor,
         unselectedLabelColor: theme.subtextColor,
-        labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        unselectedLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 16,
+        ),
         tabs: const [
           Tab(
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.explore_outlined, size: 16),
+                Icon(Icons.explore_outlined, size: 18),
                 SizedBox(width: 6),
-                Text('Discover Groups'),
+                Text('Discover Clubs'),
               ],
             ),
           ),
@@ -616,9 +657,9 @@ class _MyClubsScreenState extends State<MyClubsScreen>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.favorite_border, size: 16),
+                Icon(Icons.favorite_border, size: 18),
                 SizedBox(width: 6),
-                Text('My Groups'),
+                Text('My Clubs'),
               ],
             ),
           ),
@@ -663,9 +704,14 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     );
   }
 
+  /// The featured carousel.
+  ///
+  /// The same [FeaturedCard] that heads the venues and tracks screens, so
+  /// the three listing pages read as one app rather than three that happen
+  /// to share a logo.
   Widget _buildSpotlightCarousel() {
     return SizedBox(
-      height: 190,
+      height: _featuredHeight,
       child: PageView.builder(
         controller: _spotlightController,
         padEnds: false,
@@ -673,16 +719,84 @@ class _MyClubsScreenState extends State<MyClubsScreen>
         onPageChanged: (i) => setState(() => _spotlightPage = i),
         itemBuilder: (context, index) {
           final club = _spotlightClubs[index] as Map<String, dynamic>;
+
           return Padding(
             padding: EdgeInsets.only(
               left: index == 0 ? 16 : 6,
               right: index == _spotlightClubs.length - 1 ? 16 : 6,
             ),
-            child: _SpotlightClubCard(club: club),
+            child: FeaturedCard(
+              imageUrl: _clubImage(club),
+              title: _clubText(club['title']),
+              kicker: _clubText(club['category']),
+              subtitle: _clubStanding(club),
+              subtitleIcon: Icons.person_outline_rounded,
+              onTap: () => NavigationHelper.navigateTo(
+                context,
+                ClubViewScreen(
+                  clubPostId: club['ID'],
+                  isOwnClub: false,
+                  showAppBar: true,
+                ),
+              ),
+            ),
           );
         },
       ),
     );
+  }
+
+  /// How tall the featured carousel is. Named because the carousel, the
+  /// dots under it and the loading state all have to agree.
+  static const double _featuredHeight = 172;
+
+  /// A club's picture: its cover if it has one, its badge if not.
+  static String _clubImage(Map<String, dynamic> club) {
+    final cover = _clubText(club['cover_image']);
+    return cover.isNotEmpty ? cover : _clubText(club['logo']);
+  }
+
+  /// A string from the API, or empty. Clubs come back with nulls and
+  /// numbers in fields that are nominally text.
+  static String _clubText(dynamic value) {
+    if (value == null) return '';
+    final text = value.toString().trim();
+    return text == 'null' ? '' : text;
+  }
+
+  /// "1,284 members · Yorkshire", or whichever half of it exists.
+  ///
+  /// The member count has been missing from this endpoint before now — it
+  /// was commented out of the old card rather than guarded — so it is shown
+  /// only when there is a real number behind it.
+  static String _clubStanding(Map<String, dynamic> club) {
+    final where = _clubText(club['location']);
+    final raw = club['member_count'] ?? club['members_count'];
+
+    final count = raw is num
+        ? raw.toInt()
+        : (raw is String ? int.tryParse(raw.trim()) : null);
+
+    final members = count == null || count <= 0
+        ? ''
+        : '${_grouped(count)} member${count == 1 ? '' : 's'}';
+
+    if (members.isEmpty) return where;
+    if (where.isEmpty) return members;
+    return '$members · $where';
+  }
+
+  /// 1284 as "1,284".
+  static String _grouped(int value) {
+    final digits = value.toString();
+    final out = StringBuffer();
+
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+      out.write(digits[i]);
+    }
+
+    return out.toString();
   }
 
   Widget _buildSpotlightDots() {
@@ -970,7 +1084,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
         children: [
           Expanded(
             child: _buildFilterButton(
-              'Group Type',
+              'Club Type',
               _selectedClubType == 'all' ? 'All' : _resolveClubTypeLabel(),
               _onClubTypeFilterTapped,
             ),
@@ -988,16 +1102,20 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     );
   }
 
+  /// One of the two filter controls.
+  ///
+  /// No outline, and a softer corner than it had. Two bordered boxes side
+  /// by side read as a form to be filled in; these are a pair of current
+  /// answers you can change, so the fill does the work and the border goes.
   Widget _buildFilterButton(String label, String value, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey.shade300),
+          color: const Color(0xFFF2F2F2),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
           children: [
@@ -1007,29 +1125,29 @@ class _MyClubsScreenState extends State<MyClubsScreen>
                 children: [
                   Text(
                     label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade600,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: Color(0xFF8A8A8E),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 3),
                   Text(
                     value,
                     style: const TextStyle(
-                      fontSize: 13,
-                      color: Colors.black,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 15.5,
+                      color: Color(0xFF111111),
+                      fontWeight: FontWeight.w700,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
-            Icon(
-              Icons.keyboard_arrow_down,
-              color: Colors.grey.shade600,
-              size: 20,
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: Color(0xFF8A8A8E),
+              size: 22,
             ),
           ],
         ),
@@ -1329,167 +1447,6 @@ class _StatusDot extends StatelessWidget {
       ),
     );
   }
-}
-
-class _SpotlightClubCard extends StatelessWidget {
-  final Map<String, dynamic> club;
-
-  const _SpotlightClubCard({required this.club});
-
-  @override
-  Widget build(BuildContext context) {
-    String _str(dynamic v) => v is String ? v : '';
-    // int _int(dynamic v) => v is int ? v : (v is num ? v.toInt() : 0);
-
-    final imageUrl = _str(club['cover_image']).isNotEmpty
-        ? _str(club['cover_image'])
-        : _str(club['logo']);
-    final title = _str(club['title']);
-    final category = _str(club['category']);
-    final location = _str(club['location'] ?? 'N/A');
-    // final memberCount = _int(club['member_count']);
-
-    return GestureDetector(
-      onTap: () => NavigationHelper.navigateTo(
-        context,
-        ClubViewScreen(
-          clubPostId: club['ID'],
-          isOwnClub: false,
-          showAppBar: true,
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (imageUrl.isNotEmpty)
-              Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _imageFallback(),
-              )
-            else
-              _imageFallback(),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.75)],
-                ),
-              ),
-            ),
-            Positioned(
-              top: 12,
-              left: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.75),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.star, color: Colors.amber, size: 12),
-                    SizedBox(width: 4),
-                    Text(
-                      'Featured',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              left: 14,
-              right: 14,
-              bottom: 12,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (category.isNotEmpty) ...[
-                    Text(
-                      category,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                  ],
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      // if (memberCount > 0) ...[
-                      //   const Icon(
-                      //     Icons.person_outline,
-                      //     color: Colors.white70,
-                      //     size: 13,
-                      //   ),
-                      //   const SizedBox(width: 4),
-                      //   Text(
-                      //     '$memberCount members',
-                      //     style: const TextStyle(
-                      //       color: Colors.white70,
-                      //       fontSize: 12,
-                      //     ),
-                      //   ),
-                      // ],
-                      // if (memberCount > 0 && location.isNotEmpty) ...[
-                      //   const SizedBox(width: 8),
-                      //   const Text(
-                      //     '·',
-                      //     style: TextStyle(color: Colors.white70),
-                      //   ),
-                      //   const SizedBox(width: 8),
-                      // ],
-                      if (location.isNotEmpty)
-                        Flexible(
-                          child: Text(
-                            location,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _imageFallback() => Container(
-    color: Colors.grey.shade300,
-    child: Icon(Icons.group, color: Colors.grey.shade500, size: 48),
-  );
 }
 
 class _DiscoverClubCard extends StatelessWidget {

@@ -1374,7 +1374,7 @@ class _DiscoverChrome extends StatelessWidget {
                 // Only the categories the filter sheet has switched on. A
                 // chip for something the sheet is hiding would offer a count
                 // the map does not draw.
-                for (final kind in DiscoverKind.values)
+                for (final kind in DiscoverKind.shown)
                   if (kinds.contains(kind))
                     _CategoryChip(
                       label: kind.label,

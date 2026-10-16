@@ -129,7 +129,9 @@ class _TracksScreenState extends State<TracksScreen>
 
   /// Which range the list is showing. Changing it refetches, because the
   /// radius is applied by the server rather than to the loaded page.
-  String _range = 'near-me';
+  /// 100 miles, as Places starts. Near me is the tightest of the four and
+  /// usually empty on a first run — a circuit is rarely round the corner.
+  String _range = '100-miles';
 
   int _page = 1;
   bool _hasMore = true;

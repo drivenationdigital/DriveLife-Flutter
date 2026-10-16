@@ -64,14 +64,22 @@ class _VenuesScreenState extends State<VenuesScreen>
   bool _searchHasMore = true;
 
   // Filters
-  String? _selectedCategory;
 
   final TextEditingController _customLocationController =
       TextEditingController();
   double? _customLat;
   double? _customLng;
   String? _customLocationName;
-  String? _selectedLocation = 'near-me';
+
+  /// 100 miles rather than "near me".
+  ///
+  /// Near me is the tightest of the four and on a first run it is usually
+  /// empty — most of the country is further than a few miles from anywhere
+  /// worth driving to. An empty list on open reads as a broken screen.
+  String? _selectedLocation = _defaultDistance;
+
+  /// Where both tabs start, and what the location banner falls back from.
+  static const String _defaultDistance = '100-miles';
   bool _showLocationBanner = false;
 
   List<Map<String, String?>> _banners = [];
@@ -92,7 +100,9 @@ class _VenuesScreenState extends State<VenuesScreen>
       final hasAccess = locationProvider.hasAccess;
       setState(() {
         _showLocationBanner = !hasAccess;
-        _selectedLocation = hasAccess ? 'near-me' : 'national';
+        // Without permission there is no "here" to measure from, so the
+        // only honest radius is the whole country.
+        _selectedLocation = hasAccess ? _defaultDistance : 'national';
       });
     });
 
@@ -926,120 +936,44 @@ class _VenuesScreenState extends State<VenuesScreen>
   }
 
   // Filter Button Widget
-  void _showCategoryFilter() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => FilterBottomSheet(
-        title: 'Filter by Category',
-        multiSelect: false,
-        options: [
-          FilterOption(label: 'All', value: 'all'),
-          FilterOption(label: 'Race Tracks', value: 'race-tracks'),
-          FilterOption(label: 'Car Shows', value: 'car-shows'),
-        ],
-        selectedValues: _selectedCategory != null ? [_selectedCategory!] : [],
-        onApply: (selected) {
-          setState(() {
-            _selectedCategory = selected.isNotEmpty ? selected.first : null;
-          });
-          _onFilterChanged();
-        },
-      ),
-    );
-  }
-
   /// The distance pills.
   ///
   /// Pills rather than the two dropdown buttons that were here. A dropdown
   /// hides its options behind a tap and a sheet; for four distances the
-  /// whole decision fits on screen, and the one in force is readable without
-  /// opening anything.
+  /// whole decision fits on screen, and the one in force is readable
+  /// without opening anything.
   ///
-  /// Category keeps its sheet, as the last pill. It has a dozen values and a
-  /// free-text location among them, which is more than a row can hold — but
-  /// it belongs in the same row, in the same shape, rather than left behind
-  /// as the last dropdown on the screen.
+  /// There is no category control any more. It offered All, Race Tracks and
+  /// Car Shows over a listing that no longer holds tracks — they have their
+  /// own screen — so two of its three values were dead and the third was
+  /// everything.
   Widget _buildFilters() {
-    return Row(
-      children: [
-        Expanded(
-          child: ListingChips(
-            selected: _selectedLocation ?? 'near-me',
-            onChanged: (value) {
-              // The last pill is not a distance — it opens the place
-              // search, and only sets the filter once somewhere is picked.
-              if (value == 'custom') {
-                _showLocationFilter(theme);
-                return;
-              }
+    return ListingChips(
+      selected: _selectedLocation ?? _defaultDistance,
+      onChanged: (value) {
+        // The last pill is not a distance — it opens the place search, and
+        // only sets the filter once somewhere is picked.
+        if (value == 'custom') {
+          _showLocationFilter(theme);
+          return;
+        }
 
-              if (value == _selectedLocation) return;
-              setState(() => _selectedLocation = value);
-              _onFilterChanged();
-            },
-            chips: [
-              const ListingChip(label: 'Near me', value: 'near-me'),
-              const ListingChip(label: '50 miles', value: '50-miles'),
-              const ListingChip(label: '100 miles', value: '100-miles'),
-              const ListingChip(label: 'National', value: 'national'),
-              // Shows where it is pointed once it is pointed somewhere,
-              // because "Custom" tells you a choice was made but not what.
-              ListingChip(
-                label: _customLocationName ?? 'Somewhere else',
-                value: 'custom',
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(left: 4, right: 16),
-          child: _buildCategoryPill(),
+        if (value == _selectedLocation) return;
+        setState(() => _selectedLocation = value);
+        _onFilterChanged();
+      },
+      chips: [
+        const ListingChip(label: 'Near me', value: 'near-me'),
+        const ListingChip(label: '50 miles', value: '50-miles'),
+        const ListingChip(label: '100 miles', value: '100-miles'),
+        const ListingChip(label: 'National', value: 'national'),
+        // Shows where it is pointed once it is pointed somewhere, because
+        // "Custom" tells you a choice was made but not what.
+        ListingChip(
+          label: _customLocationName ?? 'Somewhere else',
+          value: 'custom',
         ),
       ],
-    );
-  }
-
-  /// The category sheet, as a pill that shows what is chosen.
-  Widget _buildCategoryPill() {
-    final label = _selectedCategory == 'race-tracks'
-        ? 'Race Tracks'
-        : _selectedCategory == 'car-shows'
-        ? 'Car Shows'
-        : 'All';
-
-    final isFiltered = _selectedCategory != null && _selectedCategory != 'all';
-
-    return Material(
-      color: isFiltered ? const Color(0xFF111111) : const Color(0xFFF2F2F2),
-      borderRadius: BorderRadius.circular(21),
-      child: InkWell(
-        onTap: _showCategoryFilter,
-        borderRadius: BorderRadius.circular(21),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.tune_rounded,
-                size: 16,
-                color: isFiltered ? Colors.white : const Color(0xFF3A3A3A),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: isFiltered ? FontWeight.w700 : FontWeight.w500,
-                  color: isFiltered ? Colors.white : const Color(0xFF3A3A3A),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 

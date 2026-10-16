@@ -52,6 +52,19 @@ enum DiscoverKind {
     required this.backed,
   });
 
+  /// The categories the map actually offers.
+  ///
+  /// Businesses and Locations are hidden for now. They were drawn as
+  /// "Coming soon" chips — honest, but two of the five rows in the filter
+  /// sheet were things nobody could switch on, and a chip you cannot use is
+  /// a chip in the way.
+  ///
+  /// Hidden, not deleted: everything behind them — colour, pin image,
+  /// filter plumbing — still works, so bringing them back is one line here
+  /// plus the fetch. Use this wherever the UI lists categories, and
+  /// `values` only where every case must be handled.
+  static const List<DiscoverKind> shown = [event, venue, track];
+
   final String label;
 
   /// The pin colour, and the dot on this category's chip. The two have to be

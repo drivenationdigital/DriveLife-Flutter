@@ -23,6 +23,10 @@ abstract final class DiscoverPins {
   ///
   /// Idempotent: re-registering an existing id replaces it, which is what
   /// should happen when the style reloads and takes its image table with it.
+  /// Every kind, including the ones the filters currently hide. Registering
+  /// an image nobody asks for costs one small bitmap; a layer asking for an
+  /// image that was never registered draws nothing at all, which is the
+  /// failure that would greet whoever un-hides them.
   static Future<void> register(MapboxMap map, double pixelRatio) async {
     for (final kind in DiscoverKind.values) {
       final image = await _draw(kind, pixelRatio);

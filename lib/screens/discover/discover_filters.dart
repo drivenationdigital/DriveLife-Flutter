@@ -37,7 +37,7 @@ class DiscoverFilters {
 
   /// Everything, within 25 miles. What the map opens with.
   static DiscoverFilters get initial => DiscoverFilters(
-    kinds: DiscoverKind.values.toSet(),
+    kinds: DiscoverKind.shown.toSet(),
     date: 'anytime',
     radius: 25,
   );
@@ -239,25 +239,25 @@ class _DiscoverFilterSheetState extends State<DiscoverFilterSheet> {
             const SizedBox(height: 10),
             // Two to a row, so all four categories are visible without
             // scrolling and the eye can compare the colour key at a glance.
-            for (var i = 0; i < DiscoverKind.values.length; i += 2) ...[
+            for (var i = 0; i < DiscoverKind.shown.length; i += 2) ...[
               Row(
                 children: [
                   Expanded(
                     child: _KindCard(
-                      kind: DiscoverKind.values[i],
-                      on: _filters.kinds.contains(DiscoverKind.values[i]),
-                      onTap: () => _toggle(DiscoverKind.values[i]),
+                      kind: DiscoverKind.shown[i],
+                      on: _filters.kinds.contains(DiscoverKind.shown[i]),
+                      onTap: () => _toggle(DiscoverKind.shown[i]),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: i + 1 < DiscoverKind.values.length
+                    child: i + 1 < DiscoverKind.shown.length
                         ? _KindCard(
-                            kind: DiscoverKind.values[i + 1],
+                            kind: DiscoverKind.shown[i + 1],
                             on: _filters.kinds.contains(
-                              DiscoverKind.values[i + 1],
+                              DiscoverKind.shown[i + 1],
                             ),
-                            onTap: () => _toggle(DiscoverKind.values[i + 1]),
+                            onTap: () => _toggle(DiscoverKind.shown[i + 1]),
                           )
                         : const SizedBox.shrink(),
                   ),

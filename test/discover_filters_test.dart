@@ -82,13 +82,39 @@ void main() {
   });
 
   group('defaults', () {
-    test('opens showing every category', () {
-      // Including the two with nothing behind them, so the map is not
-      // silently narrower than the filter sheet claims.
+    test('opens showing every category it offers', () {
+      // Every one the sheet shows, so the map is never silently narrower
+      // than the filters claim.
+      expect(DiscoverFilters.initial.kinds, DiscoverKind.shown.toSet());
+    });
+
+    test('offers only the categories with something behind them', () {
+      // Businesses and Locations are hidden for now — they have no post
+      // type, so every chip for them was a chip nobody could use. Hidden
+      // rather than deleted: the enum, the colours and the pin images all
+      // still exist, so bringing them back is one line in `shown`.
+      expect(DiscoverKind.shown, [
+        DiscoverKind.event,
+        DiscoverKind.venue,
+        DiscoverKind.track,
+      ]);
+
       expect(
-        DiscoverFilters.initial.kinds,
-        DiscoverKind.values.toSet(),
+        DiscoverKind.shown,
+        everyElement(
+          predicate((k) {
+            return (k as DiscoverKind).backed;
+          }, 'is backed by a post type'),
+        ),
       );
+    });
+
+    test('keeps the hidden ones intact', () {
+      // They are still enum values with their own colour and pin id, which
+      // is what makes un-hiding them a one-line change rather than a
+      // re-implementation.
+      expect(DiscoverKind.values, contains(DiscoverKind.business));
+      expect(DiscoverKind.values, contains(DiscoverKind.location));
     });
 
     test('opens at the distance the design shows', () {
