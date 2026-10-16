@@ -442,7 +442,9 @@ class _PostCardState extends State<PostCard>
           username: _str(widget.post['username']),
           isVerified: widget.post['user_verified'] == true,
           postUserId: _str(widget.post['user_id']),
-          category: _str(widget.post['news_category']),
+          // The article's own id, so the comments it opens are its own.
+          postId: _str(widget.post['id']),
+          commentsCount: _asCount(widget.post['comments_count']),
           excerpt: _str(widget.post['news_excerpt']),
           imageCaption: _str(widget.post['news_image_caption']),
           readMinutes: _asCount(widget.post['news_read_minutes']),
@@ -460,7 +462,9 @@ class _PostCardState extends State<PostCard>
   /// for its own sake.
   Widget _buildReadMore() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
+      // A little room underneath. The button is the last thing on a news
+      // card, and with 2px it sat almost on the divider to the next post.
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: Align(
         alignment: Alignment.centerLeft,
         child: GestureDetector(
@@ -998,6 +1002,7 @@ class _PostCardState extends State<PostCard>
                       widget.post['is_news'] != true &&
                       widget.post['is_event'] != true,
                   isNews: widget.post['is_news'] == true,
+                  excerpt: _str(widget.post['news_excerpt']),
                   username: widget.post['username'] ?? '',
                   caption: widget.post['caption'] ?? '',
                   commentsCount: widget.post['comments_count'] ?? 0,
@@ -2361,6 +2366,10 @@ class _PostCaptionSection extends StatefulWidget {
   /// a story is found by its headline, not by who filed it.
   final bool isNews;
 
+  /// The article's standfirst, under the headline on a news card. Null
+  /// everywhere else — an ordinary post has one piece of text, not two.
+  final String? excerpt;
+
   final String username;
   final String caption;
   final int commentsCount;
@@ -2376,6 +2385,7 @@ class _PostCaptionSection extends StatefulWidget {
     required this.username,
     required this.caption,
     this.isNews = false,
+    this.excerpt,
     required this.commentsCount,
     required this.onViewComments,
     this.commentsEnabled = true,
@@ -2430,6 +2440,23 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
     }
   }
 
+  /// The standfirst, with the headline stripped off the front if the feed
+  /// sent it that way.
+  ///
+  /// Some excerpts open by repeating the title, and printing it twice in
+  /// two weights reads as a mistake rather than as emphasis.
+  String get _standfirst {
+    final excerpt = (widget.excerpt ?? '').trim();
+    final caption = widget.caption.trim();
+
+    if (caption.isNotEmpty &&
+        excerpt.toLowerCase().startsWith(caption.toLowerCase())) {
+      return excerpt.substring(caption.length).trimLeft();
+    }
+
+    return excerpt;
+  }
+
   @override
   Widget build(BuildContext context) {
     final username = widget.username;
@@ -2450,18 +2477,41 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
               ),
             ),
 
-          // The headline, where an ordinary post has its author's name.
-          if (widget.isNews && caption.isNotEmpty)
+          // The headline, where an ordinary post has its author's name,
+          // and the standfirst under it. Bold then regular, which is how a
+          // story is read everywhere else: what happened, then enough of
+          // the detail to decide whether to open it.
+          if (widget.isNews && caption.isNotEmpty) ...[
             Text(
               caption,
               style: const TextStyle(
                 color: Colors.black,
                 fontWeight: FontWeight.w700,
-                fontSize: 16,
+                // The same 14 as every other caption in the feed — see
+                // FormattedText's default. The weight carries the
+                // hierarchy here, not the size.
+                fontSize: 14,
                 height: 1.3,
               ),
-            )
-          else if (caption.isNotEmpty) ...[
+            ),
+            if (_standfirst.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                _standfirst,
+                // Three lines, so a long excerpt cannot push the button off
+                // the card and every story takes about the same room in the
+                // feed. The whole thing is a tap away.
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF4A4A4A),
+                  fontWeight: FontWeight.w400,
+                  fontSize: 14,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ] else if (caption.isNotEmpty) ...[
             const SizedBox(height: 4),
             FormattedText(
               text: caption,

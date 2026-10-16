@@ -1,16 +1,20 @@
+import 'dart:ui';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'news_comments.dart';
+
 /// A news article, read full screen.
 ///
-/// Laid out as an article rather than as a post: the category and date sit
-/// above a large headline, the standfirst below it, then the byline, then the
-/// picture with its credit, then the body. That order is what the design
-/// asks for and it is also how a reader expects to meet a story — what it is
-/// and when, then what it says, then who says so.
+/// Laid out as an article rather than as a post: the date, read time and a
+/// shortcut to the comments sit above a large headline, the standfirst below
+/// it, then the picture with its credit, then the body, then the byline, and
+/// the comments last. That is how a reader meets a story — what it is and
+/// when, then what it says, then who said so and what everyone made of it.
 ///
 /// A route rather than a bottom sheet. A sheet that opens at 95% is a page
 /// wearing a disguise: it leaves a strip of feed showing at the top, it can
@@ -27,8 +31,14 @@ class NewsArticleScreen extends StatefulWidget {
   final bool? isVerified;
   final String? postUserId;
 
-  /// "Industry", "Reviews" — shown as a pill above the headline.
-  final String? category;
+  /// The article's feed id — negative, as news posts carry it. Comments
+  /// hang off it. Null leaves the article with no comments section, which is
+  /// what anything opening this screen without an id should get.
+  final String? postId;
+
+  /// How many comments the feed said there were, used only until the real
+  /// list loads. Saves the shortcut at the top from appearing a moment late.
+  final int? commentsCount;
 
   /// The standfirst under the headline. The article's own excerpt.
   final String? excerpt;
@@ -54,7 +64,8 @@ class NewsArticleScreen extends StatefulWidget {
     this.username,
     this.isVerified,
     this.postUserId,
-    this.category,
+    this.postId,
+    this.commentsCount,
     this.excerpt,
     this.imageCaption,
     this.readMinutes,
@@ -66,9 +77,41 @@ class NewsArticleScreen extends StatefulWidget {
 }
 
 class _NewsArticleScreenState extends State<NewsArticleScreen> {
+  /// The hero frame's height, as a fraction of the screen's width.
+  static const double _heroRatio = 0.62;
+
+  /// What the blurred backdrop is decoded to. The feed card uses the same
+  /// number for the same reason — see _blurDecodeWidth in post_card.dart.
+  static const int _blurDecodeWidth = 64;
+
   static const Color _gold = Color(0xFFAE9159);
   static const Color _ink = Color(0xFF111111);
   static const Color _muted = Color(0xFF8A8A8E);
+
+  /// Null when the article arrived without an id, which is the one case
+  /// where it cannot be commented on.
+  NewsCommentsController? _comments;
+
+  bool get _hasComments => _comments != null;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final postId = widget.postId?.trim();
+    if (postId == null || postId.isEmpty) return;
+
+    _comments = NewsCommentsController(
+      postId: postId,
+      seed: widget.commentsCount,
+    )..load();
+  }
+
+  @override
+  void dispose() {
+    _comments?.dispose();
+    super.dispose();
+  }
 
   /// "14 Oct 2026". Falls back to whatever it was given, because a date that
   /// will not parse is still more use than an empty space.
@@ -109,13 +152,47 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
         .toUpperCase();
   }
 
+  /// Shares the article as a URL rather than as a line of text.
+  ///
+  /// `uri` and `text` do different things. Text is a string that happens to
+  /// contain a link: it is offered to anything that takes text, the preview
+  /// is the first few words, and the recipient gets a headline followed by a
+  /// bare address. A `uri` is handed over as a web page — iOS fetches it,
+  /// pulls out the title and the site's icon, and both the share sheet and
+  /// the message show a card for the article. The two cannot be combined, so
+  /// the headline rides along as the subject, which is what mail and the
+  /// Android chooser use.
   Future<void> _share() async {
-    final url = widget.articleUrl;
-    if (url == null || url.trim().isEmpty) return;
+    final raw = widget.articleUrl?.trim();
+    if (raw == null || raw.isEmpty) return;
+
+    final uri = Uri.tryParse(raw);
+    final isLink = uri != null && uri.hasScheme;
+    final box = context.findRenderObject() as RenderBox?;
+
     await SharePlus.instance.share(
-      ShareParams(text: '${widget.title}\n\n$url'),
+      ShareParams(
+        uri: isLink ? uri : null,
+        // A link that will not parse is still worth sending as text.
+        text: isLink ? null : '${widget.title}\n\n$raw',
+        subject: widget.title,
+        title: widget.title,
+        // iPad anchors the sheet to this. Without it the share pops from
+        // the top-left corner, and on some iPadOS versions it throws.
+        sharePositionOrigin: box == null
+            ? null
+            : box.localToGlobal(Offset.zero) & box.size,
+      ),
     );
   }
+
+  /// Opens the thread from the shortcut at the top.
+  ///
+  /// It opens the sheet rather than scrolling down to the section at the
+  /// foot of the article. Scrolling there would mean a long journey past
+  /// the whole story to reach it, and on a long article the section has not
+  /// been built yet, so there would be nothing to scroll to.
+  void _toComments() => _comments?.open(context);
 
   @override
   Widget build(BuildContext context) {
@@ -153,6 +230,7 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
                     color: Color(0xFFEFEFEF),
                   ),
                   _byline(),
+                  if (_comments != null) NewsComments(controller: _comments!),
                 ],
               ),
             ),
@@ -172,9 +250,9 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
             Icons.chevron_left_rounded,
             () => Navigator.of(context).pop(),
           ),
-          // The logo rather than the word "NEWS": the article says what it
-          // is in its own category pill a few pixels below, and saying it
-          // twice tells the reader nothing the second time.
+          // The logo rather than the word "NEWS". It is a masthead, and a
+          // reader who has just tapped a news card does not need telling
+          // again what they opened.
           Expanded(
             child: Center(
               child: Image.asset('assets/logo-dark.png', height: 18),
@@ -211,6 +289,12 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
   }
 
   /// Category, date and reading time.
+  /// The line above the headline: when it ran, how long it takes, and a way
+  /// straight to the comments.
+  ///
+  /// No category pill. Every article on the feed came back tagged
+  /// "Industry", so the pill said the same thing on every story and earned
+  /// none of the space it took above the headline.
   Widget _meta() {
     final minutes = widget.readMinutes;
 
@@ -218,25 +302,6 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       child: Row(
         children: [
-          if (widget.category != null) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: _ink,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                widget.category!.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
-                  color: _gold,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
           Flexible(
             child: Text(
               minutes == null ? _date : '$_date  ·  $minutes min read',
@@ -249,7 +314,51 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
               ),
             ),
           ),
+          if (_hasComments) ...[const SizedBox(width: 12), _commentsShortcut()],
         ],
+      ),
+    );
+  }
+
+  /// The comment count at the top, which scrolls to the thread at the foot.
+  ///
+  /// A count and a jump rather than a second composer: a reader who wants to
+  /// see what people said should not have to thumb through the article to
+  /// find out, but the comments themselves belong after it.
+  Widget _commentsShortcut() {
+    final controller = _comments!;
+
+    return Material(
+      color: const Color(0xFFF4F4F4),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: _toComments,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 14,
+                color: _ink,
+              ),
+              const SizedBox(width: 5),
+              ListenableBuilder(
+                listenable: controller,
+                builder: (context, _) => Text(
+                  controller.total == null ? 'Comments' : '${controller.total}',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: _ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -358,19 +467,78 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
 
   /// Full-bleed, as the design has it — the picture is the one thing that
   /// should not be inset to the text column.
+  /// The picture, in a frame of a fixed height with a blurred copy of
+  /// itself behind it — the same construction the feed card uses, so the
+  /// photograph looks the same before and after the tap.
+  ///
+  /// The frame is what stops the page jumping. It used to be a plain
+  /// cover-fitted image with no height of its own, so the article laid out
+  /// twice: once around a placeholder of a guessed height, and again around
+  /// the real picture's aspect ratio when it arrived. Everything below the
+  /// image moved, which on a slow connection happened several seconds into
+  /// reading.
+  ///
+  /// The ClipRect is not optional. A blur paints outside the bounds of what
+  /// it is blurring — that is what a blur is — and a Stack only clips
+  /// children whose LAYOUT overflows, not their paint. Without it the
+  /// backdrop bleeds up into the standfirst and down into the caption. The
+  /// feed card gets away with the same Stack because the PageView it sits
+  /// in clips the whole page.
   Widget _hero(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
+    final url = widget.imageUrls.first;
 
-    return CachedNetworkImage(
-      imageUrl: widget.imageUrls.first,
-      width: width,
-      fit: BoxFit.cover,
-      // Capped at the screen's own width. A press photo is often 2000px
-      // wide, which decodes to around 16MB uncapped.
-      memCacheWidth: (width * MediaQuery.devicePixelRatioOf(context)).round(),
-      placeholder: (_, _) =>
-          Container(height: width * 0.62, color: const Color(0xFFF2F2F2)),
-      errorWidget: (_, _, _) => const SizedBox.shrink(),
+    return Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 8),
+      child: ClipRect(
+        child: SizedBox(
+          width: width,
+          // The height the placeholder always claimed. Keeping it means the
+          // page is laid out once, and nothing moves when the picture lands.
+          height: width * _heroRatio,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(color: Colors.grey.shade200),
+
+              // The backdrop. Decoded tiny on purpose: it is blurred past
+              // recognition before anyone sees it, so resolution buys
+              // nothing, and this is the same photograph being decoded a
+              // second time.
+              Positioned.fill(
+                child: ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: CachedNetworkImage(
+                    imageUrl: url,
+                    fit: BoxFit.cover,
+                    memCacheWidth: _blurDecodeWidth,
+                    fadeInDuration: Duration.zero,
+                    errorWidget: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+
+              // The photograph itself, whole.
+              Positioned.fill(
+                child: CachedNetworkImage(
+                  imageUrl: url,
+                  fit: BoxFit.contain,
+                  // Capped at the screen's own width. A press photo is
+                  // often 2000px wide, which decodes to around 16MB
+                  // uncapped.
+                  memCacheWidth:
+                      (width * MediaQuery.devicePixelRatioOf(context)).round(),
+                  // Nothing: the blurred backdrop is already the
+                  // placeholder, and a grey box over it would only flash.
+                  placeholder: (_, _) => const SizedBox.shrink(),
+                  fadeInDuration: const Duration(milliseconds: 180),
+                  errorWidget: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

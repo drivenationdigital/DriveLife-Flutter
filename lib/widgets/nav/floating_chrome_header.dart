@@ -4,19 +4,17 @@ import 'package:flutter/scheduler.dart';
 
 /// The shell's header and section tabs, floating at the top of the feed.
 ///
-/// Snaps rather than following the finger pixel for pixel on release: a
-/// header left half shown is neither usable nor out of the way.
+/// Follows the finger: scrolling down pushes it away, scrolling back up
+/// brings it with you. Nothing else moves it.
 class FloatingChromeHeader extends SliverPersistentHeaderDelegate {
   final Widget child;
   final double height;
 
-  /// Drives the snap animation.
+  /// Unused while [snapConfiguration] is null, and kept for when it is not.
   ///
-  /// Required, not optional: a floating header that declares a
-  /// snapConfiguration asserts "vsync must not be null if the floating
-  /// header changes size animatedly" the first time a drag ends. It is only
-  /// reached on release, which is why this crashed on the first flick rather
-  /// than on the first frame.
+  /// A floating header that declares a snapConfiguration asserts "vsync must
+  /// not be null if the floating header changes size animatedly" the first
+  /// time a drag ends, so the two travel together.
   @override
   final TickerProvider vsync;
 
@@ -32,12 +30,28 @@ class FloatingChromeHeader extends SliverPersistentHeaderDelegate {
   @override
   double get maxExtent => height;
 
+  /// No snap, deliberately.
+  ///
+  /// Snapping hid the header on a bare touch. Flutter runs the snap from
+  /// `isScrollingNotifier` going quiet, and the target is the scroll
+  /// direction at that moment:
+  ///
+  /// ```dart
+  /// direction == ScrollDirection.forward ? 0.0 : maxExtent
+  /// ```
+  ///
+  /// A touch that does not move still counts as a scroll starting and
+  /// stopping, and by then the direction has gone back to `idle` — which is
+  /// not `forward`, so the header animates to `maxExtent` and disappears.
+  /// Putting a finger on the feed to read it is the one gesture that should
+  /// leave the chrome exactly where it is.
+  ///
+  /// Without it the header simply tracks the scroll, so it only leaves when
+  /// the feed is actually pulled up past it. A short flick back can leave it
+  /// part shown; that resolves itself on the next scroll either way, and is
+  /// a far smaller annoyance than the header vanishing under your thumb.
   @override
-  FloatingHeaderSnapConfiguration get snapConfiguration =>
-      FloatingHeaderSnapConfiguration(
-        curve: Curves.easeOutCubic,
-        duration: const Duration(milliseconds: 240),
-      );
+  FloatingHeaderSnapConfiguration? get snapConfiguration => null;
 
   @override
   Widget build(
