@@ -34,3 +34,56 @@ String stripHtml(String? value) {
   if (value == null || value.isEmpty) return '';
   return _unescape.convert(value).replaceAll(RegExp(r'<[^>]*>'), '').trim();
 }
+
+/// Tags this app's HTML renderer cannot draw.
+///
+/// flutter_html is pinned at 3.0.0-beta.2 and needs an explicit extension for
+/// several of these — tables, iframes, svg, MathML, audio and video all go
+/// through `extensions:`, and nothing in this app registers any. Unregistered,
+/// they are not ignored: the build throws, and a throw during build takes the
+/// whole page with it rather than the one paragraph it came from.
+///
+/// The rest are tags that have no business rendering inside a description
+/// whatever the renderer supports.
+const Set<String> _unrenderableTags = {
+  'audio',
+  'canvas',
+  'embed',
+  'form',
+  'iframe',
+  'math',
+  'object',
+  'script',
+  'style',
+  'svg',
+  'table',
+  'video',
+};
+
+/// Matches an opening tag and captures its name.
+final RegExp _openingTag = RegExp(
+  r'<\s*([a-zA-Z][a-zA-Z0-9]*)',
+  multiLine: true,
+);
+
+/// Whether [html] is safe to hand to an HTML renderer.
+///
+/// False means "show this as plain text instead". It is a check rather than a
+/// sanitiser on purpose: stripping the offending tags out of a description
+/// leaves the surrounding markup in a state nobody authored — a table's cells
+/// run together into one paragraph, a video caption floats with nothing above
+/// it. Falling back to the text of the whole field is honest about what
+/// happened and always reads as something.
+///
+/// A field authored in the block editor — paragraphs, headings, lists, links,
+/// bold, images — passes, which is nearly all of them.
+bool htmlIsRenderable(String? html) {
+  if (html == null || html.isEmpty) return false;
+
+  for (final match in _openingTag.allMatches(html)) {
+    final tag = match.group(1)?.toLowerCase();
+    if (tag != null && _unrenderableTags.contains(tag)) return false;
+  }
+
+  return true;
+}

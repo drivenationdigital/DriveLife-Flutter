@@ -4,6 +4,7 @@ import 'package:drivelife/models/venue_view_model.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/places/add_venue_screen.dart';
+import 'package:drivelife/utils/html_text.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -1444,34 +1445,52 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Html(
-              data: _venue!.description!,
-              style: {
-                "body": Style(
-                  margin: Margins.zero,
-                  padding: HtmlPaddings.zero,
-                  fontSize: FontSize(15),
-                  lineHeight: const LineHeight(1.6),
-                  color: Colors.grey.shade700,
-                ),
-                "p": Style(margin: Margins.only(bottom: 12)),
-                "h1, h2, h3, h4, h5, h6": Style(
-                  margin: Margins.only(top: 16, bottom: 8),
-                  fontWeight: FontWeight.bold,
-                ),
-                "ul, ol": Style(margin: Margins.only(left: 16, bottom: 12)),
-                "li": Style(margin: Margins.only(bottom: 4)),
-                "a": Style(
-                  color: _gold,
-                  textDecoration: TextDecoration.underline,
-                ),
-                "strong, b": Style(fontWeight: FontWeight.bold),
-                "em, i": Style(fontStyle: FontStyle.italic),
-              },
-              onLinkTap: (url, _, __) {
-                if (url != null) launchUrl(Uri.parse(url));
-              },
-            ),
+            // A description the renderer cannot draw is shown as its own
+            // text rather than handed over anyway.
+            //
+            // About is the tab a venue opens on now, so its description is
+            // built for every venue rather than only for whoever went
+            // looking for it — and one field of CMS markup should not be
+            // able to take the page down with it. See htmlIsRenderable().
+            child: !htmlIsRenderable(_venue!.description)
+                ? Text(
+                    stripHtml(_venue!.description),
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.6,
+                      color: Colors.grey.shade700,
+                    ),
+                  )
+                : Html(
+                    data: _venue!.description!,
+                    style: {
+                      "body": Style(
+                        margin: Margins.zero,
+                        padding: HtmlPaddings.zero,
+                        fontSize: FontSize(15),
+                        lineHeight: const LineHeight(1.6),
+                        color: Colors.grey.shade700,
+                      ),
+                      "p": Style(margin: Margins.only(bottom: 12)),
+                      "h1, h2, h3, h4, h5, h6": Style(
+                        margin: Margins.only(top: 16, bottom: 8),
+                        fontWeight: FontWeight.bold,
+                      ),
+                      "ul, ol": Style(
+                        margin: Margins.only(left: 16, bottom: 12),
+                      ),
+                      "li": Style(margin: Margins.only(bottom: 4)),
+                      "a": Style(
+                        color: _gold,
+                        textDecoration: TextDecoration.underline,
+                      ),
+                      "strong, b": Style(fontWeight: FontWeight.bold),
+                      "em, i": Style(fontStyle: FontStyle.italic),
+                    },
+                    onLinkTap: (url, _, __) {
+                      if (url != null) launchUrl(Uri.parse(url));
+                    },
+                  ),
           ),
           const SizedBox(height: 24),
         ],
