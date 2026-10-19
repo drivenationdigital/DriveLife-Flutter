@@ -2,7 +2,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/tracks_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -135,17 +137,13 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
     final theme = Provider.of<ThemeProvider>(context);
 
     if (_loading) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Track')),
-        body: Center(
-          child: CircularProgressIndicator(color: theme.primaryColor),
-        ),
-      );
+      return Scaffold(backgroundColor: Colors.white, body: _skeleton(context));
     }
 
     if (_error != null || _track == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Track')),
+        backgroundColor: Colors.white,
+        appBar: _plainBar(),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(32),
@@ -216,6 +214,139 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
     );
   }
 
+  /// A bare bar with a back button and no title.
+  ///
+  /// No "Track" written across the top. The page it belongs to carries the
+  /// track's own name a few pixels below, so the word was the app telling
+  /// you what kind of page you had opened, in the one spot where its name
+  /// should be.
+  PreferredSizeWidget _plainBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
+      elevation: 0,
+      leading: IconButton(
+        // The chevron, not Android's arrow — what every other view page in
+        // the app uses.
+        icon: const Icon(CupertinoIcons.back, color: Color(0xFF1C1C1E)),
+        onPressed: () => Navigator.of(context).maybePop(),
+      ),
+    );
+  }
+
+  /// The page's own shape, in grey, while it loads.
+  ///
+  /// A spinner on an empty page says only that something is happening. This
+  /// says what is coming — a cover photo, a badge over it, a name, an
+  /// address, a button — so the real thing arriving is a page filling in
+  /// rather than a page replacing another.
+  ///
+  /// Laid out to the same numbers as [_header] and [_identity]: a skeleton
+  /// whose blocks sit somewhere other than the content's is worse than no
+  /// skeleton, because everything jumps at the moment it loads.
+  Widget _skeleton(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+
+    Widget block(double w, double h, {double radius = 6}) => Shimmer.fromColors(
+      baseColor: Colors.grey.shade300,
+      highlightColor: Colors.grey.shade100,
+      child: Container(
+        width: w,
+        height: h,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(radius),
+        ),
+      ),
+    );
+
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // The cover, and the badge hanging off the bottom of it — the
+              // 220 + 52 the real header measures.
+              SizedBox(
+                height: 272,
+                child: Stack(
+                  alignment: Alignment.bottomCenter,
+                  children: [
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: block(width, 220, radius: 0),
+                    ),
+                    block(104, 104, radius: 22),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              Center(child: block(width * 0.6, 26)),
+              const SizedBox(height: 12),
+              Center(child: block(width * 0.75, 15)),
+
+              const SizedBox(height: 20),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: block(width, 48, radius: 14),
+              ),
+
+              const SizedBox(height: 20),
+
+              // The contact chips.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    block(110, 44, radius: 22),
+                    const SizedBox(width: 10),
+                    block(96, 44, radius: 22),
+                    const SizedBox(width: 10),
+                    block(90, 44, radius: 22),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 28),
+
+              // And the first few lines of whatever it says about itself.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    block(140, 18),
+                    const SizedBox(height: 14),
+                    block(width, 13),
+                    const SizedBox(height: 10),
+                    block(width, 13),
+                    const SizedBox(height: 10),
+                    block(width * 0.7, 13),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Over the cover, where the real one sits.
+        Positioned(
+          top: MediaQuery.viewPaddingOf(context).top,
+          left: 0,
+          child: IconButton(
+            icon: const Icon(CupertinoIcons.back, color: Colors.white),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _header(Map<String, dynamic> track) {
     final cover = _image(track['cover_photo']);
     final logo = _image(track['logo']);
@@ -225,6 +356,10 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
       // starting underneath it. The cover is 220 and the badge overhangs by
       // half of its 104, so the bar is 220 + 52.
       expandedHeight: 272,
+      leading: IconButton(
+        icon: const Icon(CupertinoIcons.back, color: Colors.white),
+        onPressed: () => Navigator.of(context).maybePop(),
+      ),
       pinned: true,
       backgroundColor: Colors.white,
       foregroundColor: Colors.white,

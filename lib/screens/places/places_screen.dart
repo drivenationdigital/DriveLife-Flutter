@@ -1,6 +1,5 @@
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/api/places_api.dart';
-import 'package:drivelife/components/venue_card.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
@@ -9,7 +8,10 @@ import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/events/filter_bottom_sheet.dart';
 import 'package:drivelife/widgets/listing/featured_card.dart';
-import 'package:drivelife/widgets/listing/listing_card.dart';
+import 'package:drivelife/widgets/nav/chrome_visibility.dart';
+import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
+import 'package:drivelife/widgets/nav/pinned_sliver_bar.dart';
+import 'package:drivelife/widgets/listing/listing_row.dart';
 import 'package:drivelife/widgets/listing/listing_chips.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/models/venue_model.dart';
@@ -19,14 +21,34 @@ import 'package:shimmer/shimmer.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
 
 class VenuesScreen extends StatefulWidget {
-  const VenuesScreen({super.key});
+  /// Told which way the user is scrolling, so the shell can take the bottom
+  /// bar away and bring it back. The same notifier the feed reports to.
+  final ChromeVisibility? chrome;
+
+  /// The shell's header and section tabs, drawn inside this screen's own
+  /// scroll view rather than above it.
+  ///
+  /// Above it, the only way to hide it would be to shrink the box it sits
+  /// in, which changes the viewport's height on every frame of the
+  /// animation — and a viewport that resizes mid-drag keeps correcting its
+  /// own offset. As a sliver the scroll moves it, and nothing resizes.
+  final Widget? header;
+
+  /// How tall [header] is. A sliver header declares its extent up front.
+  final double headerHeight;
+  const VenuesScreen({
+    super.key,
+    this.chrome,
+    this.header,
+    this.headerHeight = 0,
+  });
 
   @override
   State<VenuesScreen> createState() => _VenuesScreenState();
 }
 
 class _VenuesScreenState extends State<VenuesScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   /// What this screen lists. Kept as a field rather than written out in a
   /// dozen strings, which is how it came to say "Venues" on the tracks page.
   static const String _them = 'Venues';
@@ -125,7 +147,21 @@ class _VenuesScreenState extends State<VenuesScreen>
     super.dispose();
   }
 
+  /// The tabs no longer live in a TabBarView, so nothing swaps the content
+  /// for us — this does, by rebuilding with the other tab's slivers on
+  /// stage. See [_tabSlivers].
   void _onTabChanged() {
+    if (!mounted) return;
+
+    setState(() {});
+
+    // Back to the top on a real switch. The two tabs share one scroll
+    // offset now, and landing a screen and a half down a tab that only has
+    // two rows in it reads as an empty tab.
+    if (!_tabController.indexIsChanging && _scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+
     if (_tabController.index == 1) {
       _loadMyVenues();
     }
@@ -465,62 +501,161 @@ class _VenuesScreenState extends State<VenuesScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      // top: false — the shell above already holds the status bar area, and
-      // the section tabs sit between it and this screen. Claiming it again
-      // put a band of white between the tabs and the search field.
-      body: SafeArea(
-        top: false,
+      // Nothing above the scroll views, and no SafeArea around them. The
+      // header, the search field and the tabs are all slivers inside them,
+      // so the scroll moves them and the viewport never changes size — the
+      // same arrangement the feed uses, and for the same reason.
+      //
+      // The SafeArea that used to wrap this took the status bar off the top,
+      // which the shell above already holds, and the home indicator off the
+      // bottom — and that second inset is a band of dead white under the
+      // last row that the list can never scroll into. The shell runs with
+      // extendBody, so content is meant to pass under the floating bottom
+      // bar rather than stop short of it. Neither the feed nor Tracks wraps
+      // itself this way.
+      //
+      // Every scroll in here reports to the shell through this one listener,
+      // which is what takes the bottom bar away and brings it back.
+      body: NotificationListener<ScrollNotification>(
+        onNotification: widget.chrome?.handle ?? (_) => false,
+        child: RefreshIndicator(
+          onRefresh: _refreshActiveTab,
+          color: theme.primaryColor,
+          child: CustomScrollView(
+            controller: _scrollController,
+            // Always scrollable, so a short list still reaches far enough
+            // for pull-to-refresh and for the chrome to be scrolled away.
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              _floatingChrome(),
+              if (!_isSearching) _pinnedTabs(),
+              ..._tabSlivers(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The search field's height, declared because the floating header has
+  /// to know its extent before it is laid out. [_buildSearchBar] boxes
+  /// itself to the same number, so the two cannot drift.
+  static const double _searchBarHeight = 72;
+
+  /// The tab row's height, declared for the same reason.
+  static const double _tabBarHeight = 48;
+
+  /// The chrome above a list: the shell's own header and section tabs, with
+  /// this screen's search field under them.
+  ///
+  /// Floating, not pinned — it leaves as you scroll on and comes back the
+  /// moment you scroll up, without having to reach the top. The search
+  /// field goes with it because it is chrome too: once you are three rows
+  /// into a grid, an empty search box is the least useful thing on screen.
+  Widget _floatingChrome() {
+    final height = widget.headerHeight + _searchBarHeight;
+
+    return SliverPersistentHeader(
+      floating: true,
+      delegate: FloatingChromeHeader(
+        height: height,
+        vsync: this,
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Search bar
+            if (widget.header != null) widget.header!,
             _buildSearchBar(),
-
-            // Show tabs only when not searching
-            if (!_isSearching) _buildTabBar(),
-
-            // Content
-            Expanded(
-              child: _isSearching
-                  ? _buildSearchResultsView()
-                  : TabBarView(
-                      controller: _tabController,
-                      children: [_buildFindVenuesTab(), _buildMyVenuesTab()],
-                    ),
-            ),
           ],
         ),
       ),
     );
   }
 
+  /// Whichever tab is showing, as slivers.
+  ///
+  /// One scroll view holds all of this, not one per tab inside a
+  /// TabBarView. With a view each, the chrome and the tabs were inside the
+  /// thing that slides, so switching tab swept the header off sideways and
+  /// brought an identical one back — the whole page moving to change what
+  /// is under it. Here only the content swaps, and the header above it does
+  /// not know a tab changed.
+  ///
+  /// The tab that is not showing stays in the tree: [SliverOffstage] does
+  /// not lay it out, but its element is still mounted, so whatever it had
+  /// loaded survives a switch and coming back costs nothing.
+  List<Widget> _tabSlivers() {
+    if (_isSearching) return _searchSlivers();
+
+    return [
+      SliverOffstage(
+        offstage: _tabController.index != 0,
+        sliver: SliverMainAxisGroup(slivers: _findSlivers()),
+      ),
+      SliverOffstage(
+        offstage: _tabController.index != 1,
+        sliver: SliverMainAxisGroup(slivers: _mySlivers()),
+      ),
+    ];
+  }
+
+  /// Refreshes whichever tab is showing.
+  Future<void> _refreshActiveTab() {
+    if (_isSearching) return _refreshVenues();
+    return _tabController.index == 0 ? _refreshVenues() : _loadMyVenues();
+  }
+
+  /// Fills what is left of the viewport with [child].
+  ///
+  /// For the states that are not a list — loading, an error, nothing found.
+  /// They sit under the chrome rather than replacing it, which matters most
+  /// when a filter comes back empty: the way out of an empty list is to
+  /// change the search or the distance, and both are in the chrome.
+  Widget _fillRest(Widget child) =>
+      SliverFillRemaining(hasScrollBody: false, child: child);
+
+  /// The Discover / My Places tabs, which stay put.
+  ///
+  /// Pinned where the chrome above floats away: these are navigation, and
+  /// losing them halfway down a grid would mean scrolling back to the top
+  /// to change tab.
+  Widget _pinnedTabs() {
+    return SliverPersistentHeader(
+      pinned: true,
+      delegate: PinnedSliverBar(height: _tabBarHeight, child: _buildTabBar()),
+    );
+  }
+
   Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: TextField(
-        controller: _searchController,
-        onChanged: _onSearchChanged,
-        decoration: InputDecoration(
-          hintText: 'Search $_themLower',
-          hintStyle: TextStyle(color: Colors.grey.shade400),
-          prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
-          suffixIcon: _searchController.text.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, size: 20),
-                  onPressed: () {
-                    _searchController.clear();
-                    _onSearchChanged('');
-                  },
-                )
-              : null,
-          filled: true,
-          fillColor: Colors.grey.shade100,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide.none,
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
+    return SizedBox(
+      height: _searchBarHeight,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: TextField(
+          controller: _searchController,
+          onChanged: _onSearchChanged,
+          decoration: InputDecoration(
+            hintText: 'Search $_themLower',
+            hintStyle: TextStyle(color: Colors.grey.shade400),
+            prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
+            suffixIcon: _searchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 20),
+                    onPressed: () {
+                      _searchController.clear();
+                      _onSearchChanged('');
+                    },
+                  )
+                : null,
+            filled: true,
+            fillColor: Colors.grey.shade100,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
           ),
         ),
       ),
@@ -576,81 +711,92 @@ class _VenuesScreenState extends State<VenuesScreen>
     );
   }
 
-  Widget _buildSearchResultsView() {
+  /// The search results, as slivers. No tabs above them — they are hidden
+  /// while searching, which is what makes this a separate view at all.
+  List<Widget> _searchSlivers() {
     if (_isLoading && _searchResults.isEmpty) {
-      return _buildLoadingSkeleton(showBanner: false);
+      return [_fillRest(_buildLoadingSkeleton(showBanner: false))];
     }
 
     if (_errorMessage != null && _searchResults.isEmpty) {
-      return _buildErrorState();
+      return [_fillRest(_buildErrorState())];
     }
 
     if (_searchResults.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
-            const SizedBox(height: 16),
-            Text(
-              'No $_themLower found',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade600,
-              ),
+      return [
+        _fillRest(
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
+                const SizedBox(height: 16),
+                Text(
+                  'No $_themLower found',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Try a different search term',
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Try a different search term',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-            ),
-          ],
+          ),
         ),
-      );
+      ];
     }
 
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.all(16),
-      itemCount: _searchResults.length + (_isLoadingMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index >= _searchResults.length) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(
-              child: CircularProgressIndicator(color: Color(0xFFAE9159)),
-            ),
-          );
-        }
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.all(16),
+        sliver: SliverList.builder(
+          itemCount: _searchResults.length + (_isLoadingMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            if (index >= _searchResults.length) {
+              return const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(
+                  child: CircularProgressIndicator(color: Color(0xFFAE9159)),
+                ),
+              );
+            }
 
-        final venue = _searchResults[index];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: VenueCard(venue: venue, onTap: () => _onVenueTap(venue)),
-        );
-      },
-    );
+            final venue = _searchResults[index];
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (index > 0) const ListingRowDivider(),
+                ListingRow(
+                  imageUrl: venue.coverImage,
+                  title: venue.title,
+                  subtitle: venue.venueLocation,
+                  onTap: () => _onVenueTap(venue),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    ];
   }
 
-  Widget _buildFindVenuesTab() {
+  /// The Discover tab, as slivers.
+  List<Widget> _findSlivers() {
     if (_isLoading && _venues.isEmpty) {
-      return _buildLoadingSkeleton(showBanner: true);
+      return [_fillRest(_buildLoadingSkeleton(showBanner: true))];
     }
 
     if (_errorMessage != null && _venues.isEmpty) {
-      return _buildErrorState();
+      return [_fillRest(_buildErrorState())];
     }
 
-    // if (_filteredVenues.isEmpty) {
-    //   return _buildEmptyState();
-    // }
-
-    return RefreshIndicator(
-      onRefresh: _refreshVenues,
-      color: theme.primaryColor,
-      child: SingleChildScrollView(
-        controller: _scrollController,
+    return [
+      SliverToBoxAdapter(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -691,11 +837,14 @@ class _VenuesScreenState extends State<VenuesScreen>
                 ),
               ),
 
-            const SizedBox(height: 16),
+            // The same 24 Tracks leaves under its last row. Enough to
+            // clear the floating bottom bar without the band of dead
+            // white the SafeArea used to put here.
+            const SizedBox(height: 24),
           ],
         ),
       ),
-    );
+    ];
   }
 
   /// The featured carousel.
@@ -982,6 +1131,12 @@ class _VenuesScreenState extends State<VenuesScreen>
   /// A grid rather than the full-width rows this used to be. A place is
   /// chosen off its photograph more than off its address, and at two columns
   /// twice as many photographs are on screen at once.
+  /// The results, as rows.
+  ///
+  /// Rows rather than a grid of cards. The grid showed the photographs
+  /// bigger and fewer; four or five of these fit where two cards did, and
+  /// what anyone scans a list of places for is the name and where it is.
+  /// The picture is there to tell them apart, which a thumbnail does.
   Widget _buildVenuesList() {
     if (_filteredVenues.isEmpty) {
       return Padding(
@@ -990,59 +1145,20 @@ class _VenuesScreenState extends State<VenuesScreen>
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          const gap = 12.0;
-          final cardWidth = (constraints.maxWidth - gap) / 2;
-
-          return GridView.builder(
-            // Inside the page's own scroll view, so it lays out all of its
-            // children and leaves the scrolling to the parent. Two scrollable
-            // areas sharing a gesture is the thing that makes a grid inside a
-            // page feel broken.
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: EdgeInsets.zero,
-            itemCount: _filteredVenues.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: gap,
-              mainAxisSpacing: gap,
-              // Worked out rather than guessed, and from the real width, so
-              // it holds on a small phone and a tablet alike. The card is a
-              // 1.35 picture over a fixed stack of text and a button; see
-              // _listingCardChrome for where the number comes from.
-              childAspectRatio:
-                  cardWidth / (cardWidth / 1.35 + _listingCardChrome),
-            ),
-            itemBuilder: (context, i) {
-              final venue = _filteredVenues[i];
-
-              return ListingCard(
-                imageUrl: venue.coverImage,
-                title: venue.title,
-                subtitle: venue.venueLocation,
-                onTap: () => _onVenueTap(venue),
-              );
-            },
-          );
-        },
-      ),
+    return Column(
+      children: [
+        for (var i = 0; i < _filteredVenues.length; i++) ...[
+          if (i > 0) const ListingRowDivider(),
+          ListingRow(
+            imageUrl: _filteredVenues[i].coverImage,
+            title: _filteredVenues[i].title,
+            subtitle: _filteredVenues[i].venueLocation,
+            onTap: () => _onVenueTap(_filteredVenues[i]),
+          ),
+        ],
+      ],
     );
   }
-
-  /// Everything in a [ListingCard] below the picture, in logical pixels.
-  ///
-  ///   12 padding + 39 title (two lines at 15.5/1.25)
-  ///    + 6 gap + 37 subtitle (two lines at 13.5/1.35)
-  ///    + 12 gap + 38 button + 12 padding
-  ///
-  /// Sized for the tallest case so a two-line name never overflows. A card
-  /// with a short name simply has room to spare under its button, which the
-  /// Column leaves at the bottom rather than stretching into.
-  static const double _listingCardChrome = 156;
 
   Widget _createVenueSection() {
     return Container(
@@ -1089,49 +1205,49 @@ class _VenuesScreenState extends State<VenuesScreen>
     );
   }
 
-  Widget _buildMyVenuesTab() {
-    // Loading state
+  /// The My Places tab, as slivers.
+  List<Widget> _mySlivers() {
     if (_isLoading && _ownedVenues.isEmpty && _followedVenues.isEmpty) {
-      return _buildLoadingSkeleton(showBanner: false);
+      return [_fillRest(_buildLoadingSkeleton(showBanner: false))];
     }
 
-    // Empty state - no owned or followed venues
     if (_ownedVenues.isEmpty && _followedVenues.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.location_on_outlined,
-              size: 80,
-              color: Colors.grey.shade300,
+      return [
+        _fillRest(
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.location_on_outlined,
+                  size: 80,
+                  color: Colors.grey.shade300,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No $_themLower found',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'You don\'t own or follow any venues yet',
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              'No $_themLower found',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'You don\'t own or follow any venues yet',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-            ),
-          ],
+          ),
         ),
-      );
+      ];
     }
 
-    // Show venues with sections
-    return RefreshIndicator(
-      onRefresh: _loadMyVenues,
-      color: theme.primaryColor,
-      child: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        children: [
+    return [
+      SliverList(
+        delegate: SliverChildListDelegate([
+          const SizedBox(height: 8),
           Padding(
             padding: EdgeInsets.fromLTRB(
               16,
@@ -1162,19 +1278,17 @@ class _VenuesScreenState extends State<VenuesScreen>
                 ],
               ),
             ),
-            ..._ownedVenues.map((venue) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
-                child: VenueCard(
-                  venue: venue,
-                  onTap: () => _onVenueTap(venue),
-                  showOwnerBadge: true,
-                ),
-              );
-            }),
+            // The same rows the Discover tab uses. Two card shapes for the
+            // same venue, one per tab, was what made this screen look like
+            // two screens.
+            ..._ownedVenues.map(
+              (venue) => ListingRow(
+                imageUrl: venue.coverImage,
+                title: venue.title,
+                subtitle: venue.venueLocation,
+                onTap: () => _onVenueTap(venue),
+              ),
+            ),
           ],
 
           // Followed Venues Section
@@ -1207,23 +1321,18 @@ class _VenuesScreenState extends State<VenuesScreen>
                 ],
               ),
             ),
-            ..._followedVenues.map((venue) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
-                child: VenueCard(
-                  venue: venue,
-                  onTap: () => _onVenueTap(venue),
-                  showOwnerBadge: false,
-                ),
-              );
-            }),
+            ..._followedVenues.map(
+              (venue) => ListingRow(
+                imageUrl: venue.coverImage,
+                title: venue.title,
+                subtitle: venue.venueLocation,
+                onTap: () => _onVenueTap(venue),
+              ),
+            ),
           ],
-        ],
+        ]),
       ),
-    );
+    ];
   }
 
   Widget _buildLoadingSkeleton({required bool showBanner}) {

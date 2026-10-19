@@ -103,11 +103,22 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   /// Height of the header row, which [_Header] fixes.
   static const double _headerHeight = 56;
 
-  /// True when the feed is drawing the chrome inside its own scroll view.
+  /// True when the section below is drawing the chrome inside its own
+  /// scroll view, so the shell must not draw it as well.
   ///
-  /// Only the For You section has a scroll view to put it in. Every other
-  /// section is a different screen, so the shell draws it above them.
-  bool get _chromeIsInFeed => _currentIndex == _dHome && _homeTab == 0;
+  /// Three sections do: the feed, Places and Tracks. Each hands its scroll
+  /// view a floating sliver holding this header, which is the only way to
+  /// move it without resizing the viewport underneath a finger.
+  ///
+  /// The rest are screens with no scroll view to put it in, so the shell
+  /// draws it above them and it stays put.
+  bool get _chromeIsInFeed =>
+      _currentIndex == _dHome &&
+      const {
+        BottomNavProvider.forYou,
+        BottomNavProvider.places,
+        BottomNavProvider.tracks,
+      }.contains(_homeTab);
 
   /// Whether the current destination draws edge to edge, under the status
   /// bar, with no app header above it.
@@ -380,12 +391,20 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         headerHeight: _chromeHeight,
       ),
       EventsScreen(),
-      const VenuesScreen(),
+      VenuesScreen(
+        chrome: _chrome,
+        header: _buildChrome(theme),
+        headerHeight: _chromeHeight,
+      ),
 
       // Tracks have their own screen and their own endpoints. They were
       // briefly the venues screen with a post type argument, which listed
       // the user's venues under "My tracks" and could not open any of them.
-      const TracksScreen(),
+      TracksScreen(
+        chrome: _chrome,
+        header: _buildChrome(theme),
+        headerHeight: _chromeHeight,
+      ),
 
       // There is no `businesses` post type in WordPress yet, so this says
       // so rather than running a search that can only ever come back empty.

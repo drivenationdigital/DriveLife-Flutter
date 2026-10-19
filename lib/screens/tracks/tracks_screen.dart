@@ -2,7 +2,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/tracks_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
-import 'package:drivelife/widgets/listing/listing_card.dart';
+import 'package:drivelife/widgets/listing/listing_row.dart';
+import 'package:drivelife/widgets/nav/chrome_visibility.dart';
+import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
+import 'package:drivelife/widgets/nav/pinned_sliver_bar.dart';
 import 'package:drivelife/widgets/listing/listing_chips.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -106,14 +109,31 @@ class TrackRange {
 /// tab called a venue-only endpoint — the kind of thing that happens when two
 /// unrelated things share a file to save typing.
 class TracksScreen extends StatefulWidget {
-  const TracksScreen({super.key});
+  /// Told which way the user is scrolling, so the shell can take the bottom
+  /// bar away and bring it back. The same notifier the feed reports to.
+  final ChromeVisibility? chrome;
+
+  /// The shell's header and section tabs, drawn inside this screen's own
+  /// scroll view rather than above it — see [VenuesScreen.header] for why
+  /// that is the only way to move it without resizing the viewport.
+  final Widget? header;
+
+  /// How tall [header] is. A sliver header declares its extent up front.
+  final double headerHeight;
+
+  const TracksScreen({
+    super.key,
+    this.chrome,
+    this.header,
+    this.headerHeight = 0,
+  });
 
   @override
   State<TracksScreen> createState() => _TracksScreenState();
 }
 
 class _TracksScreenState extends State<TracksScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final TabController _tabs = TabController(length: 2, vsync: this);
   final TextEditingController _search = TextEditingController();
   final ScrollController _scroll = ScrollController();
@@ -141,8 +161,25 @@ class _TracksScreenState extends State<TracksScreen>
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
+    _tabs.addListener(_onTabChanged);
     _loadNearby();
     _loadMine();
+  }
+
+  /// The tabs no longer live in a TabBarView, so nothing swaps the content
+  /// for us — this does, by rebuilding with the other tab's slivers on
+  /// stage.
+  void _onTabChanged() {
+    if (!mounted) return;
+
+    setState(() {});
+
+    // Back to the top on a real switch. The two tabs share one scroll
+    // offset now, and landing halfway down a tab holding two rows reads as
+    // an empty tab.
+    if (!_tabs.indexIsChanging && _scroll.hasClients) {
+      _scroll.jumpTo(0);
+    }
   }
 
   @override
@@ -150,11 +187,17 @@ class _TracksScreenState extends State<TracksScreen>
     _scroll.removeListener(_onScroll);
     _scroll.dispose();
     _search.dispose();
+    _tabs.removeListener(_onTabChanged);
     _tabs.dispose();
     super.dispose();
   }
 
   void _onScroll() {
+    // Only the Discover tab pages. Both tabs share one scroll controller
+    // now, so without this, reaching the bottom of My Tracks would fetch
+    // another page of nearby ones behind it.
+    if (_tabs.index != 0) return;
+
     if (!_scroll.hasClients || _loadingMore || !_hasMore) return;
     if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 400) {
       _loadNearby(more: true);
@@ -240,95 +283,157 @@ class _TracksScreenState extends State<TracksScreen>
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Column(
-        children: [
-          _searchBar(theme),
-          // Only on the nearby list. "My tracks" is everything the user owns
-          // or follows, wherever it is, so a distance filter over it would
-          // hide their own tracks.
-          AnimatedBuilder(
-            animation: _tabs,
-            builder: (context, _) =>
-                _tabs.index == 0 ? _ranges(theme) : const SizedBox.shrink(),
-          ),
-          TabBar(
-            controller: _tabs,
-            indicatorSize: TabBarIndicatorSize.tab,
-            indicatorColor: theme.primaryColor,
-            indicatorWeight: 3,
-            labelColor: theme.primaryColor,
-            unselectedLabelColor: theme.subtextColor,
-            labelStyle: const TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 16,
-            ),
-            unselectedLabelStyle: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 16,
-            ),
-            tabs: const [
-              Tab(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.explore_outlined, size: 18),
-                    SizedBox(width: 6),
-                    Text('Discover'),
-                  ],
-                ),
+      // Nothing above the scroll views. The header, the search field and
+      // the tabs are slivers inside them, so the scroll moves them and the
+      // viewport keeps one size — the arrangement the feed uses.
+      //
+      // Every scroll in here reports to the shell through this listener,
+      // which is what takes the bottom bar away and brings it back.
+      body: NotificationListener<ScrollNotification>(
+        onNotification: widget.chrome?.handle ?? (_) => false,
+        child: RefreshIndicator(
+          color: theme.primaryColor,
+          onRefresh: _refreshActiveTab,
+          child: CustomScrollView(
+            controller: _scroll,
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              _floatingChrome(),
+              _pinnedTabs(theme),
+
+              // One scroll view, not one per tab inside a TabBarView. With
+              // a view each, the chrome and the tabs were inside the thing
+              // that slides, so switching tab swept the header off sideways
+              // and brought an identical one back — the whole page moving
+              // to change what is under it. Here only the content swaps.
+              //
+              // The tab that is not showing stays in the tree: SliverOffstage
+              // does not lay it out, but its element is still mounted, so
+              // what it had loaded survives a switch.
+              SliverOffstage(
+                offstage: _tabs.index != 0,
+                sliver: SliverMainAxisGroup(slivers: _findSlivers(theme)),
               ),
-              Tab(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.bookmark_border_rounded, size: 18),
-                    SizedBox(width: 6),
-                    Text('My Tracks'),
-                  ],
-                ),
+              SliverOffstage(
+                offstage: _tabs.index != 1,
+                sliver: SliverMainAxisGroup(slivers: _mineSlivers(theme)),
               ),
             ],
           ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabs,
-              children: [_findTab(theme), _mineTab(theme)],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _searchBar(ThemeProvider theme) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: TextField(
-        controller: _search,
-        textInputAction: TextInputAction.search,
-        onSubmitted: (value) {
-          setState(() => _query = value);
-          _loadNearby();
-        },
-        decoration: InputDecoration(
-          hintText: 'Search tracks & raceways',
-          prefixIcon: const Icon(Icons.search_rounded, size: 20),
-          suffixIcon: _query.isEmpty
-              ? null
-              : IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                  onPressed: () {
-                    _search.clear();
-                    setState(() => _query = '');
-                    _loadNearby();
-                  },
-                ),
-          filled: true,
-          fillColor: const Color(0xFFF4F4F4),
-          contentPadding: const EdgeInsets.symmetric(vertical: 0),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none,
+  /// The Discover / My Tracks row. Lifted out of build() so a pinned sliver
+  /// can hold it in both tabs.
+  Widget _tabBar(ThemeProvider theme) {
+    return TabBar(
+      controller: _tabs,
+      indicatorSize: TabBarIndicatorSize.tab,
+      indicatorColor: theme.primaryColor,
+      indicatorWeight: 3,
+      labelColor: theme.primaryColor,
+      unselectedLabelColor: theme.subtextColor,
+      labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+      unselectedLabelStyle: const TextStyle(
+        fontWeight: FontWeight.w600,
+        fontSize: 16,
+      ),
+      tabs: const [
+        Tab(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.explore_outlined, size: 18),
+              SizedBox(width: 6),
+              Text('Discover'),
+            ],
+          ),
+        ),
+        Tab(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.bookmark_border_rounded, size: 18),
+              SizedBox(width: 6),
+              Text('My Tracks'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The search field's height, declared because the floating header has
+  /// to know its extent before layout. [_searchBar] boxes itself to the
+  /// same number so the two cannot drift.
+  static const double _searchBarHeight = 72;
+
+  /// The tab row's height, declared for the same reason.
+  static const double _tabBarHeight = 48;
+
+  /// The shell's header and section tabs, with this screen's search field
+  /// under them. Floating: gone as you scroll on, back the moment you
+  /// scroll up, without having to reach the top.
+  Widget _floatingChrome() {
+    return SliverPersistentHeader(
+      floating: true,
+      delegate: FloatingChromeHeader(
+        height: widget.headerHeight + _searchBarHeight,
+        vsync: this,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.header != null) widget.header!,
+            _searchBarField(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Discover / My Tracks, pinned. Navigation, so it stays.
+  Widget _pinnedTabs(ThemeProvider theme) {
+    return SliverPersistentHeader(
+      pinned: true,
+      delegate: PinnedSliverBar(height: _tabBarHeight, child: _tabBar(theme)),
+    );
+  }
+
+  /// The search field, without the theme it never used.
+  Widget _searchBarField() {
+    return SizedBox(
+      height: _searchBarHeight,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: TextField(
+          controller: _search,
+          textInputAction: TextInputAction.search,
+          onSubmitted: (value) {
+            setState(() => _query = value);
+            _loadNearby();
+          },
+          decoration: InputDecoration(
+            hintText: 'Search tracks & raceways',
+            prefixIcon: const Icon(Icons.search_rounded, size: 20),
+            suffixIcon: _query.isEmpty
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    onPressed: () {
+                      _search.clear();
+                      setState(() => _query = '');
+                      _loadNearby();
+                    },
+                  ),
+            filled: true,
+            fillColor: const Color(0xFFF4F4F4),
+            contentPadding: const EdgeInsets.symmetric(vertical: 0),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
           ),
         ),
       ),
@@ -341,7 +446,10 @@ class _TracksScreenState extends State<TracksScreen>
   /// listing screens do not drift into two slightly different pills.
   Widget _ranges(ThemeProvider theme) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      // Room above as well as below. The pills used to sit under a search
+      // field that carried its own 12 of bottom padding; now the pinned tab
+      // row is directly above them, and its underline was touching them.
+      padding: const EdgeInsets.only(top: 14, bottom: 8),
       child: ListingChips(
         selected: _range,
         onChanged: (value) {
@@ -357,15 +465,18 @@ class _TracksScreenState extends State<TracksScreen>
     );
   }
 
-  Widget _findTab(ThemeProvider theme) {
+  /// The Discover tab, as slivers.
+  List<Widget> _findSlivers(ThemeProvider theme) {
     if (_loading) {
-      return Center(
-        child: CircularProgressIndicator(color: theme.primaryColor),
-      );
+      return [
+        _fillRest(
+          Center(child: CircularProgressIndicator(color: theme.primaryColor)),
+        ),
+      ];
     }
 
     if (_error != null && _nearby.isEmpty) {
-      return _Message(text: _error!, onRetry: _loadNearby);
+      return [_fillRest(_Message(text: _error!, onRetry: _loadNearby))];
     }
 
     if (_nearby.isEmpty) {
@@ -379,109 +490,136 @@ class _TracksScreenState extends State<TracksScreen>
           .label
           .toLowerCase();
 
-      return _Message(
-        text: _query.isNotEmpty
-            ? 'No tracks matching "$_query" $where.'
-            : 'No tracks or raceways $where yet.\nTry widening the range.',
-      );
+      return [
+        // The pills stay: the way out of an empty list is to widen the
+        // range, and that is the control that does it.
+        SliverToBoxAdapter(child: _ranges(theme)),
+        _fillRest(
+          _Message(
+            text: _query.isNotEmpty
+                ? 'No tracks matching "$_query" $where.'
+                : 'No tracks or raceways $where yet.\nTry widening the range.',
+          ),
+        ),
+      ];
     }
 
-    return RefreshIndicator(
-      color: theme.primaryColor,
-      onRefresh: _loadNearby,
-      // Two to a row, as Places lists its venues. A circuit is recognised
-      // from its photograph long before its address is read, and at two
-      // columns twice as many are on screen.
-      child: CustomScrollView(
-        controller: _scroll,
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            sliver: SliverLayoutBuilder(
-              builder: (context, constraints) {
-                const gap = 12.0;
-                final cardWidth = (constraints.crossAxisExtent - gap) / 2;
+    return [
+      // The distance pills, in the list rather than above it. They used
+      // to sit between the search field and the tabs and be shown only
+      // on this tab, so the row above the tabs changed height every time
+      // you switched — the one thing a pinned tab row must not do.
+      SliverToBoxAdapter(child: _ranges(theme)),
 
-                return SliverGrid(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: gap,
-                    mainAxisSpacing: gap,
-                    childAspectRatio:
-                        cardWidth / (cardWidth / 1.35 + _cardChrome),
-                  ),
-                  delegate: SliverChildBuilderDelegate((context, i) {
-                    final track = _nearby[i];
+      // Rows, the same as Places lists its venues — the two sections are
+      // the same kind of list and should not be two different shapes.
+      //
+      // The address rather than the track's disciplines, for the same
+      // reason: whatever reads better in the abstract, a row that says one
+      // thing on one screen and another on the next is harder to read than
+      // either. The disciplines are on the track's own page.
+      SliverPadding(
+        padding: const EdgeInsets.only(top: 8),
+        sliver: SliverList(
+          delegate: SliverChildBuilderDelegate((context, i) {
+            final track = _nearby[i];
 
-                    return ListingCard(
-                      imageUrl: track.image ?? '',
-                      title: track.title,
-                      // The track type reads better than the address here —
-                      // "Race Circuit" is what someone is scanning for, and
-                      // the address is on the track's own page.
-                      subtitle: track.types.isNotEmpty
-                          ? track.types.join(' · ')
-                          : track.location,
-                      onTap: () => _open(track),
-                    );
-                  }, childCount: _nearby.length),
-                );
-              },
-            ),
-          ),
-          if (_loadingMore)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                child: Center(
-                  child: CircularProgressIndicator(
-                    color: theme.primaryColor,
-                    strokeWidth: 2.5,
-                  ),
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (i > 0) const ListingRowDivider(),
+                ListingRow(
+                  imageUrl: track.image ?? '',
+                  title: track.title,
+                  subtitle: track.location,
+                  onTap: () => _open(track),
                 ),
+              ],
+            );
+          }, childCount: _nearby.length),
+        ),
+      ),
+      if (_loadingMore)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: CircularProgressIndicator(
+                color: theme.primaryColor,
+                strokeWidth: 2.5,
               ),
             ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        ],
-      ),
-    );
+          ),
+        ),
+      const SliverToBoxAdapter(child: SizedBox(height: 24)),
+    ];
   }
 
-  Widget _mineTab(ThemeProvider theme) {
+  /// Fills what is left of the viewport with [child], for the states that
+  /// are not a list.
+  Widget _fillRest(Widget child) =>
+      SliverFillRemaining(hasScrollBody: false, child: child);
+
+  /// Refreshes whichever tab is showing.
+  Future<void> _refreshActiveTab() =>
+      _tabs.index == 0 ? _loadNearby() : _loadMine();
+
+  /// The My Tracks tab, as slivers.
+  List<Widget> _mineSlivers(ThemeProvider theme) {
     if (_loadingMine) {
-      return Center(
-        child: CircularProgressIndicator(color: theme.primaryColor),
-      );
+      return [
+        _fillRest(
+          Center(child: CircularProgressIndicator(color: theme.primaryColor)),
+        ),
+      ];
     }
 
     if (_owned.isEmpty && _followed.isEmpty) {
-      return const _Message(text: "You don't own or follow any tracks yet.");
+      return [
+        _fillRest(
+          const _Message(text: "You don't own or follow any tracks yet."),
+        ),
+      ];
     }
 
-    return RefreshIndicator(
-      color: theme.primaryColor,
-      onRefresh: _loadMine,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        children: [
-          if (_owned.isNotEmpty) ...[
-            const _GroupTitle('Tracks you manage'),
-            for (final t in _owned) _TrackCard(track: t, onTap: () => _open(t)),
-          ],
-          if (_followed.isNotEmpty) ...[
-            const _GroupTitle('Following'),
-            for (final t in _followed)
-              _TrackCard(track: t, onTap: () => _open(t)),
-          ],
-        ],
+    return [
+      // The same rows the Discover tab uses, and the same rows Places
+      // uses. The group titles stay: owning a track and following one are
+      // different things, and the list is short enough to say so.
+      SliverPadding(
+        padding: const EdgeInsets.only(top: 8, bottom: 24),
+        sliver: SliverList(
+          delegate: SliverChildListDelegate([
+            if (_owned.isNotEmpty) ...[
+              const _GroupTitle('Tracks you manage'),
+              for (var i = 0; i < _owned.length; i++) ...[
+                if (i > 0) const ListingRowDivider(),
+                ListingRow(
+                  imageUrl: _owned[i].image ?? '',
+                  title: _owned[i].title,
+                  subtitle: _owned[i].location,
+                  onTap: () => _open(_owned[i]),
+                ),
+              ],
+            ],
+            if (_followed.isNotEmpty) ...[
+              const _GroupTitle('Following'),
+              for (var i = 0; i < _followed.length; i++) ...[
+                if (i > 0) const ListingRowDivider(),
+                ListingRow(
+                  imageUrl: _followed[i].image ?? '',
+                  title: _followed[i].title,
+                  subtitle: _followed[i].location,
+                  onTap: () => _open(_followed[i]),
+                ),
+              ],
+            ],
+          ]),
+        ),
       ),
-    );
+    ];
   }
 }
-
-/// Everything in a [ListingCard] below the picture, in logical pixels.
-/// The same stack Places measures — see _listingCardChrome there.
-const double _cardChrome = 156;
 
 class _GroupTitle extends StatelessWidget {
   final String text;
@@ -528,133 +666,6 @@ class _Message extends StatelessWidget {
               FilledButton(onPressed: onRetry, child: const Text('Try again')),
             ],
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TrackCard extends StatelessWidget {
-  final TrackSummary track;
-  final VoidCallback onTap;
-
-  const _TrackCard({required this.track, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final distance = track.distance;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFFF7F7F7),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Row(
-            children: [
-              SizedBox(
-                width: 104,
-                height: 92,
-                child: track.image == null
-                    ? const ColoredBox(
-                        color: Color(0xFFE6E6E6),
-                        child: Icon(
-                          Icons.sports_score_rounded,
-                          color: Color(0xFF9A9A9E),
-                        ),
-                      )
-                    : CachedNetworkImage(
-                        imageUrl: track.image!,
-                        fit: BoxFit.cover,
-                        // Capped at the size it is drawn, so a 2000px cover
-                        // photo does not decode to 16MB for a 104px tile.
-                        memCacheWidth:
-                            (104 * MediaQuery.devicePixelRatioOf(context))
-                                .round(),
-                        errorWidget: (_, _, _) =>
-                            const ColoredBox(color: Color(0xFFE6E6E6)),
-                      ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        track.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1C1C1E),
-                        ),
-                      ),
-                      if (track.types.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        // One, not all of them: a card is not the place for
-                        // a track's full list of disciplines, and the first
-                        // is the one the admin screen lists first.
-                        Text(
-                          track.types.length == 1
-                              ? track.types.first
-                              : '${track.types.first} +${track.types.length - 1}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFFB08E4F),
-                          ),
-                        ),
-                      ],
-                      if (track.location != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          track.location!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            color: Color(0xFF8A8A8E),
-                          ),
-                        ),
-                      ],
-                      if (distance != null) ...[
-                        const SizedBox(height: 5),
-                        Text(
-                          '${distance.toStringAsFixed(distance < 10 ? 1 : 0)} miles away',
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFFB08E4F),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.only(right: 10),
-                child: Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
-                  color: Color(0xFFC4C4C6),
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
