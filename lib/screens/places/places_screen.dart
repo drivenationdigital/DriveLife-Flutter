@@ -772,7 +772,7 @@ class _VenuesScreenState extends State<VenuesScreen>
               children: [
                 if (index > 0) const ListingRowDivider(),
                 ListingRow(
-                  imageUrl: venue.coverImage,
+                  imageUrl: _venueThumb(venue),
                   title: venue.title,
                   subtitle: venue.venueLocation,
                   onTap: () => _onVenueTap(venue),
@@ -1131,6 +1131,15 @@ class _VenuesScreenState extends State<VenuesScreen>
   /// A grid rather than the full-width rows this used to be. A place is
   /// chosen off its photograph more than off its address, and at two columns
   /// twice as many photographs are on screen at once.
+  /// What a venue's row shows: its logo, falling back to its cover.
+  ///
+  /// A row thumbnail is 56px square, and a cover cropped to that is a patch
+  /// of sky or a wheel arch — it says nothing about which venue it is. A
+  /// badge is drawn to be read small. The cover only stands in for the
+  /// venues that have no badge.
+  static String _venueThumb(Venue venue) =>
+      venue.logo.isNotEmpty ? venue.logo : venue.coverImage;
+
   /// The results, as rows.
   ///
   /// Rows rather than a grid of cards. The grid showed the photographs
@@ -1150,7 +1159,7 @@ class _VenuesScreenState extends State<VenuesScreen>
         for (var i = 0; i < _filteredVenues.length; i++) ...[
           if (i > 0) const ListingRowDivider(),
           ListingRow(
-            imageUrl: _filteredVenues[i].coverImage,
+            imageUrl: _venueThumb(_filteredVenues[i]),
             title: _filteredVenues[i].title,
             subtitle: _filteredVenues[i].venueLocation,
             onTap: () => _onVenueTap(_filteredVenues[i]),
@@ -1266,7 +1275,6 @@ class _VenuesScreenState extends State<VenuesScreen>
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: Row(
                 children: [
-                  const SizedBox(width: 8),
                   Text(
                     'My $_them',
                     style: TextStyle(
@@ -1283,7 +1291,7 @@ class _VenuesScreenState extends State<VenuesScreen>
             // two screens.
             ..._ownedVenues.map(
               (venue) => ListingRow(
-                imageUrl: venue.coverImage,
+                imageUrl: _venueThumb(venue),
                 title: venue.title,
                 subtitle: venue.venueLocation,
                 onTap: () => _onVenueTap(venue),
@@ -1307,7 +1315,6 @@ class _VenuesScreenState extends State<VenuesScreen>
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      const SizedBox(width: 8),
                       Text(
                         'Followed $_them',
                         style: TextStyle(
@@ -1323,7 +1330,7 @@ class _VenuesScreenState extends State<VenuesScreen>
             ),
             ..._followedVenues.map(
               (venue) => ListingRow(
-                imageUrl: venue.coverImage,
+                imageUrl: _venueThumb(venue),
                 title: venue.title,
                 subtitle: venue.venueLocation,
                 onTap: () => _onVenueTap(venue),

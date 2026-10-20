@@ -8,6 +8,7 @@ import 'package:drivelife/screens/clubs/request_modal.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/announcement-card.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/event-card.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/member-listing.dart';
+import 'package:drivelife/widgets/media/entity_galleries_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:provider/provider.dart';
@@ -63,7 +64,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   bool _clubPostsLoaded = false;
   int _clubPostsPage = 0;
   bool _hasMoreClubPosts = true;
-  final ScrollController _updatesScrollController = ScrollController();
   static const int _clubPostsPageSize = 10;
 
   // Upload completion tracking — refresh club posts when an upload finishes
@@ -76,7 +76,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_onTabChanged);
-    _updatesScrollController.addListener(_onUpdatesScroll);
 
     _loadClubData();
   }
@@ -85,20 +84,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   void dispose() {
     _uploadProvider?.removeListener(_onUploadsChanged);
     _tabController.dispose();
-    _updatesScrollController.removeListener(_onUpdatesScroll);
-    _updatesScrollController.dispose();
     super.dispose();
-  }
-
-  void _onUpdatesScroll() {
-    if (!_updatesScrollController.hasClients) return;
-
-    final pos = _updatesScrollController.position;
-    if (pos.pixels >= pos.maxScrollExtent - 400 &&
-        !_loadingClubPosts &&
-        _hasMoreClubPosts) {
-      _loadMoreClubPosts();
-    }
   }
 
   Future<void> _loadClubPosts() async {
@@ -690,7 +676,11 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     return AnimatedBuilder(
       animation: _tabController,
       builder: (context, _) {
-        final isUpdates = _tabController.index == 0;
+        // The first tab carries the whole header — cover, badge, name,
+        // actions — and the rest get the compact one. It follows the
+        // position rather than the tab, so moving Community to the front
+        // moved the header with it.
+        final isFirstTab = _tabController.index == 0;
         return Scaffold(
           backgroundColor: Colors.white,
           // appBar: isUpdates ? null : _buildAppBar(),
@@ -698,24 +688,27 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             children: [
               Column(
                 children: [
-                  if (!isUpdates) _buildCompactHeader(theme),
+                  if (!isFirstTab) _buildCompactHeader(theme),
                   Expanded(
                     child: TabBarView(
                       controller: _tabController,
                       physics: const NeverScrollableScrollPhysics(),
                       children: [
-                        _buildUpdatesScroll(theme),
-                        _buildEventsPanel(theme),
-                        // _buildMembersPanel(theme),
+                        // Community leads, and carries the club's header.
+                        // Updates used to lead and held the committee's own
+                        // posts; it is folded into this one.
                         _buildCommunityPanel(theme),
+                        _buildEventsPanel(theme),
+                        _buildMediaPanel(theme),
                         _buildAboutPanel(theme),
                       ],
                     ),
                   ),
                 ],
               ),
-              // Floating back + more buttons — Updates tab only
-              if (isUpdates) _buildTopOverlay(context),
+              // The back and more buttons float over the cover photo, so
+              // they belong to the tab that has one.
+              if (isFirstTab) _buildTopOverlay(context),
               Positioned(
                 left: 0,
                 right: 0,
@@ -726,171 +719,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           ),
         );
       },
-    );
-  }
-
-  Widget _buildUpdatesScroll(ThemeProvider theme) {
-    if (_loadingClubPosts && _clubPosts.isEmpty && !_clubPostsLoaded) {
-      return CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(child: _buildHeaderArea(theme)),
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 48),
-              child: Center(
-                child: CircularProgressIndicator(color: theme.primaryColor),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    final announcements = (_clubData?['announcements'] is List)
-        ? (_clubData!['announcements'] as List)
-        : const [];
-
-    final hasPosts = _clubPosts.isNotEmpty;
-    final hasAnnouncements = announcements.isNotEmpty;
-
-    return CustomScrollView(
-      controller: _updatesScrollController,
-      slivers: [
-        // Cover + logo + name + meta + actions — always shown
-        SliverToBoxAdapter(child: _buildHeaderArea(theme)),
-
-        // Owner pending-requests banner
-        if ((_isOwner || _isAdmin) && _pendingRequestsCount > 0)
-          SliverToBoxAdapter(child: _buildPendingRequestsBanner(theme)),
-
-        // Non-members of a private club: locked view fills the rest
-        if (_isLockedForPrivacy)
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: _buildPrivateLockedView(),
-          )
-        else ...[
-          // Empty state
-          if (!hasPosts && !hasAnnouncements)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 48),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.article_outlined,
-                      size: 56,
-                      color: Colors.grey.shade300,
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Nothing here yet',
-                      style: TextStyle(
-                        color: Colors.grey.shade500,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Check back soon',
-                      style: TextStyle(
-                        color: Colors.grey.shade400,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          // Posts
-          if (hasPosts)
-            SliverList(
-              delegate: SliverChildBuilderDelegate((context, i) {
-                final post = _clubPosts[i] as Map<String, dynamic>;
-                return PostCard(
-                  key: ValueKey(post['id']),
-                  post: post,
-                  onTapProfile: () {},
-                  onLikeChanged: (isLiked) {
-                    setState(() {
-                      post['is_liked'] = isLiked;
-                      post['likes_count'] =
-                          (post['likes_count'] as int) + (isLiked ? 1 : -1);
-                    });
-                  },
-                  onDelete: _refreshClub,
-                );
-              }, childCount: _clubPosts.length),
-            ),
-
-          // Divider between posts and announcements
-          if (hasPosts && hasAnnouncements)
-            SliverToBoxAdapter(
-              child: Container(height: 8, color: const Color(0xFFF5F5F5)),
-            ),
-
-          // Announcements section header
-          if (hasAnnouncements && hasPosts)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-                child: Text(
-                  'Announcements',
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ),
-            ),
-
-          // Announcements
-          if (hasAnnouncements)
-            SliverList(
-              delegate: SliverChildBuilderDelegate((context, i) {
-                return AnnouncementCard(
-                  authorName: _clubData?['title'] ?? 'Group',
-                  posted: (announcements[i]['date'] ?? '').toString(),
-                  content: (announcements[i]['content'] ?? '').toString(),
-                  logoUrl: _clubData?['logo'] as String?,
-                );
-              }, childCount: announcements.length),
-            ),
-
-          // Loading / end indicator
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: _loadingClubPosts && _clubPosts.isNotEmpty
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: _gold,
-                        ),
-                      )
-                    : (!_hasMoreClubPosts && _clubPosts.isNotEmpty)
-                    ? const Text(
-                        'You\'re all caught up',
-                        style: TextStyle(color: _muted, fontSize: 13),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ),
-          ),
-
-          // Bottom padding for the floating pill nav
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        ],
-      ],
     );
   }
 
@@ -1388,10 +1216,9 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             ),
             child: Row(
               children: [
-                _segButton(label: 'Updates', index: 0),
+                _segButton(label: 'Community', index: 0),
                 _segButton(label: 'Events', index: 1),
-                // _segButton(label: 'Members', index: 2),
-                _segButton(label: 'Community', index: 2),
+                _segButton(label: 'Media', index: 2),
                 _segButton(label: 'About', index: 3),
               ],
             ),
@@ -1439,6 +1266,13 @@ class _ClubViewScreenState extends State<ClubViewScreen>
 
   Widget _buildCommunityPanel(ThemeProvider theme) {
     return _ClubCommunityFeed(
+      header: _buildHeaderArea(theme),
+      announcements: (_clubData?['announcements'] is List)
+          ? _clubData!['announcements'] as List
+          : const [],
+      clubTitle: (_clubData?['title'] ?? 'Group').toString(),
+      clubLogo: _clubData?['logo'] as String?,
+      pendingBanner: _buildPendingRequestsBanner(theme),
       clubId: _clubData?['id']?.toString() ?? '',
       onCompose: _handleCreateClubPost,
       isMember: _isMember,
@@ -1446,6 +1280,19 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       handleJoinLeave: _handleJoinLeave,
       hasPendingRequest: _hasPendingRequest,
       isPublicClub: !_isLockedForPrivacy,
+    );
+  }
+
+  /// Photos tagged at this club.
+  ///
+  /// Galleries hang off a generic (entity_type, entity_id) pair, so a club
+  /// is the same shape to them as a venue or a track — see
+  /// dl_gallery_entity_types() in php-api/helpers.php.
+  Widget _buildMediaPanel(ThemeProvider theme) {
+    return EntityGalleriesTab(
+      entityId: _clubData?['id']?.toString() ?? '',
+      entityType: 'club',
+      primaryColor: theme.primaryColor,
     );
   }
 
@@ -2537,6 +2384,29 @@ class _ClubViewScreenState extends State<ClubViewScreen>
 }
 
 class _ClubCommunityFeed extends StatefulWidget {
+  /// Pinned announcements, above the posts.
+  ///
+  /// These are not posts — they come off the club record itself, not from
+  /// fetchClubPosts — so folding Updates into this feed would have dropped
+  /// them entirely. They sit at the top because that is what pinning is.
+  final List<dynamic> announcements;
+
+  /// The club's own name and badge, for the announcement cards.
+  final String clubTitle;
+  final String? clubLogo;
+
+  /// Shown to an owner when somebody is waiting to be let in. It lived on
+  /// the Updates tab, which no longer exists.
+  final Widget? pendingBanner;
+
+  /// The cover, badge, name and action row, drawn as this feed's first
+  /// sliver rather than above it.
+  ///
+  /// Community is the tab a club opens on, so it is the one that has to
+  /// show whose club it is. As a sliver the scroll carries it away; in a
+  /// Column above the feed it would hold the top of the screen for ever.
+  final Widget? header;
+
   final String clubId;
   final VoidCallback onCompose;
   final bool isMember;
@@ -2546,6 +2416,11 @@ class _ClubCommunityFeed extends StatefulWidget {
   final bool isPublicClub;
 
   const _ClubCommunityFeed({
+    this.header,
+    this.announcements = const [],
+    this.clubTitle = 'Group',
+    this.clubLogo,
+    this.pendingBanner,
     required this.clubId,
     required this.onCompose,
     required this.isMember,
@@ -2656,7 +2531,11 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
         clubId: widget.clubId,
         page: _page + 1,
         perPage: _pageSize,
-        kind: 'community',
+        // Both kinds. Updates was the committee's own posts and this was
+        // everyone else's, which split one conversation across two tabs and
+        // put an announcement where the members were not looking. The
+        // server already answered both at once: '' is no author filter.
+        kind: null,
       );
 
       if (!mounted) return;
@@ -2770,7 +2649,15 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
 
     // ── Non-member view: only show the locked screen ─────────────────
     if (!widget.isMember && !widget.isOwner && !widget.isPublicClub) {
-      return _buildPrivateLockedView();
+      // Still with the header above it: a club you cannot read is still a
+      // club you want to see the name and the badge of, and the Join
+      // button lives up there.
+      return ListView(
+        children: [
+          if (widget.header != null) widget.header!,
+          _buildPrivateLockedView(),
+        ],
+      );
     }
 
     return RefreshIndicator(
@@ -2779,6 +2666,44 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
       child: CustomScrollView(
         controller: _scroll,
         slivers: [
+          if (widget.header != null) SliverToBoxAdapter(child: widget.header!),
+
+          if (widget.pendingBanner != null)
+            SliverToBoxAdapter(child: widget.pendingBanner!),
+
+          // Pinned announcements, above everything anybody posted.
+          if (widget.announcements.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Text(
+                  'Announcements',
+                  style: TextStyle(
+                    color: _ink,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+            ),
+            SliverList(
+              delegate: SliverChildBuilderDelegate((context, i) {
+                final announcement = widget.announcements[i];
+
+                return AnnouncementCard(
+                  authorName: widget.clubTitle,
+                  posted: (announcement['date'] ?? '').toString(),
+                  content: (announcement['content'] ?? '').toString(),
+                  logoUrl: widget.clubLogo,
+                );
+              }, childCount: widget.announcements.length),
+            ),
+            SliverToBoxAdapter(
+              child: Container(height: 8, color: const Color(0xFFF5F5F5)),
+            ),
+          ],
+
           // Compose prompt — only for members/owners
           if (widget.isMember || widget.isOwner)
             SliverToBoxAdapter(

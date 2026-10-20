@@ -170,14 +170,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     super.dispose();
   }
 
-  /// True when this post is being created on behalf of an entity
-  /// (club or venue). Entity posts have looser requirements:
-  /// media is optional, and per-media tagging (people/vehicles/events)
-  /// is hidden.
+  /// Entity types a post can be composed against.
+  ///
+  /// A track is a place in the same way a venue is — its own page, its own
+  /// owners, its own feed — so it posts the same way. See
+  /// _dl_place_posts() in php-api/endpoints/posts.php, which reads both
+  /// through one query.
+  static const Set<String> _entityTypes = {'club', 'venue', 'track'};
+
+  /// True when this post is being created on behalf of an entity.
+  /// Entity posts have looser requirements: media is optional, and
+  /// per-media tagging (people/vehicles/events) is hidden.
   bool get _isEntityPost =>
       _associatedEntity != null &&
-      (_associatedEntity!['type'] == 'club' ||
-          _associatedEntity!['type'] == 'venue');
+      _entityTypes.contains(_associatedEntity!['type']);
 
   /// Banner naming the destination of the post. Entity posts show the
   /// club/venue logo and name; personal posts show the user's own avatar and

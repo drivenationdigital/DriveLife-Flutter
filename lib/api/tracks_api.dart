@@ -177,4 +177,62 @@ class TracksApiService {
       return null;
     }
   }
+
+  /// Posts tagged at a track.
+  ///
+  /// The same shape as a venue's: `kind` is 'updates' for the owners' own
+  /// posts, 'community' for everyone else's, and null — which is what the
+  /// track page asks for — for both in one feed.
+  ///
+  /// Needs the track_id column on ce_social_posts and the get-track-posts
+  /// route. See php-api/sql/track-tagging.sql.
+  static Future<List<dynamic>?> fetchTrackPosts({
+    required String trackId,
+    int page = 1,
+    int perPage = 10,
+    String? kind,
+  }) async {
+    try {
+      final user = await AuthService().getUser();
+      final token = await AuthService().getToken();
+      if (user == null || token == null) return null;
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/get-track-posts'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'track_id': trackId,
+          'user_id': user['id'],
+          'page': page,
+          'limit': perPage,
+          if (kind != null) 'kind': kind.toLowerCase(),
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint('[TracksAPI] fetchTrackPosts: ${response.statusCode}');
+        return null;
+      }
+
+      final data = jsonDecode(response.body);
+
+      if (data is Map<String, dynamic>) {
+        if (data['success'] == true && data['data'] is List) {
+          return data['data'] as List;
+        }
+        return null;
+      }
+
+      // Some routes answer with a bare list.
+      if (data is List) return data;
+
+      return null;
+    } catch (e) {
+      debugPrint('[TracksAPI] fetchTrackPosts failed: $e');
+      return null;
+    }
+  }
 }

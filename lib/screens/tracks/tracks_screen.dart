@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/tracks_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
@@ -74,7 +73,14 @@ class TrackSummary {
       id: '${json['ID'] ?? json['id'] ?? ''}',
       title: _text(json['title']) ?? 'Untitled track',
       location: _text(json['track_location']),
-      image: _url(json['cover_image']) ?? _url(json['logo']),
+      // The logo first, the cover second.
+      //
+      // A listing thumbnail is 56px square, and a cover photo cropped to
+      // that is a patch of sky or a wheel arch — it says nothing about
+      // which track it is. A badge is designed to be read small and is the
+      // thing people recognise. The cover is the fallback for the tracks
+      // that have no badge yet.
+      image: _url(json['logo']) ?? _url(json['cover_image']),
       distance: _number(json['distance']),
       site: _text(json['site']),
       types: _types(json['types']),
@@ -629,7 +635,12 @@ class _GroupTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+      // 16 to the left, which is where the thumbnails below it start.
+      //
+      // It was 4, back when the list around it carried its own 16 of
+      // horizontal padding. The rows now bring their own, so the group
+      // title was the only thing left sitting against the screen edge.
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Text(
         text,
         style: const TextStyle(

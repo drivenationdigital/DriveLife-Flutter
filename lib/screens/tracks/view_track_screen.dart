@@ -1,5 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/tracks_api.dart';
+import 'package:drivelife/components/post_card.dart';
+import 'package:drivelife/widgets/media/entity_galleries_tab.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
@@ -31,17 +33,30 @@ class TrackDetailScreen extends StatefulWidget {
   State<TrackDetailScreen> createState() => _TrackDetailScreenState();
 }
 
-class _TrackDetailScreenState extends State<TrackDetailScreen> {
+class _TrackDetailScreenState extends State<TrackDetailScreen>
+    with SingleTickerProviderStateMixin {
   Map<String, dynamic>? _track;
   bool _loading = true;
   String? _error;
   bool _following = false;
   bool _followBusy = false;
 
+  /// About, Events, Community, Media — the same four a venue has, in the
+  /// same order, because they are the same kind of page.
+  late final TabController _tabs = TabController(length: 4, vsync: this);
+
   @override
   void initState() {
     super.initState();
+    _tabs.addListener(_onTabChanged);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _tabs.removeListener(_onTabChanged);
+    _tabs.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -165,50 +180,244 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
     }
 
     final track = _track!;
-    final events = (track['events'] as List?) ?? const [];
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: RefreshIndicator(
-        color: theme.primaryColor,
-        onRefresh: _load,
-        child: CustomScrollView(
-          slivers: [
-            _header(track),
-            SliverToBoxAdapter(child: _identity(track)),
-            SliverToBoxAdapter(child: _links(track)),
-            if (_text(track['description']) != null)
-              SliverToBoxAdapter(child: _description(track)),
-            SliverToBoxAdapter(
-              child: _SectionTitle(
-                events.isEmpty
-                    ? 'Upcoming events'
-                    : 'Upcoming events (${events.length})',
+      body: Stack(
+        children: [
+          TabBarView(
+            controller: _tabs,
+            // The panels are separate scroll views, so a sideways swipe
+            // between them would carry the cover photo with it. The bar
+            // below is how you change tab.
+            physics: const NeverScrollableScrollPhysics(),
+            children: [
+              _aboutPanel(theme, track),
+              _eventsPanel(theme, track),
+              _TrackCommunityFeed(
+                trackId: widget.trackId,
+                title: _text(track['title']) ?? 'Track',
+                onCompose: _composeTrackPost,
+                refreshToken: _communityRefresh,
+                bottomInset: _panelBottomInset(context),
+                onBack: () => Navigator.of(context).maybePop(),
               ),
-            ),
-            if (events.isEmpty)
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(20, 4, 20, 28),
-                  child: Text(
-                    'Nothing listed here yet.',
-                    style: TextStyle(fontSize: 13.5, color: Color(0xFF8A8A8E)),
+              // Galleries hang off a generic (entity_type, entity_id)
+              // pair, so a track is the same shape as a venue to them —
+              // see dl_gallery_entity_types() in php-api/helpers.php.
+              Column(
+                children: [
+                  _compactBarBox(),
+                  Expanded(
+                    child: EntityGalleriesTab(
+                      entityId: widget.trackId,
+                      entityType: 'track',
+                      primaryColor: theme.primaryColor,
+                    ),
                   ),
-                ),
-              )
-            else
-              SliverList.builder(
-                itemCount: events.length,
-                itemBuilder: (context, i) => _EventRow(
-                  event: Map<String, dynamic>.from(events[i] as Map),
+                ],
+              ),
+            ],
+          ),
+
+          Positioned(left: 0, right: 0, bottom: 0, child: _bottomTabBar(theme)),
+        ],
+      ),
+    );
+  }
+
+  /// Everything about the track itself: the cover, the badge, the name, the
+  /// contacts and whatever it says about itself.
+  Widget _aboutPanel(ThemeProvider theme, Map<String, dynamic> track) {
+    return RefreshIndicator(
+      color: theme.primaryColor,
+      onRefresh: _load,
+      child: CustomScrollView(
+        slivers: [
+          _header(track),
+          SliverToBoxAdapter(child: _identity(track)),
+          SliverToBoxAdapter(child: _links(track)),
+          if (_text(track['description']) != null)
+            SliverToBoxAdapter(child: _description(track)),
+          SliverToBoxAdapter(
+            child: SizedBox(height: _panelBottomInset(context)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// What is on at the track.
+  Widget _eventsPanel(ThemeProvider theme, Map<String, dynamic> track) {
+    final events = (track['events'] as List?) ?? const [];
+
+    return RefreshIndicator(
+      color: theme.primaryColor,
+      onRefresh: _load,
+      child: CustomScrollView(
+        slivers: [
+          _compactBar(track),
+          SliverToBoxAdapter(
+            child: _SectionTitle(
+              events.isEmpty
+                  ? 'Upcoming events'
+                  : 'Upcoming events (${events.length})',
+            ),
+          ),
+          if (events.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20, 4, 20, 28),
+                child: Text(
+                  'Nothing listed here yet.',
+                  style: TextStyle(fontSize: 13.5, color: Color(0xFF8A8A8E)),
                 ),
               ),
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: MediaQuery.paddingOf(context).bottom + 24,
+            )
+          else
+            SliverList.builder(
+              itemCount: events.length,
+              itemBuilder: (context, i) =>
+                  _EventRow(event: Map<String, dynamic>.from(events[i] as Map)),
+            ),
+          SliverToBoxAdapter(
+            child: SizedBox(height: _panelBottomInset(context)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Room under a panel for the floating tab bar, so the last row is not
+  /// sitting behind it.
+  double _panelBottomInset(BuildContext context) =>
+      MediaQuery.paddingOf(context).bottom + 84;
+
+  /// The slim bar the tabs other than About get, in place of the cover.
+  ///
+  /// The cover and the badge belong to the track, not to one tab, and
+  /// repeating them above every panel would mean scrolling past the same
+  /// 270 pixels to reach each one.
+  Widget _compactBar(Map<String, dynamic> track) {
+    return SliverAppBar(
+      pinned: true,
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(CupertinoIcons.back, color: Color(0xFF1C1C1E)),
+        onPressed: () => Navigator.of(context).maybePop(),
+      ),
+      title: Text(
+        _text(track['title']) ?? 'Track',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF1C1C1E),
+        ),
+      ),
+    );
+  }
+
+  /// The same bar for the panels that are not scroll views.
+  Widget _compactBarBox() {
+    final track = _track ?? const <String, dynamic>{};
+
+    return SafeArea(
+      bottom: false,
+      child: SizedBox(
+        height: kToolbarHeight,
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(CupertinoIcons.back, color: Color(0xFF1C1C1E)),
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+            Expanded(
+              child: Text(
+                _text(track['title']) ?? 'Track',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1C1C1E),
+                ),
               ),
             ),
+            const SizedBox(width: 48),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// The floating pill bar. The same one a venue carries.
+  Widget _bottomTabBar(ThemeProvider theme) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Container(
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(4),
+          child: Row(
+            children: [
+              _tabPill(label: 'About', index: 0),
+              _tabPill(label: 'Events', index: 1),
+              _tabPill(label: 'Community', index: 2),
+              _tabPill(label: 'Media', index: 3),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tabPill({required String label, required int index}) {
+    final isActive = _tabs.index == index;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _tabs.animateTo(index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          decoration: BoxDecoration(
+            color: isActive ? const Color(0xFFC4A062) : Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFFC4A062).withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isActive ? Colors.white : const Color(0xFF8A8A8E),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
       ),
     );
@@ -345,6 +554,37 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
         ),
       ],
     );
+  }
+
+  /// Redraws the bar and swaps the panel. The segmented nav below is not
+  /// a TabBar, so nothing repaints it unless this does.
+  void _onTabChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Bumped when the track's feed should reload — a post just composed.
+  /// The feed is a child with its own paging, so it watches this number
+  /// rather than this screen reaching into its state.
+  int _communityRefresh = 0;
+
+  /// Opens the composer with this track as the post's home.
+  Future<void> _composeTrackPost() async {
+    final track = _track;
+    if (track == null) return;
+
+    final result = await Navigator.pushNamed(
+      context,
+      '/create-post',
+      arguments: {
+        'association_id': widget.trackId,
+        'association_type': 'track',
+        'association_label': _text(track['title']) ?? '',
+      },
+    );
+
+    if (result == true && mounted) {
+      setState(() => _communityRefresh++);
+    }
   }
 
   Widget _header(Map<String, dynamic> track) {
@@ -780,6 +1020,284 @@ class _EventRow extends StatelessWidget {
               color: Color(0xFFC4C4C6),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The posts tagged at a track.
+///
+/// The venue's community feed in all but name — its own paging, its own
+/// compose prompt at the top, and a reload when the screen above says so.
+/// Kept here rather than shared with the venue's because that one is a
+/// private class inside its own screen; the day a third place needs one,
+/// these two should become one widget.
+class _TrackCommunityFeed extends StatefulWidget {
+  final String trackId;
+  final String title;
+  final VoidCallback onCompose;
+
+  /// Changes when the screen above wants this reloaded.
+  final int refreshToken;
+
+  /// Room under the last post for the floating tab bar.
+  final double bottomInset;
+
+  final VoidCallback onBack;
+
+  const _TrackCommunityFeed({
+    required this.trackId,
+    required this.title,
+    required this.onCompose,
+    required this.refreshToken,
+    required this.bottomInset,
+    required this.onBack,
+  });
+
+  @override
+  State<_TrackCommunityFeed> createState() => _TrackCommunityFeedState();
+}
+
+class _TrackCommunityFeedState extends State<_TrackCommunityFeed>
+    with AutomaticKeepAliveClientMixin {
+  final ScrollController _scroll = ScrollController();
+  final List<Map<String, dynamic>> _posts = [];
+  bool _loading = false;
+  bool _loaded = false;
+  bool _hasMore = true;
+  int _page = 0;
+
+  static const int _pageSize = 10;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+    _loadMore();
+  }
+
+  @override
+  void didUpdateWidget(_TrackCommunityFeed old) {
+    super.didUpdateWidget(old);
+
+    // A post was just composed. Start again from page one rather than
+    // appending — a new post belongs at the top, and page one holds it.
+    if (old.refreshToken != widget.refreshToken) {
+      setState(() {
+        _posts.clear();
+        _page = 0;
+        _hasMore = true;
+      });
+      _loadMore();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.removeListener(_onScroll);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 400 &&
+        !_loading &&
+        _hasMore) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || !_hasMore) return;
+    setState(() => _loading = true);
+
+    // Both kinds, as a venue's community tab asks for: the track's own
+    // announcements and everyone else's posts, in one feed.
+    final result = await TracksApiService.fetchTrackPosts(
+      trackId: widget.trackId,
+      page: _page + 1,
+      perPage: _pageSize,
+    );
+
+    if (!mounted) return;
+
+    final fetched = (result ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+
+    setState(() {
+      _posts.addAll(fetched);
+      _hasMore = fetched.length >= _pageSize;
+      _page++;
+      _loading = false;
+      _loaded = true;
+    });
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _posts.clear();
+      _page = 0;
+      _hasMore = true;
+    });
+    await _loadMore();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final theme = Provider.of<ThemeProvider>(context);
+
+    return RefreshIndicator(
+      color: theme.primaryColor,
+      onRefresh: _refresh,
+      child: CustomScrollView(
+        controller: _scroll,
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverAppBar(
+            pinned: true,
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.white,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(CupertinoIcons.back, color: Color(0xFF1C1C1E)),
+              onPressed: widget.onBack,
+            ),
+            title: Text(
+              widget.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1C1C1E),
+              ),
+            ),
+          ),
+
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: _ComposePrompt(onTap: widget.onCompose),
+            ),
+          ),
+
+          if (_loaded && _posts.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(40, 20, 40, 100),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.forum_outlined,
+                      size: 52,
+                      color: Colors.grey.shade300,
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'No posts yet',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1C1C1E),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Be the first to post about this track.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        height: 1.4,
+                        color: Color(0xFF8A8A8E),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            SliverList.builder(
+              itemCount: _posts.length,
+              itemBuilder: (context, i) {
+                final post = _posts[i];
+
+                return PostCard(
+                  key: ValueKey(post['id']),
+                  post: post,
+                  onTapProfile: () => Navigator.pushNamed(
+                    context,
+                    '/view-profile',
+                    arguments: {'userId': post['user_id']},
+                  ),
+                );
+              },
+            ),
+
+          if (_loading)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: theme.primaryColor,
+                    strokeWidth: 2.5,
+                  ),
+                ),
+              ),
+            ),
+
+          SliverToBoxAdapter(child: SizedBox(height: widget.bottomInset)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The way into the composer, at the top of the feed.
+class _ComposePrompt extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _ComposePrompt({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4F4F4),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: const Row(
+            children: [
+              Icon(
+                Icons.add_a_photo_outlined,
+                size: 19,
+                color: Color(0xFF8A8A8E),
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Share something about this track',
+                  style: TextStyle(fontSize: 14.5, color: Color(0xFF8A8A8E)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

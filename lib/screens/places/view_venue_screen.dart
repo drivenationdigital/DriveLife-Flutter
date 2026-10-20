@@ -53,13 +53,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
   String? _errorMessage;
 
   // Posts state with infinite scroll
-  final List<Map<String, dynamic>> _posts = [];
-  bool _postsLoaded = false;
-  bool _loadingPosts = false;
-  bool _hasMorePosts = true;
-  int _postsPage = 0;
   static const int _pageSize = 10;
-  final ScrollController _updatesScrollController = ScrollController();
 
   // Upload completion tracking
   final Set<String> _completedUploads = {};
@@ -69,27 +63,30 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
   @override
   void initState() {
     super.initState();
-    // About, Updates, Events, Community, Gallery — keep in step with the
-    // TabBarView children and the segmented nav below.
+    // About, Events, Community, Media — keep in step with the TabBarView
+    // children and the segmented nav below.
+    //
+    // Updates is gone, folded into Community. It was the venue's own posts
+    // and Community was everyone else's, which meant an owner posting an
+    // announcement put it on a tab their followers were not looking at, and
+    // two tabs each held half a conversation. The server already had the
+    // answer: `kind: null` on fetchVenuePosts is both.
     //
     // About leads because it answers the question that brought anyone here:
     // what this place is, where it is and how to reach it. Updates leads
     // with whatever was posted last, which on a venue that posts rarely is
     // an empty tab under the name of a place you have never heard of.
     _tabController = TabController(
-      length: 5,
+      length: 4,
       vsync: this,
-      initialIndex: widget.initialTabIndex.clamp(0, 4),
+      initialIndex: widget.initialTabIndex.clamp(0, 3),
     );
-    _updatesScrollController.addListener(_onUpdatesScroll);
     _loadVenue();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
-    _updatesScrollController.removeListener(_onUpdatesScroll);
-    _updatesScrollController.dispose();
     _uploadProvider?.removeListener(_onUploadsChanged);
     super.dispose();
   }
@@ -136,16 +133,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
     }
   }
 
-  void _onUpdatesScroll() {
-    if (!_updatesScrollController.hasClients) return;
-    final pos = _updatesScrollController.position;
-    if (pos.pixels >= pos.maxScrollExtent - 400 &&
-        !_loadingPosts &&
-        _hasMorePosts) {
-      _loadMorePosts();
-    }
-  }
-
   // ── Data loading ───────────────────────────────────────────────────────
 
   Future<void> _loadVenue() async {
@@ -167,7 +154,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
           _isFollowing = venue.isFollowing;
           _isLoading = false;
         });
-        _loadPosts();
       } else {
         setState(() {
           _errorMessage = 'Failed to load venue';
@@ -184,54 +170,19 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
     }
   }
 
-  Future<void> _loadPosts() async {
-    if (_loadingPosts) return;
+  /// Bumped whenever the venue's feed should reload — a post composed, an
+  /// upload finished.
+  ///
+  /// The feed is a child widget with its own paging, so this screen cannot
+  /// reload it directly. Rather than reach into its state with a key, it
+  /// hands it a number: the child reloads when the number it was built with
+  /// changes. One line here, one in the child, and neither has to know how
+  /// the other works.
+  int _communityRefresh = 0;
 
-    setState(() {
-      _loadingPosts = true;
-      _posts.clear();
-      _postsPage = 0;
-      _hasMorePosts = true;
-    });
-
-    await _loadMorePosts();
-  }
-
-  Future<void> _loadMorePosts() async {
-    if (!_hasMorePosts) return;
-    if (_postsPage > 0 && _loadingPosts) return;
-
-    setState(() => _loadingPosts = true);
-
-    try {
-      final result = await VenueApiService.fetchVenuePosts(
-        venueId: widget.venueId,
-        page: _postsPage + 1,
-        perPage: _pageSize,
-        kind: 'updates', // ← admin/owner posts only
-      );
-
-      if (!mounted) return;
-
-      final newPosts = (result as List?)?.cast<Map<String, dynamic>>() ?? [];
-
-      setState(() {
-        _posts.addAll(newPosts);
-        _hasMorePosts = newPosts.length >= _pageSize;
-        _postsPage++;
-        _loadingPosts = false;
-        _postsLoaded = true;
-      });
-    } catch (e) {
-      print('Error loading venue posts: $e');
-      if (!mounted) return;
-      setState(() => _loadingPosts = false);
-    }
-  }
-
-  Future<void> _refreshPosts() async {
-    setState(() => _postsLoaded = false);
-    await _loadPosts();
+  void _refreshPosts() {
+    if (!mounted) return;
+    setState(() => _communityRefresh++);
   }
 
   Future<void> _refreshVenue() async {
@@ -430,18 +381,15 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
                           child: _buildAboutPanel(theme),
                         ),
                         CrashTrace(
-                          label: 'venue/updates',
-                          child: _buildUpdatesScroll(theme),
-                        ),
-                        CrashTrace(
                           label: 'venue/events',
                           child: _buildEventsPanel(theme),
                         ),
                         CrashTrace(
-                          label: 'venue/posts',
+                          label: 'venue/community',
                           child: _VenueCommunityFeed(
                             venueId: widget.venueId,
                             onCompose: _handleCreateVenuePost,
+                            refreshToken: _communityRefresh,
                           ),
                         ),
                         CrashTrace(
@@ -1157,127 +1105,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
     );
   }
 
-  // ── Updates tab (Posts feed) ───────────────────────────────────────────
-
-  Widget _buildUpdatesScroll(ThemeProvider theme) {
-    if (_loadingPosts && _posts.isEmpty && !_postsLoaded) {
-      return CustomScrollView(
-        slivers: [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 48),
-              child: Center(
-                child: CircularProgressIndicator(color: theme.primaryColor),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    final hasPosts = _posts.isNotEmpty;
-
-    return RefreshIndicator(
-      color: _gold,
-      onRefresh: _refreshVenue,
-      child: CustomScrollView(
-        controller: _updatesScrollController,
-        slivers: [
-          if (!hasPosts)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 48),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.article_outlined,
-                      size: 56,
-                      color: Colors.grey.shade300,
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'No posts yet',
-                      style: TextStyle(
-                        color: Colors.grey.shade500,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _venue?.isOwner == true
-                          ? 'Share an update with your followers'
-                          : 'Check back soon',
-                      style: TextStyle(
-                        color: Colors.grey.shade400,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          if (hasPosts)
-            SliverList(
-              delegate: SliverChildBuilderDelegate((context, i) {
-                final post = _posts[i];
-                return PostCard(
-                  key: ValueKey(post['id']),
-                  post: post,
-                  onTapProfile: () {
-                    Navigator.pushNamed(
-                      context,
-                      '/view-profile',
-                      arguments: {
-                        'userId': post['user_id'],
-                        'username': post['username'],
-                      },
-                    );
-                  },
-                  onLikeChanged: (isLiked) {
-                    setState(() {
-                      post['is_liked'] = isLiked;
-                      post['likes_count'] =
-                          (post['likes_count'] as int) + (isLiked ? 1 : -1);
-                    });
-                  },
-                  onDelete: _refreshPosts,
-                );
-              }, childCount: _posts.length),
-            ),
-
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: _loadingPosts && _posts.isNotEmpty
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: _gold,
-                        ),
-                      )
-                    : (!_hasMorePosts && _posts.isNotEmpty)
-                    ? const Text(
-                        "You're all caught up",
-                        style: TextStyle(color: _muted, fontSize: 13),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ),
-          ),
-
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        ],
-      ),
-    );
-  }
-
   // ── Events tab ─────────────────────────────────────────────────────────
 
   Widget _buildEventsPanel(ThemeProvider theme) {
@@ -1444,92 +1271,103 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
       );
     }
 
-    return ListView(
-      // No top padding: the header runs to the top of the screen, under the
-      // status bar, and takes care of its own inset.
-      padding: const EdgeInsets.only(bottom: 100),
-      children: [
-        CrashTrace(label: 'about/header', child: _buildHeaderArea(theme)),
+    // Pull to refresh, which the Updates tab used to carry. About is the
+    // tab a venue opens on now, so it is the one that has to reload it.
+    return RefreshIndicator(
+      color: _gold,
+      onRefresh: _refreshVenue,
+      child: ListView(
+        // No top padding: the header runs to the top of the screen, under
+        // the status bar, and takes care of its own inset.
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 100),
+        children: [
+          CrashTrace(label: 'about/header', child: _buildHeaderArea(theme)),
 
-        const CrashTrace(label: 'about/after-header', child: SizedBox.shrink()),
+          const CrashTrace(
+            label: 'about/after-header',
+            child: SizedBox.shrink(),
+          ),
 
-        if (_venue!.description != null && _venue!.description!.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-            child: Text(
-              'ABOUT',
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.5,
+          if (_venue!.description != null &&
+              _venue!.description!.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(
+                'ABOUT',
+                style: TextStyle(
+                  color: Colors.grey.shade500,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            // A description the renderer cannot draw is shown as its own
-            // text rather than handed over anyway.
-            //
-            // About is the tab a venue opens on now, so its description is
-            // built for every venue rather than only for whoever went
-            // looking for it — and one field of CMS markup should not be
-            // able to take the page down with it. See htmlIsRenderable().
-            child: !htmlIsRenderable(_venue!.description)
-                ? Text(
-                    stripHtml(_venue!.description),
-                    style: TextStyle(
-                      fontSize: 15,
-                      height: 1.6,
-                      color: Colors.grey.shade700,
-                    ),
-                  )
-                : Html(
-                    // Stripped of the CSS the editor pasted in. The style
-                    // map below is this app's idea of how a description
-                    // should look; a line height from a word processor is
-                    // not, and flutter_html's CSS parser is where a venue
-                    // page carrying one went down. See withoutInlineStyles.
-                    data: withoutInlineStyles(_venue!.description),
-                    style: {
-                      "body": Style(
-                        margin: Margins.zero,
-                        padding: HtmlPaddings.zero,
-                        fontSize: FontSize(15),
-                        lineHeight: const LineHeight(1.6),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              // A description the renderer cannot draw is shown as its own
+              // text rather than handed over anyway.
+              //
+              // About is the tab a venue opens on now, so its description is
+              // built for every venue rather than only for whoever went
+              // looking for it — and one field of CMS markup should not be
+              // able to take the page down with it. See htmlIsRenderable().
+              child: !htmlIsRenderable(_venue!.description)
+                  ? Text(
+                      stripHtml(_venue!.description),
+                      style: TextStyle(
+                        fontSize: 15,
+                        height: 1.6,
                         color: Colors.grey.shade700,
                       ),
-                      "p": Style(margin: Margins.only(bottom: 12)),
-                      "h1, h2, h3, h4, h5, h6": Style(
-                        margin: Margins.only(top: 16, bottom: 8),
-                        fontWeight: FontWeight.bold,
-                      ),
-                      "ul, ol": Style(
-                        margin: Margins.only(left: 16, bottom: 12),
-                      ),
-                      "li": Style(margin: Margins.only(bottom: 4)),
-                      "a": Style(
-                        color: _gold,
-                        textDecoration: TextDecoration.underline,
-                      ),
-                      "strong, b": Style(fontWeight: FontWeight.bold),
-                      "em, i": Style(fontStyle: FontStyle.italic),
-                    },
-                    onLinkTap: (url, _, __) {
-                      if (url != null) launchUrl(Uri.parse(url));
-                    },
-                  ),
-          ),
-          const SizedBox(height: 24),
-        ],
+                    )
+                  : Html(
+                      // Stripped of the CSS the editor pasted in. The style
+                      // map below is this app's idea of how a description
+                      // should look; a line height from a word processor is
+                      // not, and flutter_html's CSS parser is where a venue
+                      // page carrying one went down. See withoutInlineStyles.
+                      data: withoutInlineStyles(_venue!.description),
+                      style: {
+                        "body": Style(
+                          margin: Margins.zero,
+                          padding: HtmlPaddings.zero,
+                          fontSize: FontSize(15),
+                          lineHeight: const LineHeight(1.6),
+                          color: Colors.grey.shade700,
+                        ),
+                        "p": Style(margin: Margins.only(bottom: 12)),
+                        "h1, h2, h3, h4, h5, h6": Style(
+                          margin: Margins.only(top: 16, bottom: 8),
+                          fontWeight: FontWeight.bold,
+                        ),
+                        "ul, ol": Style(
+                          margin: Margins.only(left: 16, bottom: 12),
+                        ),
+                        "li": Style(margin: Margins.only(bottom: 4)),
+                        "a": Style(
+                          color: _gold,
+                          textDecoration: TextDecoration.underline,
+                        ),
+                        "strong, b": Style(fontWeight: FontWeight.bold),
+                        "em, i": Style(fontStyle: FontStyle.italic),
+                      },
+                      onLinkTap: (url, _, __) {
+                        if (url != null) launchUrl(Uri.parse(url));
+                      },
+                    ),
+            ),
+            const SizedBox(height: 24),
+          ],
 
-        // No LOCATION or CONTACT & LINKS sections.
-        //
-        // Both repeated what the header above them already shows: the
-        // address sits under the name, and the links are the row of chips
-        // beside it. Having them again below the description made About
-        // read as two screens stacked, and the lower one was the stale copy.
-      ],
+          // No LOCATION or CONTACT & LINKS sections.
+          //
+          // Both repeated what the header above them already shows: the
+          // address sits under the name, and the links are the row of chips
+          // beside it. Having them again below the description made About
+          // read as two screens stacked, and the lower one was the stale copy.
+        ],
+      ),
     );
   }
 
@@ -1568,10 +1406,9 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
           child: Row(
             children: [
               _segButton(label: 'About', index: 0),
-              _segButton(label: 'Updates', index: 1),
-              _segButton(label: 'Events', index: 2),
-              _segButton(label: 'Posts', index: 3),
-              _segButton(label: 'Media', index: 4),
+              _segButton(label: 'Events', index: 1),
+              _segButton(label: 'Community', index: 2),
+              _segButton(label: 'Media', index: 3),
             ],
           ),
         ),
@@ -1876,10 +1713,18 @@ class _ChipActionButton extends StatelessWidget {
 }
 
 class _VenueCommunityFeed extends StatefulWidget {
+  /// Changes when the screen above wants this feed reloaded. See
+  /// _VenueDetailScreenState._communityRefresh.
+  final int refreshToken;
+
   final String venueId;
   final VoidCallback onCompose;
 
-  const _VenueCommunityFeed({required this.venueId, required this.onCompose});
+  const _VenueCommunityFeed({
+    required this.venueId,
+    required this.onCompose,
+    this.refreshToken = 0,
+  });
 
   @override
   State<_VenueCommunityFeed> createState() => _VenueCommunityFeedState();
@@ -1906,6 +1751,23 @@ class _VenueCommunityFeedState extends State<_VenueCommunityFeed>
   }
 
   @override
+  void didUpdateWidget(_VenueCommunityFeed old) {
+    super.didUpdateWidget(old);
+
+    // The screen above composed a post or finished an upload. Start again
+    // from page one rather than appending — a new post belongs at the top,
+    // and it is the first page that holds the top.
+    if (old.refreshToken != widget.refreshToken) {
+      setState(() {
+        _posts.clear();
+        _page = 0;
+        _hasMore = true;
+      });
+      _loadMore();
+    }
+  }
+
+  @override
   void dispose() {
     _scroll.removeListener(_onScroll);
     _scroll.dispose();
@@ -1929,7 +1791,10 @@ class _VenueCommunityFeedState extends State<_VenueCommunityFeed>
         venueId: widget.venueId,
         page: _page + 1,
         perPage: _pageSize,
-        kind: 'community',
+        // Both kinds. This is the venue's whole conversation now —
+        // its own announcements and everyone else's posts, in one feed,
+        // newest first. See the note on the TabController above.
+        kind: null,
       );
 
       if (!mounted) return;

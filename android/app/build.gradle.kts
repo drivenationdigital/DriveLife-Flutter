@@ -6,6 +6,59 @@ plugins {
     id("com.google.gms.google-services") // Needed for Firebase
 }
 
+/**
+ * Google Play's version code, worked out from the whole version rather than
+ * from pubspec's build number alone.
+ *
+ * The two stores disagree about what a build number is, and the pubspec has
+ * only one of them:
+ *
+ *   - Apple wants CFBundleVersion to increase only WITHIN one marketing
+ *     version. Ship 4.7.4 build 3, bump the name to 4.7.5, and build 1 is
+ *     accepted again. Starting each version at +1 is a normal iOS workflow.
+ *   - Google wants versionCode to increase across the app's ENTIRE history,
+ *     whatever the version name says. It has already seen 103, so a +1 is
+ *     rejected with "Version code 1 has already been used" no matter what
+ *     the name is.
+ *
+ * So pubspec keeps the number iOS wants, and Android folds the version name
+ * into it:
+ *
+ *   4.7.5+1  ->  4 * 10_000_000 + 7 * 100_000 + 5 * 1_000 + 1  =  40_705_001
+ *
+ * which always rises, because every part of it does:
+ *
+ *   4.7.5+1  ->  40_705_001
+ *   4.7.5+2  ->  40_705_002   (another build of the same version)
+ *   4.7.6+1  ->  40_706_001   (a new patch, build number back to 1)
+ *   4.8.0+1  ->  40_800_001
+ *
+ * Nothing to remember and nothing to keep in step by hand. The one thing
+ * not to do is LOWER the version name, which would lower the code with it.
+ */
+val dlVersionCode: Int = run {
+    val parts = flutter.versionName.split(".")
+    fun part(i: Int) = parts.getOrNull(i)?.takeWhile(Char::isDigit)?.toIntOrNull() ?: 0
+
+    val major = part(0)
+    val minor = part(1)
+    val patch = part(2)
+    val build = flutter.versionCode
+
+    // Each part has a column of its own, and overflowing one would quietly
+    // carry into the next — which produces a LOWER code than the release
+    // before it and a rejection from Play that says nothing about why. Fail
+    // here instead, where the fix is obvious.
+    require(minor < 100) { "pubspec version minor ($minor) must be under 100" }
+    require(patch < 100) { "pubspec version patch ($patch) must be under 100" }
+    require(build < 1000) { "pubspec build number ($build) must be under 1000" }
+
+    // Play's ceiling is 2100000000, which this reaches at major 210.
+    require(major < 210) { "pubspec version major ($major) must be under 210" }
+
+    major * 10_000_000 + minor * 100_000 + patch * 1_000 + build
+}
+
 android {
     namespace = "com.app.carcalendar"
     compileSdk = flutter.compileSdkVersion
@@ -33,7 +86,8 @@ android {
         // trade for taking Square card payments in the app.
         minSdk = maxOf(flutter.minSdkVersion, 28)
         targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
+        // Derived, not taken straight from pubspec. See dlVersionCode.
+        versionCode = dlVersionCode
         versionName = flutter.versionName
 
           

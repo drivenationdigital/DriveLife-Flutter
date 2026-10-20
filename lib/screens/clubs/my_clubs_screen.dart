@@ -10,7 +10,7 @@ import 'package:drivelife/screens/profile/view_club_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/events/filter_bottom_sheet.dart';
 import 'package:drivelife/widgets/listing/featured_card.dart';
-import 'package:drivelife/widgets/listing/listing_card.dart';
+import 'package:drivelife/widgets/listing/listing_row.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/api/club_api_service.dart';
 import 'package:geolocator/geolocator.dart';
@@ -472,11 +472,12 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     );
   }
 
-  /// The clubs, two to a row.
+  /// The clubs, as rows.
   ///
-  /// A grid rather than the full-width rows this used to be — a club is
-  /// picked off its photograph as much as its name, and at two columns
-  /// twice as many are on screen.
+  /// The same [ListingRow] Places and Tracks list with — thumbnail, name,
+  /// chevron, hairline. Clubs were the last of the three still laid out as
+  /// a grid of cards, which is the sort of difference nobody can name but
+  /// everybody feels when they move between the tabs.
   Widget _buildDiscoverClubsList() {
     if (_discoverClubs.isEmpty) {
       return Padding(
@@ -485,31 +486,16 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          const gap = 12.0;
-          final cardWidth = (constraints.maxWidth - gap) / 2;
-
-          return GridView.builder(
-            // Inside the page's own scroll view, so it lays all of its
-            // children out and leaves the scrolling to the parent.
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: EdgeInsets.zero,
-            itemCount: _discoverClubs.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: gap,
-              mainAxisSpacing: gap,
-              childAspectRatio: cardWidth / (cardWidth / 1.35 + _cardChrome),
-            ),
-            itemBuilder: (context, i) {
+    return Column(
+      children: [
+        for (var i = 0; i < _discoverClubs.length; i++) ...[
+          if (i > 0) const ListingRowDivider(),
+          Builder(
+            builder: (context) {
               final club = _discoverClubs[i] as Map<String, dynamic>;
 
-              return ListingCard(
-                imageUrl: _clubImage(club),
+              return ListingRow(
+                imageUrl: _clubThumb(club),
                 title: _clubText(club['title']),
                 onTap: () => NavigationHelper.navigateTo(
                   context,
@@ -521,22 +507,11 @@ class _MyClubsScreenState extends State<MyClubsScreen>
                 ),
               );
             },
-          );
-        },
-      ),
+          ),
+        ],
+      ],
     );
   }
-
-  /// Everything in a club card below the picture, in logical pixels.
-  ///
-  ///   12 padding + 39 name (two lines at 15.5/1.25)
-  ///    + 12 gap + 38 button + 12 padding
-  ///
-  /// Shorter than the venues one, which leaves room for an address line.
-  /// A club card carries its name and nothing else, as the design has it —
-  /// the type and the region are on the featured card above and on the
-  /// club's own page.
-  static const double _cardChrome = 113;
 
   Widget _buildSearchResultsView() {
     if (_isSearchLoading && _searchResults.isEmpty) {
@@ -572,22 +547,25 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: _searchResults.length,
       itemBuilder: (context, index) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: _DiscoverClubCard(
-            club: _searchResults[index] as Map<String, dynamic>,
-            primaryColor: theme.primaryColor,
-            onView: () {
-              NavigationHelper.navigateTo(
+        final club = _searchResults[index] as Map<String, dynamic>;
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (index > 0) const ListingRowDivider(),
+            ListingRow(
+              imageUrl: _clubThumb(club),
+              title: _clubText(club['title']),
+              onTap: () => NavigationHelper.navigateTo(
                 context,
                 ClubViewScreen(
-                  clubPostId: _searchResults[index]['ID'],
+                  clubPostId: club['ID'],
                   isOwnClub: false,
                   showAppBar: true,
                 ),
-              );
-            },
-          ),
+              ),
+            ),
+          ],
         );
       },
     );
@@ -750,10 +728,18 @@ class _MyClubsScreenState extends State<MyClubsScreen>
   /// dots under it and the loading state all have to agree.
   static const double _featuredHeight = 172;
 
-  /// A club's picture: its cover if it has one, its badge if not.
+  /// A club's picture for the featured carousel: the cover, which fills a
+  /// card 250px wide and wants a photograph.
   static String _clubImage(Map<String, dynamic> club) {
     final cover = _clubText(club['cover_image']);
     return cover.isNotEmpty ? cover : _clubText(club['logo']);
+  }
+
+  /// A club's picture for a row: the badge, which is drawn to be read at
+  /// 56px square where a cropped cover is a patch of sky.
+  static String _clubThumb(Map<String, dynamic> club) {
+    final logo = _clubText(club['logo']);
+    return logo.isNotEmpty ? logo : _clubText(club['cover_image']);
   }
 
   /// A string from the API, or empty. Clubs come back with nulls and
@@ -1110,36 +1096,41 @@ class _MyClubsScreenState extends State<MyClubsScreen>
   Widget _buildFilterButton(String label, String value, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(22),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: const Color(0xFFF2F2F2),
-          borderRadius: BorderRadius.circular(14),
+          // A pill now it is one line tall, like the distance chips on
+          // Places and Tracks.
+          borderRadius: BorderRadius.circular(22),
         ),
         child: Row(
           children: [
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              // Label and value on one line, not stacked. Two lines made
+              // each control 60pt tall for four words, which is a lot of
+              // the screen spent on a setting that is usually left alone.
+              child: Row(
                 children: [
                   Text(
-                    label,
+                    '$label ',
                     style: const TextStyle(
-                      fontSize: 12.5,
+                      fontSize: 14,
                       color: Color(0xFF8A8A8E),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    value,
-                    style: const TextStyle(
-                      fontSize: 15.5,
-                      color: Color(0xFF111111),
-                      fontWeight: FontWeight.w700,
+                  Flexible(
+                    child: Text(
+                      value,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        color: Color(0xFF111111),
+                        fontWeight: FontWeight.w700,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -1447,152 +1438,4 @@ class _StatusDot extends StatelessWidget {
       ),
     );
   }
-}
-
-class _DiscoverClubCard extends StatelessWidget {
-  final Map<String, dynamic> club;
-  final Color primaryColor;
-  final VoidCallback onView;
-
-  const _DiscoverClubCard({
-    required this.club,
-    required this.primaryColor,
-    required this.onView,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Pull values with fallbacks so the card is resilient to missing fields
-    String _str(dynamic v) => v is String ? v : '';
-    // int _int(dynamic v) => v is int ? v : (v is num ? v.toInt() : 0);
-
-    final title = _str(club['title']).isNotEmpty
-        ? _str(club['title'])
-        : _str(club['name']);
-    final imageUrl = _str(club['logo']);
-    // final category = _str(club['category']);
-    // final location = _str(club['location'] ?? 'N/A');
-    // final memberCount = _int(club['member_count']);
-    final isOwnerOrMember =
-        (club['is_owner'] == true) ||
-        (club['is_member'] == true) ||
-        (club['is_admin'] == true);
-
-    // final subtitle = category.isNotEmpty ? category : location;
-
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: GestureDetector(
-        onTap: onView,
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: imageUrl.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: imageUrl,
-                      width: 56,
-                      height: 56,
-                      fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => _fallback(),
-                    )
-                  : _fallback(),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black,
-                          ),
-                        ),
-                      ),
-                      if (isOwnerOrMember) ...[
-                        const SizedBox(width: 4),
-                        Icon(Icons.verified, size: 14, color: primaryColor),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  // Row(
-                  //   children: [
-                  //     Icon(
-                  //       Icons.directions_car_outlined,
-                  //       size: 13,
-                  //       color: primaryColor,
-                  //     ),
-                  //     const SizedBox(width: 4),
-                  //     Flexible(
-                  //       child: Text(
-                  //         subtitle,
-                  //         maxLines: 1,
-                  //         overflow: TextOverflow.ellipsis,
-                  //         style: TextStyle(fontSize: 12, color: primaryColor),
-                  //       ),
-                  //     ),
-                  //     if (memberCount > 0) ...[
-                  //       const SizedBox(width: 8),
-                  //       Icon(Icons.people, size: 13, color: Colors.grey.shade600),
-                  //       const SizedBox(width: 4),
-                  //       Text(
-                  //         '$memberCount',
-                  //         style: TextStyle(
-                  //           fontSize: 12,
-                  //           color: Colors.grey.shade600,
-                  //         ),
-                  //       ),
-                  //     ],
-                  //   ],
-                  // ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: onView,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: primaryColor,
-                side: BorderSide(color: primaryColor, width: 1.2),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                minimumSize: const Size(0, 32),
-              ),
-              child: const Text(
-                'View',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _fallback() => Container(
-    width: 56,
-    height: 56,
-    color: Colors.grey.shade200,
-    child: Icon(Icons.group, color: Colors.grey.shade400, size: 24),
-  );
 }
