@@ -122,10 +122,34 @@ class ClubApiService {
     }
   }
 
+  /// The user's saved country, which decides which catalogue they see.
+  ///
+  /// The same shape TracksApiService uses. GB when nothing is stored,
+  /// because the server treats everything outside North America as GB
+  /// anyway — see dl_normalise_site().
+  static Future<String> _country() async {
+    final user = await AuthService().getUser();
+    final last = user?['last_location'];
+
+    if (last is Map && last.isNotEmpty) {
+      final country = '${last['country'] ?? ''}'.trim();
+      if (country.isNotEmpty) return country;
+    }
+
+    return 'GB';
+  }
+
   static Future<List<dynamic>?> fetchFeaturedClubs() async {
     try {
+      // Sent now, where it was not before: the endpoint used to read one
+      // curated list off one blog, so a user anywhere in the world was
+      // shown British clubs.
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v1/featured-clubs',
+      ).replace(queryParameters: {'site': await _country()});
+
       final response = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/featured-clubs'),
+        uri,
         headers: {'Content-Type': 'application/json'},
       );
 

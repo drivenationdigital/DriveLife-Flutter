@@ -27,9 +27,15 @@ class ListingRow extends StatelessWidget {
 
   static const Color _gold = Color(0xFFAE9159);
 
-  /// The thumbnail's side. Also what the divider is inset by, so the line
-  /// starts under the text rather than under the picture.
-  static const double _thumb = 56;
+  /// The thumbnail's side.
+  ///
+  /// 48, which with 10 of padding either side makes a 68pt row. Instagram
+  /// runs 44 avatars in its own lists at about 62 — this sits just above
+  /// that, which suits a photograph where theirs is a face.
+  ///
+  /// It was 56 in a 80pt row, and on the Clubs tab that meant three rows
+  /// under everything stacked above them.
+  static const double _thumb = 48;
 
   const ListingRow({
     super.key,
@@ -47,7 +53,7 @@ class ListingRow extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
             children: [
               ClipRRect(
@@ -59,7 +65,7 @@ class ListingRow extends StatelessWidget {
                 ),
               ),
 
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
 
               Expanded(
                 child: Column(
@@ -74,7 +80,7 @@ class ListingRow extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontSize: 16,
+                              fontSize: 15,
                               fontWeight: FontWeight.w700,
                               height: 1.2,
                               color: Color(0xFF111111),
@@ -83,7 +89,7 @@ class ListingRow extends StatelessWidget {
                         ),
                         if (isVerified) ...[
                           const SizedBox(width: 5),
-                          const Icon(Icons.verified, size: 15, color: _gold),
+                          const Icon(Icons.verified, size: 14, color: _gold),
                         ],
                       ],
                     ),
@@ -95,7 +101,7 @@ class ListingRow extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 13,
                           height: 1.3,
                           color: Color(0xFF8A8A8E),
                         ),
@@ -109,7 +115,7 @@ class ListingRow extends StatelessWidget {
 
               const Icon(
                 Icons.chevron_right_rounded,
-                size: 24,
+                size: 20,
                 color: Color(0xFFBDBDBD),
               ),
             ],

@@ -341,13 +341,14 @@ class _TracksScreenState extends State<TracksScreen>
       indicatorWeight: 3,
       labelColor: theme.primaryColor,
       unselectedLabelColor: theme.subtextColor,
-      labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+      labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
       unselectedLabelStyle: const TextStyle(
         fontWeight: FontWeight.w600,
-        fontSize: 16,
+        fontSize: 15,
       ),
       tabs: const [
         Tab(
+          height: _tabHeight,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -358,6 +359,7 @@ class _TracksScreenState extends State<TracksScreen>
           ),
         ),
         Tab(
+          height: _tabHeight,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -372,12 +374,24 @@ class _TracksScreenState extends State<TracksScreen>
   }
 
   /// The search field's height, declared because the floating header has
-  /// to know its extent before layout. [_searchBar] boxes itself to the
-  /// same number so the two cannot drift.
-  static const double _searchBarHeight = 72;
+  /// to know its extent before layout. [_searchBarField] boxes itself to
+  /// the same number so the two cannot drift.
+  ///
+  /// 62: an 8/8 margin around a 46 field, matching Places.
+  static const double _searchBarHeight = 62;
+
+  /// How tall one tab is.
+  ///
+  /// Declared, because Flutter's default is 46 and a TabBar adds its
+  /// indicatorWeight on top — 49 in all, which does not fit the 44 the
+  /// pinned sliver declares for the row. A SizedBox does not shrink a
+  /// TabBar; it overflows it.
+  ///
+  ///   40 + 3 indicator = 43, inside 44.
+  static const double _tabHeight = 40;
 
   /// The tab row's height, declared for the same reason.
-  static const double _tabBarHeight = 48;
+  static const double _tabBarHeight = 44;
 
   /// The shell's header and section tabs, with this screen's search field
   /// under them. Floating: gone as you scroll on, back the moment you
@@ -412,7 +426,7 @@ class _TracksScreenState extends State<TracksScreen>
     return SizedBox(
       height: _searchBarHeight,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         child: TextField(
           controller: _search,
           textInputAction: TextInputAction.search,
@@ -435,7 +449,10 @@ class _TracksScreenState extends State<TracksScreen>
                   ),
             filled: true,
             fillColor: const Color(0xFFF4F4F4),
-            contentPadding: const EdgeInsets.symmetric(vertical: 0),
+            // Dense, because the box around this is 46 tall and a filled
+            // field with a prefix icon asks for 48 unless told otherwise.
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 12),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide.none,
@@ -640,11 +657,11 @@ class _GroupTitle extends StatelessWidget {
       // It was 4, back when the list around it carried its own 16 of
       // horizontal padding. The rows now bring their own, so the group
       // title was the only thing left sitting against the screen edge.
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
       child: Text(
         text,
         style: const TextStyle(
-          fontSize: 15,
+          fontSize: 14,
           fontWeight: FontWeight.w700,
           color: Color(0xFF1C1C1E),
         ),

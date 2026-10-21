@@ -100,8 +100,13 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   /// warrant it.
   final ChromeVisibility _chrome = ChromeVisibility();
 
-  /// Height of the header row, which [_Header] fixes.
-  static const double _headerHeight = 56;
+  /// Height of the header row.
+  ///
+  /// Taken from [_Header] rather than written out again. The two were
+  /// separate constants "kept in sync by hand", which lasted until one of
+  /// them changed: the sliver declared 52, the header drew 56, and every
+  /// screen carrying it overflowed by exactly 4.
+  static const double _headerHeight = _Header.height;
 
   /// True when the section below is drawing the chrome inside its own
   /// scroll view, so the shell must not draw it as well.
@@ -839,7 +844,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     Widget svg(String asset, bool selected) => iconSvg(
       asset,
       theme,
-      size: 22,
+      size: 20,
       isActive: selected,
       alwaysActive: selected,
     );
@@ -1189,15 +1194,20 @@ class _Header extends StatelessWidget {
 
   const _Header({required this.title, required this.actions});
 
-  /// Fixed height, matching _HomeTabsState._headerHeight — the sliver that
-  /// carries this has to declare its extent before layout, so the two agree
-  /// by hand.
+  /// How tall this row is, and the single place that decides.
+  ///
+  /// The sliver that carries the header has to declare its extent before
+  /// layout, and _HomeTabsState._headerHeight reads this rather than
+  /// repeating it. When they were two numbers agreeing by hand, one of
+  /// them changed and the other did not: the sliver said 52, this drew 56,
+  /// and every screen carrying it overflowed by exactly 4.
+  static const double height = 52;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       color: Colors.white,
-      height: 56,
+      height: height,
       padding: const EdgeInsets.only(left: 20),
       child: Row(children: [title, const Spacer(), ...actions]),
     );

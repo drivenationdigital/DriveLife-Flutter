@@ -56,7 +56,7 @@ class _VenuesScreenState extends State<VenuesScreen>
 
   /// How tall the featured carousel is. Named because the loading state,
   /// the cards and the gap below it all have to agree.
-  static const double _featuredHeight = 172;
+  static const double _featuredHeight = 150;
   late TabController _tabController;
   late ThemeProvider theme;
   final TextEditingController _searchController = TextEditingController();
@@ -540,10 +540,23 @@ class _VenuesScreenState extends State<VenuesScreen>
   /// The search field's height, declared because the floating header has
   /// to know its extent before it is laid out. [_buildSearchBar] boxes
   /// itself to the same number, so the two cannot drift.
-  static const double _searchBarHeight = 72;
+  ///
+  /// 62: an 8/8 margin around a 46 field. It was 72, which is a lot of the
+  /// screen for a box most people scroll straight past.
+  static const double _searchBarHeight = 62;
+
+  /// How tall one tab is.
+  ///
+  /// Declared, because Flutter's default is 46 and a TabBar adds its
+  /// indicatorWeight on top — 49 in all, which does not fit the 44 the
+  /// pinned sliver declares for the row. A SizedBox does not shrink a
+  /// TabBar; it overflows it.
+  ///
+  ///   40 + 3 indicator = 43, inside 44.
+  static const double _tabHeight = 40;
 
   /// The tab row's height, declared for the same reason.
-  static const double _tabBarHeight = 48;
+  static const double _tabBarHeight = 44;
 
   /// The chrome above a list: the shell's own header and section tabs, with
   /// this screen's search field under them.
@@ -629,7 +642,7 @@ class _VenuesScreenState extends State<VenuesScreen>
     return SizedBox(
       height: _searchBarHeight,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         child: TextField(
           controller: _searchController,
           onChanged: _onSearchChanged,
@@ -652,6 +665,9 @@ class _VenuesScreenState extends State<VenuesScreen>
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide.none,
             ),
+            // Dense, because the box around this is 46 tall and a filled
+            // field with a prefix icon asks for 48 unless told otherwise.
+            isDense: true,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
               vertical: 12,
@@ -680,13 +696,14 @@ class _VenuesScreenState extends State<VenuesScreen>
         indicatorWeight: 3,
         labelColor: theme.primaryColor,
         unselectedLabelColor: theme.subtextColor,
-        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
         unselectedLabelStyle: const TextStyle(
           fontWeight: FontWeight.w600,
-          fontSize: 16,
+          fontSize: 15,
         ),
         tabs: const [
           Tab(
+            height: _tabHeight,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -697,6 +714,7 @@ class _VenuesScreenState extends State<VenuesScreen>
             ),
           ),
           Tab(
+            height: _tabHeight,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1278,7 +1296,7 @@ class _VenuesScreenState extends State<VenuesScreen>
                   Text(
                     'My $_them',
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: Colors.grey.shade800,
                     ),
@@ -1318,7 +1336,7 @@ class _VenuesScreenState extends State<VenuesScreen>
                       Text(
                         'Followed $_them',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: Colors.grey.shade800,
                         ),

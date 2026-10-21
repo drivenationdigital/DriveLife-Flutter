@@ -35,8 +35,11 @@ class DlTopTabs extends StatefulWidget {
   /// Fixed, and declared rather than measured.
   ///
   /// The row rides in a sliver header, which has to know its extent before
-  /// it is laid out. 6 top padding + 8/11 around a 38 chip + 1 divider.
-  static const double height = 64;
+  /// it is laid out. 5 top padding + 7/9 around a 34 chip + 1 divider.
+  ///
+  /// Trimmed from 64. Six points off every screen that carries it, and the
+  /// chips still clear a 44pt touch target with the row's own padding.
+  static const double height = 56;
 
   final List<DlTopTab> tabs;
   final int currentIndex;
@@ -111,7 +114,7 @@ class _DlTopTabsState extends State<DlTopTabs> {
           SingleChildScrollView(
             controller: _scroll,
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
+            padding: const EdgeInsets.fromLTRB(14, 5, 14, 0),
             child: Row(
               children: [
                 for (var i = 0; i < widget.tabs.length; i++)
@@ -170,14 +173,14 @@ class _Tab extends StatelessWidget {
         child: Stack(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(0, 8, 0, 11),
+              padding: const EdgeInsets.fromLTRB(0, 7, 0, 9),
               child: Row(
                 children: [
                   AnimatedContainer(
                     duration: duration,
                     curve: curve,
                     width: 38,
-                    height: 38,
+                    height: 34,
                     decoration: BoxDecoration(
                       color: selected
                           ? const Color(0xFF111111)
@@ -201,7 +204,7 @@ class _Tab extends StatelessWidget {
                             )
                           : Icon(
                               tab.glyph,
-                              size: 18,
+                              size: 17,
                               color: selected
                                   ? const Color(0xFFC9A449)
                                   : const Color(0xFF9A9A9A),
@@ -213,7 +216,7 @@ class _Tab extends StatelessWidget {
                     duration: duration,
                     curve: curve,
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 15,
                       fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                       color: selected
                           ? const Color(0xFF111111)

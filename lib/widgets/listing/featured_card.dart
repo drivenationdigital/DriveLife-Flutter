@@ -86,8 +86,8 @@ class FeaturedCard extends StatelessWidget {
                 left: 12,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+                    horizontal: 10,
+                    vertical: 5,
                   ),
                   decoration: BoxDecoration(
                     color: _gold,
@@ -96,12 +96,12 @@ class FeaturedCard extends StatelessWidget {
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.star_rounded, size: 14, color: Colors.white),
+                      Icon(Icons.star_rounded, size: 13, color: Colors.white),
                       SizedBox(width: 5),
                       Text(
                         'Featured',
                         style: TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
                         ),
@@ -125,7 +125,7 @@ class FeaturedCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: Color(0xD9FFFFFF),
                       ),
@@ -137,7 +137,7 @@ class FeaturedCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 20,
+                      fontSize: 19,
                       fontWeight: FontWeight.w800,
                       height: 1.15,
                       color: Colors.white,
@@ -148,7 +148,7 @@ class FeaturedCard extends StatelessWidget {
                     Row(
                       children: [
                         if (subtitleIcon != null) ...[
-                          Icon(subtitleIcon, size: 15, color: Colors.white),
+                          Icon(subtitleIcon, size: 14, color: Colors.white),
                           const SizedBox(width: 5),
                         ],
                         Expanded(
@@ -157,7 +157,7 @@ class FeaturedCard extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.w500,
                               color: Color(0xF2FFFFFF),
                             ),

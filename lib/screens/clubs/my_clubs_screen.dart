@@ -615,13 +615,14 @@ class _MyClubsScreenState extends State<MyClubsScreen>
         indicatorWeight: 3,
         labelColor: theme.primaryColor,
         unselectedLabelColor: theme.subtextColor,
-        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
         unselectedLabelStyle: const TextStyle(
           fontWeight: FontWeight.w600,
-          fontSize: 16,
+          fontSize: 15,
         ),
         tabs: const [
           Tab(
+            height: _tabHeight,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -632,6 +633,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
             ),
           ),
           Tab(
+            height: _tabHeight,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -724,9 +726,19 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     );
   }
 
+  /// How tall one tab is.
+  ///
+  /// Declared, because Flutter's default is 46 and a TabBar adds its
+  /// indicatorWeight on top — 49 in all, which does not fit the 44 the
+  /// pinned sliver declares for the row. A SizedBox does not shrink a
+  /// TabBar; it overflows it.
+  ///
+  ///   40 + 3 indicator = 43, inside 44.
+  static const double _tabHeight = 40;
+
   /// How tall the featured carousel is. Named because the carousel, the
   /// dots under it and the loading state all have to agree.
-  static const double _featuredHeight = 172;
+  static const double _featuredHeight = 150;
 
   /// A club's picture for the featured carousel: the cover, which fills a
   /// card 250px wide and wants a photograph.
@@ -1098,7 +1110,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       onTap: onTap,
       borderRadius: BorderRadius.circular(22),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: const Color(0xFFF2F2F2),
           // A pill now it is one line tall, like the distance chips on
@@ -1116,7 +1128,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
                   Text(
                     '$label ',
                     style: const TextStyle(
-                      fontSize: 14,
+                      fontSize: 13,
                       color: Color(0xFF8A8A8E),
                       fontWeight: FontWeight.w500,
                     ),
@@ -1125,7 +1137,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
                     child: Text(
                       value,
                       style: const TextStyle(
-                        fontSize: 14.5,
+                        fontSize: 13.5,
                         color: Color(0xFF111111),
                         fontWeight: FontWeight.w700,
                       ),

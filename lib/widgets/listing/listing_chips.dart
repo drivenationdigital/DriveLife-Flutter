@@ -43,7 +43,10 @@ class ListingChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 42,
+      // 38, not 42. A row of pills is a filter, not a toolbar — Instagram
+      // runs its equivalent at about this and it stops the controls above
+      // a list taking a tenth of the screen.
+      height: 38,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -57,17 +60,17 @@ class ListingChips extends StatelessWidget {
             color: isSelected
                 ? const Color(0xFF111111)
                 : const Color(0xFFF2F2F2),
-            borderRadius: BorderRadius.circular(21),
+            borderRadius: BorderRadius.circular(19),
             child: InkWell(
               onTap: () => onChanged(chip.value),
-              borderRadius: BorderRadius.circular(21),
+              borderRadius: BorderRadius.circular(19),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Center(
                   child: Text(
                     chip.label,
                     style: TextStyle(
-                      fontSize: 14.5,
+                      fontSize: 13.5,
                       fontWeight: isSelected
                           ? FontWeight.w700
                           : FontWeight.w500,

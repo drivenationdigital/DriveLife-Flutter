@@ -27,18 +27,20 @@ class DlBottomNav extends StatelessWidget {
   ///
   /// Set by what has to fit inside the travelling highlight, not picked by
   /// eye. The highlight is [height] minus twice [_inset], and it has to
-  /// clear a 22px icon, a 4px gap and a line of 11px text — 39 in all — with
-  /// enough room left that the label is not touching the grey.
+  /// clear a 20px icon, a 4px gap and a line of 10.5px text — 37 in all —
+  /// with enough room left that the label is not touching the grey.
   ///
-  ///   66 - (6 * 2) = 54, and (54 - 39) / 2 = 7.5 above and below.
+  ///   64 - (6 * 2) = 52, and (52 - 37) / 2 = 7.5 above and below.
   ///
   /// It was 62 with a 7px inset, which left 4.5, and at 4.5 the descender of
-  /// a word like "Account" sits all but on the edge of the pill.
+  /// a word like "Account" sits all but on the edge of the pill. The icon
+  /// and label came down a point each at the same time as this came down
+  /// two, so the clearance is unchanged.
   ///
   /// Still a stadium at this height, which is the other constraint: the
   /// radius is half the height, so the ends stay semicircles rather than
   /// becoming rounded corners on a rectangle.
-  static const double height = 66;
+  static const double height = 64;
 
   /// Inset of the travelling highlight from the bar's own edges.
   static const double _inset = 6;
@@ -184,7 +186,7 @@ class _Item extends StatelessWidget {
                 duration: duration,
                 curve: curve,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 10.5,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                   color: selected
                       ? const Color(0xFF111111)
