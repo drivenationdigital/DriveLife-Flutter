@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 
 /// One destination in the floating bottom bar.
 @immutable
@@ -132,7 +132,7 @@ class DlBottomNav extends StatelessWidget {
                             item: items[i],
                             selected: i == currentIndex,
                             onTap: () {
-                              HapticFeedback.selectionClick();
+                              DLHaptics.tabChange();
                               onChanged(i);
                             },
                           ),

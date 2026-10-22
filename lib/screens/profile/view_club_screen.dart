@@ -10,6 +10,7 @@ import 'package:drivelife/screens/clubs/ui-widgets/event-card.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/member-listing.dart';
 import 'package:drivelife/widgets/media/entity_galleries_tab.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -75,6 +76,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    attachTabHaptics(_tabController);
     _tabController.addListener(_onTabChanged);
 
     _loadClubData();
@@ -1272,6 +1274,9 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           : const [],
       clubTitle: (_clubData?['title'] ?? 'Group').toString(),
       clubLogo: _clubData?['logo'] as String?,
+      // Owners and admins only, and only when somebody is actually
+      // waiting — the builder decides, so the condition travels with the
+      // banner instead of being left behind the next time it moves.
       pendingBanner: _buildPendingRequestsBanner(theme),
       clubId: _clubData?['id']?.toString() ?? '',
       onCompose: _handleCreateClubPost,
@@ -1995,7 +2000,18 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     }
   }
 
-  Widget _buildPendingRequestsBanner(ThemeProvider theme) {
+  /// The "N people want to join" banner, or nothing at all for anyone who
+  /// is not running the group.
+  ///
+  /// The caller checks too. It is here as well because the check used to
+  /// live only at the call site, and moving the banner into the Community
+  /// tab left the check behind — every member saw a membership-requests
+  /// box on a group they had no say over. Asked for twice, it cannot be
+  /// dropped by moving the widget again.
+  Widget? _buildPendingRequestsBanner(ThemeProvider theme) {
+    if (!_isOwner && !_isAdmin) return null;
+    if (_pendingRequestsCount <= 0) return null;
+
     return InkWell(
       onTap: () async {
         final result = await Navigator.pushNamed(

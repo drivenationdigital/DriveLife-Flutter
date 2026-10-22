@@ -15,6 +15,7 @@ import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
 import 'package:drivelife/widgets/nav/pinned_sliver_bar.dart';
 import 'package:drivelife/utils/html_text.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:drivelife/api/club_api_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
@@ -124,6 +125,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     });
 
     _tabController = TabController(length: 2, vsync: this);
+    attachTabHaptics(_tabController);
     _tabController.addListener(_onTabChanged);
     _spotlightController = PageController(viewportFraction: 0.88);
     _searchController.addListener(_onSearchChanged);
@@ -174,6 +176,20 @@ class _MyClubsScreenState extends State<MyClubsScreen>
   }
 
   void _onTabChanged() {
+    if (!mounted) return;
+
+    // Both tabs are slivers in one scroll view now, and which of them is
+    // offstage is read during build — so the switch only happens if this
+    // rebuilds. Nothing else here calls setState on a plain tab change.
+    setState(() {});
+
+    // Back to the top on a real switch. The two tabs share one scroll
+    // offset now, and landing a screen and a half down a tab with three
+    // rows in it reads as an empty tab.
+    if (!_tabController.indexIsChanging && _scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+
     if (_tabController.index == 1 && _clubs.isEmpty && !_isLoading) {
       _loadMyClubs();
     }
@@ -340,109 +356,143 @@ class _MyClubsScreenState extends State<MyClubsScreen>
 
     return Scaffold(
       backgroundColor: Colors.white,
-      // top: false — the shell above already holds the status bar area, and
-      // the section tabs sit between it and this screen. Claiming it again
-      // put a band of white between the tabs and the search field.
-      // Nothing above the scroll views, and no SafeArea around them. The
-      // header, the search field and the tabs are all slivers inside, so
-      // the scroll moves them and the viewport never changes size.
+      // Nothing above the scroll view, and no SafeArea around it. The
+      // header, the search field and the tab row are all slivers inside,
+      // so the scroll moves them and the viewport never changes size — and
+      // the shell above already holds the status bar area, so claiming it
+      // again here only put a band of white under the section tabs.
       //
       // Every scroll reports to the shell through this one listener, which
       // is what takes the bottom bar away and brings it back.
       body: NotificationListener<ScrollNotification>(
         onNotification: widget.chrome?.handle ?? (_) => false,
-        child: Column(
-          children: [
-            Expanded(
-              child: _isSearching
-                  ? _buildSearchResultsView()
-                  : TabBarView(
-                      controller: _tabController,
-                      children: [_buildDiscoverTab(), _buildMyClubsTab()],
-                    ),
-            ),
-          ],
+        child: RefreshIndicator(
+          onRefresh: _refreshActiveTab,
+          color: theme.primaryColor,
+          child: CustomScrollView(
+            controller: _scrollController,
+            // Always scrollable, so a short list still reaches far enough
+            // for pull-to-refresh and for the chrome to scroll away.
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              _floatingChrome(),
+              if (!_isSearching) _pinnedTabs(),
+              ..._tabSlivers(),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildDiscoverTab() {
+  /// Whichever tab is showing, as slivers.
+  ///
+  /// One scroll view holds all of this, not one per tab inside a
+  /// TabBarView. With a view each, the chrome and the tab row were inside
+  /// the thing that slides, so changing tab swept the header off sideways
+  /// and brought an identical one back — the whole screen moving to change
+  /// what sits under it. Here only the content swaps, and the header above
+  /// it does not know a tab changed.
+  ///
+  /// The tab that is not showing stays in the tree: [SliverOffstage] does
+  /// not lay it out, but its element is still mounted, so whatever it had
+  /// loaded survives a switch and coming back costs nothing.
+  List<Widget> _tabSlivers() {
+    if (_isSearching) return _searchSlivers();
+
+    return [
+      SliverOffstage(
+        offstage: _tabController.index != 0,
+        sliver: SliverMainAxisGroup(slivers: _discoverSlivers()),
+      ),
+      SliverOffstage(
+        offstage: _tabController.index != 1,
+        sliver: SliverMainAxisGroup(slivers: _myClubsSlivers()),
+      ),
+    ];
+  }
+
+  /// Refreshes whichever tab is showing.
+  Future<void> _refreshActiveTab() async {
+    if (_isSearching) return;
+
+    if (_tabController.index == 0) {
+      await Future.wait([_loadDiscoverClubs(), _loadFeaturedClubs()]);
+    } else {
+      await _loadMyClubs();
+    }
+  }
+
+  /// Fills what is left of the viewport with [child].
+  ///
+  /// For the states that are not a list — loading, an error, nothing found.
+  /// They sit under the chrome rather than replacing it, which matters most
+  /// when a filter comes back empty: the way out of an empty list is to
+  /// change the search or the location, and both are in the chrome.
+  Widget _fillRest(Widget child) =>
+      SliverFillRemaining(hasScrollBody: false, child: child);
+
+  List<Widget> _discoverSlivers() {
     if (_isDiscoverLoading && _discoverClubs.isEmpty) {
-      final theme = Provider.of<ThemeProvider>(context);
-      return _chromeAround(
-        Center(child: CircularProgressIndicator(color: theme.primaryColor)),
-      );
+      return [
+        _fillRest(
+          Center(child: CircularProgressIndicator(color: theme.primaryColor)),
+        ),
+      ];
     }
 
     if (_discoverError != null && _discoverClubs.isEmpty) {
-      return _chromeAround(
-        _buildErrorState(_discoverError!, _loadDiscoverClubs),
-      );
+      return [_fillRest(_buildErrorState(_discoverError!, _loadDiscoverClubs))];
     }
 
     // Show spotlight only when not loading AND we have featured clubs
     final showSpotlight = !_isSpotlightLoading && _spotlightClubs.isNotEmpty;
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        await Future.wait([_loadDiscoverClubs(), _loadFeaturedClubs()]);
-      },
-      color: theme.primaryColor,
-      child: CustomScrollView(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          _floatingChrome(),
-          _pinnedTabs(),
-          SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_showLocationBanner) ...[
-                  LocationBanner(
-                    onUpdate: () {
-                      setState(() => _showLocationBanner = false);
-                      NavigationHelper.navigateTo(
-                        context,
-                        const AppPermissionsScreen(),
-                      );
-                    },
-                  ),
-                ],
+    return [
+      SliverToBoxAdapter(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_showLocationBanner) ...[
+              LocationBanner(
+                onUpdate: () {
+                  setState(() => _showLocationBanner = false);
+                  NavigationHelper.navigateTo(
+                    context,
+                    const AppPermissionsScreen(),
+                  );
+                },
+              ),
+            ],
 
-                if (showSpotlight) ...[
-                  // const SizedBox(height: 16),
-                  // _buildSpotlightHeader(),
-                  const SizedBox(height: 12),
-                  _buildSpotlightCarousel(),
-                  const SizedBox(height: 12),
-                  // No dots. The carousel peeks the next card at the right
-                  // edge, which says it scrolls without spending a row saying so.
-                  const SizedBox(height: 20),
-                ] else
-                  const SizedBox(height: 16),
-                _buildFilters(),
-                // const SizedBox(height: 20),
-                // _buildAllClubsHeader(),
-                const SizedBox(height: 12),
-                _buildDiscoverClubsList(),
-                if (_isDiscoverLoadingMore)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        color: theme.primaryColor,
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 24),
-              ],
-            ),
-          ),
-        ],
+            if (showSpotlight) ...[
+              // const SizedBox(height: 16),
+              // _buildSpotlightHeader(),
+              const SizedBox(height: 12),
+              _buildSpotlightCarousel(),
+              const SizedBox(height: 12),
+              // No dots. The carousel peeks the next card at the right
+              // edge, which says it scrolls without spending a row saying so.
+              const SizedBox(height: 20),
+            ] else
+              const SizedBox(height: 16),
+            _buildFilters(),
+            // const SizedBox(height: 20),
+            // _buildAllClubsHeader(),
+            const SizedBox(height: 12),
+            _buildDiscoverClubsList(),
+            if (_isDiscoverLoadingMore)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Center(
+                  child: CircularProgressIndicator(color: theme.primaryColor),
+                ),
+              ),
+            const SizedBox(height: 24),
+          ],
+        ),
       ),
-    );
+    ];
   }
 
   Widget _buildEmptyState() {
@@ -531,75 +581,74 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     );
   }
 
-  Widget _buildSearchResultsView() {
+  /// The search results, as slivers.
+  ///
+  /// No pinned tab row: the tabs are hidden while searching, which is what
+  /// makes this a view of its own rather than a filtered tab.
+  List<Widget> _searchSlivers() {
     if (_isSearchLoading && _searchResults.isEmpty) {
-      return _chromeAround(
-        const Center(child: CircularProgressIndicator()),
-        withTabs: false,
-      );
+      return [_fillRest(const Center(child: CircularProgressIndicator()))];
     }
 
     if (_searchResults.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
-            const SizedBox(height: 16),
-            Text(
-              'No groups found',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Try a different search term',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        // No pinned tabs while searching — they are hidden, which is what
-        // makes this a separate view at all.
-        _floatingChrome(),
-        SliverPadding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          sliver: SliverList.builder(
-            itemCount: _searchResults.length,
-            itemBuilder: (context, index) {
-              final club = _searchResults[index] as Map<String, dynamic>;
-
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (index > 0) const ListingRowDivider(),
-                  ListingRow(
-                    imageUrl: _clubThumb(club),
-                    title: _clubText(club['title']),
-                    onTap: () => NavigationHelper.navigateTo(
-                      context,
-                      ClubViewScreen(
-                        clubPostId: club['ID'],
-                        isOwnClub: false,
-                        showAppBar: true,
-                      ),
-                    ),
+      return [
+        _fillRest(
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
+                const SizedBox(height: 16),
+                Text(
+                  'No groups found',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade600,
                   ),
-                ],
-              );
-            },
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Try a different search term',
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
           ),
         ),
-      ],
-    );
+      ];
+    }
+
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        sliver: SliverList.builder(
+          itemCount: _searchResults.length,
+          itemBuilder: (context, index) {
+            final club = _searchResults[index] as Map<String, dynamic>;
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (index > 0) const ListingRowDivider(),
+                ListingRow(
+                  imageUrl: _clubThumb(club),
+                  title: _clubText(club['title']),
+                  onTap: () => NavigationHelper.navigateTo(
+                    context,
+                    ClubViewScreen(
+                      clubPostId: club['ID'],
+                      isOwnClub: false,
+                      showAppBar: true,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    ];
   }
 
   /// The search field's height, declared because the floating header has
@@ -636,19 +685,6 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     return SliverPersistentHeader(
       pinned: true,
       delegate: PinnedSliverBar(height: _tabBarHeight, child: _buildTabBar()),
-    );
-  }
-
-  /// A state that is not a list, with the same chrome above it — so the
-  /// way out of an empty tab is still on screen.
-  Widget _chromeAround(Widget child, {bool withTabs = true}) {
-    return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        _floatingChrome(),
-        if (withTabs) _pinnedTabs(),
-        SliverFillRemaining(hasScrollBody: false, child: child),
-      ],
     );
   }
 
@@ -1276,59 +1312,79 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     );
   }
 
-  Widget _buildMyClubsTab() {
+  List<Widget> _myClubsSlivers() {
     if (_isLoading) {
-      final theme = Provider.of<ThemeProvider>(context);
-      return _chromeAround(
-        Center(child: CircularProgressIndicator(color: theme.primaryColor)),
-      );
+      return [
+        _fillRest(
+          Center(child: CircularProgressIndicator(color: theme.primaryColor)),
+        ),
+      ];
     }
 
     if (_errorMessage != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 48, color: Colors.grey.shade400),
-            const SizedBox(height: 16),
-            Text(_errorMessage!, style: TextStyle(color: Colors.grey.shade600)),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadMyClubs,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.primaryColor,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Retry'),
+      return [
+        _fillRest(
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  size: 48,
+                  color: Colors.grey.shade400,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _errorMessage!,
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _loadMyClubs,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Retry'),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      );
+      ];
     }
 
     if (_clubs.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.group_outlined, size: 64, color: Colors.grey.shade300),
-            const SizedBox(height: 16),
-            Text(
-              'No groups yet',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade600,
-              ),
+      return [
+        _fillRest(
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.group_outlined,
+                  size: 64,
+                  color: Colors.grey.shade300,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No groups yet',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Create your first group to get started',
+                  style: TextStyle(color: Colors.grey.shade500),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Create your first group to get started',
-              style: TextStyle(color: Colors.grey.shade500),
-            ),
-          ],
+          ),
         ),
-      );
+      ];
     }
 
     const rolePriority = {'Owner': 0, 'Admin': 1, 'Member': 2};
@@ -1339,47 +1395,38 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       return aRank.compareTo(bRank);
     });
 
-    return RefreshIndicator(
-      onRefresh: _loadMyClubs,
-      color: theme.primaryColor,
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          _floatingChrome(),
-          _pinnedTabs(),
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverList.separated(
-              itemCount: _clubs.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final club = _clubs[index];
-                return _ClubCard(
-                  club: club,
-                  onEdit: () => _openClubEditor(club),
-                  onView: () async {
-                    final result = await NavigationHelper.navigateTo(
-                      context,
-                      ClubViewScreen(
-                        clubPostId: int.parse(club.Id ?? '0'),
-                        isOwnClub: false,
-                        showAppBar: true,
-                      ),
-                    );
-
-                    if (!mounted) return;
-
-                    if (result == 'deleted') {
-                      _loadMyClubs(); // or whatever your refresh method is called
-                    }
-                  },
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.all(16),
+        sliver: SliverList.separated(
+          itemCount: _clubs.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final club = _clubs[index];
+            return _ClubCard(
+              club: club,
+              onEdit: () => _openClubEditor(club),
+              onView: () async {
+                final result = await NavigationHelper.navigateTo(
+                  context,
+                  ClubViewScreen(
+                    clubPostId: int.parse(club.Id ?? '0'),
+                    isOwnClub: false,
+                    showAppBar: true,
+                  ),
                 );
+
+                if (!mounted) return;
+
+                if (result == 'deleted') {
+                  _loadMyClubs(); // or whatever your refresh method is called
+                }
               },
-            ),
-          ),
-        ],
+            );
+          },
+        ),
       ),
-    );
+    ];
   }
 }
 

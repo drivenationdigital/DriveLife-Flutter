@@ -12,6 +12,7 @@ import 'package:drivelife/widgets/events/featured_events.dart';
 import 'package:drivelife/widgets/events/my_events.dart';
 import 'package:drivelife/widgets/events/my_tickets.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -88,6 +89,7 @@ class _EventsScreenState extends State<EventsScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    attachTabHaptics(_tabController);
     _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {

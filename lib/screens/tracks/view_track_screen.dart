@@ -6,6 +6,7 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -49,6 +50,7 @@ class _TrackDetailScreenState extends State<TrackDetailScreen>
   void initState() {
     super.initState();
     _tabs.addListener(_onTabChanged);
+    attachTabHaptics(_tabs);
     _load();
   }
 
@@ -591,6 +593,16 @@ class _TrackDetailScreenState extends State<TrackDetailScreen>
     final cover = _image(track['cover_photo']);
     final logo = _image(track['logo']);
 
+    // The status bar's height, kept out of the photograph.
+    //
+    // A SliverAppBar's flexibleSpace paints the whole way to the top of the
+    // screen, so the cover ran under the clock and the wifi icon. Those are
+    // drawn dark, because this bar's backgroundColor is white, which left
+    // them unreadable over anything but a pale photo — and a venue does not
+    // do this, its header sits inside a SafeArea. Giving the strip back to
+    // the page keeps the phone's own furniture legible on both.
+    final topInset = MediaQuery.paddingOf(context).top;
+
     return SliverAppBar(
       // Room for the logo to hang below the photograph without the name
       // starting underneath it. The cover is 220 and the badge overhangs by
@@ -604,84 +616,90 @@ class _TrackDetailScreenState extends State<TrackDetailScreen>
       backgroundColor: Colors.white,
       foregroundColor: Colors.white,
       flexibleSpace: FlexibleSpaceBar(
-        background: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (cover != null)
-              CachedNetworkImage(
-                imageUrl: cover,
-                fit: BoxFit.cover,
-                // A cover photo is full-bleed, so cap the decode at the
-                // screen's own width rather than the source's.
-                memCacheWidth:
-                    (MediaQuery.sizeOf(context).width *
-                            MediaQuery.devicePixelRatioOf(context))
-                        .round(),
-                errorWidget: (_, _, _) =>
-                    const ColoredBox(color: Color(0xFF1C1C1E)),
-              )
-            else
-              const ColoredBox(color: Color(0xFF1C1C1E)),
+        background: Padding(
+          // The photo starts below the status bar. Padding rather than a
+          // SafeArea: FlexibleSpaceBar sizes its background to the bar, and
+          // a SafeArea in here would also claim the sides and the bottom.
+          padding: EdgeInsets.only(top: topInset),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (cover != null)
+                CachedNetworkImage(
+                  imageUrl: cover,
+                  fit: BoxFit.cover,
+                  // A cover photo is full-bleed, so cap the decode at the
+                  // screen's own width rather than the source's.
+                  memCacheWidth:
+                      (MediaQuery.sizeOf(context).width *
+                              MediaQuery.devicePixelRatioOf(context))
+                          .round(),
+                  errorWidget: (_, _, _) =>
+                      const ColoredBox(color: Color(0xFF1C1C1E)),
+                )
+              else
+                const ColoredBox(color: Color(0xFF1C1C1E)),
 
-            // Keeps the back arrow and the title legible over a photo that
-            // might be any colour at all.
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0x99000000), Color(0x00000000)],
-                  stops: [0, 0.45],
-                ),
-              ),
-            ),
-
-            // White below the photo, so the overhanging logo sits on the
-            // page rather than on a strip of cover photo stretched to fill
-            // the extra height.
-            const Align(
-              alignment: Alignment.bottomCenter,
-              child: SizedBox(
-                height: 52,
-                child: ColoredBox(
-                  color: Colors.white,
-                  child: SizedBox.expand(),
-                ),
-              ),
-            ),
-
-            if (logo != null)
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Container(
-                  width: 104,
-                  height: 104,
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 14,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+              // Keeps the back arrow and the title legible over a photo that
+              // might be any colour at all.
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x99000000), Color(0x00000000)],
+                    stops: [0, 0.45],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: CachedNetworkImage(
-                      imageUrl: logo,
-                      fit: BoxFit.cover,
-                      memCacheWidth:
-                          (104 * MediaQuery.devicePixelRatioOf(context))
-                              .round(),
-                      errorWidget: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ),
+
+              // White below the photo, so the overhanging logo sits on the
+              // page rather than on a strip of cover photo stretched to fill
+              // the extra height.
+              const Align(
+                alignment: Alignment.bottomCenter,
+                child: SizedBox(
+                  height: 52,
+                  child: ColoredBox(
+                    color: Colors.white,
+                    child: SizedBox.expand(),
+                  ),
+                ),
+              ),
+
+              if (logo != null)
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Container(
+                    width: 104,
+                    height: 104,
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 14,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: CachedNetworkImage(
+                        imageUrl: logo,
+                        fit: BoxFit.cover,
+                        memCacheWidth:
+                            (104 * MediaQuery.devicePixelRatioOf(context))
+                                .round(),
+                        errorWidget: (_, _, _) => const SizedBox.shrink(),
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

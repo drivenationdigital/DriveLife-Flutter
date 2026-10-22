@@ -6,6 +6,7 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/utils/date.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:provider/provider.dart';
 
 class SearchResultsContent extends StatelessWidget {
@@ -685,6 +686,7 @@ class _SearchScreenState extends State<SearchScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    attachTabHaptics(_tabController);
     _searchController.text = '';
 
     // Perform initial search

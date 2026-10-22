@@ -9,6 +9,7 @@ import 'package:drivelife/screens/store/product_view_screen.dart';
 import 'package:drivelife/services/location_service.dart';
 import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/models/banner_model.dart';
 import 'package:drivelife/models/product_model.dart';
@@ -61,6 +62,7 @@ class _ShopScreenState extends State<ShopScreen>
   void initState() {
     super.initState();
     _mainTabController = TabController(length: 3, vsync: this);
+    attachTabHaptics(_mainTabController);
 
     if (widget.initialTab != null) {
       switch (widget.initialTab) {
@@ -1319,8 +1321,11 @@ class _ShopScreenState extends State<ShopScreen>
             if (_isLoadingProducts)
               _buildProductsSkeleton()
             else if (_products.isEmpty)
-              const SizedBox(
-                height: 400,
+              // Sized to the message rather than to a reserved 400, which
+              // left most of a screen empty under the category pills with
+              // one line of grey text adrift in the middle of it.
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 48),
                 child: Center(child: Text('No products found')),
               )
             else
@@ -1510,6 +1515,15 @@ class _ShopScreenState extends State<ShopScreen>
       child: GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
+        // Zero, explicitly. A vertical GridView with a null padding
+        // quietly adopts MediaQuery's vertical insets -- BoxScrollView
+        // reads them so that a full-screen list clears the notch. This
+        // grid is nowhere near the top of the screen, and the shell above
+        // only measures the status bar into a SizedBox rather than
+        // consuming it, so the inset was still live down here: roughly 50
+        // points of nothing between the category pills and the first row
+        // of products, and the home indicator's 34 under the last.
+        padding: EdgeInsets.zero,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
           childAspectRatio: 0.65,
@@ -1558,6 +1572,15 @@ class _ShopScreenState extends State<ShopScreen>
       child: GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
+        // Zero, explicitly. A vertical GridView with a null padding
+        // quietly adopts MediaQuery's vertical insets -- BoxScrollView
+        // reads them so that a full-screen list clears the notch. This
+        // grid is nowhere near the top of the screen, and the shell above
+        // only measures the status bar into a SizedBox rather than
+        // consuming it, so the inset was still live down here: roughly 50
+        // points of nothing between the category pills and the first row
+        // of products, and the home indicator's 34 under the last.
+        padding: EdgeInsets.zero,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
           childAspectRatio: 0.65,

@@ -9,6 +9,7 @@ import 'package:drivelife/widgets/feed/hot_right_now.dart';
 import 'package:drivelife/widgets/feed/offers_banner.dart';
 import 'package:drivelife/widgets/upload_progress_card.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 
@@ -93,6 +94,7 @@ class PostsScreenState extends State<PostsScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: _visibleTabs.length, vsync: this);
+    attachTabHaptics(_tabController);
     // Swapping which feed is on show is this widget's job now that they
     // share one scroll view, so it has to rebuild when the index changes.
     _tabController.addListener(_onTabChanged);

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 /// One section in the top tab row.
@@ -124,7 +124,7 @@ class _DlTopTabsState extends State<DlTopTabs> {
                     selected: i == widget.currentIndex,
                     onTap: () {
                       if (i == widget.currentIndex) return;
-                      HapticFeedback.selectionClick();
+                      DLHaptics.tabChange();
                       widget.onChanged(i);
                     },
                   ),

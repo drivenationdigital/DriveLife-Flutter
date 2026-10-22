@@ -1,6 +1,6 @@
 import 'package:drivelife/config/feature_flags.dart';
-import 'package:drivelife/widgets/events/event_weather.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -158,6 +158,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
       vsync: this,
       initialIndex: _initialIndex,
     );
+    attachTabHaptics(_tabController);
   }
 
   @override
@@ -170,6 +171,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
       vsync: this,
       initialIndex: _initialIndex,
     );
+    attachTabHaptics(_tabController);
     _isFavorite = widget.event?['is_liked'] ?? false;
     _fetchEventDetails();
   }
@@ -379,25 +381,6 @@ class _EventDetailScreenState extends State<EventDetailScreen>
         ),
       ),
     );
-  }
-
-  /// The day the event starts, or null when it has no usable date.
-  ///
-  /// [_formatEventDate] returns the same thing as words for the header;
-  /// this is for anything that has to reason about the date rather than
-  /// print it.
-  DateTime? _eventStartDate(Map<String, dynamic> event) {
-    try {
-      final dates = event['dates'] as List<dynamic>?;
-      if (dates == null || dates.isEmpty) return null;
-
-      final start = dates[0]['start_date'];
-      if (start == null) return null;
-
-      return DateTime.parse(start.toString());
-    } catch (_) {
-      return null;
-    }
   }
 
   String _formatEventDate(Map<String, dynamic> event) {
@@ -1216,20 +1199,6 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                         ),
                       ),
                       const SizedBox(height: 12),
-
-                      // What the weather will be doing on the day.
-                      //
-                      // Only ahead of the event, and only while it is close
-                      // enough to forecast — it draws nothing otherwise, so
-                      // there is no empty row on a show next spring or on
-                      // one that happened last year.
-                      if (!_isPastEvent) ...[
-                        EventWeather(
-                          latitude: latitude,
-                          longitude: longitude,
-                          date: _eventStartDate(event),
-                        ),
-                      ],
 
                       // Everything you can DO with an event goes once it is
                       // over. There is nothing left to register for, buy a

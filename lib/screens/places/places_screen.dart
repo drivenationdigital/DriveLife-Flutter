@@ -14,6 +14,7 @@ import 'package:drivelife/widgets/nav/pinned_sliver_bar.dart';
 import 'package:drivelife/widgets/listing/listing_row.dart';
 import 'package:drivelife/widgets/listing/listing_chips.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:drivelife/models/venue_model.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
@@ -130,6 +131,7 @@ class _VenuesScreenState extends State<VenuesScreen>
 
     theme = Provider.of<ThemeProvider>(context, listen: false);
     _tabController = TabController(length: 2, vsync: this);
+    attachTabHaptics(_tabController);
     _tabController.addListener(_onTabChanged);
     _scrollController.addListener(_onScroll);
     _loadFeaturedVenues();

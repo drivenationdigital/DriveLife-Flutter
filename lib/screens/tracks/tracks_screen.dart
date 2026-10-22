@@ -7,6 +7,7 @@ import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
 import 'package:drivelife/widgets/nav/pinned_sliver_bar.dart';
 import 'package:drivelife/widgets/listing/listing_chips.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:provider/provider.dart';
 
 /// One track, as the list shows it.
@@ -168,6 +169,7 @@ class _TracksScreenState extends State<TracksScreen>
     super.initState();
     _scroll.addListener(_onScroll);
     _tabs.addListener(_onTabChanged);
+    attachTabHaptics(_tabs);
     _loadNearby();
     _loadMine();
   }

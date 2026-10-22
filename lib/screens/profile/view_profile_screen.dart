@@ -15,6 +15,7 @@ import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:drivelife/widgets/profile/profile_avatar.dart';
 import 'package:drivelife/widgets/image_viewer_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -99,6 +100,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     // Posts, Garage, Galleries, Tags — keep in step with the tabs and
     // _buildActiveTabContent below.
     _tabController = TabController(length: 4, vsync: this);
+    attachTabHaptics(_tabController);
     _tabController.addListener(_onTabChanged);
     _scrollController.addListener(_onScroll);
     _checkIfOwnProfile();

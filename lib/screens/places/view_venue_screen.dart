@@ -9,6 +9,7 @@ import 'package:drivelife/utils/html_text.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:provider/provider.dart';
@@ -81,6 +82,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen>
       vsync: this,
       initialIndex: widget.initialTabIndex.clamp(0, 3),
     );
+    attachTabHaptics(_tabController);
     _loadVenue();
   }
 

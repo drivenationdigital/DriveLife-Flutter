@@ -10,6 +10,7 @@ import 'package:drivelife/screens/garage/view_reminders.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:provider/provider.dart';
 import '../../api/garage_api.dart';
@@ -108,6 +109,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    attachTabHaptics(_tabController);
 
     // Try to load from cache first
     final cached = _VehicleCache.get(widget.garageId);
