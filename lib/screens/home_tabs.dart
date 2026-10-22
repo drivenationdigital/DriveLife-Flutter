@@ -117,13 +117,18 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   ///
   /// The rest are screens with no scroll view to put it in, so the shell
   /// draws it above them and it stays put.
-  bool get _chromeIsInFeed =>
-      _currentIndex == _dHome &&
-      const {
-        BottomNavProvider.forYou,
-        BottomNavProvider.places,
-        BottomNavProvider.tracks,
-      }.contains(_homeTab);
+  bool get _chromeIsInFeed {
+    // Groups is its own destination rather than a section of Home, and it
+    // draws the header inside its own scroll view just as Places does.
+    if (_currentIndex == _dGroups) return true;
+
+    return _currentIndex == _dHome &&
+        const {
+          BottomNavProvider.forYou,
+          BottomNavProvider.places,
+          BottomNavProvider.tracks,
+        }.contains(_homeTab);
+  }
 
   /// Whether the current destination draws edge to edge, under the status
   /// bar, with no app header above it.
@@ -273,7 +278,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
       const SizedBox.shrink(),
 
       // Groups, back as its own destination rather than a section of Home.
-      MyClubsScreen(),
+      // A placeholder. Groups is rebuilt every frame in
+      // _buildDestinations() because it carries the shell's header, which
+      // has a live notification badge on it — captured once here it would
+      // never update.
+      const SizedBox.shrink(),
       if (FeatureFlags.mediaTab) MediaScreen() else const SizedBox.shrink(),
       if (currentAccount?.isClubAccount ?? false)
         ClubProfileScreen()
@@ -291,6 +300,20 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   /// fail loudly — it silently shifts every destination after the gap onto
   /// its neighbour's tab and drops the last one off the end, which is
   /// exactly what a missing placeholder here did once already.
+  /// Groups, with the shell's chrome inside its own scroll views.
+  ///
+  /// Built here rather than in [_buildScreens] for the same reason Home
+  /// is: the header it is handed carries a notification badge and the
+  /// theme, and a widget captured once into a cached list never sees
+  /// either change.
+  Widget _buildGroups(ThemeProvider theme) {
+    return MyClubsScreen(
+      chrome: _chrome,
+      header: _buildChrome(theme),
+      headerHeight: _chromeHeight,
+    );
+  }
+
   Widget _buildDestinations(ThemeProvider theme) {
     final destinations = <Widget>[
       // Rebuilt every frame so it tracks _homeTab. The sections inside keep
@@ -298,7 +321,8 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
       // position, and the feed carries a key.
       _buildHome(theme),
       _buildDiscover(),
-      ..._screens.skip(2),
+      _buildGroups(theme),
+      ..._screens.skip(3),
     ];
 
     assert(
@@ -1003,7 +1027,12 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         bottomNavigationBar: ValueListenableBuilder<bool>(
           valueListenable: _chrome,
           builder: (context, chromeVisible, child) {
-            final showChrome = chromeVisible || _currentIndex != _dHome;
+            // The bottom bar follows the scroll on the destinations that
+            // report one, and stays put on the rest. Groups reports now, so
+            // it hides with the header there as it does on the feed.
+            final showChrome =
+                chromeVisible ||
+                (_currentIndex != _dHome && _currentIndex != _dGroups);
 
             // Slides off the bottom rather than collapsing. Collapsing would
             // change the body's height and reflow the feed mid-scroll.

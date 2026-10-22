@@ -68,3 +68,30 @@ abstract final class AppEnvironment {
     );
   }
 }
+
+/// The region prefix the accounts dashboard puts in front of an event id.
+///
+/// The dashboard splits a ref on this prefix — see lib/siteRef.ts and
+/// lib/regions.ts there — and it matches against its real region list
+/// rather than a fixed two characters, so a new region needs an entry in
+/// that table and nothing more here.
+///
+/// Written out rather than `site.toLowerCase()` because the two are not
+/// the same thing: the country is GB and the region key is uk. Anything
+/// unrecognised falls to uk, which is where the server sends it too.
+String dashboardRegionKey(String? site) {
+  switch ((site ?? '').trim().toLowerCase()) {
+    case 'us':
+    case 'usa':
+    case 'ca':
+    case 'mx':
+      return 'us';
+    case 'eu':
+      return 'eu';
+    case 'au':
+    case 'nz':
+      return 'au';
+    default:
+      return 'uk';
+  }
+}

@@ -66,7 +66,7 @@ abstract final class EventEditorWeb {
     // this one has no such history and says what it means. Two conventions
     // that look alike and differ in their default, so resist tidying them
     // into one.
-    final ref = '${site.toLowerCase() == 'us' ? 'us' : 'uk'}$eventEid';
+    final ref = '${dashboardRegionKey(site)}$eventEid';
 
     final path = eventEid == null || eventEid.isEmpty
         ? '/events/create'

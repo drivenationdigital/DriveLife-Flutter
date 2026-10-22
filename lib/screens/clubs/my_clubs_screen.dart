@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/models/my_clubs.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -11,6 +10,10 @@ import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/events/filter_bottom_sheet.dart';
 import 'package:drivelife/widgets/listing/featured_card.dart';
 import 'package:drivelife/widgets/listing/listing_row.dart';
+import 'package:drivelife/widgets/nav/chrome_visibility.dart';
+import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
+import 'package:drivelife/widgets/nav/pinned_sliver_bar.dart';
+import 'package:drivelife/utils/html_text.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/api/club_api_service.dart';
 import 'package:geolocator/geolocator.dart';
@@ -18,14 +21,32 @@ import 'package:google_places_flutter/google_places_flutter.dart';
 import 'package:provider/provider.dart';
 
 class MyClubsScreen extends StatefulWidget {
-  const MyClubsScreen({super.key});
+  /// Told which way the user is scrolling, so the shell can take the
+  /// bottom bar away and bring it back.
+  final ChromeVisibility? chrome;
+
+  /// The shell's header, drawn inside this screen's own scroll views
+  /// rather than above them — above, the only way to hide it would be to
+  /// shrink the box it sits in, which resizes the viewport on every frame
+  /// of the animation. As a sliver the scroll moves it and nothing
+  /// resizes. Same arrangement as Places.
+  final Widget? header;
+
+  /// How tall [header] is. A sliver header declares its extent up front.
+  final double headerHeight;
+  const MyClubsScreen({
+    super.key,
+    this.chrome,
+    this.header,
+    this.headerHeight = 0,
+  });
 
   @override
   State<MyClubsScreen> createState() => _MyClubsScreenState();
 }
 
 class _MyClubsScreenState extends State<MyClubsScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late TabController _tabController;
   late ThemeProvider theme;
   final TextEditingController _searchController = TextEditingController();
@@ -53,7 +74,14 @@ class _MyClubsScreenState extends State<MyClubsScreen>
   Timer? _searchDebounce;
 
   String _selectedClubType = 'all';
-  String _selectedLocation = 'near-me';
+
+  /// Opens on 'all' — no distance filter at all.
+  ///
+  /// Near me was the default and it is the narrowest of the options, so a
+  /// new user's first sight of the tab was usually an empty list. A group
+  /// is also the least place-bound thing in the app: plenty are national
+  /// or worldwide and have no coordinates to be near.
+  String _selectedLocation = 'all';
   bool _showLocationBanner = false;
 
   final TextEditingController _customLocationController =
@@ -89,7 +117,9 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       final hasAccess = locationProvider.hasAccess;
       setState(() {
         _showLocationBanner = !hasAccess;
-        _selectedLocation = hasAccess ? 'near-me' : 'national';
+        // Location permission no longer changes this. 'all' needs no
+        // coordinates, so there is nothing to fall back from.
+        _selectedLocation = 'all';
       });
     });
 
@@ -313,12 +343,16 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       // top: false — the shell above already holds the status bar area, and
       // the section tabs sit between it and this screen. Claiming it again
       // put a band of white between the tabs and the search field.
-      body: SafeArea(
-        top: false,
+      // Nothing above the scroll views, and no SafeArea around them. The
+      // header, the search field and the tabs are all slivers inside, so
+      // the scroll moves them and the viewport never changes size.
+      //
+      // Every scroll reports to the shell through this one listener, which
+      // is what takes the bottom bar away and brings it back.
+      body: NotificationListener<ScrollNotification>(
+        onNotification: widget.chrome?.handle ?? (_) => false,
         child: Column(
           children: [
-            _buildSearchBar(),
-            if (!_isSearching) _buildTabBar(),
             Expanded(
               child: _isSearching
                   ? _buildSearchResultsView()
@@ -336,13 +370,15 @@ class _MyClubsScreenState extends State<MyClubsScreen>
   Widget _buildDiscoverTab() {
     if (_isDiscoverLoading && _discoverClubs.isEmpty) {
       final theme = Provider.of<ThemeProvider>(context);
-      return Center(
-        child: CircularProgressIndicator(color: theme.primaryColor),
+      return _chromeAround(
+        Center(child: CircularProgressIndicator(color: theme.primaryColor)),
       );
     }
 
     if (_discoverError != null && _discoverClubs.isEmpty) {
-      return _buildErrorState(_discoverError!, _loadDiscoverClubs);
+      return _chromeAround(
+        _buildErrorState(_discoverError!, _loadDiscoverClubs),
+      );
     }
 
     // Show spotlight only when not loading AND we have featured clubs
@@ -353,75 +389,57 @@ class _MyClubsScreenState extends State<MyClubsScreen>
         await Future.wait([_loadDiscoverClubs(), _loadFeaturedClubs()]);
       },
       color: theme.primaryColor,
-      child: SingleChildScrollView(
+      child: CustomScrollView(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_showLocationBanner) ...[
-              LocationBanner(
-                onUpdate: () {
-                  setState(() => _showLocationBanner = false);
-                  NavigationHelper.navigateTo(
-                    context,
-                    const AppPermissionsScreen(),
-                  );
-                },
-              ),
-            ],
+        slivers: [
+          _floatingChrome(),
+          _pinnedTabs(),
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_showLocationBanner) ...[
+                  LocationBanner(
+                    onUpdate: () {
+                      setState(() => _showLocationBanner = false);
+                      NavigationHelper.navigateTo(
+                        context,
+                        const AppPermissionsScreen(),
+                      );
+                    },
+                  ),
+                ],
 
-            if (showSpotlight) ...[
-              // const SizedBox(height: 16),
-              // _buildSpotlightHeader(),
-              const SizedBox(height: 12),
-              _buildSpotlightCarousel(),
-              const SizedBox(height: 12),
-              _buildSpotlightDots(),
-              const SizedBox(height: 20),
-            ] else
-              const SizedBox(height: 16),
-            _buildFilters(),
-            // const SizedBox(height: 20),
-            // _buildAllClubsHeader(),
-            const SizedBox(height: 12),
-            _buildDiscoverClubsList(),
-            if (_isDiscoverLoadingMore)
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Center(
-                  child: CircularProgressIndicator(color: theme.primaryColor),
-                ),
-              ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAllClubsHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // const Text(
-          //   'All Clubs',
-          //   style: TextStyle(
-          //     fontSize: 18,
-          //     fontWeight: FontWeight.w700,
-          //     color: Colors.black,
-          //   ),
-          // ),
-          // Text(
-          //   '${_discoverClubs.length} ${_discoverClubs.length == 1 ? "result" : "results"}',
-          //   style: TextStyle(
-          //     fontSize: 13,
-          //     color: Colors.grey.shade600,
-          //     fontWeight: FontWeight.w500,
-          //   ),
-          // ),
+                if (showSpotlight) ...[
+                  // const SizedBox(height: 16),
+                  // _buildSpotlightHeader(),
+                  const SizedBox(height: 12),
+                  _buildSpotlightCarousel(),
+                  const SizedBox(height: 12),
+                  // No dots. The carousel peeks the next card at the right
+                  // edge, which says it scrolls without spending a row saying so.
+                  const SizedBox(height: 20),
+                ] else
+                  const SizedBox(height: 16),
+                _buildFilters(),
+                // const SizedBox(height: 20),
+                // _buildAllClubsHeader(),
+                const SizedBox(height: 12),
+                _buildDiscoverClubsList(),
+                if (_isDiscoverLoadingMore)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: theme.primaryColor,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -515,7 +533,10 @@ class _MyClubsScreenState extends State<MyClubsScreen>
 
   Widget _buildSearchResultsView() {
     if (_isSearchLoading && _searchResults.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return _chromeAround(
+        const Center(child: CircularProgressIndicator()),
+        withTabs: false,
+      );
     }
 
     if (_searchResults.isEmpty) {
@@ -543,59 +564,125 @@ class _MyClubsScreenState extends State<MyClubsScreen>
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: _searchResults.length,
-      itemBuilder: (context, index) {
-        final club = _searchResults[index] as Map<String, dynamic>;
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        // No pinned tabs while searching — they are hidden, which is what
+        // makes this a separate view at all.
+        _floatingChrome(),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          sliver: SliverList.builder(
+            itemCount: _searchResults.length,
+            itemBuilder: (context, index) {
+              final club = _searchResults[index] as Map<String, dynamic>;
 
-        return Column(
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (index > 0) const ListingRowDivider(),
+                  ListingRow(
+                    imageUrl: _clubThumb(club),
+                    title: _clubText(club['title']),
+                    onTap: () => NavigationHelper.navigateTo(
+                      context,
+                      ClubViewScreen(
+                        clubPostId: club['ID'],
+                        isOwnClub: false,
+                        showAppBar: true,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The search field's height, declared because the floating header has
+  /// to know its extent before it is laid out. [_buildSearchBar] boxes
+  /// itself to the same number so the two cannot drift.
+  static const double _searchBarHeight = 62;
+
+  /// The tab row's height, declared for the same reason.
+  static const double _tabBarHeight = 44;
+
+  /// The shell's header with this screen's search field under it.
+  ///
+  /// Floating: gone as you read on, back the moment you scroll up, without
+  /// having to reach the top.
+  Widget _floatingChrome() {
+    return SliverPersistentHeader(
+      floating: true,
+      delegate: FloatingChromeHeader(
+        height: widget.headerHeight + _searchBarHeight,
+        vsync: this,
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (index > 0) const ListingRowDivider(),
-            ListingRow(
-              imageUrl: _clubThumb(club),
-              title: _clubText(club['title']),
-              onTap: () => NavigationHelper.navigateTo(
-                context,
-                ClubViewScreen(
-                  clubPostId: club['ID'],
-                  isOwnClub: false,
-                  showAppBar: true,
-                ),
-              ),
-            ),
+            if (widget.header != null) widget.header!,
+            _buildSearchBar(),
           ],
-        );
-      },
+        ),
+      ),
+    );
+  }
+
+  /// Discover / My Groups, pinned. Navigation, so it stays.
+  Widget _pinnedTabs() {
+    return SliverPersistentHeader(
+      pinned: true,
+      delegate: PinnedSliverBar(height: _tabBarHeight, child: _buildTabBar()),
+    );
+  }
+
+  /// A state that is not a list, with the same chrome above it — so the
+  /// way out of an empty tab is still on screen.
+  Widget _chromeAround(Widget child, {bool withTabs = true}) {
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        _floatingChrome(),
+        if (withTabs) _pinnedTabs(),
+        SliverFillRemaining(hasScrollBody: false, child: child),
+      ],
     );
   }
 
   // ---------- Search bar ----------
   Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: TextField(
-        controller: _searchController,
-        decoration: InputDecoration(
-          hintText: 'Search groups',
-          hintStyle: TextStyle(color: Colors.grey.shade400),
-          prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
-          suffixIcon: _searchController.text.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, size: 20),
-                  onPressed: () => _searchController.clear(),
-                )
-              : null,
-          filled: true,
-          fillColor: Colors.grey.shade100,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide.none,
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
+    return SizedBox(
+      height: _searchBarHeight,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: 'Search groups',
+            // Dense: the box around this is 46 tall and a filled field with
+            // a prefix icon asks for 48 unless told otherwise.
+            isDense: true,
+            hintStyle: TextStyle(color: Colors.grey.shade400),
+            prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
+            suffixIcon: _searchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 20),
+                    onPressed: () => _searchController.clear(),
+                  )
+                : null,
+            filled: true,
+            fillColor: Colors.grey.shade100,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
           ),
         ),
       ),
@@ -628,7 +715,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
               children: [
                 Icon(Icons.explore_outlined, size: 18),
                 SizedBox(width: 6),
-                Text('Discover Clubs'),
+                Text('Discover Groups'),
               ],
             ),
           ),
@@ -639,7 +726,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
               children: [
                 Icon(Icons.favorite_border, size: 18),
                 SizedBox(width: 6),
-                Text('My Clubs'),
+                Text('My Groups'),
               ],
             ),
           ),
@@ -754,12 +841,32 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     return logo.isNotEmpty ? logo : _clubText(club['cover_image']);
   }
 
-  /// A string from the API, or empty. Clubs come back with nulls and
-  /// numbers in fields that are nominally text.
+  /// A string from the API, or empty.
+  ///
+  /// Groups come back with nulls and numbers in fields that are nominally
+  /// text, and some are not single values at all: club_category is an ACF
+  /// multi-select, so it arrives as a list. Calling toString() on that
+  /// gives "[Sports & Performance]" — brackets and all — which is what the
+  /// featured banner was printing.
+  ///
+  /// A list takes its first entry. These are headings on a card, and the
+  /// second category of a group is not worth the width.
   static String _clubText(dynamic value) {
     if (value == null) return '';
+
+    if (value is List) {
+      if (value.isEmpty) return '';
+      return _clubText(value.first);
+    }
+
     final text = value.toString().trim();
-    return text == 'null' ? '' : text;
+    if (text.isEmpty || text == 'null') return '';
+
+    // Decoded here, which is this screen's model boundary: everything it
+    // shows — names, categories, locations — comes through this one
+    // function, and WordPress hands all of them over with entities in.
+    // "Sports &amp; Performance" is what the banner was printing.
+    return decodeHtmlText(text);
   }
 
   /// "1,284 members · Yorkshire", or whichever half of it exists.
@@ -795,27 +902,6 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     }
 
     return out.toString();
-  }
-
-  Widget _buildSpotlightDots() {
-    return Center(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: List.generate(_spotlightClubs.length, (i) {
-          final active = i == _spotlightPage;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            height: 6,
-            width: active ? 18 : 6,
-            decoration: BoxDecoration(
-              color: active ? theme.primaryColor : Colors.grey.shade300,
-              borderRadius: BorderRadius.circular(3),
-            ),
-          );
-        }),
-      ),
-    );
   }
 
   // Google Places Autocomplete Input
@@ -896,6 +982,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
           title: 'Filter by Location',
           multiSelect: false,
           options: [
+            FilterOption(label: 'All', value: 'all'),
             FilterOption(label: 'National', value: 'national'),
             FilterOption(label: 'Near me', value: 'near-me'),
             FilterOption(label: '50 Miles', value: '50-miles'),
@@ -1062,6 +1149,8 @@ class _MyClubsScreenState extends State<MyClubsScreen>
 
   String _resolveLocationLabel() {
     switch (_selectedLocation) {
+      case 'all':
+        return 'All';
       case 'national':
         return 'National';
       case 'near-me':
@@ -1082,7 +1171,7 @@ class _MyClubsScreenState extends State<MyClubsScreen>
         children: [
           Expanded(
             child: _buildFilterButton(
-              'Club Type',
+              'Type',
               _selectedClubType == 'all' ? 'All' : _resolveClubTypeLabel(),
               _onClubTypeFilterTapped,
             ),
@@ -1190,8 +1279,8 @@ class _MyClubsScreenState extends State<MyClubsScreen>
   Widget _buildMyClubsTab() {
     if (_isLoading) {
       final theme = Provider.of<ThemeProvider>(context);
-      return Center(
-        child: CircularProgressIndicator(color: theme.primaryColor),
+      return _chromeAround(
+        Center(child: CircularProgressIndicator(color: theme.primaryColor)),
       );
     }
 
@@ -1253,33 +1342,42 @@ class _MyClubsScreenState extends State<MyClubsScreen>
     return RefreshIndicator(
       onRefresh: _loadMyClubs,
       color: theme.primaryColor,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: _clubs.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final club = _clubs[index];
-          return _ClubCard(
-            club: club,
-            onEdit: () => _openClubEditor(club),
-            onView: () async {
-              final result = await NavigationHelper.navigateTo(
-                context,
-                ClubViewScreen(
-                  clubPostId: int.parse(club.Id ?? '0'),
-                  isOwnClub: false,
-                  showAppBar: true,
-                ),
-              );
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          _floatingChrome(),
+          _pinnedTabs(),
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverList.separated(
+              itemCount: _clubs.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final club = _clubs[index];
+                return _ClubCard(
+                  club: club,
+                  onEdit: () => _openClubEditor(club),
+                  onView: () async {
+                    final result = await NavigationHelper.navigateTo(
+                      context,
+                      ClubViewScreen(
+                        clubPostId: int.parse(club.Id ?? '0'),
+                        isOwnClub: false,
+                        showAppBar: true,
+                      ),
+                    );
 
-              if (!mounted) return;
+                    if (!mounted) return;
 
-              if (result == 'deleted') {
-                _loadMyClubs(); // or whatever your refresh method is called
-              }
-            },
-          );
-        },
+                    if (result == 'deleted') {
+                      _loadMyClubs(); // or whatever your refresh method is called
+                    }
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

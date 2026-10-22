@@ -42,7 +42,7 @@ abstract final class EventOverviewWeb {
     // Always prefixed, both regions — the dashboard's own convention
     // (formatRef in lib/siteRef.ts), where a bare id means "region unknown"
     // and the page refuses it. Not the checkout's rule, where bare means UK.
-    final ref = '${site.toLowerCase() == 'us' ? 'us' : 'uk'}$eventEid';
+    final ref = '${dashboardRegionKey(site)}$eventEid';
 
     final url = Uri.parse('${AppEnvironment.accountsBase}/events/$ref').replace(
       queryParameters: {

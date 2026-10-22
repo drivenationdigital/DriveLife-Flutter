@@ -76,7 +76,11 @@ abstract final class TicketWebCheckout {
     // The region rides in front of the id, bare meaning UK — post ids are
     // only unique within a blog, so a US event opened without it resolves to
     // whichever UK event shares that id.
-    final linkEid = site == 'us' ? 'us$eventEid' : eventEid;
+    // Bare means UK here, unlike the dashboard's refs — every ticket link
+    // ever issued is bare and they all still have to open. So only a
+    // non-UK region takes a prefix.
+    final region = dashboardRegionKey(site);
+    final linkEid = region == 'uk' ? eventEid : '$region$eventEid';
 
     return Uri.parse(
       '${CheckoutApi.checkoutBaseUrl}/$linkEid',

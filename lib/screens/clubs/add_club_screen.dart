@@ -71,7 +71,12 @@ class _CreateClubScreenState extends State<CreateClubScreen>
   final Set<int> _selectedCategoryIds = {}; // Store term IDs instead of names
 
   // Location Type
-  int _locationType = 2; // 1 = National, 2 = Local
+  /// club_location_type: 1 national, 2 local, 3 worldwide.
+  ///
+  /// 2 is the default and the value every group created before this has.
+  /// Worldwide had to be a number nothing already uses — making it 2 would
+  /// have turned every local group in the database into a worldwide one.
+  int _locationType = 2;
 
   // Membership Questions
   final List<TextEditingController> _questionControllers = [];
@@ -1284,7 +1289,7 @@ class _BasicDetailsTab extends StatelessWidget {
           const Row(
             children: [
               Text(
-                'Group Location',
+                'Group Type',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -1309,14 +1314,9 @@ class _BasicDetailsTab extends StatelessWidget {
                 isExpanded: true,
                 icon: Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
                 items: const [
-                  DropdownMenuItem(
-                    value: 2, // ✅ Changed from 'local' to 2
-                    child: Text('Local / Regional Group'),
-                  ),
-                  DropdownMenuItem(
-                    value: 1, // ✅ Changed from 'national' to 1
-                    child: Text('National Group'),
-                  ),
+                  DropdownMenuItem(value: 2, child: Text('Local')),
+                  DropdownMenuItem(value: 1, child: Text('National')),
+                  DropdownMenuItem(value: 3, child: Text('Worldwide')),
                 ],
                 onChanged: (value) {
                   if (value != null) {
@@ -1328,7 +1328,10 @@ class _BasicDetailsTab extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // Club Location
+          // The place itself, for a local group only. A national or
+          // worldwide group has no coordinates — that is what makes it one,
+          // and it is why both bypass the distance filter when the app
+          // lists them.
           if (locationType == 2)
             GooglePlaceAutoCompleteTextField(
               textEditingController: locationController,
