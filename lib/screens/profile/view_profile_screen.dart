@@ -777,12 +777,30 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     final accountManager = Provider.of<AccountManager>(context, listen: false);
     final currentAccount = accountManager.activeAccount;
 
-    if (token == null || isExpired) {
-      if (currentAccount != null && currentAccount.token.isNotEmpty) {
-        await SupabaseTokenManager.fetchAndStore(currentAccount.token);
+    // Wrapped, because without it a failure here just stops: the throw
+    // escapes, the Navigator.push below never runs, and tapping Message
+    // does nothing at all with nothing said. That is exactly what happened
+    // while the token response was being mis-parsed — the button looked
+    // dead rather than broken.
+    try {
+      if (token == null || isExpired) {
+        if (currentAccount != null && currentAccount.token.isNotEmpty) {
+          await SupabaseTokenManager.fetchAndStore(currentAccount.token);
+        }
+      } else {
+        await SupabaseTokenManager.restoreSession();
       }
-    } else {
-      await SupabaseTokenManager.restoreSession();
+    } catch (e) {
+      debugPrint('[Profile] could not start messaging: $e');
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open messages. Please try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
     }
 
     if (!mounted) return;

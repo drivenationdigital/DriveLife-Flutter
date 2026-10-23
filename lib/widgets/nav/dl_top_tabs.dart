@@ -45,11 +45,19 @@ class DlTopTabs extends StatefulWidget {
   final int currentIndex;
   final ValueChanged<int> onChanged;
 
+  /// Counts to show on tabs, by tab index. A tab with no entry, or an
+  /// entry of 0, draws nothing.
+  ///
+  /// Passed in rather than held on [DlTopTab] because the tab list is a
+  /// const and the count is not: it changes while the row is on screen.
+  final Map<int, int> badges;
+
   const DlTopTabs({
     super.key,
     required this.tabs,
     required this.currentIndex,
     required this.onChanged,
+    this.badges = const {},
   });
 
   @override
@@ -122,6 +130,7 @@ class _DlTopTabsState extends State<DlTopTabs> {
                     key: _keys[i],
                     tab: widget.tabs[i],
                     selected: i == widget.currentIndex,
+                    badge: widget.badges[i] ?? 0,
                     onTap: () {
                       if (i == widget.currentIndex) return;
                       DLHaptics.tabChange();
@@ -143,11 +152,15 @@ class _Tab extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  /// How many unread, or 0 for none.
+  final int badge;
+
   const _Tab({
     super.key,
     required this.tab,
     required this.selected,
     required this.onTap,
+    this.badge = 0,
   });
 
   @override
@@ -176,40 +189,53 @@ class _Tab extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(0, 7, 0, 9),
               child: Row(
                 children: [
-                  AnimatedContainer(
-                    duration: duration,
-                    curve: curve,
-                    width: 38,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? const Color(0xFF111111)
-                          : const Color(0xFFF4F4F4),
-                      borderRadius: BorderRadius.circular(11),
-                    ),
-                    child: Center(
-                      // Gold on black reads as the brand; grey on grey would
-                      // be invisible at this size.
-                      child: tab.icon != null
-                          ? SvgPicture.asset(
-                              tab.icon!,
-                              width: 18,
-                              height: 18,
-                              colorFilter: ColorFilter.mode(
-                                selected
-                                    ? const Color(0xFFC9A449)
-                                    : const Color(0xFF9A9A9A),
-                                BlendMode.srcIn,
-                              ),
-                            )
-                          : Icon(
-                              tab.glyph,
-                              size: 17,
-                              color: selected
-                                  ? const Color(0xFFC9A449)
-                                  : const Color(0xFF9A9A9A),
-                            ),
-                    ),
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      AnimatedContainer(
+                        duration: duration,
+                        curve: curve,
+                        width: 38,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? const Color(0xFF111111)
+                              : const Color(0xFFF4F4F4),
+                          borderRadius: BorderRadius.circular(11),
+                        ),
+                        child: Center(
+                          // Gold on black reads as the brand; grey on grey would
+                          // be invisible at this size.
+                          child: tab.icon != null
+                              ? SvgPicture.asset(
+                                  tab.icon!,
+                                  width: 18,
+                                  height: 18,
+                                  colorFilter: ColorFilter.mode(
+                                    selected
+                                        ? const Color(0xFFC9A449)
+                                        : const Color(0xFF9A9A9A),
+                                    BlendMode.srcIn,
+                                  ),
+                                )
+                              : Icon(
+                                  tab.glyph,
+                                  size: 17,
+                                  color: selected
+                                      ? const Color(0xFFC9A449)
+                                      : const Color(0xFF9A9A9A),
+                                ),
+                        ),
+                      ),
+
+                      // Outside the chip's bounds, hence Clip.none above.
+                      if (badge > 0)
+                        Positioned(
+                          top: -5,
+                          right: -6,
+                          child: _Badge(count: badge),
+                        ),
+                    ],
                   ),
                   const SizedBox(width: 10),
                   AnimatedDefaultTextStyle(
@@ -252,6 +278,45 @@ class _Tab extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// An unread count, as a pill.
+///
+/// Caps at 99+ so one very unread tab cannot push the row's other tabs off
+/// the screen — the row scrolls, but the selected tab is scrolled into view
+/// by width, and a four-digit badge throws that off.
+class _Badge extends StatelessWidget {
+  final int count;
+
+  const _Badge({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count > 99 ? '99+' : '$count';
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 18),
+      height: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE53935),
+        borderRadius: BorderRadius.circular(9),
+        // A ring in the row's own colour, so the pill reads as sitting on
+        // top of the chip rather than being part of it.
+        border: Border.all(color: Colors.white, width: 2),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          height: 1,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );

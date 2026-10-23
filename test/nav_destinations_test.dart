@@ -43,10 +43,14 @@ void main() {
       expect(BottomNavProvider.tracks, 3);
       expect(BottomNavProvider.businesses, 4);
       expect(BottomNavProvider.shop, 5);
+      // Last, because it was added last and the row is read left to right.
+      // The inbox had no way in before it: InboxScreen existed and nothing
+      // built it.
+      expect(BottomNavProvider.messages, 6);
     });
 
     test('the count matches the names', () {
-      expect(BottomNavProvider.sectionCount, 6);
+      expect(BottomNavProvider.sectionCount, 7);
     });
 
     test('a section index is not a destination index', () {

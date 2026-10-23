@@ -6,6 +6,7 @@ import 'package:drivelife/providers/pending_tags_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
+import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/services/analytics_service.dart';
 import 'package:drivelife/services/app_error_logger.dart';
@@ -72,8 +73,9 @@ class BottomNavProvider extends ChangeNotifier {
   static const int tracks = 3;
   static const int businesses = 4;
   static const int shop = 5;
+  static const int messages = 6;
 
-  static const int sectionCount = shop + 1;
+  static const int sectionCount = messages + 1;
 
   int _currentIndex = home;
   int _homeSection = forYou;
@@ -148,8 +150,18 @@ void main() async {
   // Piwik PRO analytics — never throws, logs and no-ops on failure.
   await Analytics.initialize();
 
-  // await SupabaseConfig.initialize();
-  // await UserProfileCache.instance.loadFromDisk();
+  // Messaging. Commented out until now, which is why Supabase.instance
+  // threw "you must initialize the supabase instance" the moment anything
+  // touched a conversation -- and why the inbox could never load.
+  //
+  // Wrapped like Firebase above: if this fails the Messages tab says so
+  // for itself, and the rest of the app still starts.
+  try {
+    await SupabaseConfig.initialize();
+    await UserProfileCache.instance.loadFromDisk();
+  } catch (e) {
+    print('Error initializing Supabase: $e');
+  }
 
   runApp(
     MultiProvider(

@@ -21,6 +21,7 @@ import 'package:drivelife/screens/clubs/add_club_screen.dart';
 import 'package:drivelife/screens/places/coming_soon_screen.dart';
 import 'package:drivelife/screens/tracks/tracks_screen.dart';
 import 'package:drivelife/screens/clubs/club_creation_screen.dart';
+import 'package:drivelife/screens/chat/ChatList.dart';
 import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
@@ -78,9 +79,14 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     // Groups is not here: it is a bottom-bar destination again. Listing it
     // in both would mean two routes to the same screen, each with its own
     // scroll position and its own loaded list.
-    // Last, and reachable only here: the header's basket button went when
-    // the header was rebuilt, so this is the shop's only way in.
+    // Reachable only here: the header's basket button went when the
+    // header was rebuilt, so this is the shop's only way in.
     DlTopTab(label: 'Shop', icon: 'assets/app-icons/04-Basket.svg'),
+    // Last. The inbox had no way in at all before this — InboxScreen was
+    // written and never built, and the only route into messaging was the
+    // Message button on somebody's profile, which opens one thread and
+    // can never show you the others.
+    DlTopTab(label: 'Messages', glyph: CupertinoIcons.chat_bubble_2_fill),
   ];
 
   /// Which section of Home is showing. Only meaningful while the Home
@@ -127,6 +133,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           BottomNavProvider.forYou,
           BottomNavProvider.places,
           BottomNavProvider.tracks,
+          BottomNavProvider.messages,
         }.contains(_homeTab);
   }
 
@@ -394,6 +401,13 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         if (_currentIndex == _dHome)
           DlTopTabs(
             tabs: _homeTabs,
+            // Live, so a message arriving while you are on another section
+            // shows up without having to visit the inbox to find out.
+            badges: {
+              BottomNavProvider.messages: context
+                  .watch<UnreadCountProvider>()
+                  .count,
+            },
             currentIndex: _homeTab,
             onChanged: _setHomeTab,
           ),
@@ -404,6 +418,28 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   /// How tall [_buildChrome] is, which a sliver header has to know up front.
   double get _chromeHeight =>
       _headerHeight + (_currentIndex == _dHome ? DlTopTabs.height : 0);
+
+  /// The inbox, or a prompt to sign in.
+  ///
+  /// Built per frame rather than held in a field so that signing in or
+  /// switching account rebuilds it against the new user — the inbox is
+  /// keyed on a user id and would otherwise keep showing the old one's
+  /// conversations until the whole shell was rebuilt.
+  Widget _buildMessages(ThemeProvider theme) {
+    final user = context.watch<AccountManager>().activeUser;
+
+    if (user == null) {
+      return const ComingSoonScreen(title: 'Messages');
+    }
+
+    return InboxScreen(
+      key: ValueKey('inbox-${user.id}'),
+      myUserId: user.id.toString(),
+      chrome: _chrome,
+      header: _buildChrome(theme),
+      headerHeight: _chromeHeight,
+    );
+  }
 
   Widget _buildHome(ThemeProvider theme) {
     final sections = <Widget>[
@@ -445,6 +481,8 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
       // No app bar of its own: the shell above already supplies one, and
       // the shop's own carries a back button that would pop the shell.
       const ShopScreen(),
+
+      _buildMessages(theme),
     ];
 
     assert(

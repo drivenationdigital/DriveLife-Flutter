@@ -365,6 +365,7 @@ class _PhotoCommentsSheetState extends State<PhotoCommentsSheet> {
         final userId = hasAuthor
             ? (int.tryParse('${author['user_id']}') ?? 0)
             : 0;
+        final isVerified = hasAuthor && author['verified'] == true;
 
         void openAuthor() {
           if (userId <= 0) return;
@@ -413,6 +414,10 @@ class _PhotoCommentsSheetState extends State<PhotoCommentsSheet> {
                           ),
                         ),
                       ),
+                      if (isVerified) ...[
+                        const SizedBox(width: 4),
+                        Icon(Icons.verified, size: 14, color: _gold),
+                      ],
                       const SizedBox(width: 8),
                       Text(
                         _age('${comment['created_at'] ?? ''}'),

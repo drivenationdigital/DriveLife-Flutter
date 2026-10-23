@@ -9,8 +9,10 @@
 // ============================================================
 
 import 'dart:convert';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatList.dart';
+import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -292,107 +294,182 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
     final preview = widget.preview;
     final lastMsg = preview.lastMessage;
     final hasUnread = preview.unreadCount > 0;
-    final scheme = Theme.of(context).colorScheme;
-
     final isGroup = preview.isGroup;
+
     final name = isGroup
         ? (preview.conversation.groupName ?? 'Group')
-        : (_profile?.bestName ?? '...');
-    final imageUrl = isGroup ? null : _profile?.imageUrl;
+        : (_profile?.bestName ?? '…');
 
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+    return Material(
+      color: Colors.white,
+      child: InkWell(
+        onTap: widget.onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              _avatar(theme, name, isGroup),
+              const SizedBox(width: 12),
 
-      leading: isGroup
-          ? CircleAvatar(
-              radius: 22,
-              backgroundColor: theme.primaryColor.withOpacity(0.1),
-              child: Icon(Icons.group, color: theme.primaryColor),
-            )
-          : CircleAvatar(
-              radius: 22,
-              backgroundColor: theme.primaryColor.withOpacity(0.1),
-              backgroundImage: imageUrl != null && imageUrl.isNotEmpty
-                  ? NetworkImage(imageUrl)
-                  : null,
-              child: imageUrl == null || imageUrl.isEmpty
-                  ? Text(
-                      name != '...' ? name[0].toUpperCase() : '?',
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: theme.primaryColor,
+                        fontSize: 14.5,
+                        height: 1.25,
+                        fontWeight: hasUnread
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: const Color(0xFF111111),
                       ),
-                    )
-                  : null,
-            ),
-
-      title: Text(
-        name,
-        style: TextStyle(
-          fontWeight: hasUnread ? FontWeight.bold : FontWeight.normal,
-        ),
-      ),
-
-      subtitle: lastMsg != null
-          ? Text(
-              lastMsg.senderId == widget.myUserId
-                  ? 'You: ${lastMsg.content}'
-                  : lastMsg.content,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
-                color: hasUnread ? scheme.onSurface : scheme.onSurfaceVariant,
-              ),
-            )
-          : const Text(
-              'No messages yet',
-              style: TextStyle(fontStyle: FontStyle.italic),
-            ),
-
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (lastMsg != null)
-            Text(
-              _formatTime(lastMsg.createdAt),
-              style: TextStyle(
-                fontSize: 11,
-                color: hasUnread ? theme.primaryColor : scheme.onSurfaceVariant,
-              ),
-            ),
-          if (hasUnread) ...[
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: theme.primaryColor,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                preview.unreadCount > 99 ? '99+' : '${preview.unreadCount}',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: scheme.onPrimary,
-                  fontWeight: FontWeight.bold,
+                    ),
+                    const SizedBox(height: 2),
+                    _subtitle(lastMsg, hasUnread),
+                  ],
                 ),
               ),
-            ),
-          ],
-        ],
-      ),
 
-      onTap: widget.onTap,
+              // The unread mark. A dot, not a number: the count that
+              // matters is the total, and that is on the Messages tab.
+              if (hasUnread) ...[
+                const SizedBox(width: 12),
+                Container(
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 
-  String _formatTime(DateTime dt) {
-    final now = DateTime.now();
-    if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
-      return '${dt.hour.toString().padLeft(2, '0')}:'
-          '${dt.minute.toString().padLeft(2, '0')}';
+  /// "Nice one · 2h" — the preview and the time on one line.
+  ///
+  /// One line rather than a right-hand column, so a long message gets the
+  /// width instead of reserving space for a timestamp that is four
+  /// characters at most.
+  Widget _subtitle(ChatMessage? lastMsg, bool hasUnread) {
+    final style = TextStyle(
+      fontSize: 13,
+      height: 1.3,
+      fontWeight: hasUnread ? FontWeight.w600 : FontWeight.w400,
+      color: hasUnread ? const Color(0xFF111111) : Colors.grey.shade500,
+    );
+
+    if (lastMsg == null) {
+      return Text(
+        'No messages yet',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style.copyWith(color: Colors.grey.shade400),
+      );
     }
-    return '${dt.day}/${dt.month}';
+
+    final mine = lastMsg.senderId == widget.myUserId;
+
+    return Row(
+      children: [
+        Flexible(
+          child: Text(
+            mine ? 'You: ${lastMsg.content}' : lastMsg.content,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+          ),
+        ),
+        Text(
+          '  ·  ${_relativeTime(lastMsg.createdAt)}',
+          // Never bold, never black. The time is reference, not content,
+          // and letting it go bold with the rest made every unread row
+          // shout twice.
+          style: style.copyWith(
+            fontWeight: FontWeight.w400,
+            color: Colors.grey.shade400,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _avatar(ThemeProvider theme, String name, bool isGroup) {
+    final imageUrl = isGroup ? null : _profile?.imageUrl;
+    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+
+    final initial = name.isNotEmpty && name != '…'
+        ? name.characters.first.toUpperCase()
+        : '?';
+
+    return ClipOval(
+      child: SizedBox(
+        width: 56,
+        height: 56,
+        child: hasImage
+            ? CachedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.cover,
+                // Decoded at the size it is drawn, not the source's.
+                memCacheWidth: (56 * MediaQuery.devicePixelRatioOf(context))
+                    .round(),
+                placeholder: (_, __) => ColoredBox(color: Colors.grey.shade100),
+                errorWidget: (_, __, ___) =>
+                    _initialAvatar(theme, initial, isGroup),
+              )
+            : _initialAvatar(theme, initial, isGroup),
+      ),
+    );
+  }
+
+  Widget _initialAvatar(ThemeProvider theme, String initial, bool isGroup) {
+    return ColoredBox(
+      color: const Color(0xFFEFEFEF),
+      child: Center(
+        child: isGroup
+            ? Icon(Icons.group_rounded, size: 24, color: Colors.grey.shade600)
+            : Text(
+                initial,
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+      ),
+    );
+  }
+
+  /// How long ago, the way a messaging app says it.
+  ///
+  /// A clock time is only useful for today; after that the day, and after
+  /// a week the date. "09:14" on something from March says nothing.
+  String _relativeTime(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 24 && now.day == dt.day) return '${diff.inHours}h';
+
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    final daysBack = startOfToday
+        .difference(DateTime(dt.year, dt.month, dt.day))
+        .inDays;
+
+    if (daysBack == 1) return '1d';
+    if (daysBack < 7) return '${daysBack}d';
+    if (daysBack < 365) return '${(daysBack / 7).floor()}w';
+
+    return '${(daysBack / 365).floor()}y';
   }
 }

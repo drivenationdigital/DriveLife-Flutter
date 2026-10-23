@@ -38,6 +38,18 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     super.initState();
     _participantIds = List.from(widget.participantIds);
     _nameController = TextEditingController(text: widget.groupName);
+    _resolveProfiles();
+  }
+
+  /// Makes sure every member has a name and a face before they are drawn.
+  ///
+  /// The list below reads UserProfileCache.getCached, which is a synchronous
+  /// look in the map and nothing more -- so anybody not already cached was
+  /// drawn as "User 67004". That is most of them when somebody else added a
+  /// member, or on a cold start.
+  Future<void> _resolveProfiles() async {
+    await UserProfileCache.instance.resolve(_participantIds);
+    if (mounted) setState(() {});
   }
 
   @override
@@ -177,6 +189,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
 
       setState(() => _participantIds = newIds);
       _didUpdate();
+      _resolveProfiles();
 
       if (mounted) {
         Navigator.pop(context); // close sheet

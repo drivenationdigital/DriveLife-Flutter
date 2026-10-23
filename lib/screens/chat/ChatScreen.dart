@@ -2,26 +2,17 @@ import 'dart:async';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
-import 'package:drivelife/screens/chat/models.dart';
 import 'package:drivelife/screens/chat/widgets/GroupInfo.dart';
+import 'package:drivelife/screens/chat/message_grouping.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-class ConversationPreview {
-  final Conversation conversation;
-  final ChatMessage? lastMessage;
-  final int unreadCount;
-  final String? otherUserId; // null for group chats
-
-  ConversationPreview({
-    required this.conversation,
-    this.otherUserId,
-    this.lastMessage,
-    this.unreadCount = 0,
-  });
-
-  bool get isGroup => conversation.isGroup;
-}
+// ConversationPreview used to be declared here as well as in
+// ChatList.dart. Nothing in this file referenced it, and two different
+// types of the same name in one import graph is a trap worth closing: the
+// tile in ChatProfileCache takes the other one, and an accidental use of
+// this would have failed with a message about ConversationPreview not
+// being assignable to ConversationPreview.
 
 class GroupNameDialog extends StatefulWidget {
   final List<UserProfile> members;
@@ -144,7 +135,20 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
   UserProfile? otherProfile; // 1-to-1 only
   Map<String, UserProfile> _groupProfiles = {}; // group only
-  List<String> _resolvedParticipants = [];
+
+  /// Everyone in the group, me included, as the conversations row has it.
+  ///
+  /// The one list. Seeded from the widget so the title bar has something
+  /// to draw on the first frame, and replaced by [_refreshGroup] from
+  /// then on.
+  late List<String> _participants = List.of(widget.participantIds);
+
+  /// Same reasoning for the name, which the info screen can also change.
+  late String _groupName = widget.groupName ?? 'Group';
+
+  /// Everyone but me — the avatar stack, and who needs a profile.
+  List<String> get _others =>
+      _participants.where((id) => id != widget.myUserId).toList();
 
   @override
   void initState() {
@@ -179,13 +183,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     // Resolve profiles
     if (widget.isGroup) {
-      final ids = widget.participantIds
-          .where((id) => id != widget.myUserId)
-          .toList();
-      _resolvedParticipants = ids;
-      final profiles = await UserProfileCache.instance.resolve(ids);
-      print('Resolved group profiles: ${profiles.length} for IDs: $ids');
-      _groupProfiles = profiles;
+      _groupProfiles = await UserProfileCache.instance.resolve(_others);
     } else {
       otherProfile = UserProfileCache.instance.getCached(
         widget.otherUserId ?? '',
@@ -245,8 +243,16 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildAppBar(ThemeProvider theme) {
     return AppBar(
       titleSpacing: 0,
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
+      elevation: 0,
+      // A hairline instead of a shadow. The thread is white and the bar is
+      // white; a drop shadow between them is the only thing that would say
+      // otherwise, and it reads as heavier than it is.
+      shape: const Border(bottom: BorderSide(color: Color(0xFFEFEFEF))),
+      foregroundColor: const Color(0xFF111111),
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios),
+        icon: const Icon(Icons.arrow_back_ios_new, size: 20),
         onPressed: () => Navigator.of(context).pop(),
       ),
       title: widget.isGroup ? _buildGroupAppBarTitle() : _buildDmAppBarTitle(),
@@ -255,28 +261,32 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // 1-to-1 title: avatar + name
   Widget _buildDmAppBarTitle() {
+    final name = otherProfile?.bestName ?? widget.otherUserName;
+    final imageUrl = otherProfile?.imageUrl;
+    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+
     return Row(
       children: [
         CircleAvatar(
-          radius: 18,
-          backgroundImage: otherProfile?.imageUrl != null
-              ? NetworkImage(otherProfile!.imageUrl!)
-              : null,
-          child: otherProfile?.imageUrl == null
-              ? Text(
-                  (otherProfile?.bestName ?? widget.otherUserName).isNotEmpty
-                      ? (otherProfile?.bestName ?? widget.otherUserName)[0]
-                            .toUpperCase()
-                      : '?',
-                  style: const TextStyle(fontSize: 14),
-                )
-              : null,
+          radius: 16,
+          backgroundColor: const Color(0xFFEFEFEF),
+          backgroundImage: hasImage ? NetworkImage(imageUrl) : null,
+          child: hasImage
+              ? null
+              : Text(
+                  name.isNotEmpty ? name.characters.first.toUpperCase() : '?',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
-            otherProfile?.bestName ?? widget.otherUserName,
-            style: const TextStyle(fontSize: 17),
+            name,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -286,46 +296,29 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // Group title: stacked avatars + group name + member count
   Widget _buildGroupAppBarTitle() {
-    final others = _resolvedParticipants.take(3).toList();
+    final others = _others.take(3).toList();
 
     return GestureDetector(
       onTap: () async {
-        // Navigate to group info, get back updated participant list
-        final updatedIds = await Navigator.push<List<String>>(
+        await Navigator.push<List<String>>(
           context,
           MaterialPageRoute(
             builder: (_) => GroupInfoScreen(
               conversationId: widget.conversationId!,
               myUserId: widget.myUserId,
-              groupName: widget.groupName ?? 'Group',
-              participantIds: widget.participantIds,
-              onChanged: (updatedIds, updatedName) {
-                setState(() {
-                  _resolvedParticipants = updatedIds
-                      .where((id) => id != widget.myUserId)
-                      .toList();
-                  // Optionally update group name display if you store it in state
-                });
-              },
+              groupName: _groupName,
+              participantIds: _participants,
+              // Fires on each change while the screen is open, so the bar
+              // behind it is already right by the time it is popped.
+              onChanged: (_, __) => _refreshGroup(),
             ),
           ),
         );
 
-        // If members were added, refresh profiles
-        if (updatedIds != null && mounted) {
-          final newIds = updatedIds
-              .where((id) => !_resolvedParticipants.contains(id))
-              .toList();
-          if (newIds.isNotEmpty) {
-            final profiles = await UserProfileCache.instance.resolve(newIds);
-            setState(() {
-              _groupProfiles.addAll(profiles);
-              _resolvedParticipants = updatedIds
-                  .where((id) => id != widget.myUserId)
-                  .toList();
-            });
-          }
-        }
+        // And again on the way out, in case the last change landed after
+        // the callback -- and because somebody else may have edited the
+        // group while that screen was open.
+        await _refreshGroup();
       },
       child: Row(
         children: [
@@ -350,16 +343,16 @@ class _ChatScreenState extends State<ChatScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  widget.groupName ?? 'Group',
+                  _groupName,
                   style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  '${widget.participantIds.length} members · tap for info',
-                  style: const TextStyle(fontSize: 11),
+                  '${_participants.length} members · tap for info',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
               ],
             ),
@@ -367,6 +360,36 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
+  }
+
+  /// Re-reads the group from the server and rebuilds what depends on it.
+  ///
+  /// Whole-list, not a patch. Profiles are REPLACED rather than added to,
+  /// which is what finally drops a removed member out of the avatar stack
+  /// — the old code only ever called addAll, so leaving a group was
+  /// invisible here.
+  Future<void> _refreshGroup() async {
+    if (!widget.isGroup || widget.conversationId == null) return;
+
+    try {
+      final conv = await ChatRepository().getConversation(
+        widget.conversationId!,
+      );
+
+      final profiles = await UserProfileCache.instance.resolve(
+        conv.participantIds.where((id) => id != widget.myUserId).toList(),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _participants = conv.participantIds;
+        _groupName = conv.groupName ?? _groupName;
+        _groupProfiles = profiles;
+      });
+    } catch (e) {
+      debugPrint('[Chat] could not refresh group: $e');
+    }
   }
 
   Widget _buildStackedAvatar(String userId, int index) {
@@ -391,76 +414,97 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildBubble(ChatMessage msg, ThemeProvider theme) {
+  /// One message, drawn as part of a run rather than on its own.
+  ///
+  /// [startsRun] is the first message of a block from one sender and gets
+  /// the name, in a group. [endsRun] is the last and gets the avatar and
+  /// the squared-off corner. The ones between get neither, which is what
+  /// makes a block read as one turn in a conversation rather than six
+  /// separate announcements.
+  ///
+  /// No timestamp anywhere: the day separator carries the time, the way
+  /// Instagram does it.
+  Widget _buildBubble(
+    ChatMessage msg,
+    ThemeProvider theme, {
+    required bool startsRun,
+    required bool endsRun,
+  }) {
     final isMe = msg.senderId == widget.myUserId;
-    final scheme = Theme.of(context).colorScheme;
+    final showAvatar = widget.isGroup && !isMe;
 
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+    const round = Radius.circular(20);
+    const tail = Radius.circular(5);
+
+    return Padding(
+      padding: EdgeInsets.only(top: startsRun ? 10 : 2),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: isMe
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // Sender avatar — group chats only, other people's messages
-          if (widget.isGroup && !isMe) ...[
-            _buildSenderAvatar(msg.senderId),
-            const SizedBox(width: 6),
+          if (showAvatar) ...[
+            // The slot is held whether or not the avatar is drawn, so the
+            // bubbles in a block line up instead of stepping sideways.
+            SizedBox(
+              width: 26,
+              height: 26,
+              child: endsRun
+                  ? _buildSenderAvatar(msg.senderId)
+                  : const SizedBox.shrink(),
+            ),
+            const SizedBox(width: 8),
           ],
 
           Flexible(
-            child: Container(
-              margin: EdgeInsets.only(
-                top: 3,
-                bottom: 3,
-                left: isMe ? 60 : 0,
-                right: isMe ? 0 : 60,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isMe
-                    ? theme.primaryColor
-                    : scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(isMe ? 18 : 4),
-                  bottomRight: Radius.circular(isMe ? 4 : 18),
-                ),
+            child: ConstrainedBox(
+              // A share of the width rather than a fixed inset, so a
+              // bubble is the same proportion of the screen on any phone.
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.sizeOf(context).width * 0.72,
               ),
               child: Column(
                 crossAxisAlignment: isMe
                     ? CrossAxisAlignment.end
                     : CrossAxisAlignment.start,
                 children: [
-                  // Sender name — group chats only
-                  if (widget.isGroup && !isMe)
+                  if (widget.isGroup && !isMe && startsRun)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 3),
+                      padding: const EdgeInsets.only(left: 14, bottom: 4),
                       child: Text(
                         _groupProfiles[msg.senderId]?.bestName ??
                             'User ${msg.senderId}',
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w600,
-                          color: scheme.primary,
+                          color: Colors.grey.shade500,
                         ),
                       ),
                     ),
 
-                  Text(
-                    msg.content,
-                    style: TextStyle(
-                      color: isMe ? scheme.onPrimary : scheme.onSurface,
-                      fontSize: 15,
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(14, 9, 14, 10),
+                    decoration: BoxDecoration(
+                      color: isMe
+                          ? theme.primaryColor
+                          : const Color(0xFFEFEFEF),
+                      borderRadius: BorderRadius.only(
+                        topLeft: round,
+                        topRight: round,
+                        // Only the corner nearest the sender squares off,
+                        // and only on the last of a block.
+                        bottomLeft: !isMe && endsRun ? tail : round,
+                        bottomRight: isMe && endsRun ? tail : round,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    _formatTime(msg.createdAt),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: (isMe ? scheme.onPrimary : scheme.onSurface)
-                          .withOpacity(0.6),
+                    child: Text(
+                      msg.content,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        height: 1.35,
+                        color: isMe ? Colors.white : const Color(0xFF111111),
+                      ),
                     ),
                   ),
                 ],
@@ -480,10 +524,20 @@ class _ChatScreenState extends State<ChatScreen> {
         : '?';
 
     return CircleAvatar(
-      radius: 14,
-      backgroundImage: imageUrl != null ? NetworkImage(imageUrl) : null,
-      child: imageUrl == null
-          ? Text(initial, style: const TextStyle(fontSize: 11))
+      radius: 13,
+      backgroundColor: const Color(0xFFEFEFEF),
+      backgroundImage: imageUrl != null && imageUrl.isNotEmpty
+          ? NetworkImage(imageUrl)
+          : null,
+      child: imageUrl == null || imageUrl.isEmpty
+          ? Text(
+              initial,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade600,
+              ),
+            )
           : null,
     );
   }
@@ -492,192 +546,305 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
 
+    // Still connecting. The cached messages are shown meanwhile, and the
+    // composer is there but not yet usable — one screen either way, rather
+    // than a second copy of it that quietly differs.
+    final connecting = _notifier == null;
+
+    final messages = connecting ? _cachedMessages : _notifier!.messages;
+    final loading = connecting ? _cachedMessages.isEmpty : _notifier!.loading;
+
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: _buildAppBar(theme) as PreferredSizeWidget,
-      body: _notifier == null
-          ? Column(
-              children: [
-                Expanded(
-                  child: _cachedMessages.isEmpty
-                      ? Center(
-                          child: CircularProgressIndicator(
-                            color: theme.primaryColor,
-                          ),
-                        )
-                      : ListView.builder(
-                          controller: _scrollController,
-                          reverse: true,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 16,
-                          ),
-                          itemCount: _cachedMessages.length,
-                          itemBuilder: (context, i) =>
-                              _buildBubble(_cachedMessages[i], theme),
-                        ),
-                ),
-                // Disabled input while initializing
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            enabled: false,
-                            decoration: InputDecoration(
-                              hintText: 'Loading...',
-                              filled: true,
-                              fillColor: Colors.grey.shade200,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            )
-          : Column(
-              children: [
-                if (_notifier?.error != null)
-                  MaterialBanner(
-                    content: Text(_notifier!.error!),
-                    actions: [
-                      TextButton(
-                        onPressed: () => (),
-                        // onPressed: () =>
-                        //     setState(() => _notifier!._error = null),
-                        child: const Text('Dismiss'),
-                      ),
-                    ],
-                  ),
+      body: Column(
+        children: [
+          if (!connecting && _notifier!.error != null) _errorBanner(theme),
 
-                Expanded(
-                  child: _notifier!.loading
-                      ? Center(
-                          child: CircularProgressIndicator(
-                            color: theme.primaryColor,
-                          ),
-                        )
-                      : _notifier!.messages.isEmpty
-                      ? const Center(
-                          child: Text('No messages yet. Say hello! 👋'),
-                        )
-                      : ListView.builder(
-                          controller: _scrollController,
-                          reverse: true,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 16,
-                          ),
-                          itemCount: _notifier!.messages.length,
-                          itemBuilder: (context, i) =>
-                              _buildBubble(_notifier!.messages[i], theme),
-                        ),
-                ),
+          Expanded(child: _messageList(theme, messages, loading)),
 
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 200),
-                  child: _notifier!.refreshing
-                      ? Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          color: theme.primaryColor.withOpacity(0.06),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 10,
-                                height: 10,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: theme.primaryColor,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Loading new messages...',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: theme.primaryColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
+          if (!connecting && _notifier!.refreshing) _refreshingStrip(theme),
 
-                // Input bar
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _inputController,
-                            textCapitalization: TextCapitalization.sentences,
-                            minLines: 1,
-                            maxLines: 4,
-                            decoration: InputDecoration(
-                              hintText: 'Message...',
-                              filled: true,
-                              fillColor: Colors.grey.shade200,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                            ),
-                            onSubmitted: (_) => _send(),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        _notifier!.sending
-                            ? Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: theme.primaryColor,
-                                  ),
-                                ),
-                              )
-                            : ElevatedButton(
-                                onPressed: _send,
-                                style: ElevatedButton.styleFrom(
-                                  shape: const CircleBorder(),
-                                  padding: const EdgeInsets.all(12),
-                                  backgroundColor: theme.primaryColor,
-                                ),
-                                child: const Icon(
-                                  Icons.send_rounded,
-                                  color: Colors.white,
-                                ),
-                              ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+          _composer(theme, enabled: !connecting),
+        ],
+      ),
+    );
+  }
+
+  Widget _errorBanner(ThemeProvider theme) {
+    return MaterialBanner(
+      content: Text(_notifier!.error!),
+      actions: [
+        TextButton(
+          // Was `() => ()`, which is a function returning an empty record:
+          // valid Dart, does nothing, so the banner could not be dismissed.
+          onPressed: () => setState(() => _notifier!.clearError()),
+          child: const Text('Dismiss'),
+        ),
+      ],
+    );
+  }
+
+  Widget _refreshingStrip(ThemeProvider theme) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      color: theme.primaryColor.withValues(alpha: 0.06),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 10,
+            height: 10,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: theme.primaryColor,
             ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Loading new messages…',
+            style: TextStyle(fontSize: 11, color: theme.primaryColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _messageList(
+    ThemeProvider theme,
+    List<ChatMessage> messages,
+    bool loading,
+  ) {
+    if (loading) {
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
+      );
+    }
+
+    if (messages.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.waving_hand_outlined,
+                size: 40,
+                color: Colors.grey.shade300,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'No messages yet',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Say hello.',
+                style: TextStyle(fontSize: 13.5, color: Colors.grey.shade400),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      // Newest first: index 0 is the bottom of the screen, so "the message
+      // above this one" is i + 1 and "below" is i - 1. Everything about
+      // runs and day separators below reads in those terms.
+      reverse: true,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      itemCount: messages.length,
+      itemBuilder: (context, i) {
+        final msg = messages[i];
+
+        final at = runPositionAt<ChatMessage>(
+          messages,
+          i,
+          senderOf: (m) => m.senderId,
+          timeOf: (m) => m.createdAt,
+        );
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // First child is the top of the item, and the list is
+            // reversed, so this lands above the message it labels.
+            if (at.startsDay) _daySeparator(msg.createdAt),
+            _buildBubble(
+              msg,
+              theme,
+              startsRun: at.startsRun,
+              endsRun: at.endsRun,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// The date, and the time of the first message under it.
+  ///
+  /// This is the only clock in the thread. Instagram puts it here and
+  /// nowhere else, and it is right: a timestamp on every message turns a
+  /// conversation into a log, and the one thing anybody actually wants to
+  /// know is roughly when a run of messages happened.
+  Widget _daySeparator(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final days = today.difference(DateTime(dt.year, dt.month, dt.day)).inDays;
+
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+
+    final String day;
+    if (days == 0) {
+      day = 'Today';
+    } else if (days == 1) {
+      day = 'Yesterday';
+    } else if (days < 7) {
+      const names = [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday',
+      ];
+      day = names[dt.weekday - 1];
+    } else if (dt.year == now.year) {
+      day = '${dt.day} ${months[dt.month - 1]}';
+    } else {
+      day = '${dt.day} ${months[dt.month - 1]} ${dt.year}';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 22, bottom: 10),
+      child: Center(
+        child: Text(
+          '$day  ${_formatTime(dt)}',
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The one input bar.
+  ///
+  /// [enabled] is false while the socket is still connecting — the field
+  /// greys out, rather than the whole composer being a different widget
+  /// that happens to look similar. It used to be exactly that, and the two
+  /// had drifted: the loading one had no send button at all, so the bar
+  /// changed shape the moment the connection landed.
+  Widget _composer(ThemeProvider theme, {required bool enabled}) {
+    final sending = _notifier?.sending ?? false;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFEFEFEF))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _inputController,
+                  enabled: enabled,
+                  textCapitalization: TextCapitalization.sentences,
+                  minLines: 1,
+                  maxLines: 5,
+                  style: const TextStyle(fontSize: 14.5, height: 1.35),
+                  // Rebuilds on every keystroke so the send button can
+                  // appear the moment there is something to send.
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: enabled ? 'Message…' : 'Connecting…',
+                    hintStyle: TextStyle(color: Colors.grey.shade400),
+                    // A bordered pill rather than a filled box: against a
+                    // white thread the fill read as another bubble.
+                    filled: false,
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide: const BorderSide(color: Color(0xFFDBDBDB)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide: BorderSide(color: theme.primaryColor),
+                    ),
+                    disabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide: const BorderSide(color: Color(0xFFEFEFEF)),
+                    ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 11,
+                    ),
+                  ),
+                  onSubmitted: (_) => enabled ? _send() : null,
+                ),
+              ),
+
+              // Only once there is something to send. An always-on send
+              // button on an empty field is a button that does nothing.
+              if (sending)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(12, 0, 4, 10),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              else if (enabled && _inputController.text.trim().isNotEmpty)
+                TextButton(
+                  onPressed: _send,
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 42),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    foregroundColor: theme.primaryColor,
+                  ),
+                  child: const Text(
+                    'Send',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

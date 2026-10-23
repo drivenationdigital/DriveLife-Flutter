@@ -173,6 +173,12 @@ class _CommentItemState extends State<CommentItem> {
     final commentText = c['comment'] ?? "";
     final entityType = c['entity_type'] ?? 'user';
     final isEntity = entityType == 'club' || entityType == 'venue';
+
+    // get_post_comments has been sending this all along; nothing here ever
+    // drew it, so a verified account's comments were the only place in the
+    // app their badge did not appear. The server reports false for clubs
+    // and venues, which carry the CLUB/VENUE chip below instead.
+    final isVerified = c['user_verified'] == true;
     final likedByOwner = c['liked_by_owner'] == true;
     final ownerProfileImage = c['owner_profile_image'];
 
@@ -252,14 +258,30 @@ class _CommentItemState extends State<CommentItem> {
                   // ✅ Username with entity badge
                   Row(
                     children: [
-                      Text(
-                        username,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black,
-                          fontSize: 14,
+                      // Flexible, so a long display name ellipsises
+                      // instead of pushing the badge off the row — which it
+                      // would, the moment a badge was added to it.
+                      Flexible(
+                        child: Text(
+                          username,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
+
+                      if (isVerified) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.verified,
+                          size: 14,
+                          color: theme.primaryColor,
+                        ),
+                      ],
 
                       // ✅ Entity badge (like Discord)
                       if (isEntity) ...[

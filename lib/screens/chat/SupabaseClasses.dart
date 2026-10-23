@@ -20,14 +20,84 @@ class AppConfig {
 }
 
 class SupabaseConfig {
+  static bool _started = false;
+
+  /// Whether [initialize] has run. Everything that touches [client] has to
+  /// wait for this: Supabase.instance throws rather than returning null,
+  /// and the field initialisers on ChatRepository and InboxNotifier read
+  /// it at construction, so an un-initialised Supabase takes those down
+  /// before their first method is called.
+  static bool get isReady => _started;
+
+  /// Safe to call more than once.
+  ///
+  /// Supabase.initialize throws if it has already run, and this is called
+  /// both from main() and, defensively, from the inbox -- which has to
+  /// cope with main()'s attempt having failed.
   static Future<void> initialize() async {
+    if (_started) return;
+
     await Supabase.initialize(
       url: AppConfig.supabaseUrl,
       anonKey: AppConfig.supabaseAnonKey,
     );
+
+    _started = true;
   }
 
   static SupabaseClient get client => Supabase.instance.client;
+}
+
+/// What `/myapp/v1/supabase-token` hands back.
+///
+/// A named type with its own parsing, so the shapes it accepts can be
+/// tested without an HTTP call. That matters here: this payload was read
+/// with `data['user_id'] as String` while the endpoint sends user_id as a
+/// JSON *number*, so the cast threw every single time and took the whole
+/// of messaging down with it.
+///
+/// Nothing surfaced, because the only caller was
+/// `fetchAndStore(...).then(...)` with no catch: the throw became an
+/// unhandled async error, the inbox notifier was never built, and the
+/// screen sat on a spinner that could not finish.
+///
+/// Coerced rather than cast, in both directions. Which of these arrive as
+/// numbers and which as strings is the server's business, and it has
+/// already changed its mind once.
+class SupabaseCredentials {
+  final String token;
+  final int expiresAt;
+  final String userId;
+
+  const SupabaseCredentials({
+    required this.token,
+    required this.expiresAt,
+    required this.userId,
+  });
+
+  factory SupabaseCredentials.fromJson(Map<String, dynamic> json) {
+    final token = json['token'];
+    if (token is! String || token.isEmpty) {
+      throw FormatException('supabase-token: no token in $json');
+    }
+
+    final rawExpiry = json['expires_at'];
+    final expiresAt = rawExpiry is int ? rawExpiry : int.tryParse('$rawExpiry');
+    if (expiresAt == null) {
+      throw FormatException('supabase-token: bad expires_at "$rawExpiry"');
+    }
+
+    final rawUserId = json['user_id'];
+    if (rawUserId == null || '$rawUserId'.isEmpty) {
+      throw FormatException('supabase-token: no user_id in $json');
+    }
+
+    return SupabaseCredentials(
+      token: token,
+      expiresAt: expiresAt,
+      userId: '$rawUserId',
+    );
+  }
 }
 
 class SupabaseTokenManager {
@@ -50,21 +120,18 @@ class SupabaseTokenManager {
       throw Exception('Failed to get Supabase token: ${response.body}');
     }
 
-    final data = json.decode(response.body);
-
-    print('[SupabaseTokenManager] Received token data: $data');
-    final token = data['token'] as String;
-    final expiresAt = data['expires_at'] as int;
-    final userId = data['user_id'] as String;
+    final creds = SupabaseCredentials.fromJson(
+      json.decode(response.body) as Map<String, dynamic>,
+    );
 
     // Cache locally
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
-    await prefs.setInt(_expiresAtKey, expiresAt);
-    await prefs.setString(_userIdKey, userId);
+    await prefs.setString(_tokenKey, creds.token);
+    await prefs.setInt(_expiresAtKey, creds.expiresAt);
+    await prefs.setString(_userIdKey, creds.userId);
 
     // Tell Supabase to use this token for all future requests
-    await _applyToken(token);
+    await _applyToken(creds.token);
   }
 
   // Call this at app startup to restore session
@@ -245,6 +312,22 @@ class ChatRepository {
     return (data as List).map((row) => Conversation.fromMap(row)).toList();
   }
 
+  /// One conversation, straight from the table.
+  ///
+  /// Membership and the group name change underneath an open chat -- a
+  /// member is added or removed from the info screen, or by somebody else
+  /// entirely -- and the only honest answer to "who is in this group" is
+  /// the row, not whatever was passed in when the screen was built.
+  Future<Conversation> getConversation(String conversationId) async {
+    final row = await _db
+        .from('conversations')
+        .select()
+        .eq('id', conversationId)
+        .single();
+
+    return Conversation.fromMap(row);
+  }
+
   Future<void> deleteConversation(String conversationId) async {
     final currentUserId = await SupabaseTokenManager.currentUserId;
     if (currentUserId == null) throw Exception('No current user ID found');
@@ -387,6 +470,17 @@ class ChatNotifier extends ChangeNotifier {
   bool get sending => _sending;
   String? get error => _error;
 
+  /// Puts the error banner away.
+  ///
+  /// The banner's Dismiss button had no way to do this: _error is private
+  /// and there was no setter, so the handler was left as `() => ()` -- a
+  /// function returning an empty record, which compiles and does nothing.
+  void clearError() {
+    if (_error == null) return;
+    _error = null;
+    notifyListeners();
+  }
+
   Future<void> initialize() async {
     try {
       final cached = MessageCache.instance.get(conversationId);
@@ -506,7 +600,7 @@ class InboxRepository {
 
       return ConversationPreview(
         conversation: conv,
-        otherUserId: otherUserId ?? '',
+        otherUserId: otherUserId,
         isGroup: conv.isGroup,
         unreadCount: (row['unread_count'] as num).toInt(),
         lastMessage: hasLastMsg
@@ -590,9 +684,13 @@ class InboxNotifier extends ChangeNotifier {
   Future<void> _loadInbox() async {
     try {
       _previews = await _repo.getInbox(myUserId);
+      // whereType drops the nulls, which is every group. Before
+      // otherUserId was nullable they arrived as '' and were asked for by
+      // name, one failed lookup per group in the list.
       final ids = _previews
           .map((p) => p.otherUserId)
           .whereType<String>()
+          .where((id) => id.isNotEmpty)
           .toList();
 
       if (ids.isNotEmpty) {

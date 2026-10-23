@@ -1,17 +1,22 @@
 import 'package:drivelife/screens/media/gallery_tag_requests_screen.dart';
 import 'dart:io';
 
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:drivelife/services/notification_target.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final data = message.data;
   print('📩 Background message received: $data');
+
+  final target = NotificationTarget.fromData(data);
 
   final convId = data['conversation_id'] ?? '';
   final isChatMessage = convId.isNotEmpty;
@@ -84,19 +89,45 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         largeIcon: largeIcon,
         styleInformation: style,
         playSound: true,
-        subText: isChatMessage && isGroup ? groupName : null,
+        // The account, when the server named one. This isolate has no
+        // providers, so unlike the foreground path it cannot tell whether a
+        // second account is signed in -- it shows the label either way,
+        // which is the right way round: better a redundant @name on a
+        // single-account device than no name on a two-account one.
+        subText: target.accountName != null
+            ? '@${target.accountName}'
+            : (isChatMessage && isGroup ? groupName : null),
         showWhen: true,
-        groupKey: isChatMessage ? 'chat_$convId' : null,
+        // Per account as well as per conversation, so two accounts in the
+        // same conversation do not collapse into one thread.
+        groupKey: isChatMessage
+            ? 'chat_${target.accountId ?? 'self'}_$convId'
+            : null,
         setAsGroupSummary: false,
       ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        subtitle: target.accountName != null ? '@${target.accountName}' : null,
+      ),
     ),
-    payload: data['url'] ?? '',
+    // Carries the account, so the tap switches to it. This is the path a
+    // cold start reads, which is exactly when the active account is least
+    // likely to be the right one.
+    payload: target.encode(),
   );
 }
 
 class FirebaseMessagingService {
   static GlobalKey<NavigatorState>? navigatorKey;
-  static String? _pendingDeepLink; // for cold-start before navigator is ready
+
+  /// Held until the navigator exists, for a tap that launched the app.
+  ///
+  /// A NotificationTarget rather than a String, so the account the
+  /// notification was for survives the wait. As a bare url it did not,
+  /// and a cold start always opened under the active account.
+  static NotificationTarget? _pendingTarget;
 
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   static final FlutterLocalNotificationsPlugin _localNotifications =
@@ -172,7 +203,7 @@ class FirebaseMessagingService {
       final payload = launchDetails?.notificationResponse?.payload;
       if (payload != null && payload.isNotEmpty) {
         // Queue it — navigator won't be ready yet at this point
-        _pendingDeepLink = payload;
+        _pendingTarget = NotificationTarget.fromPayload(payload);
         print('🚀 Cold-start from local notification, queued: $payload');
       }
     }
@@ -196,30 +227,30 @@ class FirebaseMessagingService {
   // Handle notification tap (both tap and action buttons)
   static void _onNotificationResponse(NotificationResponse response) {
     print('Local notification tapped: ${response.payload}');
-    _navigateToUrl(response.payload);
+    openTarget(NotificationTarget.fromPayload(response.payload));
   }
 
-  static void _navigateToUrl(String? url) {
-    if (url == null || url.isEmpty) {
+  /// Opens what a notification points at, on the account it belongs to.
+  ///
+  /// The account comes first: switching after navigating would rebuild the
+  /// shell under the screen that had just been pushed onto it.
+  static Future<void> openTarget(NotificationTarget target) async {
+    if (target.isEmpty) {
       print('No URL in notification payload');
       return;
     }
 
-    print('_navigateToUrl called with: $url');
-    print(
-      'FirebaseMessagingService.navigatorKey: ${FirebaseMessagingService.navigatorKey}',
-    );
-    print(
-      'currentState: ${FirebaseMessagingService.navigatorKey?.currentState}',
-    );
-
     final nav = FirebaseMessagingService.navigatorKey?.currentState;
     if (nav == null) {
-      _pendingDeepLink = url;
-      print('Navigator not ready, queued: $url');
+      _pendingTarget = target;
+      print('Navigator not ready, queued: $target');
       return;
     }
 
+    final ready = await _ensureAccount(target);
+    if (!ready) return;
+
+    final url = target.url!;
     final uri = Uri.parse(url);
     final segments = uri.pathSegments;
     if (segments.isEmpty) return;
@@ -272,13 +303,74 @@ class FirebaseMessagingService {
     }
   }
 
+  /// Puts the right account in front before the route is pushed.
+  ///
+  /// Returns false when the notification should not be opened at all --
+  /// which happens when it belongs to an account that has since been signed
+  /// out on this device. Opening it anyway would show one account's
+  /// notification under another's identity, and most of those requests
+  /// would be refused by the server in any case.
+  static Future<bool> _ensureAccount(NotificationTarget target) async {
+    final context = FirebaseMessagingService.navigatorKey?.currentContext;
+    if (context == null) return true;
+
+    final AccountManager manager;
+    try {
+      manager = Provider.of<AccountManager>(context, listen: false);
+    } catch (e) {
+      // No provider above this navigator. Nothing to switch to, so carry on
+      // rather than swallowing the tap.
+      debugPrint('[Notifications] no AccountManager in scope: $e');
+      return true;
+    }
+
+    final decision = resolveAccountSwitch(
+      targetAccountId: target.accountId,
+      signedInIds: manager.accounts.map((a) => a.user.id.toString()).toList(),
+      activeId: manager.activeUser?.id.toString(),
+    );
+
+    switch (decision) {
+      case AccountSwitch.none:
+        return true;
+
+      case AccountSwitch.notSignedIn:
+        final name = target.accountName ?? 'that account';
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        messenger?.showSnackBar(
+          SnackBar(
+            content: Text(
+              'That notification is for @$name. Sign in to open it.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return false;
+
+      case AccountSwitch.switchTo:
+        final index = manager.accounts.indexWhere(
+          (a) => a.user.id.toString() == target.accountId,
+        );
+        if (index < 0) return true;
+
+        await manager.switchAccount(index);
+
+        // One frame is not enough: switching re-reads the account's data
+        // and rebuilds the shell, and a route pushed into the middle of
+        // that lands on a screen that is about to be replaced.
+        await Future.delayed(const Duration(milliseconds: 400));
+
+        return true;
+    }
+  }
+
   /// Call this once after your navigator is mounted (e.g. from your home
   /// screen's initState) to flush a deep link captured during cold start.
   static void flushPendingDeepLink() {
-    if (_pendingDeepLink != null) {
-      final url = _pendingDeepLink;
-      _pendingDeepLink = null;
-      _navigateToUrl(url);
+    final target = _pendingTarget;
+    if (target != null) {
+      _pendingTarget = null;
+      openTarget(target);
     }
   }
 
@@ -357,6 +449,13 @@ class FirebaseMessagingService {
       }
     }
 
+    // Which account this arrived for, shown only when there is more than
+    // one signed in. With a single account the line is just noise, and
+    // Instagram does the same -- the account only appears once there is
+    // another one it could have been.
+    final target = NotificationTarget.fromData(data);
+    final accountLabel = _accountLabel(target);
+
     // ── Build messaging style ──
     final person = Person(
       name: senderName,
@@ -388,26 +487,56 @@ class FirebaseMessagingService {
           largeIcon: largeIcon, // profile pic in notification
           styleInformation: style, // WhatsApp-style grouping
           playSound: true,
-          // ← add these for better grouped view
-          subText: isGroup ? groupName : null,
+          // Beside the app name in the shade. The account wins over the
+          // group name here: the group is already the notification's title,
+          // and which account it came to is the thing you cannot otherwise
+          // tell.
+          subText: accountLabel ?? (isGroup ? groupName : null),
           showWhen: true,
-          groupKey: 'chat_$convId', // groups same-convo notifications
+          // Grouped per conversation AND per account, so two accounts in
+          // the same conversation do not collapse into one thread.
+          groupKey: 'chat_${target.accountId ?? 'self'}_$convId',
           setAsGroupSummary: false,
         ),
-        iOS: const DarwinNotificationDetails(
+        iOS: DarwinNotificationDetails(
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
+          subtitle: accountLabel,
+          threadIdentifier: 'chat_${target.accountId ?? 'self'}_$convId',
         ),
       ),
-      // payload: 'chat:$convId',
-      payload: data['url'] ?? '',
+      // Carries the account as well as the url, so the tap can switch to
+      // it. It used to be the bare url, which is why a tap always opened
+      // under whichever account was already active.
+      payload: target.encode(),
     );
+  }
+
+  /// `@username` when more than one account is signed in, else null.
+  ///
+  /// Returns null rather than an empty string so it can be handed straight
+  /// to a nullable subText/subtitle.
+  static String? _accountLabel(NotificationTarget target) {
+    final name = target.accountName;
+    if (name == null || name.isEmpty) return null;
+
+    final context = FirebaseMessagingService.navigatorKey?.currentContext;
+    if (context == null) return null;
+
+    try {
+      final manager = Provider.of<AccountManager>(context, listen: false);
+      if (manager.accounts.length < 2) return null;
+    } catch (_) {
+      return null;
+    }
+
+    return '@$name';
   }
 
   static void _handleNotificationTap(RemoteMessage message) {
     print('FCM notification tapped: ${message.data}');
-    _navigateToUrl(message.data['url']);
+    openTarget(NotificationTarget.fromData(message.data));
   }
 
   // Subscribe to topic
