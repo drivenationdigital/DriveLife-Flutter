@@ -99,6 +99,14 @@ class VehicleDetailScreen extends StatefulWidget {
 class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     with SingleTickerProviderStateMixin {
   Map<String, dynamic>? _vehicle;
+
+  /// Whether this person has pressed like, and how many people like it.
+  ///
+  /// Held rather than read from _vehicle on every build, because the toggle
+  /// moves them before the server has answered.
+  bool _liked = false;
+  int _likes = 0;
+  bool _likeBusy = false;
   List<dynamic> _mods = [];
   bool _loading = true;
   bool _isFromCache = false;
@@ -116,6 +124,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     if (cached != null) {
       setState(() {
         _vehicle = cached;
+        _readLikes(cached);
         _loading = false;
         _isFromCache = true;
       });
@@ -129,6 +138,20 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  /// Seeds the like state from a loaded vehicle.
+  ///
+  /// Only while no toggle is in flight: the optimistic flip has already
+  /// moved these, and a response arriving from the cache or a refresh in
+  /// between would snap the button back under the user's finger.
+  void _readLikes(Map<String, dynamic>? vehicle) {
+    if (vehicle == null || _likeBusy) return;
+
+    _liked = vehicle['is_liked'] == true;
+
+    final raw = vehicle['likes'];
+    _likes = raw is int ? raw : int.tryParse('$raw') ?? 0;
   }
 
   Future<void> _loadVehicle() async {
@@ -148,6 +171,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
       _mods = mods ?? [];
       _loading = false;
       _isFromCache = false;
+      _readLikes(vehicle);
     });
   }
 
@@ -284,6 +308,104 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     SharePlus.instance.share(
       ShareParams(text: '$title on DriveLife\n$url', subject: title),
     );
+  }
+
+  /// Like this vehicle.
+  ///
+  /// Shown to everyone including the owner: liking your own car is harmless
+  /// and hiding the control makes the row jump about depending on whose
+  /// page you are on.
+  ///
+  /// Says what pressing it does, and deliberately carries no count.
+  ///
+  /// The count is the number of PEOPLE who like this car by any route —
+  /// pressing the button, or liking a post of it. So somebody who had
+  /// already liked a photo of this car is already counted, and pressing
+  /// Like does not move the total by one. It moved, optimistically, and
+  /// then snapped back when the server answered with the same number: a
+  /// button that visibly undoes itself.
+  ///
+  /// That is much more likely on somebody else's car than your own, which
+  /// is why it looked like a bug that only affected other people's
+  /// vehicles. The total is in the stats row instead, where it reads as a
+  /// fact about the car rather than a tally of this button.
+  Widget _buildLikeButton(ThemeProvider theme) {
+    final liked = _liked;
+
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _likeBusy ? null : _toggleLike,
+        icon: Icon(
+          liked ? Icons.favorite : Icons.favorite_border,
+          size: 19,
+          color: liked ? theme.primaryColor : theme.textColor,
+        ),
+        label: Text(
+          liked ? 'Liked' : 'Like',
+          style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: theme.textColor,
+          side: BorderSide(
+            color: liked ? theme.primaryColor : theme.dividerColor,
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleLike() async {
+    // Optimistic. A like is cheap and reversible, and waiting a round trip
+    // to see it register is the difference between a button that feels
+    // connected and one that feels broken.
+    final wasLiked = _liked;
+    final wasLikes = _likes;
+
+    setState(() {
+      _liked = !wasLiked;
+      _likes = (wasLikes + (wasLiked ? -1 : 1)).clamp(0, 1 << 30);
+      _likeBusy = true;
+    });
+
+    final result = await GarageAPI.toggleVehicleLike(widget.garageId);
+
+    if (!mounted) return;
+
+    setState(() {
+      _likeBusy = false;
+
+      if (result == null) {
+        // Put it back. Null is "the call failed", which is not the same as
+        // a successful unlike.
+        _liked = wasLiked;
+        _likes = wasLikes;
+      } else {
+        _liked = result.liked;
+        _likes = result.likes;
+
+        // The cached copy still holds what the server said when the page
+        // loaded. Leaving it stale means coming back to this vehicle shows
+        // the button un-pressed until the network answers — and tapping it
+        // in that window un-likes instead of liking.
+        final cached = _VehicleCache.get(widget.garageId);
+        if (cached != null) {
+          cached['is_liked'] = result.liked;
+          cached['likes'] = result.likes;
+        }
+      }
+    });
+
+    if (result == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not save that. Try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Widget _buildOwnerActions(ThemeProvider theme) {
@@ -808,9 +930,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                               'Top Speed',
                             ),
                             _buildStat(_mods.length.toString(), 'Upgrades'),
+                            _buildStat('$_likes', 'Likes'),
                           ],
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 20),
+
+                        _buildLikeButton(theme),
+
+                        const SizedBox(height: 20),
 
                         _buildOwnerActions(theme),
                       ],

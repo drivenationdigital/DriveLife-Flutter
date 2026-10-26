@@ -26,6 +26,7 @@ import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
+import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/profile/my_club_profile_view.dart';
@@ -124,9 +125,10 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   /// The rest are screens with no scroll view to put it in, so the shell
   /// draws it above them and it stays put.
   bool get _chromeIsInFeed {
-    // Groups is its own destination rather than a section of Home, and it
-    // draws the header inside its own scroll view just as Places does.
-    if (_currentIndex == _dGroups) return true;
+    // Groups and Garage are destinations rather than sections of Home, and
+    // each draws the header inside its own scroll view just as Places does.
+    // Without them here the shell would draw a second one above.
+    if (_currentIndex == _dGroups || _currentIndex == _dGarage) return true;
 
     return _currentIndex == _dHome &&
         const {
@@ -169,18 +171,10 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   static const int _dDiscover = BottomNavProvider.discover;
   static const int _dGroups = BottomNavProvider.groups;
   static const int _dPhotos = BottomNavProvider.photos;
-  static const int _dAccount = BottomNavProvider.account;
+  static const int _dGarage = BottomNavProvider.garage;
 
-  // Garage is no longer a destination. It is still reachable from a profile,
-  // from the "Hot right now" row and by the /garage-list route, so nothing
-  // has been lost — it just no longer costs a fifth of the bar.
-
-  /// Profile is always the last tab. Derived rather than written down, because
-  /// a hard-coded literal goes stale the moment a tab is added or hidden and
-  /// silently points the account switcher and avatar highlight at the wrong
-  /// tab. Only read while [_screens] is non-empty — build() returns early
-  /// otherwise, so the nav never sees an empty list.
-  int get _profileIndex => _screens.length - 1;
+  // Garage is a destination again, in the slot Account used to hold. The
+  // profile is no longer a tab at all — it is the avatar in the header.
   void _setIndex(int index) {
     if (index == _dDiscover && !_discoverOpened) {
       setState(() => _discoverOpened = true);
@@ -260,9 +254,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   }
 
   Future<void> _buildScreens() async {
-    final accountManager = Provider.of<AccountManager>(context, listen: false);
-    final currentAccount = accountManager.activeAccount;
-
     // ✅ Await the token BEFORE building any screens
     // if (currentAccount != null && currentAccount.token != '') {
     //   await onWordPressLoginSuccess(currentAccount.token);
@@ -291,10 +282,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
       // never update.
       const SizedBox.shrink(),
       if (FeatureFlags.mediaTab) MediaScreen() else const SizedBox.shrink(),
-      if (currentAccount?.isClubAccount ?? false)
-        ClubProfileScreen()
-      else
-        ProfileScreen(),
+
+      // A placeholder: the garage is rebuilt every frame in
+      // _buildDestinations, because it carries the shell's header and that
+      // header has a live notification badge on it.
+      const SizedBox.shrink(),
     ];
 
     if (mounted) setState(() => _screens = screens);
@@ -321,6 +313,19 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     );
   }
 
+  /// The garage, with the shell's chrome inside its own scroll view.
+  ///
+  /// Built per frame for the same reason Home and Groups are: the header it
+  /// is handed carries the notification badge and the theme, and a widget
+  /// captured once into a cached list never sees either change.
+  Widget _buildGarage(ThemeProvider theme) {
+    return GarageListScreen(
+      chrome: _chrome,
+      header: _buildChrome(theme),
+      headerHeight: _chromeHeight,
+    );
+  }
+
   Widget _buildDestinations(ThemeProvider theme) {
     final destinations = <Widget>[
       // Rebuilt every frame so it tracks _homeTab. The sections inside keep
@@ -329,7 +334,8 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
       _buildHome(theme),
       _buildDiscover(),
       _buildGroups(theme),
-      ..._screens.skip(3),
+      ..._screens.skip(3).take(1),
+      _buildGarage(theme),
     ];
 
     assert(
@@ -775,16 +781,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         ),
         const SizedBox(width: 8),
         _RoundAction(
-          child: iconSvg(
-            'assets/app-icons/header-search.svg',
-            theme,
-            size: 18,
-            alwaysActive: true,
-          ),
-          onTap: () => Navigator.pushNamed(context, AppRoutes.search),
-        ),
-        const SizedBox(width: 8),
-        _RoundAction(
           child: _BadgedIcon(
             count: _notificationCount,
             color: theme.primaryColor,
@@ -803,69 +799,39 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
             await _loadNotificationCount();
           },
         ),
+        const SizedBox(width: 8),
+
+        // The account, where Search used to be. Search has not gone
+        // anywhere — it is the Discover destination in the bar below.
+        //
+        // Tap opens your own profile, long-press the account switcher, which
+        // is what the avatar did when it was a tab.
+        _HeaderAccount(
+          onTap: _openOwnProfile,
+          onLongPress: _showAccountSwitcher,
+        ),
         const SizedBox(width: 16),
       ],
     );
   }
 
-  Widget _buildProfileIcon() {
-    final theme = Provider.of<ThemeProvider>(context);
+  /// Opens the signed-in account's own profile.
+  ///
+  /// Pushed as a route rather than shown as a tab: the profile stopped
+  /// being a destination when the avatar moved up here.
+  void _openOwnProfile() {
+    final account = Provider.of<AccountManager>(
+      context,
+      listen: false,
+    ).activeAccount;
 
-    return Consumer<AccountManager>(
-      builder: (context, accountManager, child) {
-        final account = accountManager.activeAccount;
-
-        if (account == null) {
-          return const Icon(Icons.person_outline);
-        }
-
-        // Show club icon for club accounts
-        if (account.isClubAccount) {
-          final url = account.user.profileImage;
-          final hasUrl = (url != null && url.trim().isNotEmpty);
-
-          return GestureDetector(
-            onLongPress: () => _showAccountSwitcher(),
-            child: hasUrl
-                ? CircleAvatar(
-                    // 12 = the 24px the SVG icons use. Anything taller makes
-                    // this item taller and its label drop out of line.
-                    radius: 12,
-                    backgroundColor: Colors.transparent,
-                    backgroundImage: CachedNetworkImageProvider(url),
-                    onBackgroundImageError: (_, __) {},
-                  )
-                : iconSvg(
-                    'assets/app-icons/05-User.svg',
-                    null,
-                    size: 24,
-                    alwaysActive: true,
-                  ),
-          );
-        }
-
-        // Show user icon for user accounts
-        final url = account.user.profileImage;
-        final hasUrl = (url != null && url.trim().isNotEmpty);
-
-        return GestureDetector(
-          onLongPress: () => _showAccountSwitcher(),
-          child: hasUrl
-              ? CircleAvatar(
-                  // Matches the 24px of every other nav icon.
-                  radius: 12,
-                  backgroundColor: Colors.transparent,
-                  backgroundImage: CachedNetworkImageProvider(url),
-                  onBackgroundImageError: (_, __) {},
-                )
-              : iconSvg(
-                  'assets/app-icons/05-User.svg',
-                  theme,
-                  size: 24,
-                  isActive: _currentIndex == _profileIndex,
-                ),
-        );
-      },
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => (account?.isClubAccount ?? false)
+            ? ClubProfileScreen()
+            : ProfileScreen(),
+      ),
     );
   }
 
@@ -916,15 +882,9 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
       onChanged: (index) {
         final current = _currentIndex;
 
-        // Tapping the destination you are already on is a shortcut, not a
-        // no-op: Account opens the switcher, Home returns the feed to the
-        // top. Both are long-standing behaviours and worth keeping.
-        if (index == _dAccount && current == _dAccount) {
-          _showAccountSwitcher();
-          HapticFeedback.lightImpact();
-          return;
-        }
-
+        // Tapping Home when already on Home returns the feed to the top.
+        // The account switcher used to hang off the same gesture on the
+        // Account tab; it is a long-press on the header avatar now.
         if (index == _dHome && current == _dHome) {
           if (_homeTab == 0) {
             _postsScreenKey.currentState?.scrollToTopAndRefresh();
@@ -970,7 +930,18 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
             child: svg('assets/app-icons/06-photo.svg', sel),
           ),
         ),
-        DlNavItem(label: 'Account', icon: (_) => _buildProfileIcon()),
+        DlNavItem(
+          label: 'Garage',
+          // A Material glyph: assets/app-icons has no car, and the Tracks
+          // tab already sets the precedent of borrowing one rather than
+          // shipping a tab with somebody else's icon on it. Swaps to an
+          // SVG by changing this one line.
+          icon: (sel) => Icon(
+            Icons.directions_car_rounded,
+            size: 21,
+            color: sel ? theme.primaryColor : Colors.grey,
+          ),
+        ),
       ],
     );
   }
@@ -1070,7 +1041,9 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
             // it hides with the header there as it does on the feed.
             final showChrome =
                 chromeVisible ||
-                (_currentIndex != _dHome && _currentIndex != _dGroups);
+                (_currentIndex != _dHome &&
+                    _currentIndex != _dGroups &&
+                    _currentIndex != _dGarage);
 
             // Slides off the bottom rather than collapsing. Collapsing would
             // change the body's height and reflow the feed mid-scroll.
@@ -1277,6 +1250,66 @@ class _Header extends StatelessWidget {
       height: height,
       padding: const EdgeInsets.only(left: 20),
       child: Row(children: [title, const Spacer(), ...actions]),
+    );
+  }
+}
+
+/// The account avatar in the header.
+///
+/// Its own widget rather than the bottom bar's 24pt one dropped into a
+/// _RoundAction: that left the avatar floating in the middle of a 40pt grey
+/// button with a ring of button showing round it. Here the image IS the
+/// button.
+///
+/// Tap opens your own profile; long-press the account switcher, which is
+/// the gesture the avatar carried when it was a tab.
+class _HeaderAccount extends StatelessWidget {
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  const _HeaderAccount({required this.onTap, required this.onLongPress});
+
+  static const double _size = 40;
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AccountManager>(
+      builder: (context, accounts, child) {
+        final url = accounts.activeAccount?.user.profileImage?.trim();
+        final hasImage = url != null && url.isNotEmpty;
+
+        return Material(
+          color: const Color(0xFFF4F4F4),
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            onLongPress: onLongPress,
+            child: SizedBox(
+              width: _size,
+              height: _size,
+              child: hasImage
+                  ? CachedNetworkImage(
+                      imageUrl: url,
+                      fit: BoxFit.cover,
+                      memCacheWidth:
+                          (_size * MediaQuery.devicePixelRatioOf(context))
+                              .round(),
+                      errorWidget: (_, __, ___) => const Icon(
+                        Icons.person_outline,
+                        size: 20,
+                        color: Color(0xFF111111),
+                      ),
+                    )
+                  : const Icon(
+                      Icons.person_outline,
+                      size: 20,
+                      color: Color(0xFF111111),
+                    ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

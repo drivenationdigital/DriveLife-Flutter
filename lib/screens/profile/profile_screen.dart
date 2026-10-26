@@ -34,11 +34,14 @@ class ProfileScreen extends StatelessWidget {
       );
     }
 
-    // ✅ Pass showAppBar: false to hide the app bar
     return ViewProfileScreen(
       userId: user.id,
       username: user.username.toString(),
-      showAppBar: false, // ✅ Don't show app bar (HomeTabs will handle it)
+      // true, because this is a pushed route now rather than a bottom-bar
+      // tab. The account avatar moved to the header, so there is no shell
+      // header above this screen any more — with showAppBar false it had
+      // no header and no way back at all.
+      showAppBar: true,
     );
   }
 }

@@ -60,11 +60,17 @@ class BottomNavProvider extends ChangeNotifier {
   static const int discover = 1;
   static const int groups = 2;
   static const int photos = 3;
-  static const int account = 4;
+
+  /// Garage, where Account used to be.
+  ///
+  /// The account avatar moved to the header — it is a thing you ARE, not a
+  /// place you go, and it was spending a fifth of the bar to say so. The
+  /// garage is a place you go.
+  static const int garage = 4;
 
   /// How many destinations there are. The shell asserts its own list
   /// against this, because the two are matched by position.
-  static const int destinationCount = account + 1;
+  static const int destinationCount = garage + 1;
 
   // ── sections of Home, in the order of its top tab row ──────────────
   static const int forYou = 0;

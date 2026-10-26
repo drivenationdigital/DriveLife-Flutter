@@ -22,7 +22,10 @@ void main() {
       expect(BottomNavProvider.discover, 1);
       expect(BottomNavProvider.groups, 2);
       expect(BottomNavProvider.photos, 3);
-      expect(BottomNavProvider.account, 4);
+      // Garage, where Account used to be. The account avatar moved to the
+      // header: it is a thing you ARE, not a place you go, and it was
+      // spending a fifth of the bar to say so.
+      expect(BottomNavProvider.garage, 4);
     });
 
     test('the count matches the names', () {

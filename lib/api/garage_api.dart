@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:drivelife/services/auth_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:drivelife/utils/chunk_upload_utility.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -84,6 +85,91 @@ class GarageAPI {
     return int.tryParse('${body['claimed']}') ?? 0;
   }
 
+  /// Likes or unlikes a vehicle, returning the state it settled on.
+  ///
+  /// The caller is taken from the token server-side, never sent — as a
+  /// parameter anyone could like anything as anyone.
+  ///
+  /// Returns null when the call failed, which is distinct from a successful
+  /// unlike: the caller has to put its optimistic flip back on null and
+  /// leave it alone on a real answer.
+  static Future<({bool liked, int likes})?> toggleVehicleLike(
+    String garageId,
+  ) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return null;
+
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v2/garage/like'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'garage_id': garageId}),
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint('[GarageAPI] like failed: ${response.statusCode}');
+        return null;
+      }
+
+      final body = jsonDecode(response.body);
+
+      if (body is! Map || body['success'] != true) return null;
+
+      return (
+        liked: body['liked'] == true,
+        likes: (body['likes'] is int)
+            ? body['likes'] as int
+            : int.tryParse('${body['likes']}') ?? 0,
+      );
+    } catch (e) {
+      debugPrint('[GarageAPI] like failed: $e');
+      return null;
+    }
+  }
+
+  /// Vehicles across every user, for the garage leaderboard.
+  ///
+  /// Not ranked yet — nothing counts likes against a vehicle, so the server
+  /// returns them in random order. [period] and [region] travel so the app
+  /// side does not change when it is; the server ignores them for now.
+  static Future<List<dynamic>> getLeaderboard({
+    String period = 'month',
+    String region = 'worldwide',
+    int limit = 50,
+  }) async {
+    try {
+      final uri = Uri.parse('$_apiUrl/wp-json/app/v2/garage-leaderboard')
+          .replace(
+            queryParameters: {
+              'period': period,
+              'region': region,
+              'limit': '$limit',
+            },
+          );
+
+      final response = await http.get(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode != 200) return [];
+
+      final body = jsonDecode(response.body);
+
+      if (body is Map && body['data'] is List) {
+        return body['data'] as List<dynamic>;
+      }
+
+      return [];
+    } catch (e) {
+      debugPrint('[GarageAPI] leaderboard failed: $e');
+      return [];
+    }
+  }
+
   static Future<List<dynamic>?> getUserGarage(int userId) async {
     try {
       final response = await http.get(
@@ -103,9 +189,22 @@ class GarageAPI {
 
   static Future<Map<String, dynamic>?> getGarageById(String garageId) async {
     try {
+      // Authenticated, because the response carries `is_liked` — whether
+      // THIS person has liked the vehicle. Unauthenticated the server has
+      // nobody to answer for and returns false every time, so the like
+      // button reset itself on every load and the next tap un-liked the
+      // row that was already there.
+      //
+      // Optional, not required: everything else here is public, so a signed
+      // -out read should still return the vehicle rather than a 401.
+      final token = await _authService.getToken();
+
       final response = await http.get(
         Uri.parse('$_apiUrl/wp-json/app/v2/get-garage?garage_id=$garageId'),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
       );
 
       if (response.statusCode == 200) {

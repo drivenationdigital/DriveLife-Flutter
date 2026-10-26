@@ -20,7 +20,10 @@ class ClubProfileScreen extends StatelessWidget {
     // ✅ Same pattern as ProfileScreen → ViewProfileScreen
     return ClubViewScreen(
       clubPostId: clubPostId,
-      showAppBar: false, // HomeTabs handles the app bar
+      // true, because this is a pushed route now rather than a bottom-bar
+      // tab. The account avatar moved to the header, so there is no shell
+      // header above this screen any more.
+      showAppBar: true,
       isOwnClub: true, // Show owner UI
     );
   }
