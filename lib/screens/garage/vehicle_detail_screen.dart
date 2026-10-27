@@ -7,6 +7,7 @@ import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
 import 'package:drivelife/screens/garage/mods/add_mods_screen.dart';
 import 'package:drivelife/screens/garage/view_reminders.dart';
+import 'package:drivelife/widgets/image_viewer_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:flutter/material.dart';
@@ -14,7 +15,6 @@ import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:provider/provider.dart';
 import '../../api/garage_api.dart';
-import '../../widgets/profile/profile_avatar.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class _VehicleCache {
@@ -38,52 +38,6 @@ class _VehicleCache {
   static void invalidate(String id) {
     _cache.remove(id);
     _lruKeys.remove(id);
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Provider.of<ThemeProvider>(context);
-
-    return Expanded(
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-          backgroundColor: theme.primaryColor,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          // Prevents overflow on small screens
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 20),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
@@ -408,110 +362,364 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     }
   }
 
-  Widget _buildOwnerActions(ThemeProvider theme) {
-    final isOwner = isVehiclePublisher();
+  Future<void> _openEditor() async {
+    final result = await NavigationHelper.navigateTo(
+      context,
+      AddVehicleScreen(vehicle: _vehicle),
+    );
 
-    if (!isOwner) {
-      return const SizedBox.shrink();
+    if (result == null || !mounted) return;
+
+    _VehicleCache.invalidate(widget.garageId);
+
+    if (result == 'deleted') {
+      Navigator.pop(context, 'deleted');
+    } else {
+      _loadVehicle();
     }
+  }
 
-    return Column(
-      children: [
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: () {
-              final associationType = isOwner ? 'garage' : 'car';
+  Future<void> _openUpgrades() async {
+    final result = await NavigationHelper.navigateTo(
+      context,
+      GarageModsPage(
+        garageId: widget.garageId,
+        mods: _mods,
+        onModsChanged: _loadVehicle,
+        isOwner: isVehiclePublisher(),
+      ),
+    );
 
-              if (_vehicle == null) return;
+    if (result != null) _loadVehicle();
+  }
 
-              // Create the label (registration or make/model)
-              String label;
-              if (_vehicle?['registration'] != null &&
-                  _vehicle?['registration'].isNotEmpty) {
-                label = _vehicle?['registration'];
-              } else {
-                label = '${_vehicle?['make']} ${_vehicle?['model']}';
-              }
+  Future<void> _openReminders() async {
+    final result = await NavigationHelper.navigateTo(
+      context,
+      RemindersScreen(garageId: widget.garageId),
+    );
 
-              // Navigate to create post screen with arguments
-              Navigator.pushNamed(
-                context,
-                '/create-post', // or whatever your route name is
-                arguments: {
-                  'association_id': _vehicle?['id'], // or garageId
-                  'association_type': associationType,
-                  'association_label': label,
-                },
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              backgroundColor: theme.secondaryColor,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-            child: const Text(
-              'Add Post',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+    if (result != null) _loadVehicle();
+  }
+
+  /// Opens the cover photo full screen.
+  ///
+  /// The app's own ImageViewerScreen — the same black, zoomable page the
+  /// gallery, the shop and the profile use — rather than a Dialog of its
+  /// own, so pinching and dismissing work the way they do everywhere else.
+  void _openCoverPhoto(String url) {
+    final value = url.trim();
+    if (value.isEmpty) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ImageViewerScreen(images: [value]),
+      ),
+    );
+  }
+
+  /// The black the hero sits on.
+  ///
+  /// Named because two things have to agree on it exactly: the panel the
+  /// name and stats sit on, and the last stop of the gradient over the
+  /// photo. When they were two literals one of them was 0xCC and the other
+  /// 0xFF, which drew a hard line across the bottom of every cover photo.
+  /// Reading the same constant twice is cheaper than remembering to.
+  static const Color _heroBlack = Color(0xFF0B0B0B);
+
+  /// The photograph, and the car's name and numbers on black beneath it.
+  ///
+  /// One widget rather than a SliverAppBar: the dark panel has to be part of
+  /// the same block as the image so the gradient runs into it without a
+  /// seam, and nothing here needs to collapse.
+  Widget _buildHero(ThemeProvider theme, String coverPhoto, bool hasCover) {
+    final top = MediaQuery.paddingOf(context).top;
+
+    final make = '${_vehicle?['make'] ?? ''}'.trim();
+    final model = '${_vehicle?['model'] ?? ''}'.trim();
+    final variant = '${_vehicle?['variant'] ?? ''}'.trim();
+    final name = [make, model, variant].where((p) => p.isNotEmpty).join(' ');
+
+    final handle = '${_vehicle?['owner']?['username'] ?? ''}'.trim();
+    final owned = _ownedSince;
+
+    return ColoredBox(
+      color: _heroBlack,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // The photo runs under the status bar, which is what makes the
+          // page feel like the car rather than a form about it. The two
+          // buttons sit below the inset so they stay tappable.
+          SizedBox(
+            // Measured off the mockup: the photo there is a wide letterbox
+            // band, roughly 2.2:1, not the near-square 300 this was. The
+            // car fills it and the name sits a third of the way down the
+            // screen rather than halfway.
+            height: 240 + top,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (hasCover)
+                  // Tappable, opening the photo full screen.
+                  //
+                  // First in the Stack on purpose: the back and share
+                  // buttons come after it and therefore sit on top, so they
+                  // keep their own taps. The gradient between the two is a
+                  // DecoratedBox with no child, and a RenderProxyBox with
+                  // nothing in it does not hit test — so it tints the photo
+                  // without swallowing the tap.
+                  //
+                  // Only the photo, not the whole dark header: the name,
+                  // the handle and the stats below it are outside this box,
+                  // and the handle is already a link to the owner.
+                  GestureDetector(
+                    onTap: () => _openCoverPhoto(coverPhoto),
+                    child: CachedNetworkImage(
+                      imageUrl: coverPhoto,
+                      fit: BoxFit.cover,
+                      memCacheWidth:
+                          (MediaQuery.sizeOf(context).width *
+                                  MediaQuery.devicePixelRatioOf(context))
+                              .round(),
+                      placeholder: (_, __) =>
+                          const ColoredBox(color: Color(0xFF1C1C1E)),
+                      errorWidget: (_, __, ___) =>
+                          const ColoredBox(color: Color(0xFF1C1C1E)),
+                    ),
+                  )
+                else
+                  const ColoredBox(color: Color(0xFF1C1C1E)),
+
+                // Into the black below, so the photo ends without an edge.
+                // Ends on exactly the colour of the panel below, fully
+                // opaque. It used to end at 0xCC — 80% — so the bottom edge
+                // of the photo was still 20% visible and then stepped
+                // straight to solid black. That step is a seam, and no
+                // amount of blur hides a hard edge between two flat tones.
+                //
+                // Four stops rather than three so the ramp is long: clear
+                // through the middle where the car is, then 40% of the
+                // height to go from nothing to black. A short ramp bands on
+                // a dark photo.
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        // A scrim at the very top, so the back and share
+                        // buttons hold up over a bright sky.
+                        const Color(0x73000000),
+                        const Color(0x00000000),
+                        _heroBlack.withValues(alpha: 0.6),
+                        _heroBlack,
+                      ],
+                      stops: const [0, 0.32, 0.76, 1],
+                    ),
+                  ),
+                ),
+
+                Positioned(
+                  top: top + 8,
+                  left: 16,
+                  right: 16,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _HeroButton(
+                        icon: Icons.arrow_back_ios_new_rounded,
+                        onTap: () => Navigator.pop(context),
+                        tooltip: 'Back',
+                      ),
+                      _HeroButton(
+                        icon: Icons.ios_share_rounded,
+                        onTap: _shareVehicle,
+                        tooltip: 'Share vehicle',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            _ActionButton(
-              icon: Icons.edit_outlined,
-              label: 'Edit',
-              onPressed: () async {
-                final result = await NavigationHelper.navigateTo(
-                  context,
-                  AddVehicleScreen(vehicle: _vehicle),
-                );
-                if (result != null) {
-                  _VehicleCache.invalidate(widget.garageId);
-                  if (result == 'deleted') {
-                    Navigator.pop(context, 'deleted');
-                  } else {
-                    _loadVehicle();
-                  }
-                }
-              },
-            ),
-            const SizedBox(width: 8),
-            _ActionButton(
-              icon: Icons.build_outlined,
-              label: 'Upgrades',
-              onPressed: () async {
-                final result = await NavigationHelper.navigateTo(
-                  context,
-                  GarageModsPage(
-                    garageId: widget.garageId,
-                    mods: _mods,
-                    onModsChanged: _loadVehicle,
-                    isOwner: isOwner,
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name.isEmpty ? 'Vehicle' : name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 32,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.8,
                   ),
-                );
-                if (result != null) _loadVehicle();
-              },
+                ),
+
+                const SizedBox(height: 10),
+
+                // No avatar. The handle is the link; a 24pt face beside it
+                // added a second tap target for the same destination.
+                Row(
+                  children: [
+                    if (handle.isNotEmpty)
+                      GestureDetector(
+                        onTap: _openOwnerProfile,
+                        child: Text(
+                          '@$handle',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    if (handle.isNotEmpty && owned != null)
+                      Text(
+                        '  ·  ',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          fontSize: 15.5,
+                        ),
+                      ),
+                    if (owned != null)
+                      Text(
+                        owned,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.65),
+                          fontSize: 15.5,
+                        ),
+                      ),
+                  ],
+                ),
+
+                const SizedBox(height: 18),
+                Divider(color: Colors.white.withValues(alpha: 0.14), height: 1),
+                const SizedBox(height: 16),
+
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _HeroStat(
+                          label: 'POWER',
+                          value: _statValue(_vehicle?['vehicle_bhp']),
+                          unit: 'bhp',
+                          accent: theme.primaryColor,
+                        ),
+                      ),
+                      _heroDivider(),
+                      Expanded(
+                        child: _HeroStat(
+                          label: 'TOP SPEED',
+                          value: _statValue(_vehicle?['vehicle_top_speed']),
+                          unit: 'mph',
+                          accent: theme.primaryColor,
+                        ),
+                      ),
+                      _heroDivider(),
+                      Expanded(
+                        child: _HeroStat(
+                          label: 'UPGRADES',
+                          value: '${_mods.length}',
+                          unit: 'fitted',
+                          accent: theme.primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            _ActionButton(
-              icon: Icons.notifications_outlined,
-              label: 'Reminders',
-              onPressed: () async {
-                final result = await NavigationHelper.navigateTo(
-                  context,
-                  RemindersScreen(garageId: widget.garageId),
-                );
-                if (result != null) _loadVehicle();
-              },
-            ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _heroDivider() => Container(
+    width: 1,
+    margin: const EdgeInsets.symmetric(horizontal: 4),
+    color: Colors.white.withValues(alpha: 0.14),
+  );
+
+  /// A stat's number, or an em dash. Zero means "not recorded" on every one
+  /// of these fields, so printing it would claim a 0bhp car.
+  static String _statValue(dynamic raw) {
+    final value = raw is num ? raw : num.tryParse('${raw ?? ''}');
+
+    if (value == null || value == 0) return '—';
+
+    return value == value.roundToDouble() ? '${value.round()}' : '$value';
+  }
+
+  /// "Owned since 2014", or null when there is no usable date.
+  String? get _ownedSince {
+    final raw = '${_vehicle?['owned_since'] ?? ''}'.trim();
+    if (raw.isEmpty) return null;
+
+    final year =
+        DateTime.tryParse(raw)?.year ??
+        int.tryParse(RegExp(r'\b(\d{4})\b').firstMatch(raw)?.group(1) ?? '');
+
+    return year == null ? null : 'Owned since $year';
+  }
+
+  /// Edit, Upgrades, Reminders — the owner's row.
+  ///
+  /// Reminders is here because the bell that used to carry it in the header
+  /// has gone. Worth knowing: that bell had an overdue badge, and this
+  /// button does not. Nothing writes a notification when a reminder falls
+  /// due, so until something does, an overdue reminder is only visible to
+  /// somebody who opens this screen and taps through.
+  Widget _buildVehicleActions(ThemeProvider theme) {
+    if (!isVehiclePublisher()) return const SizedBox.shrink();
+
+    return Row(
+      children: [
+        Expanded(
+          child: _VehicleAction(
+            icon: Icons.edit_outlined,
+            label: 'Edit',
+            accent: theme.primaryColor,
+            onTap: _openEditor,
+          ),
         ),
-        const SizedBox(height: 16), // ADD SPACING BEFORE TABS
+        const SizedBox(width: 10),
+        Expanded(
+          child: _VehicleAction(
+            icon: Icons.build_outlined,
+            label: 'Upgrades',
+            accent: theme.primaryColor,
+            onTap: _openUpgrades,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _VehicleAction(
+            icon: Icons.notifications_none_rounded,
+            label: 'Reminders',
+            accent: theme.primaryColor,
+            onTap: _openReminders,
+            // A dot, not the number the old bell carried.
+            //
+            // Kept deliberately against the design, because removing the
+            // bell removed the ONLY warning anybody gets that a reminder is
+            // due: nothing writes a notification when one falls due, so
+            // without this an overdue MOT is visible only to somebody who
+            // opens this screen and taps through on a hunch.
+            //
+            // Delete this line the day reminders reach the notification
+            // feed — that is where it belongs, and the design is right that
+            // a button should not be a status light.
+            alert: _overdueOrDueCount > 0,
+          ),
+        ),
       ],
     );
   }
@@ -655,295 +863,37 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        centerTitle: true,
-        title: Image.asset('assets/logo-dark.png', height: 18),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.ios_share, color: Colors.black),
-            tooltip: 'Share vehicle',
-            onPressed: _shareVehicle,
-          ),
-          if (isVehiclePublisher())
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                IconButton(
-                  icon: Icon(Icons.notifications_outlined, color: Colors.black),
-                  onPressed: () async {
-                    final result = await Navigator.of(context).push(
-                      PageRouteBuilder(
-                        pageBuilder: (context, animation, secondaryAnimation) =>
-                            RemindersScreen(garageId: widget.garageId),
-                        transitionsBuilder:
-                            (context, animation, secondaryAnimation, child) {
-                              return SlideTransition(
-                                position:
-                                    Tween<Offset>(
-                                      begin: const Offset(1.0, 0.0),
-                                      end: Offset.zero,
-                                    ).animate(
-                                      CurvedAnimation(
-                                        parent: animation,
-                                        curve: Curves.easeOutCubic,
-                                      ),
-                                    ),
-                                child: child,
-                              );
-                            },
-                        transitionDuration: const Duration(milliseconds: 300),
-                      ),
-                    );
-                    if (result != null) {
-                      _loadVehicle();
-                      _loadReminderBadge(); // refresh badge after returning
-                    }
-                  },
-                ),
-                if (_overdueOrDueCount > 0)
-                  Positioned(
-                    top: 6,
-                    right: 6,
-                    child: IgnorePointer(
-                      child: Container(
-                        width: 18,
-                        height: 18,
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          _overdueOrDueCount > 9 ? '9+' : '$_overdueOrDueCount',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-        ],
-      ),
+      // No app bar. The photograph is the page's identity, and a white bar
+      // with a logo on it above a full-bleed cover is two headers arguing.
+      // Back and share float on the image instead.
+      //
+      // The reminders bell that used to live up here has gone: reminders
+      // are one of the three buttons below now. Its overdue badge was the
+      // only warning anybody got, so see the note on _buildVehicleActions.
+      extendBodyBehindAppBar: true,
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           return [
-            // Cover photo
-            SliverAppBar(
-              expandedHeight: 270,
-              pinned: false,
-              automaticallyImplyLeading: false,
-              backgroundColor: Colors.white,
-              flexibleSpace: FlexibleSpaceBar(
-                background: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (hasCoverPhoto)
-                      Image.network(
-                        coverPhoto,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            Container(color: Colors.grey.shade300),
-                      )
-                    else
-                      Container(color: Colors.grey.shade300),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withOpacity(0.3),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 16,
-                      bottom: 16,
-                      child: Material(
-                        color: Colors.black.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(20),
-                        clipBehavior: Clip.antiAlias,
-                        child: InkWell(
-                          onTap: _openOwnerProfile,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                ProfileAvatar(
-                                  imageUrl:
-                                      _vehicle!['owner']?['profile_image'],
-                                  radius: 12,
-                                ),
-                                const SizedBox(width: 8),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text(
-                                      // Whose car it is, not who typed it in.
-                                      'Owned By',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 10,
-                                      ),
-                                    ),
-                                    Text(
-                                      '@${_vehicle!['owner']?['username'] ?? 'user'}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(width: 2),
-                                const Icon(
-                                  Icons.chevron_right,
-                                  size: 16,
-                                  color: Colors.white70,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            SliverToBoxAdapter(
+              child: _buildHero(theme, coverPhoto, hasCoverPhoto),
             ),
 
-            // Vehicle info and tabs
             SliverToBoxAdapter(
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
                     child: Column(
                       children: [
-                        // Vehicle name with variant
-                        RichText(
-                          textAlign: TextAlign.center,
-                          text: TextSpan(
-                            children: [
-                              TextSpan(
-                                text:
-                                    '${_vehicle!['make']} ${_vehicle!['model']}',
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black,
-                                ),
-                              ),
-                              if (_vehicle!['variant'] != null &&
-                                  _vehicle!['variant'].isNotEmpty)
-                                TextSpan(
-                                  text: ' ${_vehicle!['variant']}',
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.grey.shade700,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Registration, Colour, Owned Since
-                        Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 16,
-                          runSpacing: 8,
-                          children: [
-                            if (_vehicle!['registration'] != null &&
-                                _vehicle!['registration'].isNotEmpty)
-                              _buildInfoChip(
-                                Icons.pin,
-                                _vehicle!['registration'],
-                              ),
-                            if (_vehicle!['colour'] != null &&
-                                _vehicle!['colour'].isNotEmpty)
-                              _buildInfoChip(
-                                Icons.palette,
-                                _vehicle!['colour'],
-                              ),
-                            if (_vehicle!['owned_since'] != null &&
-                                _vehicle!['owned_since'].isNotEmpty)
-                              _buildInfoChip(
-                                Icons.calendar_today,
-                                'Since ${formatDate(_vehicle!['owned_since'])}',
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Description
-                        if (_vehicle!['short_description'] != null &&
-                            _vehicle!['short_description'].isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: Text(
-                              _vehicle!['short_description'],
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey.shade700,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-
-                        // Stats
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            _buildStat(
-                              _vehicle!['vehicle_bhp'] != 0
-                                  ? _vehicle!['vehicle_bhp'].toString()
-                                  : '-',
-                              'BHP',
-                            ),
-                            _buildStat(
-                              _vehicle!['vehicle_062'] != 0
-                                  ? _vehicle!['vehicle_062'].toString()
-                                  : '-',
-                              '0-62',
-                            ),
-                            _buildStat(
-                              _vehicle!['vehicle_top_speed'] != 0
-                                  ? '${_vehicle!['vehicle_top_speed']}mph'
-                                  : '-',
-                              'Top Speed',
-                            ),
-                            _buildStat(_mods.length.toString(), 'Upgrades'),
-                            _buildStat('$_likes', 'Likes'),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-
-                        _buildLikeButton(theme),
-
-                        const SizedBox(height: 20),
-
-                        _buildOwnerActions(theme),
+                        if (!isVehiclePublisher()) ...[
+                          _buildLikeButton(theme),
+                          const SizedBox(height: 12),
+                        ],
+                        _buildVehicleActions(theme),
                       ],
                     ),
                   ),
-
+                  const SizedBox(height: 18),
                   // Tabs
                   Container(
                     color: Colors.white,
@@ -981,51 +931,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildStat(String value, String label) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildInfoChip(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: Colors.grey.shade700),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade700,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1550,6 +1455,183 @@ class _GarageModsPageState extends State<GarageModsPage> {
         onModsChanged: widget.onModsChanged,
         isOwner: widget.isOwner,
         showEditActions: true, // Hide edit actions in this full-page view
+      ),
+    );
+  }
+}
+
+/// A round translucent button floating on the cover photo.
+class _HeroButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final String tooltip;
+
+  const _HeroButton({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      // Dark rather than light: the photograph behind could be anything,
+      // and white-on-light is the pair that disappears.
+      color: Colors.black.withValues(alpha: 0.45),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 42,
+            height: 42,
+            child: Icon(icon, size: 18, color: Colors.white),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One of the three numbers under the car's name.
+class _HeroStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final String unit;
+  final Color accent;
+
+  const _HeroStat({
+    required this.label,
+    required this.value,
+    required this.unit,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: accent,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.1,
+          ),
+        ),
+        const SizedBox(height: 6),
+        // Baseline-aligned, so the unit sits on the number's feet rather
+        // than floating beside its middle.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Flexible(
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 23,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
+                ),
+              ),
+            ),
+            const SizedBox(width: 3),
+            Text(
+              unit,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.55),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Edit / Upgrades / Reminders.
+class _VehicleAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color accent;
+  final VoidCallback onTap;
+
+  /// Draws a dot on the icon. See the note at the Reminders call site.
+  final bool alert;
+
+  const _VehicleAction({
+    required this.icon,
+    required this.label,
+    required this.accent,
+    required this.onTap,
+    this.alert = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 50,
+          decoration: BoxDecoration(
+            border: Border.all(color: const Color(0xFFE4E4E4)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(icon, size: 17, color: accent),
+                  if (alert)
+                    Positioned(
+                      top: -2,
+                      right: -3,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFE53935),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF111111),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

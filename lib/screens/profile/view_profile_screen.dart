@@ -9,6 +9,7 @@ import 'package:drivelife/widgets/media/gallery_card.dart';
 import 'package:drivelife/screens/chat/ChatScreen.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
+import 'package:drivelife/widgets/garage/vehicle_card.dart';
 import 'package:drivelife/screens/profile/edit_profile_settings_screen.dart';
 import 'package:drivelife/screens/profile/followers_screen.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
@@ -1380,24 +1381,90 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     );
   }
 
+  /// The cover photo URL, whatever shape the API sent it in.
+  ///
+  /// Lives here rather than in the garage section it used to sit inside —
+  /// it has nothing to do with vehicles, and being in there is why it went
+  /// missing when that section was rewritten.
+  String? _getCoverImageUrl() {
+    final coverImage = _userProfile?['cover_image'];
+
+    if (coverImage == null) return null;
+
+    if (coverImage is List) {
+      return coverImage.isEmpty ? null : coverImage.first.toString();
+    }
+
+    if (coverImage is String && coverImage.isNotEmpty) {
+      return coverImage;
+    }
+
+    return null;
+  }
+
+  /// The Garage tab on a profile.
+  ///
+  /// The same card as the Garage destination — see VehicleCard — but laid
+  /// out as three titled shelves rather than behind filter pills. A profile
+  /// is something you scroll through to see what somebody has; the pills
+  /// make sense where the garage is the whole screen and you are looking
+  /// for one car.
   Widget _buildGarageContent(ThemeProvider theme) {
     if (_loadingGarage) {
       return SliverFillRemaining(
+        hasScrollBody: false,
         child: Center(
           child: CircularProgressIndicator(color: theme.primaryColor),
         ),
       );
     }
 
+    final shelves = <({String title, List<dynamic> vehicles})>[
+      (title: 'Current Garage', vehicles: _currentVehicles),
+      (title: 'Past Garage', vehicles: _pastVehicles),
+      (title: 'Dream Garage', vehicles: _dreamVehicles),
+    ];
+
+    // Nothing at all. One line rather than three empty headings, which read
+    // as three things that are broken rather than one profile with no cars.
+    if (shelves.every((s) => s.vehicles.isEmpty)) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(32, 48, 32, 48),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.directions_car_outlined,
+                size: 42,
+                color: Colors.grey.shade300,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'No vehicles yet',
+                style: TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return SliverPadding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
       sliver: SliverList(
         delegate: SliverChildListDelegate([
-          _buildGarageSection('Current Vehicles', _currentVehicles, theme),
-          const SizedBox(height: 24),
-          _buildGarageSection('Past Vehicles', _pastVehicles, theme),
-          const SizedBox(height: 24),
-          _buildGarageSection('Dream Vehicles', _dreamVehicles, theme),
+          for (final shelf in shelves)
+            // An empty shelf is left out entirely rather than shown with a
+            // "none" under it: a profile with no dream cars should not have
+            // to say so.
+            if (shelf.vehicles.isNotEmpty)
+              _buildGarageSection(shelf.title, shelf.vehicles, theme),
         ]),
       ),
     );
@@ -1411,134 +1478,46 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: theme.textColor,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(2, 0, 0, 12),
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+              color: Color(0xFF111111),
+            ),
           ),
         ),
-        const SizedBox(height: 12),
-        if (vehicles.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              'No ${title.toLowerCase()}',
-              style: TextStyle(color: theme.subtextColor),
-            ),
-          )
-        else
-          ...vehicles.map(
-            (vehicle) => Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              height: 80,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: theme.cardColor,
 
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: theme.dividerColor),
-              ),
-              child: ListTile(
-                leading: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: Container(
-                    width: 60,
-                    height: 60,
-                    alignment: Alignment.center,
-                    color: theme.dividerColor,
-                    child: vehicle['cover_photo'] != null
-                        ? Image.network(
-                            vehicle['cover_photo'],
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: Colors.grey[300],
-                                child: const Icon(
-                                  Icons.broken_image,
-                                  size: 48,
-                                  color: Colors.grey,
-                                ),
-                              );
-                            },
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return Container(
-                                color: Colors.grey[200],
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    value:
-                                        loadingProgress.expectedTotalBytes !=
-                                            null
-                                        ? loadingProgress
-                                                  .cumulativeBytesLoaded /
-                                              loadingProgress
-                                                  .expectedTotalBytes!
-                                        : null,
-                                  ),
-                                ),
-                              );
-                            },
-                          )
-                        : Icon(Icons.directions_car, color: theme.subtextColor),
-                  ),
-                ),
-                title: Text(
-                  '${vehicle['make']} ${vehicle['model']}',
-                  style: TextStyle(
-                    color: theme.textColor,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                trailing: Icon(Icons.chevron_right, color: theme.subtextColor),
-                onTap: () {
-                  Navigator.pushNamed(
-                    context,
-                    '/vehicle-detail',
-                    arguments: {'garageId': vehicle['id'].toString()},
-                  );
-                },
-              ),
-            ),
+        for (var i = 0; i < vehicles.length; i++) ...[
+          if (i > 0) const SizedBox(height: 16),
+          VehicleCard(
+            vehicle: vehicles[i],
+            onTap: () async {
+              final result = await Navigator.pushNamed(
+                context,
+                '/vehicle-detail',
+                arguments: {'garageId': vehicles[i]['id'].toString()},
+              );
+
+              // Updated or deleted — either way this list is now wrong.
+              if (result != null && mounted) {
+                setState(() => _garageLoaded = false);
+                _loadGarage();
+              }
+            },
           ),
+        ],
+
+        // Between shelves, not after the last one: the SliverPadding below
+        // already supplies the bottom.
+        const SizedBox(height: 28),
       ],
     );
   }
 
-  String? _getCoverImageUrl() {
-    final coverImage = _userProfile?['cover_image'];
-
-    // Handle null
-    if (coverImage == null) return null;
-
-    // Handle empty list
-    if (coverImage is List && coverImage.isEmpty) return null;
-
-    // Handle list with values
-    if (coverImage is List && coverImage.isNotEmpty) {
-      return coverImage[0].toString();
-    }
-
-    // Handle string
-    if (coverImage is String && coverImage.isNotEmpty) {
-      return coverImage;
-    }
-
-    return null;
-  }
-
-  /// Opens a picture full screen.
-  ///
-  /// The app's own [ImageViewerScreen], the same one the event gallery and
-  /// the shop use — a black page that zooms and swipes, with a close button.
-  /// The avatar used to open a bespoke Dialog instead: a rounded card that
-  /// did not zoom, and the cover did not open at all.
   void _openImage(dynamic url) {
     final value = (url is List && url.isNotEmpty ? url.first : url)
         ?.toString()
