@@ -456,7 +456,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
             // band, roughly 2.2:1, not the near-square 300 this was. The
             // car fills it and the name sits a third of the way down the
             // screen rather than halfway.
-            height: 240 + top,
+            height: 200 + top,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -563,7 +563,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                   name.isEmpty ? 'Vehicle' : name,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 32,
+                    // Up, not down: the V of "Vauxhall Insignia" measures a
+                    // 25pt cap on the mockup, which is a 35pt face. This is
+                    // the one piece of type on these screens the app was
+                    // drawing too small.
+                    fontSize: 35,
                     height: 1.05,
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.8,
@@ -583,7 +587,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                           '@$handle',
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 15.5,
+                            fontSize: 13.5,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -593,7 +597,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                         '  ·  ',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.45),
-                          fontSize: 15.5,
+                          fontSize: 13.5,
                         ),
                       ),
                     if (owned != null)
@@ -601,7 +605,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                         owned,
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.65),
-                          fontSize: 15.5,
+                          fontSize: 13.5,
                         ),
                       ),
                   ],
@@ -1548,7 +1552,8 @@ class _HeroStat extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 23,
+                  // 25, from a 17.8pt figure height on "710".
+                  fontSize: 25,
                   height: 1,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.5,

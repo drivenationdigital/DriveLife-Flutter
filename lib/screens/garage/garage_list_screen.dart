@@ -587,22 +587,22 @@ class _ShelfPill extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 14, 12),
+          padding: const EdgeInsets.fromLTRB(18, 11, 12, 11),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 14.5,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: selected ? Colors.white : const Color(0xFF111111),
                 ),
               ),
               const SizedBox(width: 8),
               Container(
-                width: 23,
-                height: 23,
+                width: 20,
+                height: 20,
                 decoration: BoxDecoration(
                   // Gold on the selected pill, grey on the rest: on black the
                   // grey would vanish, and gold on white would read as a
@@ -616,7 +616,7 @@ class _ShelfPill extends StatelessWidget {
                 child: Text(
                   count > 99 ? '99' : '$count',
                   style: TextStyle(
-                    fontSize: 11.5,
+                    fontSize: 11,
                     height: 1,
                     fontWeight: FontWeight.w800,
                     color: selected ? Colors.white : Colors.grey.shade600,
@@ -652,19 +652,20 @@ class _AddVehicleCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 54,
-                height: 54,
+                // 44: the mockup's disc is 78px, which is 43.3pt.
+                width: 44,
+                height: 44,
                 decoration: const BoxDecoration(
                   color: Color(0xFF111111),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.add, size: 26, color: theme.primaryColor),
+                child: Icon(Icons.add, size: 22, color: theme.primaryColor),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               const Text(
                 'Add a vehicle',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w800,
                   color: Color(0xFF111111),
                 ),
@@ -866,7 +867,7 @@ class _LeaderboardRow extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 13, 10, 13),
+          padding: const EdgeInsets.fromLTRB(16, 12, 10, 12),
           child: Row(
             children: [
               SizedBox(
@@ -888,8 +889,9 @@ class _LeaderboardRow extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: SizedBox(
-                  width: 68,
-                  height: 54,
+                  // 131x94px on the mockup = 72.8 x 52.2pt.
+                  width: 72,
+                  height: 52,
                   child: cover.isEmpty
                       ? ColoredBox(
                           color: Colors.grey.shade100,
@@ -930,7 +932,7 @@ class _LeaderboardRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 16.5,
+                        fontSize: 15.5,
                         height: 1.2,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.2,

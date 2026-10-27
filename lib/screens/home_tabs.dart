@@ -1217,7 +1217,7 @@ class _RoundAction extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: SizedBox(width: 40, height: 40, child: Center(child: child)),
+        child: SizedBox(width: 38, height: 38, child: Center(child: child)),
       ),
     );
   }
@@ -1256,10 +1256,11 @@ class _Header extends StatelessWidget {
 
 /// The account avatar in the header.
 ///
-/// Its own widget rather than the bottom bar's 24pt one dropped into a
-/// _RoundAction: that left the avatar floating in the middle of a 40pt grey
-/// button with a ring of button showing round it. Here the image IS the
-/// button.
+/// The button is the same 38pt disc as the two beside it, and the face is
+/// drawn at 28 inside it. Filling the whole disc with a photograph made
+/// this read as much the largest of the three even though all three
+/// measured the same: a dense photo carries far more weight per point than
+/// an 18pt glyph on #F4F4F4, and the eye sizes by weight.
 ///
 /// Tap opens your own profile; long-press the account switcher, which is
 /// the gesture the avatar carried when it was a tab.
@@ -1269,7 +1270,13 @@ class _HeaderAccount extends StatelessWidget {
 
   const _HeaderAccount({required this.onTap, required this.onLongPress});
 
-  static const double _size = 40;
+  /// The button, matching _RoundAction.
+  static const double _size = 38;
+
+  /// The face inside it. 28 against the others' 18pt glyphs: a photograph
+  /// needs less area than a line drawing to carry the same weight, and at
+  /// 18 it would be a thumbnail of a face rather than a face.
+  static const double _face = 28;
 
   @override
   Widget build(BuildContext context) {
@@ -1288,24 +1295,32 @@ class _HeaderAccount extends StatelessWidget {
             child: SizedBox(
               width: _size,
               height: _size,
-              child: hasImage
-                  ? CachedNetworkImage(
-                      imageUrl: url,
-                      fit: BoxFit.cover,
-                      memCacheWidth:
-                          (_size * MediaQuery.devicePixelRatioOf(context))
-                              .round(),
-                      errorWidget: (_, __, ___) => const Icon(
+              child: Center(
+                child: hasImage
+                    ? ClipOval(
+                        child: SizedBox(
+                          width: _face,
+                          height: _face,
+                          child: CachedNetworkImage(
+                            imageUrl: url,
+                            fit: BoxFit.cover,
+                            memCacheWidth:
+                                (_face * MediaQuery.devicePixelRatioOf(context))
+                                    .round(),
+                            errorWidget: (_, __, ___) => const Icon(
+                              Icons.person_outline,
+                              size: 18,
+                              color: Color(0xFF111111),
+                            ),
+                          ),
+                        ),
+                      )
+                    : const Icon(
                         Icons.person_outline,
-                        size: 20,
+                        size: 18,
                         color: Color(0xFF111111),
                       ),
-                    )
-                  : const Icon(
-                      Icons.person_outline,
-                      size: 20,
-                      color: Color(0xFF111111),
-                    ),
+              ),
             ),
           ),
         );
