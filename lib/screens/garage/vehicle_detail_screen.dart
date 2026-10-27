@@ -465,15 +465,19 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                   //
                   // First in the Stack on purpose: the back and share
                   // buttons come after it and therefore sit on top, so they
-                  // keep their own taps. The gradient between the two is a
-                  // DecoratedBox with no child, and a RenderProxyBox with
-                  // nothing in it does not hit test — so it tints the photo
-                  // without swallowing the tap.
+                  // keep their own taps.
                   //
                   // Only the photo, not the whole dark header: the name,
                   // the handle and the stats below it are outside this box,
                   // and the handle is already a link to the owner.
+                  //
+                  // opaque rather than the default. CachedNetworkImage swaps
+                  // between a placeholder, the image and an error widget,
+                  // and deferToChild would make the tap depend on which of
+                  // the three happens to be showing. See
+                  // test/hero_cover_tap_test.dart.
                   GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: () => _openCoverPhoto(coverPhoto),
                     child: CachedNetworkImage(
                       imageUrl: coverPhoto,
@@ -502,20 +506,26 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                 // through the middle where the car is, then 40% of the
                 // height to go from nothing to black. A short ramp bands on
                 // a dark photo.
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        // A scrim at the very top, so the back and share
-                        // buttons hold up over a bright sky.
-                        const Color(0x73000000),
-                        const Color(0x00000000),
-                        _heroBlack.withValues(alpha: 0.6),
-                        _heroBlack,
-                      ],
-                      stops: const [0, 0.32, 0.76, 1],
+                // IgnorePointer, which is load-bearing: a DecoratedBox
+                // filling a Stack absorbs taps, so without this the gradient
+                // sits over the photo and silently eats every one of them.
+                // The cover looked tappable and did nothing.
+                IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          // A scrim at the very top, so the back and share
+                          // buttons hold up over a bright sky.
+                          const Color(0x73000000),
+                          const Color(0x00000000),
+                          _heroBlack.withValues(alpha: 0.6),
+                          _heroBlack,
+                        ],
+                        stops: const [0, 0.32, 0.76, 1],
+                      ),
                     ),
                   ),
                 ),
