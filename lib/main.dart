@@ -79,9 +79,12 @@ class BottomNavProvider extends ChangeNotifier {
   static const int tracks = 3;
   static const int businesses = 4;
   static const int shop = 5;
-  static const int messages = 6;
 
-  static const int sectionCount = messages + 1;
+  // No `messages` any more. The inbox left the home tab row for a screen
+  // of its own shared with notifications -- see MessagesScreen -- and a
+  // constant naming a section that does not exist is a landmine for
+  // anything navigating by name.
+  static const int sectionCount = shop + 1;
 
   int _currentIndex = home;
   int _homeSection = forYou;

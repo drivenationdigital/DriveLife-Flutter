@@ -1,5 +1,7 @@
 // providers/account_manager.dart
 import 'dart:convert';
+import 'package:drivelife/screens/garage/vehicle_detail_screen.dart';
+import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/config/api_config.dart';
 import 'package:drivelife/models/account_model.dart';
 import 'package:drivelife/models/user_model.dart';
@@ -375,6 +377,15 @@ class AccountManager extends ChangeNotifier {
       parentUserId: _accounts[index].parentUserId, // ✅ Keep parent!
       entityMeta: _accounts[index].entityMeta, // ✅ Keep meta!
     );
+
+    // Anything cached against the account that just stopped being
+    // active. These caches are keyed by conversation id and vehicle id,
+    // which are the same ids for everybody — so nothing in them can tell
+    // that the person asking has changed, and without this the next
+    // account reads the last one's threads and sees its own garage
+    // answered for somebody else.
+    MessageCache.instance.clearAll();
+    VehicleCache.clearAll();
 
     await _saveAccounts();
     print(

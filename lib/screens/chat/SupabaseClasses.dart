@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:drivelife/screens/chat/ChatList.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
+import 'package:drivelife/screens/chat/message_actions.dart';
 import 'package:drivelife/screens/chat/models.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,8 +16,18 @@ class AppConfig {
   // Supabase project details
   // Found at: Supabase Dashboard → Settings → API
   static const supabaseUrl = 'https://hekpfyxiduypovcvwffm.supabase.co';
+  // Safe to expose, but only because of something that lives elsewhere:
+  // this key gets you to PostgREST, and the only thing standing between it
+  // and every row of every table in `public` is row level security. The
+  // day a table ships without RLS, this key is that table's contents.
+  //
+  // That is not hypothetical — public.message_reads shipped without it and
+  // was readable by anyone holding this string, which is everyone who has
+  // installed the app. See supabase/sql/message-reads-rls.sql.
+  //
+  // So: new table in Supabase, new policy, every time.
   static const supabaseAnonKey =
-      'sb_publishable_HSLwe3eiV6K_DCfgCwfSLw_YUM5HQ9F'; // safe to expose
+      'sb_publishable_HSLwe3eiV6K_DCfgCwfSLw_YUM5HQ9F';
 }
 
 class SupabaseConfig {
@@ -169,6 +180,13 @@ class SupabaseTokenManager {
   }
 }
 
+/// Where a message is between the composer and the server.
+///
+/// Only ever [sent] for anything that came back from Supabase — the other
+/// two exist for the moments a message is ours alone, and are never
+/// parsed from a row.
+enum MessageStatus { sent, pending, failed }
+
 class ChatMessage {
   final String id;
   final String conversationId;
@@ -177,6 +195,20 @@ class ChatMessage {
   final DateTime createdAt;
   final bool isRead;
 
+  /// Defaults to [MessageStatus.sent], so every server row is correct
+  /// without fromMap having to say so.
+  final MessageStatus status;
+
+  /// When the sender took it back, or null while it stands.
+  ///
+  /// The row survives a delete so that every client has something to draw
+  /// and the realtime subscription has something to push; the content is
+  /// blanked server-side, so what is left is a tombstone rather than a
+  /// copy of what was said.
+  final DateTime? deletedAt;
+
+  bool get isDeleted => deletedAt != null;
+
   ChatMessage({
     required this.id,
     required this.conversationId,
@@ -184,7 +216,21 @@ class ChatMessage {
     required this.content,
     required this.createdAt,
     required this.isRead,
+    this.status = MessageStatus.sent,
+    this.deletedAt,
   });
+
+  ChatMessage copyWith({MessageStatus? status, DateTime? deletedAt}) =>
+      ChatMessage(
+        id: id,
+        conversationId: conversationId,
+        senderId: senderId,
+        content: content,
+        createdAt: createdAt,
+        isRead: isRead,
+        status: status ?? this.status,
+        deletedAt: deletedAt ?? this.deletedAt,
+      );
 
   factory ChatMessage.fromMap(Map<String, dynamic> map) {
     return ChatMessage(
@@ -194,12 +240,24 @@ class ChatMessage {
       content: map['content'] as String,
       createdAt: DateTime.parse(map['created_at'] as String),
       isRead: map['read_at'] != null,
+      // Tolerated as missing: the column is newer than some of the rows
+      // and than some of the clients, and a thread that throws because a
+      // key is absent is worse than one that treats it as not deleted.
+      deletedAt: map['deleted_at'] == null
+          ? null
+          : DateTime.tryParse('${map['deleted_at']}'),
     );
   }
 }
 
 class ChatRepository {
-  final _db = SupabaseConfig.client;
+  // `late`, so the client is only reached when a method actually uses
+  // it. As a plain field initialiser this ran at construction, which is
+  // the documented reason an un-initialised Supabase used to take these
+  // classes down before their first method was called — and it also made
+  // the repository impossible to stand in for in a test without a live
+  // client in the room.
+  late final _db = SupabaseConfig.client;
 
   // ChatRepository — fetch only messages after a given time
   Future<List<ChatMessage>> getMessagesSince(
@@ -407,6 +465,51 @@ class ChatRepository {
     return controller.stream;
   }
 
+  /// Reactions in a conversation, re-read whenever one changes.
+  ///
+  /// Re-fetches rather than applying the payload, matching
+  /// [messageStream]: a reaction arrives as an insert or a delete, and
+  /// rebuilding the small set is simpler than maintaining it from two
+  /// kinds of event — the whole set for a thread is a few dozen rows.
+  ///
+  /// The filter is why conversation_id is denormalised onto the row.
+  /// Realtime filters one column of one table and cannot join, so
+  /// without it this would have to listen to every reaction in the
+  /// database and discard almost all of them.
+  Stream<List<MessageReaction>> reactionStream(String conversationId) {
+    final controller = StreamController<List<MessageReaction>>();
+
+    Future<void> fetchAll() async {
+      try {
+        final rows = await getReactions(conversationId);
+        if (!controller.isClosed) controller.add(rows);
+      } catch (e) {
+        debugPrint('[Reactions] refresh failed: $e');
+      }
+    }
+
+    final channel = _db.channel('reactions-$conversationId')
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'message_reactions',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'conversation_id',
+          value: conversationId,
+        ),
+        callback: (_) => fetchAll(),
+      )
+      ..subscribe();
+
+    controller.onCancel = () {
+      _db.removeChannel(channel);
+      controller.close();
+    };
+
+    return controller.stream;
+  }
+
   /// Send a message.
   Future<ChatMessage> sendMessage({
     required String conversationId,
@@ -430,6 +533,79 @@ class ChatRepository {
         .eq('id', conversationId);
 
     return ChatMessage.fromMap(row);
+  }
+
+  /// Take a message back.
+  ///
+  /// The content is blanked in the same statement as the timestamp. The
+  /// row has to survive — every other client needs something to redraw
+  /// and realtime needs something to push — but what survives should not
+  /// be the sentence somebody just withdrew.
+  ///
+  /// Whether this is allowed is not decided here. The RLS policy only
+  /// matches the sender's own messages inside the delete window, and an
+  /// update that matches no row is not an error, so a refusal arrives as
+  /// a message that simply does not change.
+  /// Returns false when the database declined — which it does by
+  /// matching no row rather than by raising, so .select() is the only way
+  /// to tell the difference between "deleted" and "not allowed".
+  Future<bool> deleteMessage(String messageId) async {
+    final rows = await _db
+        .from('messages')
+        .update({
+          'deleted_at': DateTime.now().toUtc().toIso8601String(),
+          'content': '',
+        })
+        .eq('id', messageId)
+        .select('id');
+
+    return (rows as List).isNotEmpty;
+  }
+
+  /// Every reaction in a conversation.
+  Future<List<MessageReaction>> getReactions(String conversationId) async {
+    final rows = await _db
+        .from('message_reactions')
+        .select()
+        .eq('conversation_id', conversationId);
+
+    return (rows as List)
+        .map((r) => MessageReaction.fromMap(r as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Add this emoji, or take it off if it is already mine.
+  ///
+  /// Returns true if it was added. The unique key on
+  /// (message_id, user_id, emoji) is what makes the add safe to repeat:
+  /// two taps racing cannot leave two rows.
+  Future<bool> toggleReaction({
+    required String messageId,
+    required String conversationId,
+    required String userId,
+    required String emoji,
+  }) async {
+    final existing = await _db
+        .from('message_reactions')
+        .select('id')
+        .eq('message_id', messageId)
+        .eq('user_id', userId)
+        .eq('emoji', emoji)
+        .maybeSingle();
+
+    if (existing != null) {
+      await _db.from('message_reactions').delete().eq('id', existing['id']);
+      return false;
+    }
+
+    await _db.from('message_reactions').insert({
+      'message_id': messageId,
+      'conversation_id': conversationId,
+      'user_id': userId,
+      'emoji': emoji,
+    });
+
+    return true;
   }
 
   /// Mark all messages in a conversation as read.
@@ -458,13 +634,31 @@ class ChatNotifier extends ChangeNotifier {
   }) : _repo = repo ?? ChatRepository();
 
   List<ChatMessage> _messages = [];
+
+  /// Messages typed here that the server has not confirmed: still going,
+  /// or failed and waiting to be retried.
+  ///
+  /// Kept apart from _messages because the realtime subscription replaces
+  /// that list wholesale on every insert — ChatRepository.messageStream
+  /// re-fetches rather than appending — so a local message living in it
+  /// would be deleted by the next event, frequently the one its own
+  /// insert caused.
+  final List<ChatMessage> _outbox = [];
+
   bool _loading = true; // true only on first ever load
   bool _refreshing = false; // true when silently fetching new
   bool _sending = false;
   String? _error;
   StreamSubscription? _sub;
 
-  List<ChatMessage> get messages => _messages.reversed.toList();
+  /// The server's messages and ours, newest first.
+  List<ChatMessage> get messages {
+    final all = [..._messages, ..._outbox]
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    return all.reversed.toList();
+  }
+
   bool get loading => _loading;
   bool get refreshing => _refreshing;
   bool get sending => _sending;
@@ -527,12 +721,16 @@ class ChatNotifier extends ChangeNotifier {
       await _repo.markAsRead(conversationId, myUserId);
 
       // Subscribe to real-time new messages
-      _sub = _repo.messageStream(conversationId).listen((messages) {
-        // Stream fires on new inserts — merge into cache
-        MessageCache.instance.set(conversationId, messages);
-        _messages = messages;
-        notifyListeners();
-      });
+      _sub = _repo.messageStream(conversationId).listen(applyServerMessages);
+
+      // Reactions are a separate table, so they need their own
+      // subscription — the messages channel will never fire for one.
+      _reactions = await _repo.getReactions(conversationId);
+      notifyListeners();
+
+      _reactionSub = _repo
+          .reactionStream(conversationId)
+          .listen(applyReactions);
     } catch (e) {
       _error = e.toString();
       _loading = false;
@@ -540,28 +738,210 @@ class ChatNotifier extends ChangeNotifier {
     }
   }
 
+  /// Makes outbox ids unique when the clock does not.
+  static int _localSeq = 0;
+
+  /// Every reaction in this conversation, flat. Small enough that a
+  /// per-message index would cost more in bookkeeping than it saves.
+  List<MessageReaction> _reactions = [];
+
+  StreamSubscription? _reactionSub;
+
+  /// What the bubble for [messageId] draws, counted and ordered.
+  List<ReactionSummary> reactionsFor(String messageId) => summariseReactions(
+    _reactions
+        .where((r) => r.messageId == messageId)
+        .map((r) => (emoji: r.emoji, userId: r.userId)),
+    myUserId,
+  );
+
+  /// Put this emoji on the message, or take mine off if it is there.
+  ///
+  /// Optimistic, and reverted if the write fails. A reaction is the
+  /// cheapest thing in the app to undo, and waiting a round trip to see
+  /// one appear is the difference between a tap that feels connected and
+  /// one that feels broken.
+  Future<void> toggleReaction(String messageId, String emoji) async {
+    final mineIndex = _reactions.indexWhere(
+      (r) =>
+          r.messageId == messageId && r.userId == myUserId && r.emoji == emoji,
+    );
+
+    final before = List<MessageReaction>.from(_reactions);
+
+    if (mineIndex >= 0) {
+      _reactions = List.of(_reactions)..removeAt(mineIndex);
+    } else {
+      _reactions = [
+        ..._reactions,
+        MessageReaction(
+          id: 'local:${_localSeq++}',
+          messageId: messageId,
+          conversationId: conversationId,
+          userId: myUserId,
+          emoji: emoji,
+        ),
+      ];
+    }
+    notifyListeners();
+
+    try {
+      await _repo.toggleReaction(
+        messageId: messageId,
+        conversationId: conversationId,
+        userId: myUserId,
+        emoji: emoji,
+      );
+    } catch (e) {
+      debugPrint('[Thread] reaction failed: $e');
+      _reactions = before;
+      notifyListeners();
+    }
+  }
+
+  /// Take one of my messages back.
+  ///
+  /// Returns false when the database declined. It declines by matching no
+  /// row rather than by raising — the RLS policy only covers the sender's
+  /// own messages inside the delete window — so without the row count
+  /// coming back, a refusal and a success look identical from here and
+  /// the bubble would clear optimistically and then reappear on the next
+  /// realtime refresh.
+  Future<bool> deleteMessage(ChatMessage message) async {
+    final before = List<ChatMessage>.from(_messages);
+
+    _messages = _messages
+        .map(
+          (m) => m.id == message.id ? m.copyWith(deletedAt: DateTime.now()) : m,
+        )
+        .toList();
+    notifyListeners();
+
+    try {
+      final done = await _repo.deleteMessage(message.id);
+      if (!done) {
+        _messages = before;
+        notifyListeners();
+      }
+      return done;
+    } catch (e) {
+      debugPrint('[Thread] delete failed: $e');
+      _messages = before;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Replace the reaction set wholesale, the way the message stream does.
+  void applyReactions(List<MessageReaction> reactions) {
+    _reactions = reactions;
+    notifyListeners();
+  }
+
+  /// Take a fresh server list, keeping anything of ours that is still
+  /// unsent.
+  ///
+  /// ChatRepository.messageStream re-fetches the whole conversation on
+  /// every insert rather than appending, so this replaces _messages
+  /// wholesale — which is precisely why pending and failed messages live
+  /// in _outbox instead, and why this method does not touch it.
+  void applyServerMessages(List<ChatMessage> messages) {
+    MessageCache.instance.set(conversationId, messages);
+    _messages = messages;
+    notifyListeners();
+  }
+
+  /// Show the message immediately, then try to send it.
+  ///
+  /// No re-entry guard any more. Each send carries its own outbox entry,
+  /// so two messages typed quickly both go — the old `if (_sending)
+  /// return` silently dropped the second one.
   Future<void> sendMessage(String content) async {
-    if (content.trim().isEmpty || _sending) return;
+    final text = content.trim();
+    if (text.isEmpty) return;
+
+    final local = ChatMessage(
+      // Prefixed so nothing matching on id mistakes it for a server
+      // uuid, and with a counter after the clock because the clock alone
+      // is not enough: two sends in the same microsecond got identical
+      // ids, and _outbox.removeWhere(id) then dropped both of them.
+      id: 'local:${DateTime.now().microsecondsSinceEpoch}-${_localSeq++}',
+      conversationId: conversationId,
+      senderId: myUserId,
+      content: text,
+      createdAt: DateTime.now(),
+      isRead: false,
+      status: MessageStatus.pending,
+    );
+
+    _outbox.add(local);
     _sending = true;
     notifyListeners();
 
+    await _deliver(local);
+  }
+
+  /// Try a failed message again.
+  Future<void> retry(ChatMessage failed) async {
+    final i = _outbox.indexWhere((m) => m.id == failed.id);
+    if (i < 0 || _outbox[i].status != MessageStatus.failed) return;
+
+    // It may have landed after all. A send can throw on a connection that
+    // dropped AFTER the insert committed, and re-sending then puts the
+    // message in the thread twice — which is worse than the failure it is
+    // recovering from. Matching on content is crude and is only reached
+    // here, where a false positive costs one more tap.
+    final already = _messages.any(
+      (m) =>
+          m.senderId == failed.senderId &&
+          m.content == failed.content &&
+          m.createdAt.difference(failed.createdAt).abs() <
+              const Duration(minutes: 5),
+    );
+
+    if (already) {
+      _outbox.removeAt(i);
+      notifyListeners();
+      return;
+    }
+
+    _outbox[i] = _outbox[i].copyWith(status: MessageStatus.pending);
+    _sending = true;
+    notifyListeners();
+
+    await _deliver(_outbox[i]);
+  }
+
+  Future<void> _deliver(ChatMessage local) async {
     try {
       final sent = await _repo.sendMessage(
         conversationId: conversationId,
         senderId: myUserId,
-        content: content.trim(),
+        content: local.content,
       );
+
+      _outbox.removeWhere((m) => m.id == local.id);
+
+      // The realtime re-fetch usually gets here first; this covers the
+      // case where it has not yet.
       if (!_messages.any((m) => m.id == sent.id)) {
-        final updated = [..._messages, sent]
+        _messages = [..._messages, sent]
           ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        _messages = updated;
-        MessageCache.instance.set(conversationId, updated);
-        notifyListeners();
+        MessageCache.instance.set(conversationId, _messages);
       }
     } catch (e) {
-      _error = e.toString();
+      // Deliberately not _error. The banner used to show the raw
+      // PostgrestException, which told the user nothing and hid the fact
+      // that their message was gone. The bubble says it now, where they
+      // are looking, with something to do about it.
+      debugPrint('[Thread] send failed: $e');
+
+      final i = _outbox.indexWhere((m) => m.id == local.id);
+      if (i >= 0) {
+        _outbox[i] = _outbox[i].copyWith(status: MessageStatus.failed);
+      }
     } finally {
-      _sending = false;
+      _sending = _outbox.any((m) => m.status == MessageStatus.pending);
       notifyListeners();
     }
   }
@@ -569,24 +949,32 @@ class ChatNotifier extends ChangeNotifier {
   @override
   void dispose() {
     _sub?.cancel();
+    _reactionSub?.cancel();
     super.dispose();
   }
 }
 
 class InboxRepository {
-  final _db = SupabaseConfig.client;
+  // `late`, so the client is only reached when a method actually uses
+  // it. As a plain field initialiser this ran at construction, which is
+  // the documented reason an un-initialised Supabase used to take these
+  // classes down before their first method was called — and it also made
+  // the repository impossible to stand in for in a test without a live
+  // client in the room.
+  late final _db = SupabaseConfig.client;
 
   /// Fetch all conversations with last message + unread count.
   Future<List<ConversationPreview>> getInbox(String myUserId) async {
     final data = await _db.rpc('get_inbox', params: {'p_user_id': myUserId});
 
-    return (data as List).map((row) {
+    final previews = (data as List).map((row) {
       final conv = Conversation(
         id: row['conv_id'] as String,
         participantIds: List<String>.from(row['participant_ids']),
         updatedAt: DateTime.parse(row['updated_at']),
         isGroup: row['is_group'] as bool? ?? false,
         groupName: row['group_name'] as String?,
+        groupImage: row['group_image'] as String?,
       );
 
       final otherUserId = conv.isGroup
@@ -615,6 +1003,65 @@ class InboxRepository {
             : null,
       );
     }).toList();
+
+    // get_inbox is a function with a fixed column list, so adding
+    // group_image to the conversations TABLE does not add it to what
+    // this returns. Until that function is updated the rows arrive
+    // without the key at all — not null, absent — and every group draws
+    // an initial however it has been set up.
+    //
+    // So: if the key is missing, read the images directly. One extra
+    // query, and only while the function is behind. The moment it starts
+    // returning the column this costs nothing, because the check is for
+    // the key rather than for a null value.
+    final rpcHasColumn =
+        (data as List).isEmpty ||
+        (data.first as Map).containsKey('group_image');
+
+    if (rpcHasColumn) return previews;
+
+    return _fillGroupImages(previews);
+  }
+
+  /// Read group_image for the group conversations in [previews].
+  ///
+  /// A stopgap for an out-of-date get_inbox; see the note in [getInbox].
+  Future<List<ConversationPreview>> _fillGroupImages(
+    List<ConversationPreview> previews,
+  ) async {
+    final groupIds = previews
+        .where((p) => p.isGroup)
+        .map((p) => p.conversation.id)
+        .toList();
+
+    if (groupIds.isEmpty) return previews;
+
+    try {
+      final rows = await _db
+          .from('conversations')
+          .select('id, group_image')
+          .inFilter('id', groupIds);
+
+      final byId = {
+        for (final r in rows as List) '${r['id']}': r['group_image'] as String?,
+      };
+
+      return previews.map((p) {
+        final url = byId[p.conversation.id];
+        if (url == null || url.isEmpty) return p;
+
+        return ConversationPreview(
+          conversation: p.conversation.copyWith(groupImage: url),
+          otherUserId: p.otherUserId,
+          isGroup: p.isGroup,
+          unreadCount: p.unreadCount,
+          lastMessage: p.lastMessage,
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('[Inbox] could not read group images: $e');
+      return previews;
+    }
   }
 
   /// Real-time stream that fires whenever any conversation updates.
@@ -727,6 +1174,39 @@ class InboxNotifier extends ChangeNotifier {
   }
 }
 
+/// One emoji, from one person, on one message.
+///
+/// conversationId is carried on the row rather than looked up. Supabase
+/// realtime filters on a single column of a single table and cannot join,
+/// so a subscription to "reactions in this conversation" needs the column
+/// to exist — see supabase/sql/message-reactions-and-delete.sql.
+class MessageReaction {
+  final String id;
+  final String messageId;
+  final String conversationId;
+  final String userId;
+  final String emoji;
+
+  const MessageReaction({
+    required this.id,
+    required this.messageId,
+    required this.conversationId,
+    required this.userId,
+    required this.emoji,
+  });
+
+  factory MessageReaction.fromMap(Map<String, dynamic> map) => MessageReaction(
+    id: '${map['id']}',
+    messageId: '${map['message_id']}',
+    conversationId: '${map['conversation_id']}',
+    // Coerced rather than cast. sender_id and user_id have arrived as
+    // both a JSON number and a string from this backend before, and a
+    // cast that throws takes the whole thread down with it.
+    userId: '${map['user_id']}',
+    emoji: '${map['emoji']}',
+  );
+}
+
 class MessageCache {
   MessageCache._();
   static final MessageCache instance = MessageCache._();
@@ -750,6 +1230,13 @@ class MessageCache {
   }
 
   void clear(String conversationId) => _cache.remove(conversationId);
+
+  /// Forget every thread.
+  ///
+  /// For an account switch: these are somebody else's conversations the
+  /// moment the active account changes, and a conversation id alone does
+  /// not say whose it was.
+  void clearAll() => _cache.clear();
 }
 
 class UnreadCountProvider extends ChangeNotifier {

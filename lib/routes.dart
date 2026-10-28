@@ -33,7 +33,7 @@ import 'screens/auth/splash_screen.dart';
 import 'screens/home_tabs.dart';
 import 'screens/posts_screen.dart';
 import 'screens/events/events_screen.dart';
-import 'screens/notifications_screen.dart';
+import 'screens/messages_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/profile/view_profile_screen.dart';
 import 'package:flutter/cupertino.dart';
@@ -61,6 +61,7 @@ class AppRoutes {
   static const String events = '/events';
   static const String eventDetail = '/event-detail';
   static const String notifications = '/notifications';
+  static const String messages = '/messages';
   static const String profile = '/profile';
   static const String viewProfile = '/view-profile';
   static const String postDetail = '/post-detail';
@@ -261,7 +262,12 @@ class AppRoutes {
           OrderDetailsScreen(orderId: args['orderId'], userId: args['userId']),
         );
       case notifications:
-        return _slide(const NotificationsScreen());
+        // Kept, and now a deep link into the merged screen's second tab.
+        // Push notifications and anything else carrying this route name
+        // predate the merge and are still out there in the wild.
+        return _slide(const MessagesScreen(initialTab: 1));
+      case messages:
+        return _slide(const MessagesScreen());
       case media:
         return _slide(const MediaScreen());
       case imagesOfYou:

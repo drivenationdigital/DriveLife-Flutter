@@ -305,7 +305,7 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
       child: InkWell(
         onTap: widget.onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           child: Row(
             children: [
               _avatar(theme, name, isGroup),
@@ -321,33 +321,21 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 14.5,
+                        fontSize: 15.5,
                         height: 1.25,
-                        fontWeight: hasUnread
-                            ? FontWeight.w700
-                            : FontWeight.w500,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
                         color: const Color(0xFF111111),
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     _subtitle(lastMsg, hasUnread),
                   ],
                 ),
               ),
 
-              // The unread mark. A dot, not a number: the count that
-              // matters is the total, and that is on the Messages tab.
-              if (hasUnread) ...[
-                const SizedBox(width: 12),
-                Container(
-                  width: 9,
-                  height: 9,
-                  decoration: BoxDecoration(
-                    color: theme.primaryColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ],
+              const SizedBox(width: 10),
+              _trailing(theme, lastMsg, preview.unreadCount),
             ],
           ),
         ),
@@ -355,14 +343,65 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
     );
   }
 
-  /// "Nice one · 2h" — the preview and the time on one line.
+  /// The time, and how many are waiting.
   ///
-  /// One line rather than a right-hand column, so a long message gets the
-  /// width instead of reserving space for a timestamp that is four
-  /// characters at most.
+  /// Its own column on the right. The time used to sit at the end of the
+  /// preview line, which meant its position depended on how long the last
+  /// message was — so no two rows agreed and the eye had nothing to run
+  /// down. A fixed column costs the preview about forty points and gives
+  /// the list an edge.
+  Widget _trailing(ThemeProvider theme, ChatMessage? lastMsg, int unread) {
+    final hasUnread = unread > 0;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (lastMsg != null)
+          Text(
+            _relativeTime(lastMsg.createdAt),
+            style: TextStyle(
+              fontSize: 12.5,
+              height: 1,
+              // Gold while something is waiting, grey once it is not.
+              // The time is the only thing on the row that changes colour
+              // — the name and the preview stay black, because a row that
+              // recolours three things at once reads as an alert.
+              fontWeight: hasUnread ? FontWeight.w800 : FontWeight.w500,
+              color: hasUnread ? theme.primaryColor : Colors.grey.shade500,
+            ),
+          ),
+
+        if (hasUnread) ...[
+          const SizedBox(height: 8),
+          Container(
+            constraints: const BoxConstraints(minWidth: 22),
+            height: 22,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: theme.primaryColor,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Text(
+              unread > 99 ? '99+' : '$unread',
+              style: const TextStyle(
+                fontSize: 12,
+                height: 1,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// The last message, on its own line now that the time has left it.
   Widget _subtitle(ChatMessage? lastMsg, bool hasUnread) {
     final style = TextStyle(
-      fontSize: 13,
+      fontSize: 13.5,
       height: 1.3,
       fontWeight: hasUnread ? FontWeight.w600 : FontWeight.w400,
       color: hasUnread ? const Color(0xFF111111) : Colors.grey.shade500,
@@ -379,55 +418,76 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
 
     final mine = lastMsg.senderId == widget.myUserId;
 
-    return Row(
-      children: [
-        Flexible(
-          child: Text(
-            mine ? 'You: ${lastMsg.content}' : lastMsg.content,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: style,
-          ),
-        ),
-        Text(
-          '  ·  ${_relativeTime(lastMsg.createdAt)}',
-          // Never bold, never black. The time is reference, not content,
-          // and letting it go bold with the rest made every unread row
-          // shout twice.
-          style: style.copyWith(
-            fontWeight: FontWeight.w400,
-            color: Colors.grey.shade400,
-          ),
-        ),
-      ],
+    return Text(
+      mine ? 'You: ${lastMsg.content}' : lastMsg.content,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: style,
     );
   }
 
   Widget _avatar(ThemeProvider theme, String name, bool isGroup) {
-    final imageUrl = isGroup ? null : _profile?.imageUrl;
+    // A group's picture comes off the conversation, a person's off their
+    // profile. Groups used to be hardcoded to null here, which is why
+    // every one of them drew an initial however it had been set up.
+    final imageUrl = isGroup
+        ? widget.preview.conversation.groupImage
+        : _profile?.imageUrl;
     final hasImage = imageUrl != null && imageUrl.isNotEmpty;
 
     final initial = name.isNotEmpty && name != '…'
         ? name.characters.first.toUpperCase()
         : '?';
 
-    return ClipOval(
-      child: SizedBox(
-        width: 56,
-        height: 56,
-        child: hasImage
-            ? CachedNetworkImage(
-                imageUrl: imageUrl,
-                fit: BoxFit.cover,
-                // Decoded at the size it is drawn, not the source's.
-                memCacheWidth: (56 * MediaQuery.devicePixelRatioOf(context))
-                    .round(),
-                placeholder: (_, __) => ColoredBox(color: Colors.grey.shade100),
-                errorWidget: (_, __, ___) =>
-                    _initialAvatar(theme, initial, isGroup),
-              )
-            : _initialAvatar(theme, initial, isGroup),
-      ),
+    final face = SizedBox(
+      width: 56,
+      height: 56,
+      child: hasImage
+          ? CachedNetworkImage(
+              imageUrl: imageUrl,
+              fit: BoxFit.cover,
+              // Decoded at the size it is drawn, not the source's.
+              memCacheWidth: (56 * MediaQuery.devicePixelRatioOf(context))
+                  .round(),
+              placeholder: (_, __) => ColoredBox(color: Colors.grey.shade100),
+              errorWidget: (_, __, ___) =>
+                  _initialAvatar(theme, initial, isGroup),
+            )
+          : _initialAvatar(theme, initial, isGroup),
+    );
+
+    // A person is a circle, a group is a rounded square. The shape does
+    // the telling, so the row says which kind of conversation it is
+    // before the name has been read — and the badge below is then a
+    // confirmation rather than the only signal.
+    if (!isGroup) return ClipOval(child: face);
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ClipRRect(borderRadius: BorderRadius.circular(16), child: face),
+
+        Positioned(
+          right: -2,
+          bottom: -2,
+          child: Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: const Color(0xFF111111),
+              shape: BoxShape.circle,
+              // Punched out of the row rather than sitting on the photo,
+              // so the badge reads on a dark cover as well as a light one.
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child: Icon(
+              Icons.group_rounded,
+              size: 11,
+              color: theme.primaryColor,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

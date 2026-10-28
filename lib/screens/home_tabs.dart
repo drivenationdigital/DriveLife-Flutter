@@ -21,7 +21,6 @@ import 'package:drivelife/screens/clubs/add_club_screen.dart';
 import 'package:drivelife/screens/places/coming_soon_screen.dart';
 import 'package:drivelife/screens/tracks/tracks_screen.dart';
 import 'package:drivelife/screens/clubs/club_creation_screen.dart';
-import 'package:drivelife/screens/chat/ChatList.dart';
 import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
@@ -83,11 +82,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     // Reachable only here: the header's basket button went when the
     // header was rebuilt, so this is the shop's only way in.
     DlTopTab(label: 'Shop', icon: 'assets/app-icons/04-Basket.svg'),
-    // Last. The inbox had no way in at all before this — InboxScreen was
-    // written and never built, and the only route into messaging was the
-    // Message button on somebody's profile, which opens one thread and
-    // can never show you the others.
-    DlTopTab(label: 'Messages', glyph: CupertinoIcons.chat_bubble_2_fill),
   ];
 
   /// Which section of Home is showing. Only meaningful while the Home
@@ -135,7 +129,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           BottomNavProvider.forYou,
           BottomNavProvider.places,
           BottomNavProvider.tracks,
-          BottomNavProvider.messages,
         }.contains(_homeTab);
   }
 
@@ -319,7 +312,16 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   /// is handed carries the notification badge and the theme, and a widget
   /// captured once into a cached list never sees either change.
   Widget _buildGarage(ThemeProvider theme) {
+    final user = context.watch<AccountManager>().activeAccount?.user;
+
     return GarageListScreen(
+      // Keyed by account, which is the whole fix for "switched account,
+      // still my old garage". This screen reads the signed-in user once
+      // in initState and guards its load with a _garageLoaded flag, so
+      // without a new key its State survives the switch and the flag
+      // says there is nothing to fetch — refreshing does not help,
+      // because the user it refreshes for is the one it captured.
+      key: ValueKey('garage-${user?.id ?? 'none'}'),
       chrome: _chrome,
       header: _buildChrome(theme),
       headerHeight: _chromeHeight,
@@ -407,13 +409,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         if (_currentIndex == _dHome)
           DlTopTabs(
             tabs: _homeTabs,
-            // Live, so a message arriving while you are on another section
-            // shows up without having to visit the inbox to find out.
-            badges: {
-              BottomNavProvider.messages: context
-                  .watch<UnreadCountProvider>()
-                  .count,
-            },
             currentIndex: _homeTab,
             onChanged: _setHomeTab,
           ),
@@ -431,22 +426,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   /// switching account rebuilds it against the new user — the inbox is
   /// keyed on a user id and would otherwise keep showing the old one's
   /// conversations until the whole shell was rebuilt.
-  Widget _buildMessages(ThemeProvider theme) {
-    final user = context.watch<AccountManager>().activeUser;
-
-    if (user == null) {
-      return const ComingSoonScreen(title: 'Messages');
-    }
-
-    return InboxScreen(
-      key: ValueKey('inbox-${user.id}'),
-      myUserId: user.id.toString(),
-      chrome: _chrome,
-      header: _buildChrome(theme),
-      headerHeight: _chromeHeight,
-    );
-  }
-
   Widget _buildHome(ThemeProvider theme) {
     final sections = <Widget>[
       // The chrome rides inside the feed's own scroll view, so the
@@ -487,8 +466,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
       // No app bar of its own: the shell above already supplies one, and
       // the shop's own carries a back button that would pop the shell.
       const ShopScreen(),
-
-      _buildMessages(theme),
     ];
 
     assert(
@@ -780,22 +757,27 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           onTap: () => _showAddMenu(theme),
         ),
         const SizedBox(width: 8),
+        // Messages, not notifications. Both live behind this one icon
+        // now — MessagesScreen is the two of them behind tabs — so the
+        // badge is the two counts added together. Splitting them across
+        // two badges was two things to check and no way to tell at a
+        // glance whether either wanted you.
         _RoundAction(
           child: _BadgedIcon(
-            count: _notificationCount,
+            count:
+                _notificationCount + context.watch<UnreadCountProvider>().count,
             color: theme.primaryColor,
-            child: iconSvg(
-              'assets/app-icons/header-notification.svg',
-              theme,
+            child: const Icon(
+              CupertinoIcons.chat_bubble_2_fill,
               size: 18,
-              alwaysActive: true,
+              color: Color(0xFF111111),
             ),
           ),
           onTap: () async {
-            await Navigator.pushNamed(context, AppRoutes.notifications);
-            // That screen marks everything read on its way in, so the badge
-            // has to be re-read on the way out or it keeps a count that is
-            // no longer true.
+            await Navigator.pushNamed(context, AppRoutes.messages);
+            // The notifications tab marks everything read on its way in,
+            // so the badge has to be re-read on the way out or it keeps a
+            // count that is no longer true.
             await _loadNotificationCount();
           },
         ),
@@ -1273,10 +1255,17 @@ class _HeaderAccount extends StatelessWidget {
   /// The button, matching _RoundAction.
   static const double _size = 38;
 
-  /// The face inside it. 28 against the others' 18pt glyphs: a photograph
-  /// needs less area than a line drawing to carry the same weight, and at
-  /// 18 it would be a thumbnail of a face rather than a face.
-  static const double _face = 28;
+  /// The face, at the full width of the button.
+  ///
+  /// It went 40 -> 28 -> 38. The 40 read as the heaviest of the three
+  /// because a photograph carries more weight per point than an 18pt
+  /// glyph on #F4F4F4; the 28 that fixed that then read as the smallest.
+  /// 38 matches the two discs exactly, with no grey ring behind it, which
+  /// is where this was asked to land.
+  ///
+  /// One number if it ever wants to come back down — nothing else in the
+  /// widget depends on the two being equal.
+  static const double _face = _size;
 
   @override
   Widget build(BuildContext context) {
@@ -1286,7 +1275,10 @@ class _HeaderAccount extends StatelessWidget {
         final hasImage = url != null && url.isNotEmpty;
 
         return Material(
-          color: const Color(0xFFF4F4F4),
+          // Transparent, so nothing is drawn behind the photograph. The
+          // ripple still lands: InkWell paints on the Material, and the
+          // CircleBorder keeps it round.
+          color: Colors.transparent,
           shape: const CircleBorder(),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -1315,10 +1307,21 @@ class _HeaderAccount extends StatelessWidget {
                           ),
                         ),
                       )
-                    : const Icon(
-                        Icons.person_outline,
-                        size: 18,
-                        color: Color(0xFF111111),
+                    // No photograph: a filled disc at the same 28, so
+                    // the button keeps its size and its weight instead of
+                    // becoming a floating outline of a person.
+                    : Container(
+                        width: _face,
+                        height: _face,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFF4F4F4),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.person_outline,
+                          size: 17,
+                          color: Color(0xFF111111),
+                        ),
                       ),
               ),
             ),

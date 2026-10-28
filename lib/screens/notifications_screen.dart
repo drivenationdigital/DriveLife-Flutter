@@ -6,6 +6,7 @@ import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/services/user_service.dart';
 import 'package:drivelife/widgets/formatted_text.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import '../api/notifications_api.dart';
@@ -13,13 +14,45 @@ import '../widgets/profile/profile_avatar.dart';
 import 'package:drivelife/screens/clubs/invite_modal.dart';
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key});
+  /// Drawn as a tab body rather than as a screen of its own.
+  ///
+  /// Everything below the app bar is the same either way; embedded just
+  /// drops the Scaffold and the bar, because MessagesScreen supplies
+  /// both and two app bars stacked is two back buttons.
+  final bool embedded;
+
+  const NotificationsScreen({super.key, this.embedded = false});
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen> {
+class _NotificationsScreenState extends State<NotificationsScreen>
+    with AutomaticKeepAliveClientMixin {
+  /// The last list this screen loaded, for the life of the process.
+  ///
+  /// Two different things used to put a spinner here. One was the tab
+  /// switch, which a PageView answers by disposing the page — that is
+  /// what wantKeepAlive is for. The other is coming back to the screen
+  /// later, which builds a new State no matter what, and for that the
+  /// data has to outlive the widget.
+  ///
+  /// KEYED BY ACCOUNT. It was a bare static, shared by every account on
+  /// the device — so switching account showed the previous one's
+  /// notifications, and kept showing them, because a cache with no owner
+  /// cannot tell that its owner changed. The key is the fix rather than
+  /// clearing on switch: this survives going back to an account the way
+  /// it is meant to, and still cannot hand one account another's list.
+  static final Map<String, List<dynamic>> _lastLoaded = {};
+  static final Map<String, Map<String, List<dynamic>>> _lastGrouped = {};
+
+  /// Whose notifications this instance is showing.
+  String _accountKey = '';
+
+  /// Kept across tab switches; see [_lastLoaded] for the other half.
+  @override
+  bool get wantKeepAlive => true;
+
   List<dynamic> _allNotifications = [];
   Map<String, List<dynamic>> _groupedNotifications = {};
   bool _loading = true;
@@ -31,6 +64,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
+
+    _accountKey =
+        '${context.read<AccountManager>().activeAccount?.user.id ?? ''}';
+
+    // Stale first, fresh second — but only this account's stale. If this
+    // screen has been open before for this account, show that list
+    // straight away and fetch behind it; a spinner over a list that is a
+    // minute old tells the user nothing they did not already know.
+    final cached = _lastLoaded[_accountKey];
+    if (cached != null && cached.isNotEmpty) {
+      _allNotifications = cached;
+      _groupedNotifications = _lastGrouped[_accountKey] ?? {};
+      _loading = false;
+      _loadNotifications(isRefresh: true);
+      return;
+    }
+
     _loadNotifications();
   }
 
@@ -62,9 +112,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ...(data['last_week'] ?? []),
         ...(data['last_30_days'] ?? []),
       ];
+      final grouped = _groupNotificationsFromBuckets(data);
+
+      _lastLoaded[_accountKey] = notifications;
+      _lastGrouped[_accountKey] = grouped;
+
       setState(() {
         _allNotifications = notifications;
-        _groupedNotifications = _groupNotificationsFromBuckets(data);
+        _groupedNotifications = grouped;
         _hasMore = data['has_more_notifications'] ?? false;
         _loading = false;
       });
@@ -267,10 +322,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Required by AutomaticKeepAliveClientMixin. Without it the mixin
+    // does nothing at all — it asserts in debug and is simply ignored in
+    // release, so the page goes back to being rebuilt on every tab
+    // switch and the only symptom is the spinner this was meant to
+    // remove.
+    super.build(context);
+
     final theme = Provider.of<ThemeProvider>(context);
     final sessionUserFollowing =
         Provider.of<UserProvider>(context, listen: false).user?.following
             as List<dynamic>?;
+
+    final body = _loading
+        ? const _NotificationSkeleton()
+        : _errorMessage != null
+        ? _buildErrorState()
+        : _allNotifications.isEmpty
+        ? _buildEmptyState()
+        : _buildNotificationsList(theme, sessionUserFollowing);
+
+    // As a tab body, the bar above already belongs to MessagesScreen.
+    if (widget.embedded) return body;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -284,13 +357,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         centerTitle: true,
         title: Image.asset('assets/logo-dark.png', height: 18),
       ),
-      body: _loading
-          ? const _NotificationSkeleton() // ✅ SKELETON LOADER
-          : _errorMessage != null
-          ? _buildErrorState() // ✅ ERROR STATE
-          : _allNotifications.isEmpty
-          ? _buildEmptyState() // ✅ EMPTY STATE
-          : _buildNotificationsList(theme, sessionUserFollowing),
+      body: body,
     );
   }
 

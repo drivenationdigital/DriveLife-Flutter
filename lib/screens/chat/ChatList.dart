@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
+import 'package:drivelife/screens/chat/inbox_filter.dart';
 import 'package:drivelife/screens/chat/ChatScreen.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/chat/models.dart';
@@ -70,12 +71,26 @@ class InboxScreen extends StatefulWidget {
   });
 
   @override
-  State<InboxScreen> createState() => _InboxScreenState();
+  State<InboxScreen> createState() => InboxScreenState();
 }
 
-class _InboxScreenState extends State<InboxScreen>
-    with TickerProviderStateMixin {
+/// Public so the screen above can hold a GlobalKey to it and call
+/// [startNewConversation]. The alternative was a second copy of the
+/// people-picker in MessagesScreen, reached by a different route and
+/// drifting from this one.
+class InboxScreenState extends State<InboxScreen>
+    with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   InboxNotifier? _notifier;
+
+  /// Put the cursor in the search field.
+  ///
+  /// Not "open a search screen": the field is already here, above the
+  /// list, and the results replace the list in place. Focusing it is the
+  /// whole gesture — the keyboard comes up and the first character
+  /// swaps the conversations for people.
+  void startNewConversation() {
+    _searchFocus.requestFocus();
+  }
 
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
@@ -96,6 +111,10 @@ class _InboxScreenState extends State<InboxScreen>
   /// to know its extent before it is laid out. [_buildSearchBar] boxes
   /// itself to the same number, so the two cannot drift.
   static const double _searchBarHeight = 62;
+
+  /// The pill row under it. Declared, because the sliver header
+  /// has to know its extent before it is laid out.
+  static const double _filterBarHeight = 56;
 
   @override
   void initState() {
@@ -258,7 +277,19 @@ class _InboxScreenState extends State<InboxScreen>
   // ── layout ───────────────────────────────────────────────────────────
 
   @override
+  /// Kept alive across tab switches.
+  ///
+  /// A TabBarView is a PageView, and a PageView disposes the page you
+  /// scroll away from — so every switch to Notifications and back was
+  /// destroying this State and rebuilding it from nothing, spinner and
+  /// all. The conversation list is already cached and already refreshes
+  /// behind itself; the only thing missing was being allowed to survive.
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context); // required by AutomaticKeepAliveClientMixin
     final theme = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
@@ -294,13 +325,14 @@ class _InboxScreenState extends State<InboxScreen>
     return SliverPersistentHeader(
       floating: true,
       delegate: FloatingChromeHeader(
-        height: widget.headerHeight + _searchBarHeight,
+        height: widget.headerHeight + _searchBarHeight + _filterBarHeight,
         vsync: this,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (widget.header != null) widget.header!,
             _buildSearchBar(),
+            _buildFilterBar(),
           ],
         ),
       ),
@@ -405,6 +437,59 @@ class _InboxScreenState extends State<InboxScreen>
 
   /// Whatever belongs under the chrome: search results, or the inbox, or
   /// the state it is in instead.
+  InboxFilter _filter = InboxFilter.all;
+
+  /// The pills, as drawn: one on, the rest off.
+  Widget _buildFilterBar() {
+    final theme = Provider.of<ThemeProvider>(context);
+
+    return Container(
+      height: _filterBarHeight,
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      alignment: Alignment.centerLeft,
+      child: Row(
+        children: [
+          for (final f in InboxFilter.values) ...[
+            _pill(f, theme),
+            if (f != InboxFilter.values.last) const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _pill(InboxFilter f, ThemeProvider theme) {
+    final selected = f == _filter;
+
+    return Material(
+      color: selected ? const Color(0xFF111111) : Colors.white,
+      shape: StadiumBorder(
+        side: selected
+            ? BorderSide.none
+            : const BorderSide(color: Color(0xFFE2E2E2)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          if (selected) return;
+          setState(() => _filter = f);
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+          child: Text(
+            f.label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: selected ? Colors.white : const Color(0xFF111111),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   List<Widget> _body(ThemeProvider theme) {
     if (_searchActive) {
       return [
@@ -444,17 +529,32 @@ class _InboxScreenState extends State<InboxScreen>
       ];
     }
 
-    if (_notifier!.previews.isEmpty) {
+    final shown = _notifier!.previews
+        .where(
+          (p) => matchesInboxFilter(
+            _filter,
+            isGroup: p.isGroup,
+            unreadCount: p.unreadCount,
+          ),
+        )
+        .toList();
+
+    if (shown.isEmpty) {
       return [
         _message(
           Icons.chat_bubble_outline,
-          'No messages yet',
-          detail: 'Search for someone above to start a conversation.',
+          emptyInboxMessage(_filter),
+          // Only the unfiltered empty inbox gets the "go and find
+          // somebody" line. Under a pill the list is not empty, it is
+          // hidden, and the thing to do is tap All.
+          detail: _filter == InboxFilter.all
+              ? 'Search for someone above to start a conversation.'
+              : null,
         ),
       ];
     }
 
-    return [_conversationList()];
+    return [_conversationList(shown)];
   }
 
   Widget _fill(Widget child) =>
@@ -511,28 +611,41 @@ class _InboxScreenState extends State<InboxScreen>
     );
   }
 
-  Widget _conversationList() {
-    final previews = _notifier!.previews;
-
+  Widget _conversationList(List<ConversationPreview> previews) {
     return SliverList.builder(
       itemCount: previews.length,
       itemBuilder: (context, i) {
         final preview = previews[i];
         final convId = preview.conversation.id;
 
-        // No divider. The rows are 76 tall with a 56 avatar and plenty of
-        // air, which separates them on its own — a rule between every one
-        // turns a list of people into a table.
+        // A hairline between rows, inset past the avatar so it starts
+        // under the name. The rows carry enough air to stand apart
+        // without one, but the time column on the right now needs an
+        // edge to sit against or it floats.
         return Dismissible(
           key: ValueKey(convId),
           direction: DismissDirection.endToStart,
           background: _deleteBackground(),
           confirmDismiss: (_) => _confirmDelete(preview.isGroup),
           onDismissed: (_) => _delete(preview),
-          child: CachedConversationTile(
-            preview: preview,
-            myUserId: widget.myUserId,
-            onTap: () => _openPreview(preview),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CachedConversationTile(
+                preview: preview,
+                myUserId: widget.myUserId,
+                onTap: () => _openPreview(preview),
+              ),
+              if (i < previews.length - 1)
+                const Padding(
+                  padding: EdgeInsets.only(left: 84),
+                  child: Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: Color(0xFFF0F0F0),
+                  ),
+                ),
+            ],
           ),
         );
       },

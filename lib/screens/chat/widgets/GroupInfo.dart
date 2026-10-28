@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'package:drivelife/api/cloudflare_images.dart';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/chat/widgets/AddGroupMember.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 class GroupInfoScreen extends StatefulWidget {
@@ -12,6 +14,11 @@ class GroupInfoScreen extends StatefulWidget {
   final String myUserId;
   final String groupName;
   final List<String> participantIds;
+
+  /// The group's current picture, if it has one. Optional so the thread
+  /// can open this screen before it has loaded the conversation row.
+  final String? groupImage;
+
   final void Function(List<String> participantIds, String groupName)? onChanged;
 
   const GroupInfoScreen({
@@ -20,6 +27,7 @@ class GroupInfoScreen extends StatefulWidget {
     required this.myUserId,
     required this.groupName,
     required this.participantIds,
+    this.groupImage,
     this.onChanged,
   });
 
@@ -33,12 +41,23 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   bool _savingName = false;
   String _removingId = '';
 
+  /// The group's picture, as a Cloudflare delivery URL.
+  ///
+  /// Held here rather than read from the widget each build, because this
+  /// screen is where it changes — and the conversation row it came from
+  /// is not reloaded until the screen is left.
+  String? _groupImage;
+
+  bool _uploadingImage = false;
+
   @override
   void initState() {
     super.initState();
     _participantIds = List.from(widget.participantIds);
     _nameController = TextEditingController(text: widget.groupName);
+    _groupImage = widget.groupImage;
     _resolveProfiles();
+    _loadGroupImage();
   }
 
   /// Makes sure every member has a name and a face before they are drawn.
@@ -214,6 +233,157 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
 
   // ── Build ────────────────────────────────────────────────────
 
+  /// Read the group's picture straight off the conversation row.
+  ///
+  /// The one passed in is only a hint — it comes from the thread behind
+  /// this screen, which may not have loaded the row yet. Depending on it
+  /// alone is what made the picture appear on the second visit and not
+  /// the first.
+  Future<void> _loadGroupImage() async {
+    try {
+      final row = await SupabaseConfig.client
+          .from('conversations')
+          .select('group_image')
+          .eq('id', widget.conversationId)
+          .maybeSingle();
+
+      if (!mounted || row == null) return;
+
+      final url = row['group_image'] as String?;
+      if (url != _groupImage) setState(() => _groupImage = url);
+    } catch (e) {
+      debugPrint('[GroupInfo] could not read the group image: $e');
+    }
+  }
+
+  /// Pick a photo, put it on Cloudflare, and point the conversation at
+  /// it.
+  ///
+  /// The image never passes through WordPress: it asks for a one-time
+  /// direct-upload URL and sends the bytes to Cloudflare, which is what
+  /// profile pictures and post media already do. What is different here
+  /// is where the result goes — a URL onto a Supabase row, rather than
+  /// an id to a WordPress endpoint.
+  Future<void> _pickGroupImage() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      // Asked for at roughly the variant's own size. The avatar is drawn
+      // at 56 points and Cloudflare will downscale anyway, so sending a
+      // 12-megapixel original up a phone connection buys nothing.
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 88,
+    );
+
+    if (picked == null || !mounted) return;
+
+    setState(() => _uploadingImage = true);
+
+    final url = await CloudflareImages.uploadAndGetUrl(
+      bytes: await picked.readAsBytes(),
+      fileName:
+          'group_${widget.conversationId}_'
+          '${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+
+    if (!mounted) return;
+
+    if (url == null) {
+      setState(() => _uploadingImage = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not upload that photo.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    try {
+      await SupabaseConfig.client
+          .from('conversations')
+          .update({'group_image': url})
+          .eq('id', widget.conversationId);
+
+      if (!mounted) return;
+      setState(() {
+        _groupImage = url;
+        _uploadingImage = false;
+      });
+    } catch (e) {
+      debugPrint('[GroupInfo] saving the image failed: $e');
+      if (!mounted) return;
+
+      setState(() => _uploadingImage = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Photo uploaded, but the group would not take it.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  /// Leave, and go back past the thread to the inbox.
+  ///
+  /// Two pops: this screen and the conversation behind it. Leaving and
+  /// landing back in a thread you are no longer in is the kind of state
+  /// that looks like a bug even when the server agrees you have gone.
+  Future<void> _leaveGroup() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Leave this group?'),
+        content: const Text(
+          'You will stop receiving its messages. Anyone still in it can '
+          'add you back.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE53935),
+            ),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await SupabaseConfig.client.rpc(
+        'leave_group',
+        params: {
+          'p_conversation_id': widget.conversationId,
+          'p_user_id': widget.myUserId,
+        },
+      );
+
+      MessageCache.instance.clear(widget.conversationId);
+
+      if (!mounted) return;
+      Navigator.of(context)
+        ..pop()
+        ..pop();
+    } catch (e) {
+      debugPrint('[GroupInfo] leave failed: $e');
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not leave that group.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
@@ -233,10 +403,58 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         children: [
           // ── Group icon ───────────────────────────────────────
           Center(
-            child: CircleAvatar(
-              radius: 40,
-              backgroundColor: theme.primaryColor.withOpacity(0.12),
-              child: Icon(Icons.group, size: 40, color: theme.primaryColor),
+            child: GestureDetector(
+              onTap: _uploadingImage ? null : _pickGroupImage,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  CircleAvatar(
+                    radius: 40,
+                    backgroundColor: theme.primaryColor.withValues(alpha: 0.12),
+                    backgroundImage:
+                        _groupImage != null && _groupImage!.isNotEmpty
+                        ? NetworkImage(_groupImage!)
+                        : null,
+                    child: _groupImage != null && _groupImage!.isNotEmpty
+                        ? null
+                        : Icon(
+                            Icons.group,
+                            size: 40,
+                            color: theme.primaryColor,
+                          ),
+                  ),
+
+                  // The camera badge, and the spinner in its place while
+                  // the upload runs. Same spot, so the circle does not
+                  // change size mid-tap.
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF111111),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: _uploadingImage
+                          ? Padding(
+                              padding: const EdgeInsets.all(7),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: theme.primaryColor,
+                              ),
+                            )
+                          : Icon(
+                              Icons.photo_camera_rounded,
+                              size: 14,
+                              color: theme.primaryColor,
+                            ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 20),
@@ -384,7 +602,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
 
           // ── Add member button ────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: OutlinedButton.icon(
               onPressed: _showAddMemberSheet,
               icon: const Icon(Icons.person_add_rounded),
@@ -393,6 +611,29 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 side: BorderSide(color: theme.primaryColor),
                 foregroundColor: theme.primaryColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+
+          // ── Leave ────────────────────────────────────────────
+          //
+          // Leaving was only ever a left-swipe on the inbox row, which is
+          // a gesture nobody finds and which reads as "delete" on a
+          // conversation you share with other people. Here it is where
+          // the members are, and it says what it does.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: OutlinedButton.icon(
+              onPressed: _leaveGroup,
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('Leave group'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                side: const BorderSide(color: Color(0xFFE53935)),
+                foregroundColor: const Color(0xFFE53935),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),

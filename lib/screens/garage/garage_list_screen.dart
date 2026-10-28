@@ -325,22 +325,28 @@ class _GarageListScreenState extends State<GarageListScreen>
   /// The count is the point: it says what is behind a pill before you tap
   /// it, so an empty shelf is visible rather than something you discover.
   Widget _shelfPills(ThemeProvider theme) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    // Three Expanded pills across the full width rather than a scrolling
+    // row of three that fitted anyway. There are exactly three shelves
+    // and there always will be — the enum is the whole set — so the
+    // horizontal scroll was a scroll that never scrolled, and the empty
+    // space to the right of Dream read as a row that had been cut off.
+    return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Row(
         children: [
           for (final shelf in _Shelf.values) ...[
-            _ShelfPill(
-              label: shelf.label,
-              count: _shelves[shelf]!.length,
-              selected: shelf == _shelf,
-              accent: theme.primaryColor,
-              onTap: () {
-                if (shelf == _shelf) return;
-                DLHaptics.tabChange();
-                setState(() => _shelf = shelf);
-              },
+            Expanded(
+              child: _ShelfPill(
+                label: shelf.label,
+                count: _shelves[shelf]!.length,
+                selected: shelf == _shelf,
+                accent: theme.primaryColor,
+                onTap: () {
+                  if (shelf == _shelf) return;
+                  DLHaptics.tabChange();
+                  setState(() => _shelf = shelf);
+                },
+              ),
             ),
             if (shelf != _Shelf.values.last) const SizedBox(width: 10),
           ],
@@ -587,9 +593,13 @@ class _ShelfPill extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 11, 12, 11),
+          // Symmetric now, and centred: the pill is as wide as a
+          // third of the screen rather than as wide as its label,
+          // so content hugging the left would look like a mistake.
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           child: Row(
             mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
                 label,

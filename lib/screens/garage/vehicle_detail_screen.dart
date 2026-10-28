@@ -11,18 +11,53 @@ import 'package:drivelife/widgets/image_viewer_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:provider/provider.dart';
 import '../../api/garage_api.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class _VehicleCache {
+/// The page's black, and the two tones that sit on it.
+///
+/// Top-level rather than statics on the State, because the chips, the mod
+/// cards and the upgrade list are separate classes in this file and all
+/// three need the same three values.
+///
+/// _panel is lifted off _pageBlack by about 7% rather than given a border:
+/// on a black page a hairline border reads as a drawn box, while a
+/// slightly lighter fill reads as a surface. _hairline is there for the
+/// places that still need an edge, at 14% white — enough to find, not
+/// enough to look drawn on.
+const Color _pageBlack = Color(0xFF0B0B0B);
+const Color _panel = Color(0xFF161618);
+const Color _hairline = Color(0x24FFFFFF);
+
+/// Secondary text on black. Pure white at 70%, not grey: a grey on black
+/// goes muddy, while white with alpha keeps the hue of whatever is behind
+/// it and stays legible at small sizes.
+const Color _dimText = Color(0xB3FFFFFF);
+
+/// Public so AccountManager.switchAccount can empty it. What is cached
+/// against a vehicle id is answered for whoever asked — is_liked, and
+/// whether the owner-only actions show — so it does not survive a change
+/// of who that is.
+class VehicleCache {
   static final Map<String, Map<String, dynamic>> _cache = {};
   static final List<String> _lruKeys = [];
   static const int _maxSize = 10;
 
   static Map<String, dynamic>? get(String id) => _cache[id];
+
+  /// Forget every vehicle.
+  ///
+  /// For an account switch. A vehicle id is the same for everybody, but
+  /// what is cached against it is not: is_liked and the owner-only
+  /// actions are answered for whoever asked.
+  static void clearAll() {
+    _cache.clear();
+    _lruKeys.clear();
+  }
 
   static void put(String id, Map<String, dynamic> data) {
     if (_cache.containsKey(id)) {
@@ -74,7 +109,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     attachTabHaptics(_tabController);
 
     // Try to load from cache first
-    final cached = _VehicleCache.get(widget.garageId);
+    final cached = VehicleCache.get(widget.garageId);
     if (cached != null) {
       setState(() {
         _vehicle = cached;
@@ -117,7 +152,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     if (!mounted) return;
 
     if (vehicle != null) {
-      _VehicleCache.put(widget.garageId, vehicle);
+      VehicleCache.put(widget.garageId, vehicle);
     }
 
     setState(() {
@@ -144,10 +179,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
           expandedHeight: 270,
           pinned: true,
           automaticallyImplyLeading: false,
-          backgroundColor: Colors.white,
-          flexibleSpace: FlexibleSpaceBar(
-            background: Container(color: Colors.grey.shade300),
-          ),
+          backgroundColor: _pageBlack,
+          flexibleSpace: FlexibleSpaceBar(background: Container(color: _panel)),
         ),
         SliverToBoxAdapter(
           child: Padding(
@@ -158,7 +191,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                   height: 30,
                   width: 200,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: _panel,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -173,7 +206,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                         height: 28,
                         width: 80,
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
+                          color: _panel,
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
@@ -184,7 +217,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                 Container(
                   height: 60,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: _panel,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -199,7 +232,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                           height: 24,
                           width: 60,
                           decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
+                            color: _panel,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -208,7 +241,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                           height: 16,
                           width: 40,
                           decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
+                            color: _panel,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -293,17 +326,16 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
         icon: Icon(
           liked ? Icons.favorite : Icons.favorite_border,
           size: 19,
-          color: liked ? theme.primaryColor : theme.textColor,
+          color: liked ? theme.primaryColor : Colors.white,
         ),
         label: Text(
           liked ? 'Liked' : 'Like',
           style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700),
         ),
         style: OutlinedButton.styleFrom(
-          foregroundColor: theme.textColor,
-          side: BorderSide(
-            color: liked ? theme.primaryColor : theme.dividerColor,
-          ),
+          foregroundColor: Colors.white,
+          backgroundColor: _panel,
+          side: BorderSide(color: liked ? theme.primaryColor : _hairline),
           padding: const EdgeInsets.symmetric(vertical: 13),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
@@ -344,7 +376,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
         // loaded. Leaving it stale means coming back to this vehicle shows
         // the button un-pressed until the network answers — and tapping it
         // in that window un-likes instead of liking.
-        final cached = _VehicleCache.get(widget.garageId);
+        final cached = VehicleCache.get(widget.garageId);
         if (cached != null) {
           cached['is_liked'] = result.liked;
           cached['likes'] = result.likes;
@@ -370,7 +402,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 
     if (result == null || !mounted) return;
 
-    _VehicleCache.invalidate(widget.garageId);
+    VehicleCache.invalidate(widget.garageId);
 
     if (result == 'deleted') {
       Navigator.pop(context, 'deleted');
@@ -425,8 +457,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   /// photo. When they were two literals one of them was 0xCC and the other
   /// 0xFF, which drew a hard line across the bottom of every cover photo.
   /// Reading the same constant twice is cheaper than remembering to.
-  static const Color _heroBlack = Color(0xFF0B0B0B);
-
   /// The photograph, and the car's name and numbers on black beneath it.
   ///
   /// One widget rather than a SliverAppBar: the dark panel has to be part of
@@ -444,13 +474,20 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     final owned = _ownedSince;
 
     return ColoredBox(
-      color: _heroBlack,
+      color: _pageBlack,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // The photo runs under the status bar, which is what makes the
-          // page feel like the car rather than a form about it. The two
-          // buttons sit below the inset so they stay tappable.
+          // The photograph starts BELOW the status bar now, not at the
+          // top of the screen. Running it under the clock meant the time
+          // and the signal bars landed on whatever the top of somebody's
+          // cover photo happened to be — white sky one car, black tyre
+          // the next — and no choice of icon colour works for both.
+          //
+          // So the inset is flat page black, the photo begins under it,
+          // and the two are joined by a fade rather than by an edge. The
+          // photo keeps its full 200pt; the box is that plus the inset.
           SizedBox(
             // Measured off the mockup: the photo there is a wide letterbox
             // band, roughly 2.2:1, not the near-square 300 this was. The
@@ -458,75 +495,85 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
             // screen rather than halfway.
             height: 200 + top,
             child: Stack(
-              fit: StackFit.expand,
               children: [
-                if (hasCover)
-                  // Tappable, opening the photo full screen.
-                  //
-                  // First in the Stack on purpose: the back and share
-                  // buttons come after it and therefore sit on top, so they
-                  // keep their own taps.
-                  //
-                  // Only the photo, not the whole dark header: the name,
-                  // the handle and the stats below it are outside this box,
-                  // and the handle is already a link to the owner.
-                  //
-                  // opaque rather than the default. CachedNetworkImage swaps
-                  // between a placeholder, the image and an error widget,
-                  // and deferToChild would make the tap depend on which of
-                  // the three happens to be showing. See
-                  // test/hero_cover_tap_test.dart.
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _openCoverPhoto(coverPhoto),
-                    child: CachedNetworkImage(
-                      imageUrl: coverPhoto,
-                      fit: BoxFit.cover,
-                      memCacheWidth:
-                          (MediaQuery.sizeOf(context).width *
-                                  MediaQuery.devicePixelRatioOf(context))
-                              .round(),
-                      placeholder: (_, __) =>
-                          const ColoredBox(color: Color(0xFF1C1C1E)),
-                      errorWidget: (_, __, ___) =>
-                          const ColoredBox(color: Color(0xFF1C1C1E)),
-                    ),
-                  )
-                else
-                  const ColoredBox(color: Color(0xFF1C1C1E)),
+                Positioned.fill(
+                  top: top,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (hasCover)
+                        // Tappable, opening the photo full screen.
+                        //
+                        // First in the Stack on purpose: the back and share
+                        // buttons come after it and therefore sit on top, so they
+                        // keep their own taps.
+                        //
+                        // Only the photo, not the whole dark header: the name,
+                        // the handle and the stats below it are outside this box,
+                        // and the handle is already a link to the owner.
+                        //
+                        // opaque rather than the default. CachedNetworkImage swaps
+                        // between a placeholder, the image and an error widget,
+                        // and deferToChild would make the tap depend on which of
+                        // the three happens to be showing. See
+                        // test/hero_cover_tap_test.dart.
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _openCoverPhoto(coverPhoto),
+                          child: CachedNetworkImage(
+                            imageUrl: coverPhoto,
+                            fit: BoxFit.cover,
+                            memCacheWidth:
+                                (MediaQuery.sizeOf(context).width *
+                                        MediaQuery.devicePixelRatioOf(context))
+                                    .round(),
+                            placeholder: (_, __) =>
+                                const ColoredBox(color: Color(0xFF1C1C1E)),
+                            errorWidget: (_, __, ___) =>
+                                const ColoredBox(color: Color(0xFF1C1C1E)),
+                          ),
+                        )
+                      else
+                        const ColoredBox(color: Color(0xFF1C1C1E)),
 
-                // Into the black below, so the photo ends without an edge.
-                // Ends on exactly the colour of the panel below, fully
-                // opaque. It used to end at 0xCC — 80% — so the bottom edge
-                // of the photo was still 20% visible and then stepped
-                // straight to solid black. That step is a seam, and no
-                // amount of blur hides a hard edge between two flat tones.
-                //
-                // Four stops rather than three so the ramp is long: clear
-                // through the middle where the car is, then 40% of the
-                // height to go from nothing to black. A short ramp bands on
-                // a dark photo.
-                // IgnorePointer, which is load-bearing: a DecoratedBox
-                // filling a Stack absorbs taps, so without this the gradient
-                // sits over the photo and silently eats every one of them.
-                // The cover looked tappable and did nothing.
-                IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          // A scrim at the very top, so the back and share
-                          // buttons hold up over a bright sky.
-                          const Color(0x73000000),
-                          const Color(0x00000000),
-                          _heroBlack.withValues(alpha: 0.6),
-                          _heroBlack,
-                        ],
-                        stops: const [0, 0.32, 0.76, 1],
+                      // Into the black below, so the photo ends without an edge.
+                      // Ends on exactly the colour of the panel below, fully
+                      // opaque. It used to end at 0xCC — 80% — so the bottom edge
+                      // of the photo was still 20% visible and then stepped
+                      // straight to solid black. That step is a seam, and no
+                      // amount of blur hides a hard edge between two flat tones.
+                      //
+                      // Four stops rather than three so the ramp is long: clear
+                      // through the middle where the car is, then 40% of the
+                      // height to go from nothing to black. A short ramp bands on
+                      // a dark photo.
+                      // IgnorePointer, which is load-bearing: a DecoratedBox
+                      // filling a Stack absorbs taps, so without this the gradient
+                      // sits over the photo and silently eats every one of them.
+                      // The cover looked tappable and did nothing.
+                      IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                // Solid at the photo's top edge, so it meets the
+                                // status bar's black band as a fade and not as a
+                                // line. It doubles as the scrim that keeps the
+                                // back and share buttons legible over a bright
+                                // sky, which is what the old 45% scrim was for.
+                                _pageBlack,
+                                _pageBlack.withValues(alpha: 0),
+                                _pageBlack.withValues(alpha: 0.6),
+                                _pageBlack,
+                              ],
+                              stops: const [0, 0.26, 0.76, 1],
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
 
@@ -800,20 +847,40 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 
   @override
   Widget build(BuildContext context) {
+    // The page is black from the status bar down, so the clock and the
+    // signal bars have to be drawn light or they vanish into it.
+    //
+    // AnnotatedRegion rather than setting it imperatively: it is scoped to
+    // this route and puts the previous style back on the way out, so the
+    // white screens behind this one do not inherit a white clock.
+    //
+    // Both platforms, opposite senses. iOS asks what the BACKGROUND is
+    // (dark), Android asks what the ICONS should be (light); setting one
+    // and not the other is the usual way this ends up right on one
+    // platform and invisible on the other.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+      child: _buildPage(context),
+    );
+  }
+
+  Widget _buildPage(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
 
     if (_loading && !_isFromCache) {
       return Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: _pageBlack,
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: _pageBlack,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
             onPressed: () => Navigator.pop(context),
           ),
-          centerTitle: true,
-          title: Image.asset('assets/logo-dark.png', height: 18),
           actions: [
             if (isVehiclePublisher())
               IconButton(
@@ -857,18 +924,18 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 
     if (_vehicle == null) {
       return Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: _pageBlack,
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: _pageBlack,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
             onPressed: () => Navigator.pop(context),
           ),
-          centerTitle: true,
-          title: Image.asset('assets/logo-dark.png', height: 18),
         ),
-        body: const Center(child: Text('Vehicle not found')),
+        body: const Center(
+          child: Text('Vehicle not found', style: TextStyle(color: _dimText)),
+        ),
       );
     }
 
@@ -876,7 +943,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     final hasCoverPhoto = coverPhoto != null && coverPhoto.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: _pageBlack,
       // No app bar. The photograph is the page's identity, and a white bar
       // with a logo on it above a full-bleed cover is two headers arguing.
       // Back and share float on the image instead.
@@ -910,11 +977,12 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                   const SizedBox(height: 18),
                   // Tabs
                   Container(
-                    color: Colors.white,
+                    color: _pageBlack,
                     child: TabBar(
                       controller: _tabController,
-                      labelColor: Colors.black,
-                      unselectedLabelColor: Colors.grey,
+                      labelColor: Colors.white,
+                      unselectedLabelColor: _dimText,
+                      dividerColor: Colors.transparent,
                       indicatorColor: const Color(0xFFD5B56B),
                       tabs: const [
                         Tab(text: 'Posts'),
@@ -1037,14 +1105,14 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.lock_outline, size: 40, color: Colors.grey.shade400),
+                Icon(Icons.lock_outline, size: 40, color: Colors.grey.shade500),
                 const SizedBox(height: 14),
                 Text(
                   'Tagging is off for this vehicle',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: Colors.grey.shade800,
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1053,11 +1121,7 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
                   'registration in anyone else\'s photos. Turn tagging on in '
                   'Edit vehicle to start being told when it turns up.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.45,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 13, height: 1.45, color: _dimText),
                 ),
               ],
             ),
@@ -1066,10 +1130,7 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
       }
 
       return Center(
-        child: Text(
-          'No tagged posts',
-          style: TextStyle(color: Colors.grey.shade600),
-        ),
+        child: Text('No tagged posts', style: TextStyle(color: _dimText)),
       );
     }
 
@@ -1112,7 +1173,7 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
                       arguments: {'postId': post['id'].toString()},
                     ),
                     child: Container(
-                      color: Colors.grey.shade300,
+                      color: _panel,
                       child: imageUrl != null
                           ? Image.network(
                               imageUrl,
@@ -1160,7 +1221,7 @@ class _GaragePostsGrid extends StatelessWidget {
           return Center(
             child: Text(
               tagged ? 'No tagged posts' : 'No posts',
-              style: TextStyle(color: Colors.grey.shade600),
+              style: TextStyle(color: _dimText),
             ),
           );
         }
@@ -1192,7 +1253,7 @@ class _GaragePostsGrid extends StatelessWidget {
                 );
               },
               child: Container(
-                color: Colors.grey.shade300,
+                color: _panel,
                 child: imageUrl != null
                     ? Image.network(
                         imageUrl,
@@ -1235,10 +1296,7 @@ class _GarageModsListState extends State<GarageModsList> {
   Widget build(BuildContext context) {
     if (widget.mods.isEmpty) {
       return Center(
-        child: Text(
-          'No upgrades added yet',
-          style: TextStyle(color: Colors.grey.shade600),
-        ),
+        child: Text('No upgrades added yet', style: TextStyle(color: _dimText)),
       );
     }
 
@@ -1269,12 +1327,12 @@ class _GarageModsListState extends State<GarageModsList> {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black,
+                      color: Colors.white,
                     ),
                   ),
                   Text(
                     '${typeMods.length} upgrade${typeMods.length > 1 ? 's' : ''}',
-                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                    style: const TextStyle(fontSize: 14, color: _dimText),
                   ),
                 ],
               ),
@@ -1312,9 +1370,9 @@ class _GarageModsListState extends State<GarageModsList> {
         padding: const EdgeInsets.all(12),
         width: double.infinity,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _panel,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey.shade200),
+          border: Border.all(color: _hairline),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1324,7 +1382,7 @@ class _GarageModsListState extends State<GarageModsList> {
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: Colors.black,
+                color: Colors.white,
               ),
             ),
             if (mod['description'] != null &&
@@ -1332,7 +1390,7 @@ class _GarageModsListState extends State<GarageModsList> {
               const SizedBox(height: 4),
               Text(
                 mod['description'],
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+                style: const TextStyle(fontSize: 14, color: _dimText),
               ),
             ],
             if (hasImage) ...[
@@ -1346,7 +1404,7 @@ class _GarageModsListState extends State<GarageModsList> {
                   fit: BoxFit.cover,
                   placeholder: (context, url) => Container(
                     height: 120,
-                    color: Colors.grey.shade100,
+                    color: _panel,
                     child: const Center(
                       child: SizedBox(
                         width: 24,
@@ -1396,7 +1454,7 @@ class _GarageModsListState extends State<GarageModsList> {
                   'Tap to edit',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.black,
+                    color: _dimText,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1441,16 +1499,21 @@ class _GarageModsPageState extends State<GarageModsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Black too, because it hosts the same GarageModsList — whose cards
+    // are dark now and would otherwise be floating on a white page.
     return Scaffold(
+      backgroundColor: _pageBlack,
       appBar: AppBar(
+        backgroundColor: _pageBlack,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           'Upgrades',
           style: TextStyle(
-            color: Colors.black,
+            color: Colors.white,
             fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
@@ -1458,7 +1521,7 @@ class _GarageModsPageState extends State<GarageModsPage> {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: Icon(Icons.add, color: Colors.black),
+            icon: const Icon(Icons.add, color: Colors.white),
             onPressed: _openAddScreen,
           ),
         ],
@@ -1597,7 +1660,7 @@ class _VehicleAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: _panel,
       borderRadius: BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -1605,7 +1668,7 @@ class _VehicleAction extends StatelessWidget {
         child: Container(
           height: 50,
           decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFE4E4E4)),
+            border: Border.all(color: _hairline),
             borderRadius: BorderRadius.circular(12),
           ),
           alignment: Alignment.center,
@@ -1640,7 +1703,7 @@ class _VehicleAction extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 14.5,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF111111),
+                    color: Colors.white,
                   ),
                 ),
               ),

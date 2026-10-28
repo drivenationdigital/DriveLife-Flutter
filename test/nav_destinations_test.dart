@@ -45,15 +45,14 @@ void main() {
       // "coming soon" page.
       expect(BottomNavProvider.tracks, 3);
       expect(BottomNavProvider.businesses, 4);
+      // Last. Messages used to sit after this one and no longer does —
+      // the inbox moved out of the row into MessagesScreen, which it
+      // shares with notifications behind the header's message icon.
       expect(BottomNavProvider.shop, 5);
-      // Last, because it was added last and the row is read left to right.
-      // The inbox had no way in before it: InboxScreen existed and nothing
-      // built it.
-      expect(BottomNavProvider.messages, 6);
     });
 
     test('the count matches the names', () {
-      expect(BottomNavProvider.sectionCount, 7);
+      expect(BottomNavProvider.sectionCount, 6);
     });
 
     test('a section index is not a destination index', () {
@@ -98,21 +97,24 @@ void main() {
       expect(notifications, 0);
     });
 
-    test('still notifies when the section matches but the destination does not', () {
-      // Tapping "Popular Venues" from the Groups tab: the remembered section
-      // is already Places, but the user is not on Home and expects to go
-      // there. Comparing the section alone would make the tap do nothing.
-      final nav = BottomNavProvider()
-        ..openHomeSection(BottomNavProvider.places)
-        ..setIndex(BottomNavProvider.groups);
+    test(
+      'still notifies when the section matches but the destination does not',
+      () {
+        // Tapping "Popular Venues" from the Groups tab: the remembered section
+        // is already Places, but the user is not on Home and expects to go
+        // there. Comparing the section alone would make the tap do nothing.
+        final nav = BottomNavProvider()
+          ..openHomeSection(BottomNavProvider.places)
+          ..setIndex(BottomNavProvider.groups);
 
-      var notifications = 0;
-      nav.addListener(() => notifications++);
-      nav.openHomeSection(BottomNavProvider.places);
+        var notifications = 0;
+        nav.addListener(() => notifications++);
+        nav.openHomeSection(BottomNavProvider.places);
 
-      expect(notifications, 1);
-      expect(nav.currentIndex, BottomNavProvider.home);
-    });
+        expect(notifications, 1);
+        expect(nav.currentIndex, BottomNavProvider.home);
+      },
+    );
 
     test('remembers the section while you are elsewhere', () {
       // Leaving Home and coming back should land where it was left.

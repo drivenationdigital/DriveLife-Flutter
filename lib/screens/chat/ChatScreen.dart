@@ -1,10 +1,15 @@
 import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/chat/widgets/GroupInfo.dart';
+import 'package:drivelife/screens/chat/message_actions.dart';
 import 'package:drivelife/screens/chat/message_grouping.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 // ConversationPreview used to be declared here as well as in
@@ -146,6 +151,10 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Same reasoning for the name, which the info screen can also change.
   late String _groupName = widget.groupName ?? 'Group';
 
+  /// The group's picture. Null until the conversation row has loaded,
+  /// and again after that if nobody has set one.
+  String? _groupImage;
+
   /// Everyone but me — the avatar stack, and who needs a profile.
   List<String> get _others =>
       _participants.where((id) => id != widget.myUserId).toList();
@@ -184,6 +193,14 @@ class _ChatScreenState extends State<ChatScreen> {
     // Resolve profiles
     if (widget.isGroup) {
       _groupProfiles = await UserProfileCache.instance.resolve(_others);
+
+      // And the conversation row itself, for the group's picture.
+      //
+      // _refreshGroup used to run only when Group Info was opened or
+      // closed, so _groupImage was null for the whole first visit — and
+      // the picture appeared on the SECOND trip into Group Info and
+      // nowhere else, which is exactly how it looked: sometimes.
+      unawaited(_refreshGroup());
     } else {
       otherProfile = UserProfileCache.instance.getCached(
         widget.otherUserId ?? '',
@@ -260,37 +277,66 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // 1-to-1 title: avatar + name
+  /// Open somebody's profile.
+  ///
+  /// Takes both id and username because the profile screen will find a
+  /// person by either, and which one is to hand depends on whether the
+  /// profile cache has answered yet.
+  void _openProfile({String? userId, String? username}) {
+    if ((userId == null || userId.isEmpty) &&
+        (username == null || username.isEmpty)) {
+      return;
+    }
+
+    Navigator.pushNamed(
+      context,
+      AppRoutes.viewProfile,
+      arguments: {'userId': userId, 'username': username ?? ''},
+    );
+  }
+
   Widget _buildDmAppBarTitle() {
     final name = otherProfile?.bestName ?? widget.otherUserName;
     final imageUrl = otherProfile?.imageUrl;
     final hasImage = imageUrl != null && imageUrl.isNotEmpty;
 
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 16,
-          backgroundColor: const Color(0xFFEFEFEF),
-          backgroundImage: hasImage ? NetworkImage(imageUrl) : null,
-          child: hasImage
-              ? null
-              : Text(
-                  name.isNotEmpty ? name.characters.first.toUpperCase() : '?',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade600,
+    // The whole title, not just the face. In a one-to-one the header
+    // IS the other person, so the name should be as live as the avatar —
+    // aiming for a 32pt circle to reach a profile is a worse target than
+    // the row it sits in.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openProfile(
+        userId: widget.otherUserId,
+        username: otherProfile?.username,
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: const Color(0xFFEFEFEF),
+            backgroundImage: hasImage ? NetworkImage(imageUrl) : null,
+            child: hasImage
+                ? null
+                : Text(
+                    name.isNotEmpty ? name.characters.first.toUpperCase() : '?',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade600,
+                    ),
                   ),
-                ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            name,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-            overflow: TextOverflow.ellipsis,
           ),
-        ),
-      ],
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              name,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -308,6 +354,7 @@ class _ChatScreenState extends State<ChatScreen> {
               myUserId: widget.myUserId,
               groupName: _groupName,
               participantIds: _participants,
+              groupImage: _groupImage,
               // Fires on each change while the screen is open, so the bar
               // behind it is already right by the time it is popped.
               onChanged: (_, __) => _refreshGroup(),
@@ -322,21 +369,40 @@ class _ChatScreenState extends State<ChatScreen> {
       },
       child: Row(
         children: [
-          // Stacked avatars
-          SizedBox(
-            width: 46,
-            height: 36,
-            child: Stack(
-              children: [
-                for (int i = 0; i < others.length && i < 3; i++)
-                  Positioned(
-                    left: i * 12.0,
-                    child: _buildStackedAvatar(others[i], i),
-                  ),
-              ],
+          // The group's own picture if it has one, and the members
+          // stacked up if it does not. A group that has chosen a photo
+          // should be recognised by it here as well as in the list —
+          // the stack is a fallback for groups with nothing set, not the
+          // group's identity.
+          if (_groupImage != null && _groupImage!.isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: CachedNetworkImage(
+                imageUrl: _groupImage!,
+                width: 36,
+                height: 36,
+                fit: BoxFit.cover,
+                placeholder: (_, __) =>
+                    const ColoredBox(color: Color(0xFFEFEFEF)),
+                errorWidget: (_, __, ___) =>
+                    const ColoredBox(color: Color(0xFFEFEFEF)),
+              ),
+            )
+          else
+            SizedBox(
+              width: 46,
+              height: 36,
+              child: Stack(
+                children: [
+                  for (int i = 0; i < others.length && i < 3; i++)
+                    Positioned(
+                      left: i * 12.0,
+                      child: _buildStackedAvatar(others[i], i),
+                    ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -385,6 +451,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _participants = conv.participantIds;
         _groupName = conv.groupName ?? _groupName;
+        _groupImage = conv.groupImage;
         _groupProfiles = profiles;
       });
     } catch (e) {
@@ -483,36 +550,264 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
 
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(14, 9, 14, 10),
-                    decoration: BoxDecoration(
-                      color: isMe
-                          ? theme.primaryColor
-                          : const Color(0xFFEFEFEF),
-                      borderRadius: BorderRadius.only(
-                        topLeft: round,
-                        topRight: round,
-                        // Only the corner nearest the sender squares off,
-                        // and only on the last of a block.
-                        bottomLeft: !isMe && endsRun ? tail : round,
-                        bottomRight: isMe && endsRun ? tail : round,
-                      ),
-                    ),
-                    child: Text(
-                      msg.content,
-                      style: TextStyle(
-                        fontSize: 14.5,
-                        height: 1.35,
-                        color: isMe ? Colors.white : const Color(0xFF111111),
+                  Opacity(
+                    // In flight, and saying so quietly. A spinner on a
+                    // bubble that will land in 200ms is more alarming
+                    // than the wait it describes.
+                    opacity: msg.status == MessageStatus.pending ? 0.55 : 1,
+                    child: GestureDetector(
+                      // Nothing to do to a message that is not there yet
+                      // or has already gone: an optimistic bubble has no
+                      // server id to react to, and a tombstone has
+                      // nothing to copy.
+                      onLongPress:
+                          msg.status == MessageStatus.sent && !msg.isDeleted
+                          ? () => _showMessageActions(msg)
+                          : null,
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(14, 9, 14, 10),
+                        decoration: BoxDecoration(
+                          color: msg.isDeleted
+                              ? Colors.transparent
+                              : isMe
+                              ? theme.primaryColor
+                              : const Color(0xFFEFEFEF),
+                          border: msg.isDeleted
+                              ? Border.all(color: const Color(0xFFE0E0E0))
+                              : null,
+                          borderRadius: BorderRadius.only(
+                            topLeft: round,
+                            topRight: round,
+                            // Only the corner nearest the sender squares off,
+                            // and only on the last of a block.
+                            bottomLeft: !isMe && endsRun ? tail : round,
+                            bottomRight: isMe && endsRun ? tail : round,
+                          ),
+                        ),
+                        child: Text(
+                          msg.isDeleted
+                              ? 'This message was deleted'
+                              : msg.content,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            height: 1.35,
+                            fontStyle: msg.isDeleted
+                                ? FontStyle.italic
+                                : FontStyle.normal,
+                            color: msg.isDeleted
+                                ? const Color(0xFF9A9A9A)
+                                : isMe
+                                ? Colors.white
+                                : const Color(0xFF111111),
+                          ),
+                        ),
                       ),
                     ),
                   ),
+
+                  if (!msg.isDeleted) _reactionRow(msg, isMe: isMe),
+
+                  if (endsRun) _meta(msg, isMe: isMe),
                 ],
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// The reactions on a message, if any.
+  ///
+  /// Tapping one toggles yours, which is the same gesture as picking it
+  /// from the long-press row — a reaction already on screen should not
+  /// need a menu to join.
+  Widget _reactionRow(ChatMessage msg, {required bool isMe}) {
+    final summaries = _notifier?.reactionsFor(msg.id) ?? const [];
+    if (summaries.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Wrap(
+        spacing: 4,
+        children: [
+          for (final r in summaries)
+            GestureDetector(
+              onTap: () => _notifier?.toggleReaction(msg.id, r.emoji),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F3F3),
+                  borderRadius: BorderRadius.circular(11),
+                  // Yours is outlined rather than filled differently:
+                  // the emoji is already carrying the colour, and a
+                  // second fill makes the row look like two components.
+                  border: Border.all(
+                    color: r.mine
+                        ? const Color(0xFF111111)
+                        : Colors.transparent,
+                  ),
+                ),
+                child: Text(
+                  r.count > 1 ? '${r.emoji} ${r.count}' : r.emoji,
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// The long-press sheet: a row of emoji, then what can be done.
+  Future<void> _showMessageActions(ChatMessage msg) async {
+    final canDelete = canDeleteMessage(
+      senderId: msg.senderId,
+      createdAt: msg.createdAt,
+      myUserId: widget.myUserId,
+      alreadyDeleted: msg.isDeleted,
+    );
+
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  for (final emoji in kQuickReactions)
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pop(sheetContext);
+                        _notifier?.toggleReaction(msg.id, emoji);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Text(
+                          emoji,
+                          style: const TextStyle(fontSize: 28),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            const Divider(height: 1),
+
+            ListTile(
+              leading: const Icon(Icons.copy_rounded, size: 20),
+              title: const Text('Copy'),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                await Clipboard.setData(ClipboardData(text: msg.content));
+              },
+            ),
+
+            // Offered only inside the delete window — and the window is
+            // only enforced by the RLS policy, which this number has to
+            // match. See kMessageDeleteWindow.
+            if (canDelete)
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline_rounded,
+                  size: 20,
+                  color: Color(0xFFD93025),
+                ),
+                title: const Text(
+                  'Delete',
+                  style: TextStyle(color: Color(0xFFD93025)),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _deleteMessage(msg);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteMessage(ChatMessage msg) async {
+    final ok = await _notifier?.deleteMessage(msg) ?? false;
+    if (ok || !mounted) return;
+
+    // The database declined. In practice this means the window closed
+    // between the menu opening and the tap, or the two clocks disagree —
+    // the app would not have offered the option otherwise.
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('That message is too old to delete now')),
+    );
+  }
+
+  /// Time, and what became of the message.
+  ///
+  /// Only under the last bubble of a run. A time under every bubble turns
+  /// a conversation into a log, and the run is already the unit this
+  /// screen groups by.
+  Widget _meta(ChatMessage msg, {required bool isMe}) {
+    const style = TextStyle(fontSize: 11, color: Color(0xFF9A9A9A));
+
+    if (msg.status == MessageStatus.failed) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
+        child: InkWell(
+          onTap: () => _notifier?.retry(msg),
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(
+                  Icons.error_outline_rounded,
+                  size: 13,
+                  color: Color(0xFFD93025),
+                ),
+                SizedBox(width: 4),
+                Text(
+                  'Not sent. Tap to try again',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFFD93025),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final time = TimeOfDay.fromDateTime(msg.createdAt).format(context);
+
+    final parts = <String>[
+      time,
+      if (isMe && msg.status == MessageStatus.pending)
+        'Sending'
+      // Read state for one-to-one only. read_at is a single column on the
+      // message, so in a group it is set by whoever opened the thread
+      // first — showing "Seen" off it would claim everyone has read
+      // something one person glanced at.
+      else if (isMe && !widget.isGroup && msg.isRead)
+        'Seen',
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, left: 6, right: 6),
+      child: Text(parts.join('  ·  '), style: style),
     );
   }
 
@@ -523,22 +818,28 @@ class _ChatScreenState extends State<ChatScreen> {
         ? profile!.bestName[0].toUpperCase()
         : '?';
 
-    return CircleAvatar(
-      radius: 13,
-      backgroundColor: const Color(0xFFEFEFEF),
-      backgroundImage: imageUrl != null && imageUrl.isNotEmpty
-          ? NetworkImage(imageUrl)
-          : null,
-      child: imageUrl == null || imageUrl.isEmpty
-          ? Text(
-              initial,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: Colors.grey.shade600,
-              ),
-            )
-          : null,
+    return GestureDetector(
+      // In a group the face beside a bubble is the only thing naming who
+      // said it — the name label only appears on the first of a run — so
+      // it is the natural place to tap to find out more about them.
+      onTap: () => _openProfile(userId: senderId, username: profile?.username),
+      child: CircleAvatar(
+        radius: 13,
+        backgroundColor: const Color(0xFFEFEFEF),
+        backgroundImage: imageUrl != null && imageUrl.isNotEmpty
+            ? NetworkImage(imageUrl)
+            : null,
+        child: imageUrl == null || imageUrl.isEmpty
+            ? Text(
+                initial,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade600,
+                ),
+              )
+            : null,
+      ),
     );
   }
 
