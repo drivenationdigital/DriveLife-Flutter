@@ -1255,17 +1255,22 @@ class _HeaderAccount extends StatelessWidget {
   /// The button, matching _RoundAction.
   static const double _size = 38;
 
-  /// The face, at the full width of the button.
+  /// The face, inside the button rather than filling it.
   ///
-  /// It went 40 -> 28 -> 38. The 40 read as the heaviest of the three
-  /// because a photograph carries more weight per point than an 18pt
-  /// glyph on #F4F4F4; the 28 that fixed that then read as the smallest.
-  /// 38 matches the two discs exactly, with no grey ring behind it, which
-  /// is where this was asked to land.
+  /// 40 -> 28 -> 38 -> 34, and the wandering is the point: measured
+  /// against the other two this has been right at every size and looked
+  /// wrong at most of them, because the three are not comparable objects.
+  /// They are #F4F4F4 discs carrying an 18pt line glyph; this is a
+  /// photograph. A dense, full-colour circle reads larger than a pale
+  /// one of identical diameter, so matching the diameter is what makes
+  /// it look bigger.
   ///
-  /// One number if it ever wants to come back down — nothing else in the
-  /// widget depends on the two being equal.
-  static const double _face = _size;
+  /// 34 against their 38: four points smaller, which is roughly what it
+  /// takes for the three to read as one size. Anything that changes the
+  /// other two — a fill with more contrast, a heavier glyph — changes
+  /// what this should be, so it is a judgement rather than a constant
+  /// derived from [_size].
+  static const double _face = 34;
 
   @override
   Widget build(BuildContext context) {
