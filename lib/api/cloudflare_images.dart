@@ -23,7 +23,8 @@ class CloudflareImages {
   /// Cloudflare ever reissues the account hash, every URL already stored
   /// in Supabase breaks and this constant is not enough to fix them —
   /// see the note on [uploadAndGetUrl].
-  static const _delivery = 'https://imagedelivery.net'
+  static const _delivery =
+      'https://imagedelivery.net'
       '/3UkXrQaSXZJl7XH5FuIHDg';
 
   /// The variant group avatars are stored at.
@@ -57,6 +58,22 @@ class CloudflareImages {
     required Uint8List bytes,
     required String fileName,
   }) async {
+    final id = await uploadAndGetId(bytes: bytes, fileName: fileName);
+    return id == null ? null : urlFor(id);
+  }
+
+  /// Upload [bytes] and return the Cloudflare image id.
+  ///
+  /// What most of this codebase wants: the id is stored and the URL is
+  /// built at render time, so the variant stays a decision. Only callers
+  /// writing into somewhere that cannot build a URL — a Supabase row —
+  /// want [uploadAndGetUrl].
+  ///
+  /// Returns null if the upload fails.
+  static Future<String?> uploadAndGetId({
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
     try {
       final ticket = await http.post(
         Uri.parse(
@@ -86,9 +103,18 @@ class CloudflareImages {
       }
 
       final id = jsonDecode(response.body)['result']?['id']?.toString();
-      if (id == null || id.isEmpty) return null;
 
-      return urlFor(id);
+      // The quiet failure this is here for: a 200 from Cloudflare whose
+      // body is not the shape expected leaves the image uploaded and
+      // the caller holding null — which looks from the outside like an
+      // upload that never happened.
+      if (id == null || id.isEmpty) {
+        debugPrint('[CF] uploaded, but no id in: ${response.body}');
+        return null;
+      }
+
+      debugPrint('[CF] uploaded id=$id');
+      return id;
     } catch (e) {
       debugPrint('[CF] upload threw: $e');
       return null;

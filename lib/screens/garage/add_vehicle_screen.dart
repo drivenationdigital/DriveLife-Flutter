@@ -1,6 +1,7 @@
 import 'package:drivelife/widgets/garage/photo_matches_sheet.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'package:drivelife/api/cloudflare_images.dart';
 import 'package:drivelife/api/garage_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
@@ -21,6 +22,22 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   final _formKey = GlobalKey<FormState>();
 
   File? _imageFile;
+
+  /// Photographs chosen for the gallery and not yet uploaded.
+  ///
+  /// Held until Save, like the cover. Uploading as they are picked would
+  /// mean cancelling an edit left them attached — and on a new vehicle
+  /// there is no id to attach them to yet.
+  final List<File> _galleryPicks = [];
+
+  /// The gallery already on the vehicle, as { id, url }. Only ever
+  /// populated in edit mode.
+  List<Map<String, dynamic>> _existingGallery = [];
+
+  /// Rows the user has removed, applied on Save.
+  final Set<int> _galleryRemovals = {};
+
+  bool _savingGallery = false;
   String? _base64Image;
   bool _lookingUp = false;
 
@@ -357,6 +374,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       _ownedTo = _parseDate(v['owned_until']);
 
       _existingImageUrl = v['cover_photo']?.toString();
+      _existingGallery = ((v['gallery'] as List?) ?? const [])
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList();
     });
   }
 
@@ -519,7 +539,26 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
             : 'Vehicle added successfully',
       );
 
-      final vehicleId = (res is Map) ? res['id'] : widget.vehicle?['id'];
+      // On an edit the response carries no id — update_garage_by_id_v2
+      // returns { message, success } and nothing else — so taking it
+      // from `res` gave null, and the ternary's fallback was dead code
+      // the analyser had already flagged. The id of the vehicle being
+      // edited is the one it was opened with.
+      //
+      // This is what stopped gallery changes applying on Update, and it
+      // also stopped PhotoMatchesSheet appearing after a registration
+      // was corrected: both are guarded on this id being real.
+      // An if, not a ternary. `widget.vehicle?['id']` in the true arm
+      // makes the parser read `?[` as a second conditional rather than
+      // as a null-aware index — "Conditions must have a static type of
+      // 'bool'" pointing at a line with no condition on it.
+      final dynamic vehicleId;
+
+      if (_isEditMode) {
+        vehicleId = (widget.vehicle as Map?)?['id'];
+      } else {
+        vehicleId = (res as Map?)?['id'];
+      }
 
       // Photos of this plate may already be on the site — the scan records
       // every registration it reads, matched to a garage or not, so a car
@@ -531,6 +570,30 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       // is the only thing that finds a car in somebody else's photos, so a
       // corrected one is a first look just as much as a new car is. An edit
       // that leaves the plate alone has been through this already.
+      // The gallery goes up here, not when it was picked: a new
+      // vehicle has no id to attach photographs to until this point,
+      // and an edit that was cancelled should not have left any behind.
+      // vehicleId already resolves both cases a few lines above:
+      // the id the save returned for a new vehicle, and the one it
+      // was opened with for an edit.
+      final savedId = vehicleId == null ? '' : '$vehicleId';
+      final hasGalleryWork =
+          _galleryPicks.isNotEmpty || _galleryRemovals.isNotEmpty;
+
+      if (hasGalleryWork) {
+        if (savedId.isEmpty) {
+          // Said out loud rather than skipped. Losing a batch of
+          // photographs silently after Save is how this went unnoticed
+          // the first time.
+          _toast('Saved, but the photos could not be attached.');
+        } else {
+          setState(() => _savingGallery = true);
+          await _saveGallery(savedId);
+          if (!mounted) return;
+          setState(() => _savingGallery = false);
+        }
+      }
+
       final regChanged =
           _regCtrl.text.trim().toUpperCase() != _originalReg &&
           _regCtrl.text.trim().isNotEmpty;
@@ -701,6 +764,227 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Add photographs to the gallery.
+  ///
+  /// Capped, and the cap is a real one rather than a round number: every
+  /// picked file is held in memory as well as on disk until Save, and a
+  /// phone picking twenty 12-megapixel photographs will be killed before
+  /// it finishes uploading them.
+  static const int _maxGallery = 12;
+
+  Future<void> _pickGalleryImages() async {
+    final room = _maxGallery - _galleryCount;
+
+    if (room <= 0) {
+      _toast('That is the most photos a vehicle can have.');
+      return;
+    }
+
+    final picked = await ImagePicker().pickMultiImage(
+      maxWidth: 2048,
+      maxHeight: 2048,
+      imageQuality: 88,
+    );
+
+    if (picked.isEmpty || !mounted) return;
+
+    setState(() {
+      _galleryPicks.addAll(picked.take(room).map((x) => File(x.path)));
+    });
+
+    if (picked.length > room) {
+      _toast('Added $room — that is the most a vehicle can have.');
+    }
+  }
+
+  /// How many photographs the gallery will have once Save has run.
+  int get _galleryCount =>
+      _existingGallery
+          .where((row) => !_galleryRemovals.contains(row['id']))
+          .length +
+      _galleryPicks.length;
+
+  /// Upload and attach whatever is pending. Called after the vehicle has
+  /// an id, which on a new vehicle is only true once it has been saved.
+  Future<void> _saveGallery(String garageId) async {
+    for (final rowId in _galleryRemovals) {
+      await GarageAPI.deleteGalleryImage(rowId);
+    }
+
+    if (_galleryPicks.isEmpty) return;
+
+    final ids = <String>[];
+
+    for (final file in _galleryPicks) {
+      final id = await CloudflareImages.uploadAndGetId(
+        bytes: await file.readAsBytes(),
+        fileName:
+            'garage_${garageId}_'
+            '${DateTime.now().microsecondsSinceEpoch}.jpg',
+      );
+
+      if (id != null) ids.add(id);
+    }
+
+    if (ids.isEmpty) return;
+
+    await GarageAPI.addGalleryImages(garageId: garageId, imageIds: ids);
+  }
+
+  /// The gallery strip: a tile per photograph, and one to add more.
+  Widget _buildGallerySection() {
+    final existing = _existingGallery
+        .where((row) => !_galleryRemovals.contains(row['id']))
+        .toList();
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Gallery',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$_galleryCount / $_maxGallery',
+                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Swipeable on the vehicle page. The cover above is always '
+            'shown first.',
+            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 12),
+
+          SizedBox(
+            height: 86,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final row in existing)
+                  _galleryTile(
+                    child: Image.network(
+                      '${row['url']}',
+                      width: 86,
+                      height: 86,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const ColoredBox(
+                        color: Color(0xFFF0F0F0),
+                        child: Icon(Icons.broken_image, color: Colors.grey),
+                      ),
+                    ),
+                    onRemove: () =>
+                        setState(() => _galleryRemovals.add(row['id'] as int)),
+                  ),
+
+                for (final file in _galleryPicks)
+                  _galleryTile(
+                    child: Image.file(
+                      file,
+                      width: 86,
+                      height: 86,
+                      fit: BoxFit.cover,
+                    ),
+                    isNew: true,
+                    onRemove: () => setState(() => _galleryPicks.remove(file)),
+                  ),
+
+                if (_galleryCount < _maxGallery)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: InkWell(
+                      onTap: _pickGalleryImages,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        width: 86,
+                        height: 86,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFDDDDDD)),
+                        ),
+                        child: const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add, color: Colors.grey),
+                            SizedBox(height: 2),
+                            Text(
+                              'Add',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _galleryTile({
+    required Widget child,
+    required VoidCallback onRemove,
+    bool isNew = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipRRect(borderRadius: BorderRadius.circular(10), child: child),
+
+          Positioned(
+            top: -4,
+            right: -4,
+            child: GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+                child: const Icon(Icons.close, color: Colors.white, size: 11),
+              ),
+            ),
+          ),
+
+          // Marked, so it is obvious which ones have not been saved yet
+          // — the same badge the cover uses for the same reason.
+          if (isNew)
+            Positioned(
+              left: 4,
+              bottom: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'New',
+                  style: TextStyle(color: Colors.white, fontSize: 10),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1210,6 +1494,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                 children: [
                   _sectionTitle('Vehicle Image'),
                   _buildImageSection(),
+                  _buildGallerySection(),
 
                   _sectionTitle('Ownership Type'),
                   _card(

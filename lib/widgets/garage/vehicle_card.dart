@@ -1,5 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 /// How wide the card's photograph is against its height.
 ///
@@ -68,10 +70,45 @@ class VehicleCard extends StatelessWidget {
     return year == null ? null : 'Owned since $year';
   }
 
+  /// How many people have liked this vehicle, or null when nobody has.
+  ///
+  /// Null rather than zero, because "0" against a car reads as a
+  /// judgement on it. A vehicle with no likes simply does not mention
+  /// them — which is also what happens while the API is behind and does
+  /// not send the field at all.
+  int? get _likes {
+    final raw = vehicle['likes'];
+    final count = raw is int ? raw : int.tryParse('${raw ?? ''}');
+
+    return (count == null || count == 0) ? null : count;
+  }
+
+  /// "1,284", or "48.2k" past ten thousand — the same rule as the
+  /// vehicle page's own like button, so a car does not report two
+  /// different numbers on two screens.
+  static String _formatLikes(int n) {
+    if (n >= 10000) {
+      final k = n / 1000;
+      return '${k.toStringAsFixed(k >= 100 ? 0 : 1)}k';
+    }
+
+    final digits = '$n';
+    final out = StringBuffer();
+
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+      out.write(digits[i]);
+    }
+
+    return out.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
     final cover = (vehicle['cover_photo'] ?? '').toString().trim();
     final owned = _owned;
+    final likes = _likes;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -167,14 +204,46 @@ class VehicleCard extends StatelessWidget {
                         color: Color(0xFF111111),
                       ),
                     ),
-                    if (owned != null) ...[
+                    if (owned != null || likes != null) ...[
                       const SizedBox(height: 5),
-                      Text(
-                        owned,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: Colors.grey.shade500,
-                        ),
+                      Row(
+                        children: [
+                          if (owned != null)
+                            Expanded(
+                              child: Text(
+                                owned,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                            )
+                          else
+                            const Spacer(),
+
+                          // Right-aligned against the owned-since line,
+                          // so the column of counts runs straight down a
+                          // list of cards whatever the dates say.
+                          if (likes != null) ...[
+                            const SizedBox(width: 10),
+                            Icon(
+                              Icons.favorite,
+                              size: 14,
+                              color: theme.primaryColor,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              _formatLikes(likes),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF111111),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ],

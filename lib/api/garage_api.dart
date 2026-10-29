@@ -93,6 +93,113 @@ class GarageAPI {
   /// Returns null when the call failed, which is distinct from a successful
   /// unlike: the caller has to put its optimistic flip back on null and
   /// leave it alone on a real answer.
+  /// Why the last gallery call failed, for the message the user sees.
+  ///
+  /// A field rather than a richer return type because both callers want
+  /// the list on success and a sentence on failure, and threading a
+  /// result record through for one string is more machinery than the
+  /// problem. Set on every exit from the two methods below.
+  static String? lastGalleryError;
+
+  /// Attach already-uploaded Cloudflare images to a vehicle's gallery.
+  ///
+  /// Ids, not bytes. The app uploads straight to Cloudflare — see
+  /// CloudflareImages — so by the time this runs the only thing left is
+  /// recording which ids belong to which vehicle, and a six-photograph
+  /// upload never sits inside one PHP request.
+  ///
+  /// Returns the gallery as the server now has it, or null on failure.
+  static Future<List<Map<String, dynamic>>?> addGalleryImages({
+    required String garageId,
+    required List<String> imageIds,
+  }) async {
+    if (imageIds.isEmpty) return null;
+
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return null;
+
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v2/garage/images'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'garage_id': garageId, 'images': imageIds}),
+      );
+
+      // Logged in full, both ways. A gallery add can fail at four
+      // different points — the route missing, the token rejected, the
+      // body not parsed, the insert refused — and every one of them
+      // used to arrive at the caller as the same null, which is why the
+      // first failure could not be told apart from the others.
+      debugPrint(
+        '[GarageAPI] gallery add -> ${response.statusCode} ${response.body}',
+      );
+
+      if (response.statusCode != 200) {
+        lastGalleryError = 'server said ${response.statusCode}';
+        return null;
+      }
+
+      final body = jsonDecode(response.body);
+
+      if (body is! Map || body['success'] != true) {
+        lastGalleryError = body is Map
+            ? '${body['message'] ?? 'refused'}'
+            : 'unexpected response';
+        return null;
+      }
+
+      lastGalleryError = null;
+
+      return (body['gallery'] as List? ?? const [])
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList();
+    } catch (e) {
+      debugPrint('[GarageAPI] gallery add threw: $e');
+      lastGalleryError = '$e';
+      return null;
+    }
+  }
+
+  /// Remove one photograph from a vehicle's gallery.
+  ///
+  /// By the gallery row's id, not the Cloudflare one — the app never
+  /// sees the latter, and a request naming it could reach the same
+  /// photograph on somebody else's vehicle.
+  static Future<List<Map<String, dynamic>>?> deleteGalleryImage(
+    int imageRowId,
+  ) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return null;
+
+      final response = await http.delete(
+        Uri.parse('$_apiUrl/wp-json/app/v2/garage/images/$imageRowId'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint(
+          '[GarageAPI] gallery delete failed: '
+          '${response.statusCode}',
+        );
+        return null;
+      }
+
+      final body = jsonDecode(response.body);
+      if (body is! Map || body['success'] != true) return null;
+
+      return (body['gallery'] as List? ?? const [])
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList();
+    } catch (e) {
+      debugPrint('[GarageAPI] gallery delete threw: $e');
+      return null;
+    }
+  }
+
   static Future<({bool liked, int likes})?> toggleVehicleLike(
     String garageId,
   ) async {
