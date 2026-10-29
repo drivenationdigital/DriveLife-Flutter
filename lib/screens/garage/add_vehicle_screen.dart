@@ -842,97 +842,108 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         .toList();
 
     return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text(
-                'Gallery',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '$_galleryCount / $_maxGallery',
-                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Swipeable on the vehicle page. The cover above is always '
-            'shown first.',
-            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
-          ),
-          const SizedBox(height: 12),
-
-          SizedBox(
-            height: 86,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final row in existing)
-                  _galleryTile(
-                    child: Image.network(
-                      '${row['url']}',
-                      width: 86,
-                      height: 86,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const ColoredBox(
-                        color: Color(0xFFF0F0F0),
-                        child: Icon(Icons.broken_image, color: Colors.grey),
-                      ),
-                    ),
-                    onRemove: () =>
-                        setState(() => _galleryRemovals.add(row['id'] as int)),
-                  ),
-
-                for (final file in _galleryPicks)
-                  _galleryTile(
-                    child: Image.file(
-                      file,
-                      width: 86,
-                      height: 86,
-                      fit: BoxFit.cover,
-                    ),
-                    isNew: true,
-                    onRemove: () => setState(() => _galleryPicks.remove(file)),
-                  ),
-
-                if (_galleryCount < _maxGallery)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: InkWell(
-                      onTap: _pickGalleryImages,
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        width: 86,
-                        height: 86,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFDDDDDD)),
-                        ),
-                        child: const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.add, color: Colors.grey),
-                            SizedBox(height: 2),
-                            Text(
-                              'Add',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                Expanded(
+                  child: Text(
+                    'Swipeable on the vehicle page. The cover above is '
+                    'always shown first.',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.35,
+                      color: Colors.grey.shade500,
                     ),
                   ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '$_galleryCount / $_maxGallery',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+
+            SizedBox(
+              height: 86,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final row in existing)
+                    _galleryTile(
+                      child: Image.network(
+                        '${row['url']}',
+                        width: 86,
+                        height: 86,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const ColoredBox(
+                          color: Color(0xFFF0F0F0),
+                          child: Icon(Icons.broken_image, color: Colors.grey),
+                        ),
+                      ),
+                      onRemove: () => setState(
+                        () => _galleryRemovals.add(row['id'] as int),
+                      ),
+                    ),
+
+                  for (final file in _galleryPicks)
+                    _galleryTile(
+                      child: Image.file(
+                        file,
+                        width: 86,
+                        height: 86,
+                        fit: BoxFit.cover,
+                      ),
+                      isNew: true,
+                      onRemove: () =>
+                          setState(() => _galleryPicks.remove(file)),
+                    ),
+
+                  if (_galleryCount < _maxGallery)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: InkWell(
+                        onTap: _pickGalleryImages,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          width: 86,
+                          height: 86,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFDDDDDD)),
+                          ),
+                          child: const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add, color: Colors.grey),
+                              SizedBox(height: 2),
+                              Text(
+                                'Add',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1494,6 +1505,8 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                 children: [
                   _sectionTitle('Vehicle Image'),
                   _buildImageSection(),
+
+                  _sectionTitle('Gallery'),
                   _buildGallerySection(),
 
                   _sectionTitle('Ownership Type'),
