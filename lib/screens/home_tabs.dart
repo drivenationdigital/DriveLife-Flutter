@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:drivelife/api/moderation_api.dart';
+import 'package:drivelife/api/points_api.dart';
 import 'package:drivelife/api/notifications_api.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:drivelife/screens/store/shop_screen.dart';
@@ -197,6 +198,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _loadNotificationCount();
+      _loadPoints();
 
       // Messages that arrived while the app was away. The realtime
       // subscription is torn down in the background, so coming back is
@@ -213,6 +215,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     // is re-read on the way back rather than only at launch.
     WidgetsBinding.instance.addObserver(this);
     _loadNotificationCount();
+    _loadPoints();
 
     _buildScreens();
     _reloadUserData();
@@ -380,6 +383,21 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     final count = await NotificationsAPI.getNotificationCount();
     if (!mounted || count == _notificationCount) return;
     setState(() => _notificationCount = count);
+  }
+
+  /// The spendable balance shown in the header.
+  ///
+  /// Zero for everybody today: the endpoints are live but nothing awards
+  /// points yet, so the pill reads 0 rather than being hidden. Showing
+  /// it is what tells somebody the thing exists — a pill that appears
+  /// the first time they earn a point is a feature they never knew was
+  /// coming.
+  int _points = 0;
+
+  Future<void> _loadPoints() async {
+    final mine = await PointsAPI.mine();
+    if (!mounted || mine.current == _points) return;
+    setState(() => _points = mine.current);
   }
 
   /// Whether Discover has ever been opened.
@@ -832,8 +850,28 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     return _Header(
       // Left, not centred. The logo is the app saying where you are; a
       // centred one competes with the section row below it for the eye.
-      title: Image.asset('assets/logo-dark.png', height: 20),
+      //
+      // The flag alone, not the wordmark. The points pill is new and
+      // needs room, and of the two the mark is what identifies the app
+      // — the word "DRIVELIFE" next to it was saying the same thing a
+      // second time.
+      title: SvgPicture.asset('assets/logo-flag-black.svg', height: 26),
       actions: [
+        // Points. Tapping opens the leaderboard.
+        //
+        // First in the row because it is the only one carrying a number
+        // somebody might want to read rather than an action they might
+        // want to take.
+        _PointsPill(
+          points: _points,
+          onTap: () async {
+            await Navigator.pushNamed(context, AppRoutes.points);
+            // Re-read on the way back: the screen itself refreshes, and
+            // a balance that changed there should not be stale up here.
+            await _loadPoints();
+          },
+        ),
+        const SizedBox(width: 8),
         _RoundAction(
           child: iconSvg(
             'assets/app-icons/header-plus.svg',
@@ -1286,6 +1324,13 @@ class _RoundAction extends StatelessWidget {
   final Widget child;
   final VoidCallback onTap;
 
+  /// The size of every round button in the header — and of the points
+  /// pill's height, which reads this rather than repeating it.
+  ///
+  /// It was two hardcoded numbers, 38 here and an implied 40 there, and
+  /// the pill sat two pixels proud of the icons beside it.
+  static const double size = 38;
+
   const _RoundAction({required this.child, required this.onTap});
 
   @override
@@ -1296,7 +1341,11 @@ class _RoundAction extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: SizedBox(width: 38, height: 38, child: Center(child: child)),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Center(child: child),
+        ),
       ),
     );
   }
@@ -1431,5 +1480,82 @@ class _HeaderAccount extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+/// The points balance in the header, as a tappable pill.
+///
+/// Wider than the round buttons beside it because it carries a number,
+/// and a number in a circle either overflows or forces the circle to
+/// grow until it is a pill anyway.
+class _PointsPill extends StatelessWidget {
+  final int points;
+  final VoidCallback onTap;
+
+  const _PointsPill({required this.points, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
+    return Material(
+      color: const Color(0xFFF2F2F2),
+      borderRadius: BorderRadius.circular(22),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          // Exactly as tall as the round buttons next to it. Pills and
+          // circles in a row only look like one set of controls if their
+          // heights agree, and a pill built from padding alone will not
+          // agree by accident.
+          height: _RoundAction.size,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(5, 0, 14, 0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // The star is filled gold on its own disc rather than
+                // outlined in the row: at 14pt an outline next to bold
+                // digits reads as a smudge.
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.star, size: 16, color: Colors.white),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _format(points),
+                  style: const TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF111113),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Thousands separated. The exact figure is the point of showing it —
+  /// "2.1k" hides whether this week moved the number at all.
+  static String _format(int n) {
+    final s = n.toString();
+    final buffer = StringBuffer();
+
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(s[i]);
+    }
+
+    return buffer.toString();
   }
 }

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 210.4 170.4">
+  <!-- Fills are inline, NOT CSS classes in a <style> block.
+       flutter_svg only partially supports CSS selectors, and the
+       Illustrator export this came from put every fill in a
+       <style> block - which rendered the whole logo flat black.
+       If this is ever re-exported from Illustrator, inline the
+       fills again or choose "Presentation Attributes" for the
+       Styling option on export. -->
+  <!-- Generator: Adobe Illustrator 30.0.0, SVG Export Plug-In . SVG Version: 2.1.1 Build 123)  -->
+  <path fill="#1e1e1c" d="M89.3,83.5h39.2c.2,0,.4-.1.4-.3l16.9-39.3c.1-.3,0-.7-.4-.7h-39.5c-.2,0-.4.1-.4.3l-16.6,39.3c-.1.3,0,.7.4.7Z"/>
+  <path fill="#1e1e1c" d="M41,83.2l16.9-39.3c.1-.3,0-.7-.4-.7H18c-.2,0-.4.1-.4.3L.9,82.8c-.1.3,0,.7.4.7h39.2c.2,0,.4-.1.4-.3Z"/>
+  <path fill="#1e1e1c" d="M171.1,85.9h-39.5c-.2,0-.4.1-.4.3l-16.6,39.3c-.1.3,0,.7.4.7h39.2c.2,0,.4-.1.4-.3l16.9-39.3c.1-.3,0-.7-.4-.7Z"/>
+  <path fill="#b2915c" d="M66.9,125.8l16.9-39.3c.1-.3,0-.7-.4-.7h-39.5c-.2,0-.4.1-.4.3l-16.6,39.3c-.1.3,0,.7.4.7h39.2c.2,0,.4-.1.4-.3Z"/>
+  <path fill="#b2915c" d="M109.7,128.5h-39.5c-.2,0-.4.1-.4.3l-16.6,39.3c-.1.3,0,.7.4.7h39.2c.2,0,.4-.1.4-.3l16.9-39.3c.1-.3,0-.7-.4-.7Z"/>
+  <path fill="#b2915c" d="M208.2.6h-39.5c-.2,0-.4.1-.4.3l-16.6,39.3c-.1.3,0,.7.4.7h39.2c.2,0,.4-.1.4-.3L208.6,1.2c.1-.3,0-.7-.4-.7Z"/>
+</svg>

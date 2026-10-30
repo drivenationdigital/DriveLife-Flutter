@@ -430,13 +430,43 @@ class YourWeekPanelState extends State<YourWeekPanel> {
                           ),
                         ),
                         const SizedBox(height: 3),
-                        DlHeading(
+                        // Body face, not the condensed heading one.
+                        //
+                        // A vehicle name is DATA — "Ford Mustang Mach 1
+                        // Auto 5.0L Petrol" — not a title the screen is
+                        // announcing. Condensed capitals made it read as
+                        // a banner and cost it the mixed case that tells
+                        // the trim apart from the model. "YOUR GARAGE"
+                        // above it is the heading here; this is what the
+                        // heading is about.
+                        Text(
                           _vehicleName(vehicle),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          fontSize: 19,
-                          height: 1.15,
-                          color: Colors.white,
+                          style: const TextStyle(
+                            // 15.5 from 17, and w900 from w800.
+                            //
+                            // The hierarchy in this card is carried by
+                            // weight, not size: at 15.5 the name is a
+                            // point above the reminder line under it
+                            // and three above the YOUR GARAGE label, so
+                            // what makes it the thing you read first is
+                            // that it is the heaviest, not the biggest.
+                            // At 17 it was both, which made the card
+                            // feel top-heavy.
+                            //
+                            // w900 is a real weight in DM Sans, not a
+                            // request that falls back — the family ships
+                            // 100 through 900. Asking for a weight a
+                            // family does not have gets you the nearest
+                            // one it does, which here would have been
+                            // w700 and LIGHTER than before.
+                            fontSize: 15.5,
+                            height: 1.25,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.1,
+                            color: Colors.white,
+                          ),
                         ),
                       ],
                     ),

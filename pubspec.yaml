@@ -142,6 +142,8 @@ flutter:
     - assets/splash1.png
     - assets/profile-placeholder.jpg
     - assets/logo-large.png
+    - assets/logo-flag-black.svg
+    - assets/bg-points.jpg
     - assets/video01.mp4
     - assets/svgs/heart.svg
     - assets/svgs/heart_full.svg

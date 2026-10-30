@@ -1,3 +1,4 @@
+import 'package:drivelife/screens/points/points_screen.dart';
 import 'package:drivelife/main.dart';
 import 'package:drivelife/screens/auth/forgot_password_screen.dart';
 import 'package:drivelife/screens/auth/onboarding_screen.dart';
@@ -66,6 +67,7 @@ class AppRoutes {
   static const String viewProfile = '/view-profile';
   static const String postDetail = '/post-detail';
   static const String vehicleDetail = '/vehicle-detail';
+  static const String points = '/points';
 
   static const String editProfile = '/edit-profile';
   static const String manageSocialLinks = '/manage-social-links';
@@ -373,6 +375,8 @@ class AppRoutes {
             highlightCommentId: args['highlightCommentId'],
           ),
         );
+      case points:
+        return _slide(const PointsScreen());
       case vehicleDetail:
         final args = settings.arguments as Map<String, dynamic>;
         return _slide(VehicleDetailScreen(garageId: args['garageId']));
