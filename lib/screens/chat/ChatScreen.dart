@@ -193,6 +193,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (!mounted) return;
 
+    _loadBlockedState();
+
     String convId = widget.conversationId ?? '';
     print(
       convId.isEmpty
@@ -439,6 +441,51 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   /// Report the person on the other end.
+  /// Whether I have blocked the person on the other side of this thread.
+  ///
+  /// Only ever about blocks I made. Whether THEY have blocked me is not
+  /// knowable here and should not be — if it were, the thread could show
+  /// it, and being told you have been blocked is what provokes the next
+  /// account. Their side simply refuses the insert, and the message shows
+  /// as failed.
+  bool _iBlockedThem = false;
+
+  Future<void> _loadBlockedState() async {
+    if (widget.isGroup) return;
+
+    final id = int.tryParse(widget.otherUserId ?? '');
+    if (id == null) return;
+
+    final blocked = await ModerationAPI.blockedIds();
+    if (!mounted || !blocked.contains(id)) return;
+
+    setState(() => _iBlockedThem = true);
+  }
+
+  /// Lift the block from inside the thread.
+  ///
+  /// The same place it is shown, because somebody who has decided to
+  /// undo this should not have to find a settings screen to do it.
+  Future<void> _unblockPerson() async {
+    final id = int.tryParse(widget.otherUserId ?? '');
+    if (id == null) return;
+
+    final ok = await ModerationAPI.unblock(id);
+    if (!mounted) return;
+
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not unblock them. Please try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _iBlockedThem = false);
+  }
+
   Future<void> _reportPerson() async {
     final id = widget.otherUserId;
     if (id == null || id.isEmpty) return;
@@ -468,8 +515,8 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (dialogContext) => AlertDialog(
         title: Text('Block $name?'),
         content: const Text(
-          'They will not be able to message you, and you will stop '
-          'seeing notifications from them. They are not told.',
+          'Neither of you will be able to message the other, and you '
+          'will stop seeing notifications from them. They are not told.',
         ),
         actions: [
           TextButton(
@@ -1201,7 +1248,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
           if (!connecting && _notifier!.refreshing) _refreshingStrip(theme),
 
-          _composer(theme, enabled: !connecting),
+          // A composer that cannot send is worse than no composer: you
+          // type, you tap, and nothing tells you why. So the block
+          // replaces it rather than disabling it.
+          if (_iBlockedThem)
+            _blockedBar()
+          else
+            _composer(theme, enabled: !connecting),
         ],
       ),
     );
@@ -1396,6 +1449,60 @@ class _ChatScreenState extends State<ChatScreen> {
   /// that happens to look similar. It used to be exactly that, and the two
   /// had drifted: the loading one had no send button at all, so the bar
   /// changed shape the moment the connection landed.
+  /// What sits where the composer was, once you have blocked them.
+  ///
+  /// States the consequence in both directions, because "blocked" on its
+  /// own leaves people unsure which way it runs — plenty of users assume
+  /// blocking someone still lets them send one last message.
+  Widget _blockedBar() {
+    final name = otherProfile?.bestName ?? 'this person';
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFFAFAFA),
+        border: Border(top: BorderSide(color: Color(0xFFEFEFEF))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'You blocked $name',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF111111),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Neither of you can message the other.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 6),
+              TextButton(
+                onPressed: _unblockPerson,
+                child: const Text(
+                  'Unblock',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0A66FF),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _composer(ThemeProvider theme, {required bool enabled}) {
     final sending = _notifier?.sending ?? false;
 

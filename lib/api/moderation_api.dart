@@ -48,11 +48,57 @@ class ModerationAPI {
     };
   }
 
-  /// Block somebody. Safe to call when they are already blocked.
-  static Future<bool> block(int userId) => _post('block', {'user_id': userId});
+  /// Who I have blocked, as ids, remembered between calls.
+  ///
+  /// Null until the first load. A Set rather than a List because every
+  /// use of it is a membership test.
+  static Set<int>? _blockedIds;
 
-  static Future<bool> unblock(int userId) =>
-      _post('unblock', {'user_id': userId});
+  /// Block somebody. Safe to call when they are already blocked.
+  ///
+  /// The server records this in WordPress and mirrors it into Supabase,
+  /// which is what stops them sending — see supabase/sql/user-blocks.sql.
+  /// The mirror is what makes a block more than a muted notification.
+  static Future<bool> block(int userId) async {
+    final ok = await _post('block', {'user_id': userId});
+    if (ok) _blockedIds = {...?_blockedIds, userId};
+    return ok;
+  }
+
+  static Future<bool> unblock(int userId) async {
+    final ok = await _post('unblock', {'user_id': userId});
+    if (ok) _blockedIds?.remove(userId);
+    return ok;
+  }
+
+  /// The ids I have blocked.
+  ///
+  /// Cached, because the question "have I blocked this person" is asked
+  /// once per thread opened and the answer changes only when this device
+  /// changes it — block() and unblock() above keep the set in step
+  /// without a round trip.
+  ///
+  /// Only blocks I MADE. Whether somebody has blocked ME is deliberately
+  /// not knowable here: the server does not return it, and a send that
+  /// is refused arrives as a message that failed, which is what every
+  /// other platform shows.
+  static Future<Set<int>> blockedIds({bool refresh = false}) async {
+    final cached = _blockedIds;
+    if (cached != null && !refresh) return cached;
+
+    final rows = await blockedUsers();
+    final ids = rows
+        .map((row) => row['id'] is int ? row['id'] as int : -1)
+        .where((id) => id > 0)
+        .toSet();
+
+    _blockedIds = ids;
+    return ids;
+  }
+
+  /// Forget the cache. Called when the signed-in account changes, since
+  /// one person's blocks are not another's.
+  static void forgetBlocked() => _blockedIds = null;
 
   /// Report something.
   ///

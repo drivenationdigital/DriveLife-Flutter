@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:drivelife/api/moderation_api.dart';
 import 'package:drivelife/api/notifications_api.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:drivelife/screens/store/shop_screen.dart';
@@ -525,6 +526,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     // Clearing first because the token names a user and this runs on
     // every switch.
     SupabaseSession.clear();
+
+    // One account's blocks are not another's, and the cached set is keyed
+    // on nothing — so switching without this shows the previous account's
+    // blocks on the new one's threads.
+    ModerationAPI.forgetBlocked();
 
     SupabaseSession.ensure(accounts).then((ready) {
       if (!mounted || _unreadFor != id || !ready) return;
