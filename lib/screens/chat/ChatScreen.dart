@@ -305,6 +305,24 @@ class _ChatScreenState extends State<ChatScreen> {
   /// True while it is on its way to Cloudflare.
   bool _uploading = false;
 
+  /// Message ids that have already been drawn once.
+  ///
+  /// The entrance animation is for messages that ARRIVE while you are
+  /// looking, not for the backlog that was already there when the thread
+  /// opened.
+  final Set<String> _seen = {};
+
+  /// Whether the opening backlog has been recorded as already seen.
+  bool _seeded = false;
+
+  /// The photograph currently uploading, drawn at the bottom of the
+  /// thread as a real bubble until the server has a URL for it.
+  File? _uploadingImage;
+
+  /// Its caption, so the optimistic bubble reads the way the sent one
+  /// will rather than appearing to lose the text and get it back.
+  String _uploadingCaption = '';
+
   Future<void> _pickImage() async {
     // One, and a photograph. pickImage rather than pickMultiImage
     // because a thread is a sequence of messages, and a batch would
@@ -330,7 +348,20 @@ class _ChatScreenState extends State<ChatScreen> {
     String? url;
 
     if (image != null) {
-      setState(() => _uploading = true);
+      // Into the thread immediately, at the bottom, with a spinner over
+      // it — the same moment the tap happens.
+      //
+      // It used to stay in the composer with the spinner down there
+      // while Cloudflare worked, which on a slow connection looked like
+      // the send had simply not happened: nothing moved, nothing
+      // appeared, and the obvious response is to tap Send again.
+      setState(() {
+        _uploading = true;
+        _uploadingImage = image;
+        _uploadingCaption = text.trim();
+        _pendingImage = null;
+      });
+      _inputController.clear();
 
       url = await CloudflareImages.uploadAndGetUrl(
         bytes: await image.readAsBytes(),
@@ -338,11 +369,18 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       if (!mounted) return;
-      setState(() => _uploading = false);
 
-      // The text stays in the box. Sending it without the photograph
-      // would quietly drop the thing the message was about.
       if (url == null) {
+        // Put it back exactly as it was. Sending the text without the
+        // photograph would quietly drop the thing the message was
+        // about, and losing the caption as well adds insult.
+        setState(() {
+          _uploading = false;
+          _uploadingImage = null;
+          _pendingImage = image;
+        });
+        _inputController.text = text;
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Could not upload that photo.'),
@@ -351,10 +389,14 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         return;
       }
-    }
 
-    _inputController.clear();
-    setState(() => _pendingImage = null);
+      setState(() {
+        _uploading = false;
+        _uploadingImage = null;
+      });
+    } else {
+      _inputController.clear();
+    }
 
     await _notifier?.sendMessage(text, imageUrl: url);
   }
@@ -362,8 +404,21 @@ class _ChatScreenState extends State<ChatScreen> {
   /// The chosen photograph, above the composer, until it is sent.
   Widget _pendingImageStrip() {
     final image = _pendingImage;
-    if (image == null) return const SizedBox.shrink();
 
+    // AnimatedSize around the whole thing, so picking a photo opens the
+    // strip and removing it closes it, instead of the composer jumping
+    // 74 pixels taller between two frames.
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.bottomCenter,
+      child: image == null
+          ? const SizedBox(width: double.infinity)
+          : _pendingImageBody(image),
+    );
+  }
+
+  Widget _pendingImageBody(File image) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
       child: Row(
@@ -1394,21 +1449,48 @@ class _ChatScreenState extends State<ChatScreen> {
     final loading = connecting ? _cachedMessages.isEmpty : _notifier!.loading;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.backgroundColor,
       appBar: _buildAppBar(theme) as PreferredSizeWidget,
       body: Column(
         children: [
           if (!connecting && _notifier!.error != null) _errorBanner(theme),
 
-          Expanded(child: _messageList(theme, messages, loading)),
+          // The refresh indicator FLOATS over the list rather than
+          // sitting in the Column. In the Column it was a real child
+          // with real height, so every background refresh shrank the
+          // list and pushed every message down a few pixels, then let
+          // them spring back — a visible shove on a screen nobody
+          // asked to be interrupted on.
+          //
+          // Overlaid, it costs the layout nothing and the messages do
+          // not move at all.
+          Expanded(
+            child: Stack(
+              children: [
+                _messageList(theme, messages, loading),
 
-          if (!connecting && _notifier!.refreshing) _refreshingStrip(theme),
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  // Without this the pill would eat taps on the top
+                  // message even when it is fully transparent.
+                  child: IgnorePointer(
+                    child: _refreshingPill(
+                      theme,
+                      visible: !connecting && _notifier!.refreshing,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
 
           // A composer that cannot send is worse than no composer: you
           // type, you tap, and nothing tells you why. So the block
           // replaces it rather than disabling it.
           if (_iBlockedThem)
-            _blockedBar()
+            _blockedBar(theme)
           else
             _composer(theme, enabled: !connecting),
         ],
@@ -1430,28 +1512,56 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _refreshingStrip(ThemeProvider theme) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      color: theme.primaryColor.withValues(alpha: 0.06),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 10,
-            height: 10,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: theme.primaryColor,
+  /// "Loading new messages", as a pill that floats over the thread.
+  ///
+  /// Always built, never conditionally inserted — that is the point.
+  /// A widget that appears and disappears changes the layout; one that
+  /// fades and slides in place does not, and the messages behind it stay
+  /// exactly where they were.
+  Widget _refreshingPill(ThemeProvider theme, {required bool visible}) {
+    return AnimatedSlide(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      offset: visible ? Offset.zero : const Offset(0, -1),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: visible ? 1 : 0,
+        child: Center(
+          child: Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: theme.dividerColor),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 10,
+                  height: 10,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: theme.primaryColor,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Loading new messages…',
+                  style: TextStyle(fontSize: 11, color: theme.subtextColor),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            'Loading new messages…',
-            style: TextStyle(fontSize: 11, color: theme.primaryColor),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1499,6 +1609,19 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
+    // Everything already on screen the first time round is NOT new, and
+    // must not animate. Without this, opening a thread plays an entrance
+    // on all fifty messages at once, which looks like a fault rather
+    // than a flourish.
+    if (!_seeded && messages.isNotEmpty) {
+      _seen.addAll(messages.map((m) => m.id));
+      _seeded = true;
+    }
+
+    // The uploading photograph sits at index 0, which in a reversed list
+    // is the bottom — exactly where the message it becomes will land.
+    final pending = _uploadingImage != null ? 1 : 0;
+
     return ListView.builder(
       controller: _scrollController,
       // Newest first: index 0 is the bottom of the screen, so "the message
@@ -1506,8 +1629,13 @@ class _ChatScreenState extends State<ChatScreen> {
       // runs and day separators below reads in those terms.
       reverse: true,
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-      itemCount: messages.length,
-      itemBuilder: (context, i) {
+      itemCount: messages.length + pending,
+      itemBuilder: (context, index) {
+        if (pending == 1 && index == 0) {
+          return _uploadingBubble(theme);
+        }
+
+        final i = index - pending;
         final msg = messages[i];
 
         final at = runPositionAt<ChatMessage>(
@@ -1517,21 +1645,113 @@ class _ChatScreenState extends State<ChatScreen> {
           timeOf: (m) => m.createdAt,
         );
 
+        // Only the first sight of a message animates. ListView.builder
+        // rebuilds an item every time it scrolls back into view, and
+        // without this record a message would play its entrance again
+        // on every pass.
+        final isNew = _seen.add(msg.id);
+
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // First child is the top of the item, and the list is
             // reversed, so this lands above the message it labels.
             if (at.startsDay) _daySeparator(msg.createdAt),
-            _buildBubble(
-              msg,
-              theme,
-              startsRun: at.startsRun,
-              endsRun: at.endsRun,
+            _MessageEntrance(
+              animate: isNew,
+              fromRight: msg.senderId == widget.myUserId,
+              child: _buildBubble(
+                msg,
+                theme,
+                startsRun: at.startsRun,
+                endsRun: at.endsRun,
+              ),
             ),
           ],
         );
       },
+    );
+  }
+
+  /// The photograph that is still uploading, drawn as the message it is
+  /// about to become.
+  ///
+  /// Deliberately the same shape, side and corner radius as a real
+  /// bubble: the point is that nothing jumps when the upload finishes
+  /// and the actual message takes its place.
+  Widget _uploadingBubble(ThemeProvider theme) {
+    final image = _uploadingImage;
+    if (image == null) return const SizedBox.shrink();
+
+    return _MessageEntrance(
+      animate: true,
+      fromRight: true,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(14, 9, 14, 10),
+                decoration: BoxDecoration(
+                  color: theme.primaryColor,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(5),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Image.file(image, width: 220, fit: BoxFit.cover),
+                          // A scrim under the spinner, because a white
+                          // indicator over a white sky is invisible and
+                          // the photograph is whatever the user picked.
+                          Positioned.fill(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.28),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(
+                            width: 26,
+                            height: 26,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_uploadingCaption.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _uploadingCaption,
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          height: 1.35,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1610,7 +1830,7 @@ class _ChatScreenState extends State<ChatScreen> {
   /// States the consequence in both directions, because "blocked" on its
   /// own leaves people unsure which way it runs — plenty of users assume
   /// blocking someone still lets them send one last message.
-  Widget _blockedBar() {
+  Widget _blockedBar(ThemeProvider theme) {
     final name = otherProfile?.bestName ?? 'this person';
 
     return Container(
@@ -1650,12 +1870,14 @@ class _ChatScreenState extends State<ChatScreen> {
               const SizedBox(height: 6),
               TextButton(
                 onPressed: _unblockPerson,
-                child: const Text(
+                child: Text(
                   'Unblock',
+                  // The app's accent, not a blue invented for this one
+                  // button — it was the only 0xFF0A66FF in the codebase.
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF0A66FF),
+                    color: theme.primaryColor,
                   ),
                 ),
               ),
@@ -1752,33 +1974,61 @@ class _ChatScreenState extends State<ChatScreen> {
                   // caption as a message — this button was the only thing
                   // that disagreed, so attaching a photo and sending it on
                   // its own left you with nothing to tap.
-                  if (sending)
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(12, 0, 4, 10),
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  else if (enabled &&
-                      (_inputController.text.trim().isNotEmpty ||
-                          _pendingImage != null))
-                    TextButton(
-                      onPressed: _send,
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(0, 42),
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        foregroundColor: theme.primaryColor,
-                      ),
-                      child: const Text(
-                        'Send',
-                        style: TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w700,
-                        ),
+                  //
+                  // It now grows in rather than appearing between one
+                  // frame and the next. AnimatedSwitcher also means the
+                  // swap to the spinner on send is a crossfade instead
+                  // of a flicker, and the SizeTransition stops the text
+                  // field snapping narrower as it goes.
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    switchInCurve: Curves.easeOutBack,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: SizeTransition(
+                        axis: Axis.horizontal,
+                        sizeFactor: animation,
+                        axisAlignment: -1,
+                        child: ScaleTransition(scale: animation, child: child),
                       ),
                     ),
+                    child: sending
+                        ? const Padding(
+                            key: ValueKey('sending'),
+                            padding: EdgeInsets.fromLTRB(12, 0, 4, 10),
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : (enabled &&
+                              (_inputController.text.trim().isNotEmpty ||
+                                  _pendingImage != null))
+                        ? TextButton(
+                            key: const ValueKey('send'),
+                            onPressed: _send,
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(0, 42),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              foregroundColor: theme.primaryColor,
+                            ),
+                            child: const Text(
+                              'Send',
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          )
+                        // A keyed empty box, so the switcher has
+                        // something to animate OUT to rather than the
+                        // child simply vanishing.
+                        : const SizedBox(key: ValueKey('idle'), height: 42),
+                  ),
                 ],
               ),
             ),
@@ -1791,5 +2041,105 @@ class _ChatScreenState extends State<ChatScreen> {
   String _formatTime(DateTime dt) {
     return '${dt.hour.toString().padLeft(2, '0')}:'
         '${dt.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+/// The way a message arrives.
+///
+/// iOS does not pop a bubble into place: it eases up from under the
+/// composer, growing from slightly small to full size while it fades in.
+/// The whole thing takes about a fifth of a second and the curve
+/// decelerates, which is what makes it read as the message settling
+/// rather than as an animation playing.
+///
+/// [animate] false renders the child directly with no wrapper state and
+/// no controller, so the backlog of a freshly opened thread costs
+/// nothing.
+class _MessageEntrance extends StatefulWidget {
+  final Widget child;
+
+  /// Whether this is the first time the message has been drawn.
+  final bool animate;
+
+  /// Yours comes up the right-hand side, theirs the left. A small
+  /// horizontal offset is most of what sells it as having come FROM the
+  /// composer rather than simply appearing.
+  final bool fromRight;
+
+  const _MessageEntrance({
+    required this.child,
+    required this.animate,
+    required this.fromRight,
+  });
+
+  @override
+  State<_MessageEntrance> createState() => _MessageEntranceState();
+}
+
+class _MessageEntranceState extends State<_MessageEntrance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    duration: const Duration(milliseconds: 260),
+    vsync: this,
+  );
+
+  late final Animation<double> _eased = CurvedAnimation(
+    parent: _controller,
+    // easeOutBack overshoots very slightly, which is the difference
+    // between a bubble that lands and one that slides to a halt.
+    curve: Curves.easeOutCubic,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.animate) {
+      _controller.forward();
+    } else {
+      _controller.value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.animate) return widget.child;
+
+    return AnimatedBuilder(
+      animation: _eased,
+      // Built once and reused: the child does not depend on the
+      // animation, only the transforms wrapped around it do, so
+      // rebuilding it on every frame would be wasted work.
+      child: widget.child,
+      builder: (context, child) {
+        final t = _eased.value;
+
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(
+              (widget.fromRight ? 18 : -18) * (1 - t),
+              14 * (1 - t),
+            ),
+            child: Transform.scale(
+              scale: 0.88 + (0.12 * t),
+              // From the bottom corner it came from, not the middle —
+              // growing from the centre looks like a zoom, growing from
+              // the corner looks like it arrived.
+              alignment: widget.fromRight
+                  ? Alignment.bottomRight
+                  : Alignment.bottomLeft,
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
   }
 }

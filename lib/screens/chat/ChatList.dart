@@ -311,7 +311,7 @@ class InboxScreenState extends State<InboxScreen>
     final theme = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.backgroundColor,
       // Every scroll reports to the shell through this one listener, which
       // is what takes the bottom bar away and brings it back.
       body: NotificationListener<ScrollNotification>(
@@ -463,7 +463,7 @@ class InboxScreenState extends State<InboxScreen>
 
     return Container(
       height: _filterBarHeight,
-      color: Colors.white,
+      color: theme.backgroundColor,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       alignment: Alignment.centerLeft,
       child: Row(

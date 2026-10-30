@@ -303,7 +303,7 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
         : (_profile?.bestName ?? '…');
 
     return Material(
-      color: Colors.white,
+      color: theme.backgroundColor,
       child: InkWell(
         onTap: widget.onTap,
         child: Padding(
