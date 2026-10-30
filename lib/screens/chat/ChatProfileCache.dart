@@ -433,7 +433,9 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
 
     if (concealed) {
       return Text(
-        'Message hidden',
+        lastMsg.hasImage && lastMsg.content.trim().isEmpty
+            ? 'Photo hidden'
+            : 'Message hidden',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         // Italic and grey, matching the deleted-message tombstone: both

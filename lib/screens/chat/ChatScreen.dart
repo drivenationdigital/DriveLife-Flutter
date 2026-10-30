@@ -986,6 +986,29 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Tapping View is deliberately the only way through — no "always
   /// show", because the next flagged message is a different message and
   /// consenting to one is not consenting to all of them.
+  /// The warning line.
+  ///
+  /// Says "photo" when there is nothing but a photo, because "this
+  /// message may contain nudity" over a hidden picture reads as though
+  /// there is text to be found somewhere.
+  ///
+  /// The reason comes from the server when it is the server that flagged
+  /// it. The word list has no reason to give — it knows a word matched,
+  /// not what the message is — so the generic line is the honest one.
+  String _veilText(ChatMessage msg) {
+    final noun = msg.hasImage && msg.content.trim().isEmpty
+        ? 'photo'
+        : 'message';
+
+    final reason = msg.flagReason?.trim();
+
+    if (reason != null && reason.isNotEmpty) {
+      return 'This $noun may contain ${reason.toLowerCase()}';
+    }
+
+    return 'This $noun may contain harsh or inappropriate content';
+  }
+
   Widget _veilContent(ChatMessage msg) {
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 230),
@@ -1004,11 +1027,7 @@ class _ChatScreenState extends State<ChatScreen> {
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
-                  msg.flagReason?.trim().isNotEmpty == true
-                      ? 'This message may contain '
-                            '${msg.flagReason!.trim().toLowerCase()}'
-                      : 'This message may contain harsh or '
-                            'inappropriate content',
+                  _veilText(msg),
                   style: const TextStyle(
                     fontSize: 13.5,
                     height: 1.3,
