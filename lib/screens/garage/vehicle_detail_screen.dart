@@ -32,11 +32,13 @@ import 'package:url_launcher/url_launcher.dart';
 /// other one, and the black belongs to the photographs rather than to
 /// the screen they are on.
 ///
-/// _panel is the dark fill the buttons under the gallery use — the like
-/// pill and the three action chips, which the design draws dark on
-/// white.
+/// It doubles as the label colour on the white buttons under the
+/// gallery, which keeps the page down to one black.
+///
+/// There was a _panel (0xFF161618) here for a dark fill on those
+/// buttons. They are white now, so it went — a named colour nothing
+/// uses is a thing the next person has to decide whether to apply.
 const Color _pageBlack = Color(0xFF0B0B0B);
-const Color _panel = Color(0xFF161618);
 
 /// A light surface for the things further down the white page: the
 /// skeleton's bars, the grid's tiles, the mod cards.
@@ -344,7 +346,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
         icon: Icon(
           liked ? Icons.favorite : Icons.favorite_border,
           size: 19,
-          color: liked ? theme.primaryColor : Colors.white,
+          color: liked ? theme.primaryColor : _pageBlack,
         ),
         // The count, which is the point of the button for everybody
         // except the person tapping it. The label used to be just
@@ -359,19 +361,19 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
           style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700),
         ),
         style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.white,
-          backgroundColor: _panel,
+          foregroundColor: _pageBlack,
+          backgroundColor: Colors.white,
           // Pinned, so the owner's inert button does not grey itself
           // out. It is not disabled in the "try again later" sense —
           // it is a count that happens not to be tappable, and the
           // default disabled styling makes it look broken.
-          disabledForegroundColor: Colors.white,
-          disabledBackgroundColor: _panel,
+          disabledForegroundColor: _pageBlack,
+          disabledBackgroundColor: Colors.white,
           side: BorderSide(
-            // Gold once liked, and otherwise nothing. The pill is a
-            // dark fill on a white page — it already has an edge, and
-            // a light border around it reads as a ring.
-            color: liked ? theme.primaryColor : Colors.transparent,
+            // Gold once liked, and a hairline otherwise. White on white
+            // has no edge of its own, so unlike the dark fill this was
+            // before, it needs the border to read as a button at all.
+            color: liked ? theme.primaryColor : _lightHairline,
           ),
           padding: const EdgeInsets.symmetric(vertical: 13),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -1891,11 +1893,13 @@ class _VehicleAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      // Dark, as drawn. A relight pass turned this light and left the
-      // label white, which made Edit, Upgrades and Reminders invisible —
-      // a fill and the text on it are one decision and have to move
-      // together.
-      color: _panel,
+      // White, with a dark label and a gold icon.
+      //
+      // The fill and the text on it are ONE decision. An earlier relight
+      // moved the fill and left the label white, which made Edit,
+      // Upgrades and Reminders invisible — so the three colours below
+      // change together or not at all.
+      color: Colors.white,
       borderRadius: BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -1903,7 +1907,8 @@ class _VehicleAction extends StatelessWidget {
         child: Container(
           height: 50,
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.transparent),
+            // A white button on a white page has no edge of its own.
+            border: Border.all(color: _lightHairline),
             borderRadius: BorderRadius.circular(12),
           ),
           alignment: Alignment.center,
@@ -1945,7 +1950,7 @@ class _VehicleAction extends StatelessWidget {
                     // instead of 8.
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: _pageBlack,
                   ),
                 ),
               ),
