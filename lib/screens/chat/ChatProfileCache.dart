@@ -14,6 +14,7 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatList.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/services/auth_service.dart';
+import 'package:drivelife/services/content_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
@@ -417,6 +418,34 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
     }
 
     final mine = lastMsg.senderId == widget.myUserId;
+
+    // The same rule the thread and the push notification use, for the
+    // same reason: this line is on screen without anybody choosing to
+    // read it. Covering the bubble and the lock screen while leaving the
+    // text in the inbox would have hidden it everywhere except the one
+    // place you see without opening anything.
+    //
+    // Not for your own messages — you know what you wrote.
+    final concealed =
+        !mine &&
+        !lastMsg.isDeleted &&
+        (lastMsg.isFlagged || ContentFilter.shouldVeil(lastMsg.content));
+
+    if (concealed) {
+      return Text(
+        'Message hidden',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        // Italic and grey, matching the deleted-message tombstone: both
+        // are "there is something here you are not being shown", and the
+        // row should not look like an ordinary unread message.
+        style: style.copyWith(
+          fontStyle: FontStyle.italic,
+          color: Colors.grey.shade500,
+          fontWeight: FontWeight.w400,
+        ),
+      );
+    }
 
     // A photograph sent without a caption has no content, and the row
     // would have shown an empty line where the last message goes —
