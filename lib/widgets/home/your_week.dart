@@ -7,6 +7,7 @@ import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/api/garage_api.dart';
 import 'package:drivelife/api/garage_reminders_service.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/theme/dl_type.dart';
 import 'package:drivelife/routes.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -339,14 +340,13 @@ class YourWeekPanelState extends State<YourWeekPanel> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
-          child: Text(
+          // Condensed and in capitals. The old -0.6 tracking went with
+          // the face change: it was pulling Roboto's wide caps
+          // together, and DlType opens caps back up on its own.
+          child: DlHeading(
             name == null || name.isEmpty ? 'Hey' : 'Hey, $name',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.6,
-              color: theme.textColor,
-            ),
+            fontSize: 28,
+            color: theme.textColor,
           ),
         ),
         Text(
@@ -430,17 +430,13 @@ class YourWeekPanelState extends State<YourWeekPanel> {
                           ),
                         ),
                         const SizedBox(height: 3),
-                        Text(
+                        DlHeading(
                           _vehicleName(vehicle),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 17,
-                            height: 1.2,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.3,
-                            color: Colors.white,
-                          ),
+                          fontSize: 19,
+                          height: 1.15,
+                          color: Colors.white,
                         ),
                       ],
                     ),
@@ -595,14 +591,10 @@ class YourWeekPanelState extends State<YourWeekPanel> {
         Row(
           children: [
             Expanded(
-              child: Text(
+              child: DlHeading(
                 'Events happening soon',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.4,
-                  color: theme.textColor,
-                ),
+                fontSize: 22,
+                color: theme.textColor,
               ),
             ),
             if (widget.onSeeAllEvents != null)

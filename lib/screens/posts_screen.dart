@@ -729,7 +729,7 @@ class _CustomTabBar extends StatelessWidget {
       builder: (context, _) {
         return Container(
           color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(16, 7, 16, 9),
+          padding: const EdgeInsets.fromLTRB(16, 15, 16, 9),
           child: Row(
             children: [
               for (var i = 0; i < tabs.length; i++) ...[
@@ -797,12 +797,17 @@ class _CustomTabBar extends StatelessWidget {
 class _PinnedSelector extends SliverPersistentHeaderDelegate {
   final Widget child;
 
-  /// 44 for the pills, plus the 7/9 padding the selector carries.
+  /// 44 for the pills, plus the 15/9 padding the selector carries.
+  ///
+  /// Was 60, with 7 above the pills. That sat them almost against the
+  /// section tabs above, so the two rows of navigation ran together
+  /// instead of reading as separate choices — which section of Home,
+  /// then which feed within it.
   ///
   /// Declared, not measured: a persistent header has to know its extent
   /// before layout, so this and the selector's own sizes have to agree by
   /// hand. Change one and change the other.
-  static const double _height = 60;
+  static const double _height = 68;
 
   const _PinnedSelector({required this.child});
 

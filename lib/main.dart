@@ -1,4 +1,5 @@
 import 'package:drivelife/providers/cart_provider.dart';
+import 'package:drivelife/theme/dl_type.dart';
 import 'package:drivelife/utils/crash_trace.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/registration_provider.dart';
@@ -267,9 +268,22 @@ class _MyAppState extends State<MyApp> {
           debugShowCheckedModeBanner: false,
           theme: themeProvider.themeData.copyWith(
             scaffoldBackgroundColor: Colors.white,
-            // textTheme: GoogleFonts.leagueSpartanTextTheme(
-            //   Theme.of(context).textTheme,
-            // ),
+            // DM Sans for body, Barlow Condensed for headings.
+            //
+            // This line is what makes DM Sans the default family: every
+            // inline TextStyle in the app inherits its family from the
+            // ambient DefaultTextStyle, which Material builds from
+            // bodyMedium. Headings have to ask for Barlow Condensed
+            // explicitly — see DlType.
+            //
+            // Replaces a commented-out League Spartan theme that was
+            // never switched on, which is why the app has been
+            // rendering in the platform default all along.
+            textTheme: DlType.textTheme(themeProvider.themeData.textTheme),
+            // Tab labels are body type, not headings. Set here rather
+            // than left to fall back through titleSmall — see the note
+            // on DlType.tabBarTheme.
+            tabBarTheme: DlType.tabBarTheme(),
             pageTransitionsTheme: const PageTransitionsTheme(
               builders: {
                 TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),

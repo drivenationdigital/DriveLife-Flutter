@@ -35,11 +35,16 @@ class DlTopTabs extends StatefulWidget {
   /// Fixed, and declared rather than measured.
   ///
   /// The row rides in a sliver header, which has to know its extent before
-  /// it is laid out. 5 top padding + 7/9 around a 34 chip + 1 divider.
+  /// it is laid out. 13 top padding + 7/9 around a 34 chip + 1 divider.
   ///
-  /// Trimmed from 64. Six points off every screen that carries it, and the
-  /// chips still clear a 44pt touch target with the row's own padding.
-  static const double height = 56;
+  /// Was 56, with 5 above the chips. That put the tab row almost against
+  /// the logo and the header buttons, so the two read as one crowded
+  /// block instead of a header and the navigation under it. The 8 points
+  /// back is the smallest gap that separates them.
+  ///
+  /// Declared, not measured, so this and the padding below have to agree
+  /// by hand. Change one and change the other.
+  static const double height = 64;
 
   final List<DlTopTab> tabs;
   final int currentIndex;
@@ -122,7 +127,7 @@ class _DlTopTabsState extends State<DlTopTabs> {
           SingleChildScrollView(
             controller: _scroll,
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(14, 5, 14, 0),
+            padding: const EdgeInsets.fromLTRB(14, 13, 14, 0),
             child: Row(
               children: [
                 for (var i = 0; i < widget.tabs.length; i++)

@@ -2,6 +2,7 @@ import 'package:drivelife/widgets/media/tagged_photos_grid.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/garage_reminders_service.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/theme/dl_type.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
@@ -797,19 +798,24 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                // Up, not down: the V of "Vauxhall Insignia" measures a
+                // 25pt cap on the mockup, which is a 35pt face. This is
+                // the one piece of type on these screens the app was
+                // drawing too small.
+                //
+                // The size survives the switch to Barlow Condensed
+                // because that measurement was of a CAP, and Barlow
+                // Condensed's cap height (~0.72em) is within a percent
+                // of Roboto's 0.711. What did not survive is the -0.8
+                // tracking: it was pulling Roboto's wide caps together,
+                // and caps in a condensed face need opening up, not
+                // closing further. DlType handles that.
+                DlHeading(
                   name.isEmpty ? 'Vehicle' : name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    // Up, not down: the V of "Vauxhall Insignia" measures a
-                    // 25pt cap on the mockup, which is a 35pt face. This is
-                    // the one piece of type on these screens the app was
-                    // drawing too small.
-                    fontSize: 35,
-                    height: 1.05,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.8,
-                  ),
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  fontSize: 35,
+                  height: 1.05,
                 ),
 
                 const SizedBox(height: 10),
