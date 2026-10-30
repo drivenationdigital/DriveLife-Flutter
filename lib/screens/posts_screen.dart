@@ -1,3 +1,6 @@
+import 'package:drivelife/main.dart' show BottomNavProvider;
+import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/widgets/home/your_week.dart';
 import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
 import 'package:flutter/rendering.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
@@ -5,7 +8,6 @@ import 'package:drivelife/api/offers_api_service.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
-import 'package:drivelife/widgets/feed/hot_right_now.dart';
 import 'package:drivelife/widgets/feed/offers_banner.dart';
 import 'package:drivelife/widgets/upload_progress_card.dart';
 import 'package:flutter/material.dart';
@@ -65,17 +67,17 @@ class PostsScreenState extends State<PostsScreen>
 
   /// The feeds on offer, in the order they appear.
   ///
-  /// Featured is hidden rather than removed: the tab, its fetch and its
-  /// backend are all intact, and putting [PostTabType.forYou] back in this
-  /// list is the only change needed to bring it back.
+  /// [PostTabType.yourWeek] leads, and is not a feed at all — it is the
+  /// standing summary in YourWeekPanel. Posts are in Latest and
+  /// Following, which keep working exactly as they did.
   ///
-  /// The selector, the TabController's length and the TabBarView's children
-  /// all read this, so none of them can disagree about how many tabs there
+  /// The selector, the TabController's length and the slivers below all
+  /// read this, so none of them can disagree about how many tabs there
   /// are — which is the usual way a hidden tab turns into a crash.
   static const List<PostTabType> _visibleTabs = [
+    PostTabType.yourWeek,
     PostTabType.latest,
     PostTabType.following,
-    // PostTabType.forYou,
   ];
 
   /// The feed's scroll, now that there is only one of them.
@@ -86,7 +88,14 @@ class PostsScreenState extends State<PostsScreen>
   /// when only the posts should have.
   final ScrollController _scroll = ScrollController();
 
-  final GlobalKey<_PostsTabState> _forYouKey = GlobalKey<_PostsTabState>();
+  /// Your week is a panel, not a feed, so it has its own key type. It is
+  /// never a _PostsTab, which is why _keyFor still answers for it but
+  /// _activeTab resolves to null while it is showing — nothing on this
+  /// screen should try to page or fetch posts for it.
+  final GlobalKey<YourWeekPanelState> _yourWeekPanelKey =
+      GlobalKey<YourWeekPanelState>();
+
+  final GlobalKey<_PostsTabState> _yourWeekKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _latestKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _followingKey = GlobalKey<_PostsTabState>();
 
@@ -129,13 +138,50 @@ class PostsScreenState extends State<PostsScreen>
         curve: Curves.easeOut,
       );
     }
+    // Your week has no _PostsTab, so _activeTab is null while it shows
+    // and the line below would quietly do nothing. It has its own
+    // reload, and pulling down on it should run it.
+    if (_visibleTabs[_tabController.index] == PostTabType.yourWeek) {
+      await _yourWeekPanelKey.currentState?.refresh();
+      return;
+    }
+
     await _activeTab?.refresh();
+  }
+
+  /// The summary panel, with whatever it needs about the signed-in user.
+  ///
+  /// Read from UserProvider rather than passed down: this screen is built
+  /// by the shell before the profile has necessarily loaded, and the
+  /// provider is the thing that rebuilds when it does.
+  Widget _yourWeekSliver() {
+    final user = context.watch<UserProvider>().user;
+
+    if (user == null) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    return YourWeekPanel(
+      key: _yourWeekPanelKey,
+      userId: user.id,
+      // The greeting is a hello, not a formal address — "Hey, Mark",
+      // never "Hey, Mark Jenkins".
+      firstName: user.firstName,
+      // The events endpoint returns coordinates but no distance, so the
+      // panel works it out from here.
+      from: user.lastLocation,
+      // 1 is Events in _homeTabs. Going through the provider rather than
+      // reaching for the shell is what lets anything in the app send the
+      // user to a section by name.
+      onSeeAllEvents: () =>
+          context.read<BottomNavProvider>().openHomeSection(1),
+    );
   }
 
   GlobalKey<_PostsTabState> _keyFor(PostTabType type) => switch (type) {
     PostTabType.latest => _latestKey,
     PostTabType.following => _followingKey,
-    PostTabType.forYou => _forYouKey,
+    PostTabType.yourWeek => _yourWeekKey,
   };
 
   GlobalKey<_PostsTabState> _getCurrentTabKey() {
@@ -229,9 +275,15 @@ class PostsScreenState extends State<PostsScreen>
                 ),
               ),
 
-            // Scrolls away: a standing recommendation, not navigation, so it
-            // should not hold the top of the screen for ever.
-            const SliverToBoxAdapter(child: HotRightNow()),
+            // Hidden, not deleted. The row of Find Events / Popular
+            // Venues / Discover Groups / Your Garage cards was a
+            // standing recommendation built on placeholder data, and
+            // Your week now does the same job with real data.
+            //
+            // widgets/feed/hot_right_now.dart is untouched. To restore
+            // it, import HotRightNow and put this line back:
+            //
+            //   const SliverToBoxAdapter(child: HotRightNow()),
 
             // Pins. This one IS navigation — losing it mid-feed would mean
             // scrolling back to the top to change feed.
@@ -250,7 +302,9 @@ class PostsScreenState extends State<PostsScreen>
               if (_opened.contains(type))
                 SliverOffstage(
                   offstage: type != active,
-                  sliver: _PostsTab(key: _keyFor(type), tabType: type),
+                  sliver: type == PostTabType.yourWeek
+                      ? _yourWeekSliver()
+                      : _PostsTab(key: _keyFor(type), tabType: type),
                 ),
           ],
         ),
@@ -259,10 +313,14 @@ class PostsScreenState extends State<PostsScreen>
   }
 }
 
-/// [forYou] is the curated tab: hand-picked featured posts plus news items,
-/// ordered by the backend. [latest] and [following] remain the chronological
-/// feeds they always were.
-enum PostTabType { forYou, latest, following }
+/// [yourWeek] is NOT a feed. It is the standing summary — your vehicle,
+/// its next reminder, the events near you — and it renders YourWeekPanel
+/// rather than a _PostsTab. It replaced the old curated "Featured" feed,
+/// which shared this slot.
+///
+/// [latest] and [following] remain the chronological feeds they always
+/// were, and are the only two that fetch posts.
+enum PostTabType { yourWeek, latest, following }
 
 /// One feed's worth of posts, as slivers.
 ///
@@ -380,10 +438,10 @@ class _PostsTabState extends State<_PostsTab> {
         followingOnly = 1;
         forYou = 0;
         break;
-      case PostTabType.forYou:
-        followingOnly = 0;
-        forYou = 1;
-        break;
+      // No yourWeek case either. The curated for_you=1 fetch that used
+      // to live here went with the Featured tab; the slot now renders
+      // YourWeekPanel and never reaches this method. The backend
+      // parameter still exists if that feed is ever wanted back.
       default:
         followingOnly = 0;
         forYou = 0;
@@ -626,8 +684,8 @@ class _PostsTabState extends State<_PostsTab> {
     switch (widget.tabType) {
       case PostTabType.following:
         return 'No posts from people you follow';
-      case PostTabType.forYou:
-        return 'Nothing featured right now';
+      // No yourWeek case: a _PostsTab is never built for it. That tab
+      // renders YourWeekPanel, which has no posts to be empty of.
       default:
         return 'No posts yet';
     }
@@ -661,7 +719,7 @@ class _CustomTabBar extends StatelessWidget {
   static const Map<PostTabType, String> _labels = {
     PostTabType.latest: 'Latest',
     PostTabType.following: 'Following',
-    PostTabType.forYou: 'Featured',
+    PostTabType.yourWeek: 'Your week',
   };
 
   @override
@@ -700,7 +758,9 @@ class _CustomTabBar extends StatelessWidget {
       child: AnimatedContainer(
         duration: duration,
         curve: curve,
-        height: 38,
+        // 44, from 38. Also the iOS minimum tap target, which these
+        // were four pixels under.
+        height: 44,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           // Filled when selected, outlined when not. The border stays on the
@@ -737,12 +797,12 @@ class _CustomTabBar extends StatelessWidget {
 class _PinnedSelector extends SliverPersistentHeaderDelegate {
   final Widget child;
 
-  /// 38 for the pills, plus the 7/9 padding the selector carries.
+  /// 44 for the pills, plus the 7/9 padding the selector carries.
   ///
   /// Declared, not measured: a persistent header has to know its extent
   /// before layout, so this and the selector's own sizes have to agree by
   /// hand. Change one and change the other.
-  static const double _height = 54;
+  static const double _height = 60;
 
   const _PinnedSelector({required this.child});
 
