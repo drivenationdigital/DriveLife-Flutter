@@ -53,12 +53,14 @@ void main() {
     }
   });
 
-  group('casual swearing is mild, and is not veiled', () {
+  group('swearing ABOUT something is mild, and is not veiled', () {
     const casual = [
       'That build is absolutely fucking incredible',
       'Shit, I forgot the meet was today',
       'Bloody hell that is quick',
       'The gearbox is knackered, what a bastard of a job',
+      'the weather was shit all weekend',
+      'that respray cost a bloody fortune',
     ];
 
     for (final message in casual) {
@@ -71,6 +73,60 @@ void main() {
         );
       });
     }
+
+    test('a pronoun near an INTENSIFIER is still not aimed', () {
+      // The case the window width was chosen for. "you are fucking
+      // quick" is a compliment with a "you" in it, and a naive
+      // pronoun-proximity rule veils it.
+      expect(
+        ContentFilter.inspect('you are fucking quick mate'),
+        ContentFlag.mild,
+      );
+      expect(ContentFilter.shouldVeil('your car is fucking lovely'), isFalse);
+    });
+  });
+
+  group('swearing AIMED at the reader is veiled', () {
+    const aimed = [
+      'fuck you',
+      'fuck off',
+      'you asshole',
+      'youre an asshole',
+      'you prick',
+      'shut the fuck up',
+      'what a twat you are',
+    ];
+
+    for (final message in aimed) {
+      test('"$message"', () {
+        expect(ContentFilter.inspect(message), ContentFlag.aimed);
+        expect(ContentFilter.shouldVeil(message), isTrue);
+      });
+    }
+
+    test('a message that is only an epithet needs no pronoun', () {
+      // Sent on its own, there is nobody else it could be about. This is
+      // the case the pronoun rule cannot see, and the one most likely to
+      // actually arrive.
+      for (final message in ['asshole', 'prick', 'twat', 'dickhead']) {
+        expect(
+          ContentFilter.shouldVeil(message),
+          isTrue,
+          reason: '"$message" alone is addressed to the reader',
+        );
+      }
+    });
+
+    test('but a bare intensifier is exasperation, not an insult', () {
+      expect(ContentFilter.shouldVeil('fuck'), isFalse);
+      expect(ContentFilter.shouldVeil('shit'), isFalse);
+    });
+
+    test('the pair that shares a word and nothing else', () {
+      // The whole point of the split, side by side.
+      expect(ContentFilter.shouldVeil('fuck you'), isTrue);
+      expect(ContentFilter.shouldVeil('fucking quick'), isFalse);
+    });
   });
 
   group('spamming curse words escalates', () {

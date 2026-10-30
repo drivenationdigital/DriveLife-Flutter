@@ -22,8 +22,15 @@ enum ContentFlag {
   /// Nothing matched.
   none,
 
-  /// Casual swearing. NOT veiled — see [ContentFilter.shouldVeil].
+  /// Casual swearing about a thing, a situation or nobody in
+  /// particular. NOT veiled — see [ContentFilter.shouldVeil].
   mild,
+
+  /// Casual swearing pointed at the person reading it. Veiled.
+  ///
+  /// The distinction this whole file exists to draw: "that build is
+  /// fucking quick" and "fuck you" share a word and share nothing else.
+  aimed,
 
   /// Slurs, sexual aggression, threats. Veiled.
   strong,
@@ -33,25 +40,22 @@ enum ContentFlag {
 class ContentFilter {
   const ContentFilter._();
 
-  /// Casual profanity.
+  /// Casual profanity used as an INTENSIFIER — about a car, a job, a
+  /// situation, the weather.
   ///
-  /// Deliberately NOT veiled on its own. This is a car enthusiast app and
-  /// "that thing is absolutely mental, sounds f***ing incredible" is a
-  /// compliment in the register the community actually speaks. Veiling it
-  /// would put a warning on ordinary conversation, and a warning people
-  /// tap through fifty times a day is one they will also tap through on
-  /// the message that mattered.
+  /// Never veiled on its own. "that thing is absolutely mental, sounds
+  /// f***ing incredible" is a compliment in the register this community
+  /// actually speaks, and a warning that fires on it is a warning people
+  /// learn to tap straight through.
   ///
-  /// Kept and scored because repetition is still a signal — see
-  /// [inspect].
-  static const Set<String> _mild = {
+  /// Still counted, because repetition is its own signal — see [inspect].
+  static const Set<String> _mildIntensifier = {
     'fuck',
     'fucking',
     'fucked',
-    'fucker',
+    'fuckin',
     'fuk',
     'fck',
-    'fuckin',
     'shit',
     'shite',
     'shitty',
@@ -62,28 +66,96 @@ class ContentFilter {
     'crap',
     'bollocks',
     'bugger',
-    'arse',
-    'arsehole',
-    'ass',
-    'asshole',
     'arsed',
     'damn',
     'goddamn',
     'bloody',
-    'wanker',
     'wank',
+  };
+
+  /// Casual profanity that NAMES A PERSON.
+  ///
+  /// Split out from the intensifiers because the grammar carries the
+  /// intent. An intensifier describes a thing; one of these is something
+  /// you call somebody. Near a "you" it is an insult aimed at the reader,
+  /// which is the case this list exists to catch.
+  ///
+  /// It still needs the pronoun to qualify: "what a bastard of a job" is
+  /// about a gearbox, and nothing here should veil it.
+  static const Set<String> _mildEpithet = {
+    'asshole',
+    'arsehole',
+    'arse',
+    'ass',
     'prick',
-    'git',
+    'twat',
+    'wanker',
+    'tosser',
     'knob',
     'knobhead',
-    'tosser',
-    'twat',
+    'dickhead',
+    'dick',
     'bastard',
     'bitch',
     'btch',
     'bitches',
     'slag',
+    'git',
+    'fucker',
+    'idiot',
+    'moron',
+    'scumbag',
   };
+
+  /// Second-person pronouns: the marker that turns swearing into an
+  /// insult. Normalised forms, so apostrophes are already gone.
+  static const Set<String> _secondPerson = {
+    'you',
+    'u',
+    'ur',
+    'your',
+    'youre',
+    'yours',
+    'yourself',
+    'urself',
+    'ya',
+    'yall',
+    'thou',
+  };
+
+  /// Phrases that are aimed by construction, whatever is around them.
+  ///
+  /// A pronoun-distance rule alone misses these: "fuck off" has no
+  /// pronoun in it at all, and is unambiguously directed at whoever is
+  /// reading.
+  static const List<String> _aimedPhrases = [
+    'fuck you',
+    'fuck u',
+    'fuck ya',
+    'fuck yourself',
+    'fuck off',
+    'fuck of',
+    'get fucked',
+    'piss off',
+    'sod off',
+    'screw you',
+    'screw u',
+    'up yours',
+    'shut the fuck up',
+    'stfu',
+    'do one',
+  ];
+
+  /// How many tokens may sit between a pronoun and an epithet.
+  ///
+  /// Two, which reaches "youre an asshole" and stops short of "you are
+  /// fucking quick". Widening it starts veiling compliments; narrowing it
+  /// misses the commonest phrasing of the insult. This number is the
+  /// whole heuristic, so it is named rather than buried in the loop.
+  static const int _aimWindow = 2;
+
+  /// The old combined list, kept as the union for counting purposes.
+  static Set<String> get _mild => {..._mildIntensifier, ..._mildEpithet};
 
   /// Slurs, sexual aggression, and threats.
   ///
@@ -244,14 +316,66 @@ class ContentFilter {
     // and the difference is the count rather than the vocabulary.
     if (mildCount >= 4) return ContentFlag.strong;
 
-    return ContentFlag.mild;
+    return _isAimed(tokens, flattened) ? ContentFlag.aimed : ContentFlag.mild;
+  }
+
+  /// Whether the swearing in this message is pointed at the reader.
+  ///
+  /// Two signals, and both are heuristics rather than grammar. Said
+  /// plainly because the limits matter: this will veil the occasional
+  /// message that was only ever friendly, and let through cruelty that
+  /// never says "you". It is a good deal better than treating "fuck you"
+  /// and "fucking quick" as the same thing, which is the alternative.
+  static bool _isAimed(List<String> tokens, String flattened) {
+    // 1. Phrases that are directed by construction. "fuck off" has no
+    //    pronoun in it and is not ambiguous.
+    for (final phrase in _aimedPhrases) {
+      if (flattened.contains(phrase)) return true;
+    }
+
+    // 2. A message that is nothing BUT words for a person. Someone who
+    //    sends you "asshole" and nothing else has not left open the
+    //    question of who they meant, and there is no pronoun for rule 3
+    //    to anchor to.
+    //
+    //    Epithets only, deliberately. A message that is just "fuck" or
+    //    just "shit" is exasperation at a situation, and veiling it
+    //    would be exactly the over-firing this split exists to avoid.
+    if (tokens.isNotEmpty &&
+        tokens.every((token) => _matchesList(token, _mildEpithet))) {
+      return true;
+    }
+
+    // 3. A word that names a person, close to a word that means the
+    //    reader. "you asshole" and "youre an asshole" qualify; "what a
+    //    bastard of a job" has no pronoun and does not.
+    //
+    //    Distance is measured in both directions because English puts
+    //    the pronoun on either side — "you prick" and "prick, are you
+    //    serious" are both aimed.
+    for (var i = 0; i < tokens.length; i++) {
+      if (!_matchesList(tokens[i], _mildEpithet)) continue;
+
+      final from = (i - _aimWindow).clamp(0, tokens.length);
+      final to = (i + _aimWindow + 1).clamp(0, tokens.length);
+
+      for (var j = from; j < to; j++) {
+        if (j != i && _secondPerson.contains(tokens[j])) return true;
+      }
+    }
+
+    return false;
   }
 
   /// Whether to put the message behind a warning.
   ///
-  /// Only [ContentFlag.strong]. See the note on [_mild] for why casual
-  /// swearing does not qualify: a warning that fires constantly is a
-  /// warning nobody reads.
-  static bool shouldVeil(String content) =>
-      inspect(content) == ContentFlag.strong;
+  /// [ContentFlag.aimed] and [ContentFlag.strong]. Swearing ABOUT
+  /// something stays visible — see [_mildIntensifier] — because a
+  /// warning that fires on ordinary conversation is one people learn to
+  /// tap through, and then it is not protecting anybody from the message
+  /// that mattered.
+  static bool shouldVeil(String content) {
+    final flag = inspect(content);
+    return flag == ContentFlag.aimed || flag == ContentFlag.strong;
+  }
 }
