@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
+import 'package:drivelife/services/revealed_messages.dart';
 import 'package:drivelife/services/supabase_session.dart';
 import 'package:drivelife/screens/chat/inbox_filter.dart';
 import 'package:drivelife/screens/chat/ChatScreen.dart';
@@ -188,6 +189,14 @@ class InboxScreenState extends State<InboxScreen>
     });
 
     notifier.initialize();
+
+    // Warm the revealed-message set so the rows can read it without
+    // awaiting. Until this lands cachedFor() is empty, which means a
+    // message already viewed would show as hidden in the list for the
+    // first moment after launch.
+    RevealedMessages.forUser(widget.myUserId).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override

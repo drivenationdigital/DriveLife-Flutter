@@ -15,6 +15,7 @@ import 'package:drivelife/screens/chat/ChatList.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/content_filter.dart';
+import 'package:drivelife/services/revealed_messages.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
@@ -429,6 +430,7 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
     final concealed =
         !mine &&
         !lastMsg.isDeleted &&
+        !RevealedMessages.cachedFor(widget.myUserId).contains(lastMsg.id) &&
         (lastMsg.isFlagged || ContentFilter.shouldVeil(lastMsg.content));
 
     if (concealed) {

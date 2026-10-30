@@ -11,6 +11,7 @@ import 'package:drivelife/widgets/moderation/report_sheet.dart';
 import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/services/content_filter.dart';
+import 'package:drivelife/services/revealed_messages.dart';
 import 'package:drivelife/services/supabase_session.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
@@ -196,6 +197,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _loadBlockedState();
 
+    // Before the first messages arrive, so a message revealed earlier
+    // does not flash its warning while the set is still on disk.
+    _loadRevealed();
+
     String convId = widget.conversationId ?? '';
     print(
       convId.isEmpty
@@ -276,10 +281,26 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// Messages whose warning the reader has chosen to look past.
   ///
-  /// Per screen and not persisted on purpose. Reopening the thread puts
-  /// the warning back, so a message somebody revealed once does not stay
-  /// uncovered on a phone they hand to someone else.
-  final Set<String> _revealed = {};
+  /// Persisted per account — see [RevealedMessages]. Held here as well
+  /// so build() can test membership without awaiting disk.
+  Set<String> _revealed = const {};
+
+  /// Remember a reveal, and redraw.
+  ///
+  /// The set is replaced rather than mutated because it may be the
+  /// const empty one from the cache, and because assigning a new set
+  /// inside setState is what makes the rebuild honest.
+  Future<void> _reveal(ChatMessage msg) async {
+    setState(() => _revealed = {..._revealed, msg.id});
+    await RevealedMessages.add(widget.myUserId, msg.id);
+  }
+
+  Future<void> _loadRevealed() async {
+    final revealed = await RevealedMessages.forUser(widget.myUserId);
+    if (!mounted) return;
+
+    setState(() => _revealed = revealed);
+  }
 
   /// True while it is on its way to Cloudflare.
   bool _uploading = false;
@@ -1047,7 +1068,7 @@ class _ChatScreenState extends State<ChatScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               TextButton(
-                onPressed: () => setState(() => _revealed.add(msg.id)),
+                onPressed: () => _reveal(msg),
                 style: TextButton.styleFrom(
                   minimumSize: const Size(0, 32),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
