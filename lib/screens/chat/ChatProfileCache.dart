@@ -418,8 +418,16 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
 
     final mine = lastMsg.senderId == widget.myUserId;
 
+    // A photograph sent without a caption has no content, and the row
+    // would have shown an empty line where the last message goes —
+    // which reads as a conversation that has gone quiet rather than one
+    // with a new picture in it.
+    final body = lastMsg.content.trim().isEmpty && lastMsg.hasImage
+        ? '📷 Photo'
+        : lastMsg.content;
+
     return Text(
-      mine ? 'You: ${lastMsg.content}' : lastMsg.content,
+      mine ? 'You: $body' : body,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: style,

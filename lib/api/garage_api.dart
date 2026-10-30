@@ -163,6 +163,111 @@ class GarageAPI {
     }
   }
 
+  /// Set the order of a vehicle's photographs.
+  ///
+  /// [order] is the stored value of each photograph — what the API
+  /// calls `image` — first one first. The server makes the first one
+  /// the cover and the rest the gallery, which is why there is no
+  /// separate "make this the cover": that is a reorder.
+  ///
+  /// Returns the photo list as the server now has it, or null.
+  static Future<List<Map<String, dynamic>>?> setGalleryOrder({
+    required String garageId,
+    required List<String> order,
+  }) async {
+    if (order.isEmpty) return null;
+
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return null;
+
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v2/garage/images/order'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'garage_id': garageId, 'order': order}),
+      );
+
+      debugPrint(
+        '[GarageAPI] gallery order -> ${response.statusCode} '
+        '${response.body}',
+      );
+
+      if (response.statusCode != 200) {
+        lastGalleryError = 'server said ${response.statusCode}';
+        return null;
+      }
+
+      final body = jsonDecode(response.body);
+      if (body is! Map || body['success'] != true) {
+        lastGalleryError = body is Map ? '${body['message']}' : 'refused';
+        return null;
+      }
+
+      lastGalleryError = null;
+
+      return (body['gallery'] as List? ?? const [])
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList();
+    } catch (e) {
+      debugPrint('[GarageAPI] gallery order threw: $e');
+      lastGalleryError = '$e';
+      return null;
+    }
+  }
+
+  /// Remove one photograph, wherever it is kept.
+  ///
+  /// By its stored value rather than a row id, because the cover has no
+  /// row — it lives in a column on the vehicle. The server works out
+  /// which it is and promotes the next photograph if the cover goes.
+  static Future<List<Map<String, dynamic>>?> removeGalleryPhoto({
+    required String garageId,
+    required String image,
+  }) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return null;
+
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v2/garage/images/remove'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'garage_id': garageId, 'image': image}),
+      );
+
+      debugPrint(
+        '[GarageAPI] gallery remove -> ${response.statusCode} '
+        '${response.body}',
+      );
+
+      if (response.statusCode != 200) {
+        lastGalleryError = 'server said ${response.statusCode}';
+        return null;
+      }
+
+      final body = jsonDecode(response.body);
+      if (body is! Map || body['success'] != true) {
+        lastGalleryError = body is Map ? '${body['message']}' : 'refused';
+        return null;
+      }
+
+      lastGalleryError = null;
+
+      return (body['gallery'] as List? ?? const [])
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList();
+    } catch (e) {
+      debugPrint('[GarageAPI] gallery remove threw: $e');
+      lastGalleryError = '$e';
+      return null;
+    }
+  }
+
   /// Remove one photograph from a vehicle's gallery.
   ///
   /// By the gallery row's id, not the Cloudflare one — the app never

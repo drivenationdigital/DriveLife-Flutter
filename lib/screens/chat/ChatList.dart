@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
+import 'package:drivelife/services/supabase_session.dart';
 import 'package:drivelife/screens/chat/inbox_filter.dart';
 import 'package:drivelife/screens/chat/ChatScreen.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
@@ -136,14 +137,22 @@ class InboxScreenState extends State<InboxScreen>
     }
 
     try {
-      // main() does this at launch, inside its own try. Repeated here
-      // because that attempt can fail -- and if it did, every single thing
-      // on this screen throws "you must initialize the supabase instance",
-      // including the field initialisers on InboxNotifier. Calling it twice
-      // is safe; SupabaseConfig.initialize returns early when it has run.
-      await SupabaseConfig.initialize();
+      // SupabaseSession handles both halves — initialise, then apply
+      // this account's token — and is idempotent, so this is a check
+      // rather than a second exchange when the shell has already done
+      // it.
+      //
+      // This screen used to be the ONLY thing that applied the token,
+      // which was invisible while the inbox was a Home section built at
+      // launch. It is a pushed screen now, so the shell establishes the
+      // session and this confirms it.
+      final ready = await SupabaseSession.ensure(
+        Provider.of<AccountManager>(context, listen: false),
+      );
 
-      await SupabaseTokenManager.fetchAndStore(account.token);
+      if (!ready) {
+        throw Exception('could not sign in to messaging');
+      }
     } catch (e, stack) {
       // Logged as well as shown. The banner has to stay short enough to
       // read, and the thing that actually tells you what broke -- a type

@@ -13,6 +13,8 @@ import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/pending_tags_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/services/supabase_session.dart';
+import 'package:drivelife/services/unread_messages_watcher.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/auth/entity_switcher.dart';
@@ -184,6 +186,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _unread?.dispose();
     _chrome.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -193,6 +196,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _loadNotificationCount();
+
+      // Messages that arrived while the app was away. The realtime
+      // subscription is torn down in the background, so coming back is
+      // the one moment the badge is guaranteed stale.
+      _unread?.refresh();
     }
   }
 
@@ -483,10 +491,83 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     return IndexedStack(index: _homeTab, children: sections);
   }
 
-  void _reloadUserData() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<UserProvider>().loadUser();
+  /// Keeps the unread-message badge current while the inbox is shut.
+  ///
+  /// The inbox used to be a Home section and so was always built, its
+  /// notifier pushing counts whether anybody was looking or not. It is
+  /// a pushed screen now, so this holds the one number that has to
+  /// outlive it. Remade per account: the badge counts this account's
+  /// messages.
+  UnreadMessagesWatcher? _unread;
+  int? _unreadFor;
+
+  void _syncUnreadWatcher() {
+    final accounts = context.read<AccountManager>();
+    final id = accounts.activeUser?.id;
+
+    if (id == _unreadFor) return;
+
+    _unreadFor = id;
+    _unread?.dispose();
+    _unread = null;
+
+    if (id == null) return;
+
+    final provider = context.read<UnreadCountProvider>();
+
+    // The session FIRST, and awaited. Supabase is initialised in main()
+    // with the publishable key, which is the anonymous role — the
+    // user's own token is a separate step that nothing did outside the
+    // inbox. Starting the watcher before it lands means a count
+    // fetched as anon, and a realtime socket subscribed as anon, which
+    // is subscribed and silent.
+    //
+    // Clearing first because the token names a user and this runs on
+    // every switch.
+    SupabaseSession.clear();
+
+    SupabaseSession.ensure(accounts).then((ready) {
+      if (!mounted || _unreadFor != id || !ready) return;
+
+      final watcher = UnreadMessagesWatcher(
+        myUserId: '$id',
+        provider: provider,
+      );
+
+      _unread = watcher;
+      watcher.start();
     });
+  }
+
+  /// Which account UserProvider was last loaded for.
+  ///
+  /// UserProvider holds the second answer to "who is signed in", and it
+  /// was loaded once in initState and never again — so after switching
+  /// account every screen reading it saw the previous one. The garage
+  /// was the visible symptom because its whole job is "my vehicles",
+  /// but 30-odd screens read the same provider.
+  int? _userDataFor;
+
+  void _reloadUserData() {
+    final active = context.read<AccountManager>().activeUser?.id;
+    _userDataFor = active;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<UserProvider>().loadUser();
+    });
+  }
+
+  /// Reload it when the active account changes.
+  ///
+  /// Called from build, which already watches AccountManager for the
+  /// header avatar, so a switch brings us back here anyway. Guarded on
+  /// the id so this is a comparison on most frames and a fetch on
+  /// almost none.
+  void _syncUserDataToAccount() {
+    final active = context.read<AccountManager>().activeUser?.id;
+    if (active == _userDataFor) return;
+
+    _reloadUserData();
   }
 
   // ignore: unused_element
@@ -767,18 +848,23 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
             count:
                 _notificationCount + context.watch<UnreadCountProvider>().count,
             color: theme.primaryColor,
+            // A tray, not a speech bubble. This opens messages AND
+            // notifications, and a bubble promises only the first — an
+            // inbox is the thing that holds both.
             child: const Icon(
-              CupertinoIcons.chat_bubble_2_fill,
-              size: 18,
+              CupertinoIcons.tray,
+              size: 19,
               color: Color(0xFF111111),
             ),
           ),
           onTap: () async {
             await Navigator.pushNamed(context, AppRoutes.messages);
-            // The notifications tab marks everything read on its way in,
-            // so the badge has to be re-read on the way out or it keeps a
-            // count that is no longer true.
+            // Both halves of the badge. The notifications tab marks
+            // everything read on its way in, and opening a conversation
+            // clears its unread count — so neither number survives the
+            // trip and both have to be re-read.
             await _loadNotificationCount();
+            await _unread?.refresh();
           },
         ),
         const SizedBox(width: 8),
@@ -932,6 +1018,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
     final accountManager = Provider.of<AccountManager>(context);
+
+    // The line above already subscribes to account changes, so a switch
+    // brings us here. This is the only place that notices.
+    _syncUserDataToAccount();
+    _syncUnreadWatcher();
 
     // Subscribe so the scaffold rebuilds when the active tab changes.
     context.watch<BottomNavProvider>();

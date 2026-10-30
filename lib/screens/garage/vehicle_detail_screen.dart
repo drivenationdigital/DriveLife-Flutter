@@ -577,8 +577,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     }
   }
 
-  /// Take one photograph off the gallery.
-  Future<void> _removeGalleryImage(int rowId) async {
+  /// Take one photograph off the vehicle.
+  ///
+  /// Works for the cover too. The server decides what removing it
+  /// means — clearing a column rather than deleting a row — and
+  /// promotes the next photograph into its place, because every list in
+  /// the app reads cover_photo and would otherwise draw a placeholder
+  /// for a car that still has pictures.
+  Future<void> _removeGalleryImage(String image) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -602,7 +608,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 
     if (confirmed != true || !mounted) return;
 
-    final gallery = await GarageAPI.deleteGalleryImage(rowId);
+    final gallery = await GarageAPI.removeGalleryPhoto(
+      garageId: widget.garageId,
+      image: image,
+    );
     if (!mounted) return;
 
     if (gallery == null) {
@@ -619,42 +628,52 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     );
   }
 
-  /// The gallery row id at [page], or null for the cover and for a page
-  /// that is not from the gallery table.
+  /// The stored value of the photograph at [page].
   ///
-  /// The cover is prepended to the gallery rather than being a row in
-  /// it, so page zero has nothing to delete — it is changed by editing
-  /// the vehicle, not by removing it here.
-  int? _galleryRowIdAt(int page, bool hasCover) {
-    final rows = _vehicle?['gallery'] as List? ?? const [];
-    final index = hasCover ? page - 1 : page;
+  /// This is the token the server matches on, and it works for the
+  /// cover as well as for a gallery row — which is the point of
+  /// merging them. Page zero is removable now; it was not when the
+  /// cover was prepended client-side and had no identity of its own.
+  String? _photoTokenAt(int page) {
+    final photos = _photos;
+    if (page < 0 || page >= photos.length) return null;
 
-    if (index < 0 || index >= rows.length) return null;
-
-    return (rows[index] as Map)['id'] as int?;
+    final token = '${photos[page]['image'] ?? ''}'.trim();
+    return token.isEmpty ? null : token;
   }
 
   /// How tall the gallery is, not counting the status bar band above it.
   static const double _galleryHeight = 300;
 
-  /// Every photograph of this vehicle, cover first.
+  /// Every photograph of this vehicle, in order.
   ///
-  /// The cover stays on ce_user_garage.cover_photo rather than moving
-  /// into the gallery table — every list in the app reads that column
-  /// directly — so it is prepended here rather than being row zero.
+  /// The server merges them now — dl_garage_photos puts the cover first
+  /// and flags it — so this no longer prepends anything. It used to,
+  /// and doing both would show the cover twice.
   ///
-  /// Never empty while there is a cover, so the gallery always has
-  /// something to draw and the dots take themselves away at one.
-  List<String> _galleryImages(String coverPhoto, bool hasCover) {
-    final urls = <String>[
-      if (hasCover) coverPhoto.trim(),
-      ...(_vehicle?['gallery'] as List? ?? const [])
-          .map((row) => '${(row as Map)['url'] ?? ''}'.trim())
-          .where((url) => url.isNotEmpty),
-    ];
+  /// The cover still lives in its own column underneath; `is_cover` on
+  /// the first entry is what says so, and what removing it has to
+  /// consult.
+  List<Map<String, dynamic>> get _photos =>
+      ((_vehicle?['gallery'] as List?) ?? const [])
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .where((row) => '${row['url'] ?? ''}'.trim().isNotEmpty)
+          .toList();
 
-    // A vehicle with no photographs at all still gets one page, so the
-    // gallery draws its placeholder rather than an empty PageView.
+  /// Just the URLs, for the gallery widget.
+  ///
+  /// Never empty, so it always has one page to draw and the dots take
+  /// themselves away at one.
+  List<String> _galleryImages(String coverPhoto, bool hasCover) {
+    final urls = _photos.map((row) => '${row['url']}'.trim()).toList();
+
+    // Falls back to the cover column for a vehicle whose API response
+    // predates the merge — an app that updated before the server did
+    // would otherwise show no photograph at all.
+    if (urls.isEmpty && hasCover && coverPhoto.trim().isNotEmpty) {
+      return [coverPhoto.trim()];
+    }
+
     return urls.isEmpty ? const [''] : urls;
   }
 
@@ -726,8 +745,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                   // here.
                   onLongPress: isVehiclePublisher()
                       ? (i) {
-                          final rowId = _galleryRowIdAt(i, hasCover);
-                          if (rowId != null) _removeGalleryImage(rowId);
+                          final token = _photoTokenAt(i);
+                          if (token != null) _removeGalleryImage(token);
                         }
                       : null,
                 ),
@@ -925,7 +944,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
             onTap: _openEditor,
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         Expanded(
           child: _VehicleAction(
             icon: Icons.build_outlined,
@@ -934,7 +953,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
             onTap: _openUpgrades,
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         Expanded(
           child: _VehicleAction(
             icon: Icons.notifications_none_rounded,
@@ -1170,8 +1189,25 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                       controller: _tabController,
                       labelColor: const Color(0xFF111111),
                       unselectedLabelColor: Colors.grey.shade500,
-                      dividerColor: Colors.transparent,
+                      // The rule the design draws under the row. It
+                      // was transparent — hidden deliberately while this
+                      // page was black, where a grey line across it
+                      // would have read as a seam. On white it is what
+                      // separates the tabs from the grid beneath them,
+                      // and the gold indicator needs something to sit
+                      // on or it floats.
+                      dividerColor: const Color(0xFFEDEDED),
+                      dividerHeight: 1,
                       indicatorColor: const Color(0xFFD5B56B),
+                      // Full tab width, not label width. Material 3
+                      // defaults indicatorSize to `label`, so the bar
+                      // hugged the word and three tabs of different
+                      // lengths gave three different-sized indicators —
+                      // which reads as a measurement rather than as a
+                      // selection. `tab` is the Material 2 default and
+                      // what the design draws.
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      indicatorWeight: 3,
                       tabs: const [
                         Tab(text: 'Posts'),
                         Tab(text: 'Upgrades'),
@@ -1877,7 +1913,7 @@ class _VehicleAction extends StatelessWidget {
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  Icon(icon, size: 17, color: accent),
+                  Icon(icon, size: 16, color: accent),
                   if (alert)
                     Positioned(
                       top: -2,
@@ -1893,14 +1929,21 @@ class _VehicleAction extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(width: 7),
+              const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 14.5,
+                    // 14, from 14.5. The three buttons are Expanded and
+                    // so share the width equally, which means the
+                    // longest label decides how cramped all three look
+                    // — and "Reminders" is nine characters against
+                    // "Edit"'s four. Shaving the type, the icon and the
+                    // gap between them gives it about 10pt a side
+                    // instead of 8.
+                    fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
                   ),

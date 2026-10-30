@@ -1,8 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/garage_api.dart';
 import 'package:drivelife/models/user_model.dart';
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
-import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/garage/vehicle_card.dart';
@@ -122,7 +122,20 @@ class _GarageListScreenState extends State<GarageListScreen>
   }
 
   Future<void> _loadUserProfile() async {
-    final user = Provider.of<UserProvider>(context, listen: false).user;
+    // AccountManager, not UserProvider.
+    //
+    // There are two answers in this app to "who is signed in", and only
+    // one of them changes when you switch account. AccountManager is
+    // updated synchronously by switchAccount. UserProvider is loaded
+    // once in HomeTabs.initState and never again, so after a switch it
+    // still holds the previous account — and this screen asking it
+    // which garage to fetch is why the vehicles did not change.
+    //
+    // Synchronous matters as much as correct: this runs in initState,
+    // and refreshing UserProvider instead would leave a window where
+    // the screen reads the old user before the reload lands.
+    final user = Provider.of<AccountManager>(context, listen: false).activeUser;
+
     if (!mounted) return;
     setState(() => _userProfile = user);
   }

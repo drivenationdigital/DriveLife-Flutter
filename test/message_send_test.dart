@@ -29,6 +29,7 @@ class _FakeRepo extends ChatRepository {
     required String conversationId,
     required String senderId,
     required String content,
+    String? imageUrl,
   }) async {
     if (gate != null) await gate!.future;
     if (failing) throw Exception('no connection');
@@ -42,6 +43,7 @@ class _FakeRepo extends ChatRepository {
       content: content,
       createdAt: DateTime.now(),
       isRead: false,
+      imageUrl: imageUrl,
     );
   }
 }

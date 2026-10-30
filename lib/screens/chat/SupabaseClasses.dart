@@ -199,6 +199,16 @@ class ChatMessage {
   /// without fromMap having to say so.
   final MessageStatus status;
 
+  /// A photograph sent with this message, as a Cloudflare delivery
+  /// URL, or null.
+  ///
+  /// One per message and images only — see
+  /// supabase/sql/message-images.sql for why that is a column rather
+  /// than a media table, and why video is not a later value for it.
+  final String? imageUrl;
+
+  bool get hasImage => (imageUrl ?? '').isNotEmpty;
+
   /// When the sender took it back, or null while it stands.
   ///
   /// The row survives a delete so that every client has something to draw
@@ -218,19 +228,24 @@ class ChatMessage {
     required this.isRead,
     this.status = MessageStatus.sent,
     this.deletedAt,
+    this.imageUrl,
   });
 
-  ChatMessage copyWith({MessageStatus? status, DateTime? deletedAt}) =>
-      ChatMessage(
-        id: id,
-        conversationId: conversationId,
-        senderId: senderId,
-        content: content,
-        createdAt: createdAt,
-        isRead: isRead,
-        status: status ?? this.status,
-        deletedAt: deletedAt ?? this.deletedAt,
-      );
+  ChatMessage copyWith({
+    MessageStatus? status,
+    DateTime? deletedAt,
+    String? imageUrl,
+  }) => ChatMessage(
+    id: id,
+    conversationId: conversationId,
+    senderId: senderId,
+    content: content,
+    createdAt: createdAt,
+    isRead: isRead,
+    status: status ?? this.status,
+    deletedAt: deletedAt ?? this.deletedAt,
+    imageUrl: imageUrl ?? this.imageUrl,
+  );
 
   factory ChatMessage.fromMap(Map<String, dynamic> map) {
     return ChatMessage(
@@ -246,6 +261,9 @@ class ChatMessage {
       deletedAt: map['deleted_at'] == null
           ? null
           : DateTime.tryParse('${map['deleted_at']}'),
+      // Tolerated as missing, like deleted_at: the column is newer than
+      // some clients and some rows.
+      imageUrl: map['image_url'] as String?,
     );
   }
 }
@@ -515,6 +533,7 @@ class ChatRepository {
     required String conversationId,
     required String senderId,
     required String content,
+    String? imageUrl,
   }) async {
     final row = await _db
         .from('messages')
@@ -522,6 +541,7 @@ class ChatRepository {
           'conversation_id': conversationId,
           'sender_id': senderId,
           'content': content,
+          if (imageUrl != null && imageUrl.isNotEmpty) 'image_url': imageUrl,
         })
         .select()
         .single();
@@ -555,6 +575,11 @@ class ChatRepository {
         .update({
           'deleted_at': DateTime.now().toUtc().toIso8601String(),
           'content': '',
+          // The photograph as well. A tombstone that still carries its
+          // image is not a deleted message, and nothing in the database
+          // enforces this — the RLS policy decides WHO may delete, not
+          // what deleting leaves behind.
+          'image_url': null,
         })
         .eq('id', messageId)
         .select('id');
@@ -856,9 +881,18 @@ class ChatNotifier extends ChangeNotifier {
   /// No re-entry guard any more. Each send carries its own outbox entry,
   /// so two messages typed quickly both go — the old `if (_sending)
   /// return` silently dropped the second one.
-  Future<void> sendMessage(String content) async {
+  /// Show the message immediately, then try to send it.
+  ///
+  /// [imageUrl] is already on Cloudflare by the time this is called —
+  /// the composer uploads before sending, so the optimistic bubble can
+  /// draw the real photograph rather than a local file that the server
+  /// copy would then replace with a flicker.
+  Future<void> sendMessage(String content, {String? imageUrl}) async {
     final text = content.trim();
-    if (text.isEmpty) return;
+
+    // A photograph on its own is a message. Only an empty one with no
+    // image is nothing to send.
+    if (text.isEmpty && (imageUrl ?? '').isEmpty) return;
 
     final local = ChatMessage(
       // Prefixed so nothing matching on id mistakes it for a server
@@ -872,6 +906,7 @@ class ChatNotifier extends ChangeNotifier {
       createdAt: DateTime.now(),
       isRead: false,
       status: MessageStatus.pending,
+      imageUrl: imageUrl,
     );
 
     _outbox.add(local);
@@ -918,6 +953,7 @@ class ChatNotifier extends ChangeNotifier {
         conversationId: conversationId,
         senderId: myUserId,
         content: local.content,
+        imageUrl: local.imageUrl,
       );
 
       _outbox.removeWhere((m) => m.id == local.id);
@@ -1015,8 +1051,7 @@ class InboxRepository {
     // returning the column this costs nothing, because the check is for
     // the key rather than for a null value.
     final rpcHasColumn =
-        (data as List).isEmpty ||
-        (data.first as Map).containsKey('group_image');
+        data.isEmpty || (data.first as Map).containsKey('group_image');
 
     if (rpcHasColumn) return previews;
 

@@ -30,12 +30,25 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   /// there is no id to attach them to yet.
   final List<File> _galleryPicks = [];
 
-  /// The gallery already on the vehicle, as { id, url }. Only ever
-  /// populated in edit mode.
+  /// The photographs already on the vehicle, cover first, as the API
+  /// returns them: { id, image, url, is_cover }. Only ever populated in
+  /// edit mode.
+  ///
+  /// Mutable order. Dragging reorders this list and nothing else — the
+  /// first entry is the cover, so moving one to the front IS making it
+  /// the cover, and Save sends the order.
   List<Map<String, dynamic>> _existingGallery = [];
 
-  /// Rows the user has removed, applied on Save.
-  final Set<int> _galleryRemovals = {};
+  /// Photographs removed, by their stored value — the token the server
+  /// matches on, which works for the cover as well as a gallery row.
+  final Set<String> _galleryRemovals = {};
+
+  /// Whether the order has been dragged since the screen opened.
+  ///
+  /// Tracked so Save only sends an order when there is one to send. A
+  /// reorder call is harmless but it rewrites the cover column, and a
+  /// screen that was only opened to fix a typo should not touch it.
+  bool _orderChanged = false;
 
   bool _savingGallery = false;
   String? _base64Image;
@@ -255,19 +268,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     });
   }
 
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final x = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-    );
-    if (!mounted) return;
-    if (x == null) return;
-
-    await _setImage(File(x.path));
-    setState(() => _imageFile = File(x.path));
-  }
-
   Future<void> _pickDate({
     required bool isFrom,
     required ThemeProvider theme,
@@ -377,14 +377,21 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       _existingGallery = ((v['gallery'] as List?) ?? const [])
           .map((row) => Map<String, dynamic>.from(row as Map))
           .toList();
-    });
-  }
 
-  void _removeImage() {
-    setState(() {
-      _imageFile = null;
-      _base64Image = null;
-      _existingImageUrl = null;
+      // An older API that still sends gallery without the cover in it.
+      // Without this the editor would show the cover nowhere and Save
+      // would reorder it out of existence.
+      final cover = '${v['cover_photo'] ?? ''}'.trim();
+
+      if (cover.isNotEmpty &&
+          !_existingGallery.any((row) => row['is_cover'] == true)) {
+        _existingGallery.insert(0, {
+          'id': 0,
+          'image': cover,
+          'url': cover,
+          'is_cover': true,
+        });
+      }
     });
   }
 
@@ -451,7 +458,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
     if (!_isEditMode &&
         (_imageFile == null || _base64Image == null || _base64Image!.isEmpty)) {
-      _toast('Please upload a cover image');
+      _toast('Add at least one photo');
       return;
     }
 
@@ -577,8 +584,15 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       // the id the save returned for a new vehicle, and the one it
       // was opened with for an edit.
       final savedId = vehicleId == null ? '' : '$vehicleId';
+      // _orderChanged belongs here. Without it a pure reorder — no
+      // photographs added, none removed — did not count as gallery
+      // work, so _saveGallery never ran and the new order was never
+      // sent. It dragged on screen and then quietly did nothing, which
+      // is exactly what "reorder is not working" looked like.
       final hasGalleryWork =
-          _galleryPicks.isNotEmpty || _galleryRemovals.isNotEmpty;
+          _galleryPicks.isNotEmpty ||
+          _galleryRemovals.isNotEmpty ||
+          _orderChanged;
 
       if (hasGalleryWork) {
         if (savedId.isEmpty) {
@@ -792,32 +806,49 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
     if (picked.isEmpty || !mounted) return;
 
-    setState(() {
-      _galleryPicks.addAll(picked.take(room).map((x) => File(x.path)));
-    });
+    final files = picked.take(room).map((x) => File(x.path)).toList();
+
+    setState(() => _galleryPicks.addAll(files));
+
+    // On a new vehicle the first photograph is also the cover, and the
+    // cover travels in the create payload rather than through the
+    // gallery endpoints — those need a garage id, which a vehicle being
+    // created has not got until Save returns one.
+    //
+    // So the first pick fills the slot the separate Vehicle Image
+    // picker used to. One picker, and first is the cover everywhere.
+    if (!_isEditMode && _imageFile == null && files.isNotEmpty) {
+      await _setImage(files.first);
+    }
 
     if (picked.length > room) {
       _toast('Added $room — that is the most a vehicle can have.');
     }
   }
 
-  /// How many photographs the gallery will have once Save has run.
-  int get _galleryCount =>
-      _existingGallery
-          .where((row) => !_galleryRemovals.contains(row['id']))
-          .length +
-      _galleryPicks.length;
+  /// The photographs still on the vehicle, in order, after removals.
+  List<Map<String, dynamic>> get _keptGallery => _existingGallery
+      .where((row) => !_galleryRemovals.contains('${row['image']}'))
+      .toList();
+
+  /// How many photographs the vehicle will have once Save has run.
+  int get _galleryCount => _keptGallery.length + _galleryPicks.length;
 
   /// Upload and attach whatever is pending. Called after the vehicle has
   /// an id, which on a new vehicle is only true once it has been saved.
+  /// Apply every photograph change, in the order that keeps the
+  /// vehicle consistent at each step.
+  ///
+  /// Removals, then additions, then the order. Doing the order last
+  /// matters: it names every photograph the vehicle should have, so it
+  /// has to run after the set has stopped changing — otherwise it would
+  /// name one that was about to be deleted, or miss one about to arrive.
   Future<void> _saveGallery(String garageId) async {
-    for (final rowId in _galleryRemovals) {
-      await GarageAPI.deleteGalleryImage(rowId);
+    for (final image in _galleryRemovals) {
+      await GarageAPI.removeGalleryPhoto(garageId: garageId, image: image);
     }
 
-    if (_galleryPicks.isEmpty) return;
-
-    final ids = <String>[];
+    final added = <String>[];
 
     for (final file in _galleryPicks) {
       final id = await CloudflareImages.uploadAndGetId(
@@ -827,19 +858,31 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
             '${DateTime.now().microsecondsSinceEpoch}.jpg',
       );
 
-      if (id != null) ids.add(id);
+      if (id != null) added.add(id);
     }
 
-    if (ids.isEmpty) return;
+    if (added.isNotEmpty) {
+      await GarageAPI.addGalleryImages(garageId: garageId, imageIds: added);
+    }
 
-    await GarageAPI.addGalleryImages(garageId: garageId, imageIds: ids);
+    // Only when the owner actually dragged something. The call rewrites
+    // the cover column, and a screen opened to correct a registration
+    // should not.
+    if (!_orderChanged) return;
+
+    final order = [
+      ..._keptGallery.map((row) => '${row['image']}'),
+      ...added,
+    ].where((token) => token.trim().isNotEmpty).toList();
+
+    if (order.isEmpty) return;
+
+    await GarageAPI.setGalleryOrder(garageId: garageId, order: order);
   }
 
   /// The gallery strip: a tile per photograph, and one to add more.
   Widget _buildGallerySection() {
-    final existing = _existingGallery
-        .where((row) => !_galleryRemovals.contains(row['id']))
-        .toList();
+    final existing = _keptGallery;
 
     return _card(
       child: Padding(
@@ -852,8 +895,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    'Swipeable on the vehicle page. The cover above is '
-                    'always shown first.',
+                    _isEditMode
+                        ? 'Drag to reorder. The first photo is the cover.'
+                        : 'Add more once the vehicle is saved.',
                     style: TextStyle(
                       fontSize: 12.5,
                       height: 1.35,
@@ -875,67 +919,82 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
             const SizedBox(height: 12),
 
             SizedBox(
-              height: 86,
-              child: ListView(
+              height: 92,
+              // Reorderable, and that is the only way to set the cover:
+              // first IS the cover, so dragging one to the front is the
+              // whole gesture. A separate "make cover" control could
+              // disagree with the order on screen, and then one of them
+              // would be lying.
+              //
+              // Only the saved ones can be dragged. A photograph that
+              // has not been uploaded yet has no identity the server
+              // could be told about, so the new ones queue after them
+              // and take their order from the upload.
+              child: ReorderableListView(
                 scrollDirection: Axis.horizontal,
-                children: [
-                  for (final row in existing)
-                    _galleryTile(
-                      child: Image.network(
-                        '${row['url']}',
-                        width: 86,
-                        height: 86,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const ColoredBox(
-                          color: Color(0xFFF0F0F0),
-                          child: Icon(Icons.broken_image, color: Colors.grey),
-                        ),
-                      ),
-                      onRemove: () => setState(
-                        () => _galleryRemovals.add(row['id'] as int),
-                      ),
-                    ),
+                buildDefaultDragHandles: false,
+                onReorder: (from, to) {
+                  setState(() {
+                    if (to > from) to -= 1;
 
-                  for (final file in _galleryPicks)
-                    _galleryTile(
-                      child: Image.file(
-                        file,
-                        width: 86,
-                        height: 86,
-                        fit: BoxFit.cover,
-                      ),
-                      isNew: true,
-                      onRemove: () =>
-                          setState(() => _galleryPicks.remove(file)),
-                    ),
+                    final moved = existing.removeAt(from);
+                    existing.insert(to, moved);
 
-                  if (_galleryCount < _maxGallery)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: InkWell(
-                        onTap: _pickGalleryImages,
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
+                    // _keptGallery is a filtered copy, so the order has
+                    // to be written back to the list it came from —
+                    // with the removed ones left where they are, since
+                    // they are on their way out anyway.
+                    _existingGallery = [
+                      ...existing,
+                      ..._existingGallery.where(
+                        (row) => _galleryRemovals.contains('${row['image']}'),
+                      ),
+                    ];
+
+                    _orderChanged = true;
+                  });
+                },
+                footer: Row(
+                  children: [
+                    for (final file in _galleryPicks)
+                      _galleryTile(
+                        child: Image.file(
+                          file,
                           width: 86,
                           height: 86,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFDDDDDD)),
+                          fit: BoxFit.cover,
+                        ),
+                        isNew: true,
+                        onRemove: () =>
+                            setState(() => _galleryPicks.remove(file)),
+                      ),
+                    if (_galleryCount < _maxGallery) _addTile(),
+                  ],
+                ),
+                children: [
+                  for (var i = 0; i < existing.length; i++)
+                    ReorderableDragStartListener(
+                      key: ValueKey('${existing[i]['image']}'),
+                      index: i,
+                      child: _galleryTile(
+                        child: Image.network(
+                          '${existing[i]['url']}',
+                          width: 86,
+                          height: 86,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const ColoredBox(
+                            color: Color(0xFFF0F0F0),
+                            child: Icon(Icons.broken_image, color: Colors.grey),
                           ),
-                          child: const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.add, color: Colors.grey),
-                              SizedBox(height: 2),
-                              Text(
-                                'Add',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ),
+                        ),
+                        // The first one, whatever it is now. Not
+                        // row['is_cover'], which is what the server
+                        // last saw — dragging changes which is the
+                        // cover and the badge has to follow the drag,
+                        // not the response.
+                        isCover: i == 0,
+                        onRemove: () => setState(
+                          () => _galleryRemovals.add('${existing[i]['image']}'),
                         ),
                       ),
                     ),
@@ -948,10 +1007,38 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     );
   }
 
+  /// The "add more" square at the end of the strip.
+  Widget _addTile() {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: InkWell(
+        onTap: _pickGalleryImages,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: 86,
+          height: 86,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFDDDDDD)),
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.add, color: Colors.grey),
+              SizedBox(height: 2),
+              Text('Add', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _galleryTile({
     required Widget child,
     required VoidCallback onRemove,
     bool isNew = false,
+    bool isCover = false,
   }) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -977,8 +1064,28 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
             ),
           ),
 
-          // Marked, so it is obvious which ones have not been saved yet
-          // — the same badge the cover uses for the same reason.
+          // First in the row, and therefore the cover. Said on the
+          // tile rather than in a caption, because the whole point of
+          // merging the two pickers was that the answer to "which one
+          // is the cover" should be visible in the order.
+          if (isCover)
+            Positioned(
+              left: 4,
+              bottom: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFAE9159),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'Cover',
+                  style: TextStyle(color: Colors.white, fontSize: 10),
+                ),
+              ),
+            ),
+
+          // Marked, so it is obvious which ones have not been saved yet.
           if (isNew)
             Positioned(
               left: 4,
@@ -996,102 +1103,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
               ),
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildImageSection() {
-    final hasImage =
-        _imageFile != null ||
-        (_existingImageUrl != null && _existingImageUrl!.isNotEmpty);
-
-    return _card(
-      child: InkWell(
-        onTap: _pickImage,
-        child: Container(
-          height: 120,
-          alignment: Alignment.center,
-          child: !hasImage
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(
-                      Icons.cloud_upload_outlined,
-                      size: 32,
-                      color: Colors.grey,
-                    ),
-                    SizedBox(height: 6),
-                    Text('Tap to Upload', style: TextStyle(color: Colors.grey)),
-                  ],
-                )
-              : Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: _imageFile != null
-                          ? Image.file(
-                              _imageFile!,
-                              width: double.infinity,
-                              height: 120,
-                              fit: BoxFit.cover,
-                            )
-                          : Image.network(
-                              _existingImageUrl!,
-                              width: double.infinity,
-                              height: 120,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const Icon(
-                                Icons.broken_image,
-                                size: 48,
-                                color: Colors.grey,
-                              ),
-                            ),
-                    ),
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: GestureDetector(
-                        onTap: _removeImage,
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (_imageFile != null)
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'New',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-        ),
       ),
     );
   }
@@ -1503,10 +1514,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 24),
                 children: [
-                  _sectionTitle('Vehicle Image'),
-                  _buildImageSection(),
-
-                  _sectionTitle('Gallery'),
+                  _sectionTitle('Vehicle Gallery'),
                   _buildGallerySection(),
 
                   _sectionTitle('Ownership Type'),

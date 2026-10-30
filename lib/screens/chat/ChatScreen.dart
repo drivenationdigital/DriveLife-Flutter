@@ -1,7 +1,16 @@
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io';
+
+import 'package:drivelife/api/cloudflare_images.dart';
+import 'package:drivelife/api/moderation_api.dart';
+import 'package:drivelife/providers/account_provider.dart';
+import 'package:drivelife/widgets/image_viewer_screen.dart';
+import 'package:drivelife/widgets/moderation/report_sheet.dart';
+import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/services/supabase_session.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
@@ -10,6 +19,7 @@ import 'package:drivelife/screens/chat/message_actions.dart';
 import 'package:drivelife/screens/chat/message_grouping.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 // ConversationPreview used to be declared here as well as in
@@ -166,6 +176,23 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _init() async {
+    // A thread is reachable without ever opening the inbox — the
+    // Message button on a profile, and a tapped push notification both
+    // land straight here. The inbox was the only thing applying the
+    // Supabase token, so arriving by either of those routes meant
+    // talking to PostgREST as anon and subscribing a realtime socket
+    // that would never fire.
+    //
+    // Idempotent: a no-op when the shell or the inbox has already done
+    // it, which is the usual case.
+    if (mounted) {
+      await SupabaseSession.ensure(
+        Provider.of<AccountManager>(context, listen: false),
+      );
+    }
+
+    if (!mounted) return;
+
     String convId = widget.conversationId ?? '';
     print(
       convId.isEmpty
@@ -241,10 +268,119 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  /// A photograph chosen but not yet sent.
+  File? _pendingImage;
+
+  /// True while it is on its way to Cloudflare.
+  bool _uploading = false;
+
+  Future<void> _pickImage() async {
+    // One, and a photograph. pickImage rather than pickMultiImage
+    // because a thread is a sequence of messages, and a batch would
+    // have to decide whether five pictures are five messages or one.
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 2048,
+      maxHeight: 2048,
+      imageQuality: 88,
+    );
+
+    if (picked == null || !mounted) return;
+
+    setState(() => _pendingImage = File(picked.path));
+  }
+
   Future<void> _send() async {
     final text = _inputController.text;
+    final image = _pendingImage;
+
+    if (text.trim().isEmpty && image == null) return;
+
+    String? url;
+
+    if (image != null) {
+      setState(() => _uploading = true);
+
+      url = await CloudflareImages.uploadAndGetUrl(
+        bytes: await image.readAsBytes(),
+        fileName: 'chat_${DateTime.now().microsecondsSinceEpoch}.jpg',
+      );
+
+      if (!mounted) return;
+      setState(() => _uploading = false);
+
+      // The text stays in the box. Sending it without the photograph
+      // would quietly drop the thing the message was about.
+      if (url == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not upload that photo.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+    }
+
     _inputController.clear();
-    await _notifier?.sendMessage(text);
+    setState(() => _pendingImage = null);
+
+    await _notifier?.sendMessage(text, imageUrl: url);
+  }
+
+  /// The chosen photograph, above the composer, until it is sent.
+  Widget _pendingImageStrip() {
+    final image = _pendingImage;
+    if (image == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      child: Row(
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.file(
+                  image,
+                  width: 64,
+                  height: 64,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              Positioned(
+                top: -6,
+                right: -6,
+                child: GestureDetector(
+                  onTap: () => setState(() => _pendingImage = null),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.65),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      size: 11,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _uploading ? 'Uploading…' : 'Ready to send',
+              style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -273,7 +409,100 @@ class _ChatScreenState extends State<ChatScreen> {
         onPressed: () => Navigator.of(context).pop(),
       ),
       title: widget.isGroup ? _buildGroupAppBarTitle() : _buildDmAppBarTitle(),
+
+      // One-to-one only. A group's equivalents live in Group Info,
+      // where the member list is — blocking one person out of eight
+      // from a bar at the top of the thread would be ambiguous about
+      // who.
+      actions: widget.isGroup
+          ? null
+          : [
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_horiz, size: 22),
+                onSelected: (value) {
+                  if (value == 'report') _reportPerson();
+                  if (value == 'block') _blockPerson();
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'report', child: Text('Report')),
+                  PopupMenuItem(
+                    value: 'block',
+                    child: Text(
+                      'Block',
+                      style: TextStyle(color: Color(0xFFD93025)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
     );
+  }
+
+  /// Report the person on the other end.
+  Future<void> _reportPerson() async {
+    final id = widget.otherUserId;
+    if (id == null || id.isEmpty) return;
+
+    await ReportSheet.show(
+      context,
+      subjectType: 'user',
+      subjectId: id,
+      title: 'Report ${otherProfile?.bestName ?? 'this person'}',
+      subjectUserId: int.tryParse(id),
+    );
+  }
+
+  /// Block them, and leave the thread.
+  ///
+  /// Leaving is the point: staying in a conversation with somebody you
+  /// have just blocked is a screen that cannot do anything useful, and
+  /// the silence looks like the block failing.
+  Future<void> _blockPerson() async {
+    final id = int.tryParse(widget.otherUserId ?? '');
+    if (id == null) return;
+
+    final name = otherProfile?.bestName ?? 'this person';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Block $name?'),
+        content: const Text(
+          'They will not be able to message you, and you will stop '
+          'seeing notifications from them. They are not told.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFD93025),
+            ),
+            child: const Text('Block'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final ok = await ModerationAPI.block(id);
+    if (!mounted) return;
+
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not block them. Please try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).pop();
   }
 
   // 1-to-1 title: avatar + name
@@ -584,22 +813,73 @@ class _ChatScreenState extends State<ChatScreen> {
                             bottomRight: isMe && endsRun ? tail : round,
                           ),
                         ),
-                        child: Text(
-                          msg.isDeleted
-                              ? 'This message was deleted'
-                              : msg.content,
-                          style: TextStyle(
-                            fontSize: 14.5,
-                            height: 1.35,
-                            fontStyle: msg.isDeleted
-                                ? FontStyle.italic
-                                : FontStyle.normal,
-                            color: msg.isDeleted
-                                ? const Color(0xFF9A9A9A)
-                                : isMe
-                                ? Colors.white
-                                : const Color(0xFF111111),
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (msg.hasImage && !msg.isDeleted) ...[
+                              GestureDetector(
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => ImageViewerScreen(
+                                      images: [msg.imageUrl!],
+                                    ),
+                                  ),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: CachedNetworkImage(
+                                    imageUrl: msg.imageUrl!,
+                                    // Fixed width, free height. A
+                                    // portrait photograph at full bubble
+                                    // width pushes everything said after
+                                    // it off the screen.
+                                    width: 210,
+                                    fit: BoxFit.cover,
+                                    placeholder: (_, __) => Container(
+                                      width: 210,
+                                      height: 150,
+                                      color: Colors.black12,
+                                    ),
+                                    errorWidget: (_, __, ___) => Container(
+                                      width: 210,
+                                      height: 150,
+                                      color: Colors.black12,
+                                      child: const Icon(
+                                        Icons.broken_image_outlined,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              // Only when there is something to
+                              // separate: a photograph sent on its own
+                              // should not carry an empty line.
+                              if (msg.content.trim().isNotEmpty)
+                                const SizedBox(height: 8),
+                            ],
+
+                            if (msg.isDeleted || msg.content.trim().isNotEmpty)
+                              Text(
+                                msg.isDeleted
+                                    ? 'This message was deleted'
+                                    : msg.content,
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  height: 1.35,
+                                  fontStyle: msg.isDeleted
+                                      ? FontStyle.italic
+                                      : FontStyle.normal,
+                                  color: msg.isDeleted
+                                      ? const Color(0xFF9A9A9A)
+                                      : isMe
+                                      ? Colors.white
+                                      : const Color(0xFF111111),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ),
@@ -661,6 +941,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// The long-press sheet: a row of emoji, then what can be done.
   Future<void> _showMessageActions(ChatMessage msg) async {
+    // Fired here rather than in the GestureDetector so it lands with the
+    // sheet, not with whatever Flutter decided a long press was. It is
+    // the only confirmation the gesture registered — nothing moves
+    // while you are holding still.
+    DLHaptics.longPressMenu();
+
     final canDelete = canDeleteMessage(
       senderId: msg.senderId,
       createdAt: msg.createdAt,
@@ -714,6 +1000,19 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
 
+            // Somebody else's message only. Reporting your own is not a
+            // thing anybody wants, and the option sitting there invites
+            // a mis-tap on the one gesture that should feel deliberate.
+            if (msg.senderId != widget.myUserId)
+              ListTile(
+                leading: const Icon(Icons.flag_outlined, size: 20),
+                title: const Text('Report'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _reportMessage(msg);
+                },
+              ),
+
             // Offered only inside the delete window — and the window is
             // only enforced by the RLS policy, which this number has to
             // match. See kMessageDeleteWindow.
@@ -736,6 +1035,42 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Report a message, with the conversation around it.
+  ///
+  /// The twenty messages before it travel with the report. One line out
+  /// of a conversation rarely shows what was wrong with it, and the
+  /// server keeps the copy — which matters because the message somebody
+  /// reports is often the one that gets deleted next.
+  Future<void> _reportMessage(ChatMessage msg) async {
+    final all = _notifier?.messages ?? const <ChatMessage>[];
+    final at = all.indexWhere((m) => m.id == msg.id);
+
+    // `messages` is newest-first, so the ones BEFORE this in the
+    // conversation are the ones after it in the list.
+    final around = at < 0
+        ? <ChatMessage>[msg]
+        : all.skip(at).take(20).toList().reversed.toList();
+
+    await ReportSheet.show(
+      context,
+      subjectType: 'message',
+      subjectId: msg.id,
+      title: 'Report this message',
+      subjectUserId: int.tryParse(msg.senderId),
+      messageContext: around
+          .map(
+            (m) => {
+              'id': m.id,
+              'sender_id': m.senderId,
+              'content': m.content,
+              'has_image': m.hasImage,
+              'created_at': m.createdAt.toIso8601String(),
+            },
+          )
+          .toList(),
     );
   }
 
@@ -1071,79 +1406,105 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       child: SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _inputController,
-                  enabled: enabled,
-                  textCapitalization: TextCapitalization.sentences,
-                  minLines: 1,
-                  maxLines: 5,
-                  style: const TextStyle(fontSize: 14.5, height: 1.35),
-                  // Rebuilds on every keystroke so the send button can
-                  // appear the moment there is something to send.
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: enabled ? 'Message…' : 'Connecting…',
-                    hintStyle: TextStyle(color: Colors.grey.shade400),
-                    // A bordered pill rather than a filled box: against a
-                    // white thread the fill read as another bubble.
-                    filled: false,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(22),
-                      borderSide: const BorderSide(color: Color(0xFFDBDBDB)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _pendingImageStrip(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // Only one photograph travels with a message, so the
+                  // button goes away once there is one waiting rather than
+                  // silently replacing it.
+                  if (_pendingImage == null)
+                    IconButton(
+                      onPressed: enabled && !_uploading ? _pickImage : null,
+                      icon: Icon(
+                        Icons.photo_outlined,
+                        size: 22,
+                        color: enabled
+                            ? const Color(0xFF666666)
+                            : Colors.grey.shade300,
+                      ),
+                      tooltip: 'Send a photo',
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(22),
-                      borderSide: BorderSide(color: theme.primaryColor),
-                    ),
-                    disabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(22),
-                      borderSide: const BorderSide(color: Color(0xFFEFEFEF)),
-                    ),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 11,
-                    ),
-                  ),
-                  onSubmitted: (_) => enabled ? _send() : null,
-                ),
-              ),
 
-              // Only once there is something to send. An always-on send
-              // button on an empty field is a button that does nothing.
-              if (sending)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(12, 0, 4, 10),
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              else if (enabled && _inputController.text.trim().isNotEmpty)
-                TextButton(
-                  onPressed: _send,
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(0, 42),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    foregroundColor: theme.primaryColor,
-                  ),
-                  child: const Text(
-                    'Send',
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700,
+                  Expanded(
+                    child: TextField(
+                      controller: _inputController,
+                      enabled: enabled,
+                      textCapitalization: TextCapitalization.sentences,
+                      minLines: 1,
+                      maxLines: 5,
+                      style: const TextStyle(fontSize: 14.5, height: 1.35),
+                      // Rebuilds on every keystroke so the send button can
+                      // appear the moment there is something to send.
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        hintText: enabled ? 'Message…' : 'Connecting…',
+                        hintStyle: TextStyle(color: Colors.grey.shade400),
+                        // A bordered pill rather than a filled box: against a
+                        // white thread the fill read as another bubble.
+                        filled: false,
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFDBDBDB),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: BorderSide(color: theme.primaryColor),
+                        ),
+                        disabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFEFEFEF),
+                          ),
+                        ),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 11,
+                        ),
+                      ),
+                      onSubmitted: (_) => enabled ? _send() : null,
                     ),
                   ),
-                ),
-            ],
-          ),
+
+                  // Only once there is something to send. An always-on send
+                  // button on an empty field is a button that does nothing.
+                  if (sending)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(12, 0, 4, 10),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else if (enabled && _inputController.text.trim().isNotEmpty)
+                    TextButton(
+                      onPressed: _send,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 42),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        foregroundColor: theme.primaryColor,
+                      ),
+                      child: const Text(
+                        'Send',
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

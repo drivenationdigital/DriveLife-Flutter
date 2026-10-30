@@ -11,6 +11,16 @@ abstract final class DLHaptics {
   /// people cannot feel it at all. Changing tab replaces everything on
   /// screen, so it should land like a button rather than a rumour.
   static void tabChange() => HapticFeedback.mediumImpact();
+
+  /// A long press that opened something: the reaction row on a message.
+  ///
+  /// `heavyImpact` rather than the medium used for tabs. A long press has
+  /// no visible progress — you are holding still, waiting to find out
+  /// whether the gesture registered — so the tap back is the only
+  /// confirmation, and it arrives at the moment the sheet starts to
+  /// animate in. Making it the heaviest of the three is what separates
+  /// "it worked" from "something moved".
+  static void longPressMenu() => HapticFeedback.heavyImpact();
 }
 
 /// Makes [controller] fire [DLHaptics.tabChange] whenever it moves to a
