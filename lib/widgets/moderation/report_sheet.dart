@@ -107,7 +107,7 @@ class _ReportSheetState extends State<ReportSheet> {
       SnackBar(
         content: Text(
           ok
-              ? 'Thanks — our team will take a look.'
+              ? 'Thank you - report received'
               : 'Could not send that report. Please try again.',
         ),
         behavior: SnackBarBehavior.floating,

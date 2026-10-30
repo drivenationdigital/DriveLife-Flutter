@@ -10,6 +10,7 @@ import 'package:drivelife/widgets/image_viewer_screen.dart';
 import 'package:drivelife/widgets/moderation/report_sheet.dart';
 import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/services/content_filter.dart';
 import 'package:drivelife/services/supabase_session.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
@@ -272,6 +273,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// A photograph chosen but not yet sent.
   File? _pendingImage;
+
+  /// Messages whose warning the reader has chosen to look past.
+  ///
+  /// Per screen and not persisted on purpose. Reopening the thread puts
+  /// the warning back, so a message somebody revealed once does not stay
+  /// uncovered on a phone they hand to someone else.
+  final Set<String> _revealed = {};
 
   /// True while it is on its way to Cloudflare.
   bool _uploading = false;
@@ -776,6 +784,22 @@ class _ChatScreenState extends State<ChatScreen> {
     final isMe = msg.senderId == widget.myUserId;
     final showAvatar = widget.isGroup && !isMe;
 
+    // Behind a warning until tapped.
+    //
+    // Never your own message: you know what you wrote, and a warning on
+    // it reads as an accusation rather than a protection. Never a
+    // deleted one either — it has no content left to warn about.
+    //
+    // Two sources agree on this. ContentFilter is the word list on this
+    // device, instant and free; msg.isFlagged is the Gemini pass in
+    // chat_webhook.php, which lands a beat later and catches what a list
+    // cannot. Either one is enough.
+    final concealed =
+        !isMe &&
+        !msg.isDeleted &&
+        !_revealed.contains(msg.id) &&
+        (msg.isFlagged || ContentFilter.shouldVeil(msg.content));
+
     const round = Radius.circular(20);
     const tail = Radius.circular(5);
 
@@ -843,12 +867,17 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Container(
                         padding: const EdgeInsets.fromLTRB(14, 9, 14, 10),
                         decoration: BoxDecoration(
-                          color: msg.isDeleted
+                          // A concealed message borrows the tombstone's
+                          // look — outline, no fill. It is the existing
+                          // visual language for "there is something here
+                          // you are not being shown", and inventing a
+                          // second one would say less.
+                          color: msg.isDeleted || concealed
                               ? Colors.transparent
                               : isMe
                               ? theme.primaryColor
                               : const Color(0xFFEFEFEF),
-                          border: msg.isDeleted
+                          border: msg.isDeleted || concealed
                               ? Border.all(color: const Color(0xFFE0E0E0))
                               : null,
                           borderRadius: BorderRadius.only(
@@ -863,70 +892,74 @@ class _ChatScreenState extends State<ChatScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (msg.hasImage && !msg.isDeleted) ...[
-                              GestureDetector(
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => ImageViewerScreen(
-                                      images: [msg.imageUrl!],
-                                    ),
-                                  ),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(14),
-                                  child: CachedNetworkImage(
-                                    imageUrl: msg.imageUrl!,
-                                    // Fixed width, free height. A
-                                    // portrait photograph at full bubble
-                                    // width pushes everything said after
-                                    // it off the screen.
-                                    width: 210,
-                                    fit: BoxFit.cover,
-                                    placeholder: (_, __) => Container(
-                                      width: 210,
-                                      height: 150,
-                                      color: Colors.black12,
-                                    ),
-                                    errorWidget: (_, __, ___) => Container(
-                                      width: 210,
-                                      height: 150,
-                                      color: Colors.black12,
-                                      child: const Icon(
-                                        Icons.broken_image_outlined,
-                                        color: Colors.white70,
+                          children: concealed
+                              ? [_veilContent(msg)]
+                              : [
+                                  if (msg.hasImage && !msg.isDeleted) ...[
+                                    GestureDetector(
+                                      onTap: () => Navigator.of(context).push(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) => ImageViewerScreen(
+                                            images: [msg.imageUrl!],
+                                          ),
+                                        ),
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(14),
+                                        child: CachedNetworkImage(
+                                          imageUrl: msg.imageUrl!,
+                                          // Fixed width, free height. A
+                                          // portrait photograph at full bubble
+                                          // width pushes everything said after
+                                          // it off the screen.
+                                          width: 210,
+                                          fit: BoxFit.cover,
+                                          placeholder: (_, __) => Container(
+                                            width: 210,
+                                            height: 150,
+                                            color: Colors.black12,
+                                          ),
+                                          errorWidget: (_, __, ___) =>
+                                              Container(
+                                                width: 210,
+                                                height: 150,
+                                                color: Colors.black12,
+                                                child: const Icon(
+                                                  Icons.broken_image_outlined,
+                                                  color: Colors.white70,
+                                                ),
+                                              ),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                              ),
 
-                              // Only when there is something to
-                              // separate: a photograph sent on its own
-                              // should not carry an empty line.
-                              if (msg.content.trim().isNotEmpty)
-                                const SizedBox(height: 8),
-                            ],
+                                    // Only when there is something to
+                                    // separate: a photograph sent on its own
+                                    // should not carry an empty line.
+                                    if (msg.content.trim().isNotEmpty)
+                                      const SizedBox(height: 8),
+                                  ],
 
-                            if (msg.isDeleted || msg.content.trim().isNotEmpty)
-                              Text(
-                                msg.isDeleted
-                                    ? 'This message was deleted'
-                                    : msg.content,
-                                style: TextStyle(
-                                  fontSize: 14.5,
-                                  height: 1.35,
-                                  fontStyle: msg.isDeleted
-                                      ? FontStyle.italic
-                                      : FontStyle.normal,
-                                  color: msg.isDeleted
-                                      ? const Color(0xFF9A9A9A)
-                                      : isMe
-                                      ? Colors.white
-                                      : const Color(0xFF111111),
-                                ),
-                              ),
-                          ],
+                                  if (msg.isDeleted ||
+                                      msg.content.trim().isNotEmpty)
+                                    Text(
+                                      msg.isDeleted
+                                          ? 'This message was deleted'
+                                          : msg.content,
+                                      style: TextStyle(
+                                        fontSize: 14.5,
+                                        height: 1.35,
+                                        fontStyle: msg.isDeleted
+                                            ? FontStyle.italic
+                                            : FontStyle.normal,
+                                        color: msg.isDeleted
+                                            ? const Color(0xFF9A9A9A)
+                                            : isMe
+                                            ? Colors.white
+                                            : const Color(0xFF111111),
+                                      ),
+                                    ),
+                                ],
                         ),
                       ),
                     ),
@@ -938,6 +971,89 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// What stands in for a message that has been flagged.
+  ///
+  /// It does not say what was in it, and it does not quote any of it.
+  /// The whole value of a warning is that the reader gets to decide
+  /// before seeing it, and a preview hands them the content anyway.
+  ///
+  /// Tapping View is deliberately the only way through — no "always
+  /// show", because the next flagged message is a different message and
+  /// consenting to one is not consenting to all of them.
+  Widget _veilContent(ChatMessage msg) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 230),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.visibility_off_outlined,
+                size: 15,
+                color: Color(0xFF9A9A9A),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  msg.flagReason?.trim().isNotEmpty == true
+                      ? 'This message may contain '
+                            '${msg.flagReason!.trim().toLowerCase()}'
+                      : 'This message may contain harsh or '
+                            'inappropriate content',
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    height: 1.3,
+                    color: Color(0xFF6B6B6B),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Are you sure you want to view it?',
+            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextButton(
+                onPressed: () => setState(() => _revealed.add(msg.id)),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, 32),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  foregroundColor: const Color(0xFF111111),
+                ),
+                child: const Text(
+                  'View',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+              // Reporting without reading it first. Somebody should not
+              // have to look at something to tell us it should not have
+              // been sent.
+              TextButton(
+                onPressed: () => _reportMessage(msg),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, 32),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  foregroundColor: const Color(0xFFD93025),
+                ),
+                child: const Text('Report', style: TextStyle(fontSize: 13.5)),
+              ),
+            ],
           ),
         ],
       ),
@@ -1458,6 +1574,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final name = otherProfile?.bestName ?? 'this person';
 
     return Container(
+      // Explicit, because the Column above lays its children out centred
+      // rather than stretched — without this the fill and the top border
+      // stop at the width of the longest line, which reads as a stray
+      // grey box rather than as the bar that replaced the composer.
+      // _composer only avoids this by accident: the Expanded inside its
+      // Row forces it wide.
+      width: double.infinity,
       decoration: const BoxDecoration(
         color: Color(0xFFFAFAFA),
         border: Border(top: BorderSide(color: Color(0xFFEFEFEF))),
@@ -1583,6 +1706,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
                   // Only once there is something to send. An always-on send
                   // button on an empty field is a button that does nothing.
+                  //
+                  // A waiting photograph counts as something to send. Both
+                  // _send() and the notifier already treat an image with no
+                  // caption as a message — this button was the only thing
+                  // that disagreed, so attaching a photo and sending it on
+                  // its own left you with nothing to tap.
                   if (sending)
                     const Padding(
                       padding: EdgeInsets.fromLTRB(12, 0, 4, 10),
@@ -1592,7 +1721,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
-                  else if (enabled && _inputController.text.trim().isNotEmpty)
+                  else if (enabled &&
+                      (_inputController.text.trim().isNotEmpty ||
+                          _pendingImage != null))
                     TextButton(
                       onPressed: _send,
                       style: TextButton.styleFrom(

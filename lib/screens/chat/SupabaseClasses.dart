@@ -219,6 +219,20 @@ class ChatMessage {
 
   bool get isDeleted => deletedAt != null;
 
+  /// When the server-side scan decided this needed a warning.
+  ///
+  /// Written by the Gemini pass in chat_webhook.php AFTER the insert, so
+  /// it is null on arrival and fills in a moment later. That is why the
+  /// thread also runs ContentFilter locally: the list is instant and
+  /// covers the window before this lands, and this covers what no list
+  /// can see.
+  final DateTime? flaggedAt;
+
+  /// Why, in a few words, for the warning card. Null for a local match.
+  final String? flagReason;
+
+  bool get isFlagged => flaggedAt != null;
+
   ChatMessage({
     required this.id,
     required this.conversationId,
@@ -229,6 +243,8 @@ class ChatMessage {
     this.status = MessageStatus.sent,
     this.deletedAt,
     this.imageUrl,
+    this.flaggedAt,
+    this.flagReason,
   });
 
   ChatMessage copyWith({
@@ -245,6 +261,8 @@ class ChatMessage {
     status: status ?? this.status,
     deletedAt: deletedAt ?? this.deletedAt,
     imageUrl: imageUrl ?? this.imageUrl,
+    flaggedAt: flaggedAt,
+    flagReason: flagReason,
   );
 
   factory ChatMessage.fromMap(Map<String, dynamic> map) {
@@ -264,6 +282,10 @@ class ChatMessage {
       // Tolerated as missing, like deleted_at: the column is newer than
       // some clients and some rows.
       imageUrl: map['image_url'] as String?,
+      flaggedAt: map['flagged_at'] == null
+          ? null
+          : DateTime.parse(map['flagged_at'] as String),
+      flagReason: map['flag_reason'] as String?,
     );
   }
 }
@@ -470,6 +492,25 @@ class ChatRepository {
           value: conversationId,
         ),
         callback: (payload) => fetchAll(), // ← just always re-fetch, no parsing
+      )
+      // Updates too, which this did not listen for and needed to.
+      // Everything that changes a message after it is sent is an UPDATE:
+      // a soft delete writes deleted_at and blanks the content, and the
+      // moderation scan in chat_webhook.php writes flagged_at a second
+      // or two after the insert. Without this binding neither reached an
+      // open thread — a message somebody deleted stayed on the other
+      // screen, and a flagged one stayed uncovered, until the thread was
+      // reopened.
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'messages',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'conversation_id',
+          value: conversationId,
+        ),
+        callback: (payload) => fetchAll(),
       )
       ..subscribe((status, [error]) {
         debugPrint('Realtime status: $status error: $error');
