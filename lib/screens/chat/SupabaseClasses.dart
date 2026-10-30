@@ -518,7 +518,19 @@ class ChatRepository {
         ),
         callback: (_) => fetchAll(),
       )
-      ..subscribe();
+      // Same reason as the inbox channel: this bound message_reactions,
+      // which was not in the supabase_realtime publication, so the join
+      // failed and every reaction arrived only on the next full refresh.
+      // Without a status callback that is indistinguishable from "nobody
+      // reacted".
+      ..subscribe((status, [error]) {
+        if (status == RealtimeSubscribeStatus.subscribed) return;
+
+        debugPrint(
+          '[Reactions] realtime channel $status'
+          '${error != null ? ' — $error' : ''}',
+        );
+      });
 
     controller.onCancel = () {
       _db.removeChannel(channel);
@@ -1122,7 +1134,26 @@ class InboxRepository {
         table: 'conversations',
         callback: (_) => controller.add(null),
       )
-      ..subscribe(); // ← no status callback here — don't react to channel events
+      // The callback LOGS and does nothing else, which is the distinction
+      // the old comment here was reaching for: reloading the inbox on a
+      // channel event caused a refresh loop, but having no callback at all
+      // meant a channel that failed to join failed in silence.
+      //
+      // It failed in silence for a long time. This channel binds three
+      // tables, and Realtime validates all the bindings together — one
+      // table missing from the supabase_realtime publication puts the
+      // WHOLE channel into CHANNEL_ERROR, so an unpublished
+      // `conversations` killed the two `messages` bindings next to it.
+      // The inbox looked like a messages bug and was a conversations bug.
+      // See supabase/sql/realtime-publication.sql.
+      ..subscribe((status, [error]) {
+        if (status == RealtimeSubscribeStatus.subscribed) return;
+
+        debugPrint(
+          '[Inbox] realtime channel $status'
+          '${error != null ? ' — $error' : ''}',
+        );
+      });
 
     controller.onCancel = () {
       _db.removeChannel(channel);
