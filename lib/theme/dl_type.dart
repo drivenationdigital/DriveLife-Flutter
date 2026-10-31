@@ -102,6 +102,21 @@ class DlType {
     fontStyle: fontStyle,
   );
 
+  /// The default AppBar title.
+  ///
+  /// Matches the hand-built header on the create-post screen, which is
+  /// the one this app was already getting right: 17, extra bold, barely
+  /// tracked. Screens that set their own style still win — this is the
+  /// floor, so a screen that says nothing looks like the rest.
+  static AppBarTheme appBarTheme() => AppBarTheme(
+    titleTextStyle: body(
+      fontSize: 17,
+      fontWeight: FontWeight.w800,
+      letterSpacing: -0.2,
+      color: const Color(0xFF0B0B0B),
+    ),
+  );
+
   /// Tab labels, stated outright rather than inherited.
   ///
   /// Every TabBar in the app passes its own `labelStyle` with a size and
@@ -142,9 +157,20 @@ class DlType {
       headlineLarge: h(headings.headlineLarge),
       headlineMedium: h(headings.headlineMedium),
       headlineSmall: h(headings.headlineSmall),
-      // titleLarge is a page title — an AppBar's title resolves to it —
-      // so it is a heading.
-      titleLarge: h(headings.titleLarge),
+      // titleLarge is where an AppBar's title resolves, and it is DM
+      // Sans, not the condensed face.
+      //
+      // It was condensed, on the reasoning that a screen title is a
+      // heading. In practice that split the app in two: a screen with a
+      // real AppBar got Barlow Condensed and a screen with a
+      // hand-built header row got DM Sans, so "Messages" and "New post"
+      // were set in different typefaces for no reason a user could
+      // see.
+      //
+      // Headings that genuinely want the condensed face ask for it with
+      // DlHeading. An AppBar title is a label for where you are, which
+      // is the same job as the rest of the chrome around it.
+      titleLarge: b(body.titleLarge),
 
       // titleMedium and titleSmall are NOT. Material uses them for
       // component labels: TabBar.labelStyle falls back to titleSmall,

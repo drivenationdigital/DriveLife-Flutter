@@ -386,11 +386,34 @@ class YourWeekPanelState extends State<YourWeekPanel> {
             color: theme.textColor,
           ),
         ),
+        _locationChip(theme),
+      ],
+    );
+  }
+
+  /// Where they are, as a flag and a short country name.
+  ///
+  /// Replaces the date, which told somebody something they could read
+  /// off the top of their own phone. The country is the thing that
+  /// explains the rest of this screen — the events below are the ones
+  /// near them, and this says which "near" the app is using.
+  ///
+  /// Empty when last_location has never been recorded, in which case
+  /// the row shows nothing rather than a guess.
+  Widget _locationChip(ThemeProvider theme) {
+    final code = widget.from?.country.trim().toUpperCase() ?? '';
+    if (code.length != 2) return const SizedBox.shrink();
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(_flag(code), style: const TextStyle(fontSize: 17)),
+        const SizedBox(width: 6),
         Text(
-          _today(),
+          _countryName(code),
           style: TextStyle(
             fontSize: 14.5,
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w600,
             color: theme.subtextColor,
           ),
         ),
@@ -398,25 +421,58 @@ class YourWeekPanelState extends State<YourWeekPanel> {
     );
   }
 
-  static String _today() {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
+  /// A two-letter country code as its flag emoji.
+  ///
+  /// Regional indicator symbols: 'G' + 'B' become the two codepoints
+  /// U+1F1EC U+1F1E7, which every platform renders as one flag. Built
+  /// arithmetically rather than from a table of 250 emoji — the
+  /// alphabet offset is the whole rule.
+  ///
+  /// Android before 11 has no flag glyphs and will draw the two letters
+  /// "GB" instead. That is a reasonable thing to fall back to, which is
+  /// why there is no detection here.
+  static String _flag(String code) {
+    const base = 0x1F1E6; // regional indicator A
+    const a = 0x41; // 'A'
 
-    final now = DateTime.now();
-    return '${days[now.weekday - 1]} ${now.day} ${months[now.month - 1]}';
+    return String.fromCharCodes([
+      base + (code.codeUnitAt(0) - a),
+      base + (code.codeUnitAt(1) - a),
+    ]);
+  }
+
+  /// The short name people actually say.
+  ///
+  /// Only the markets the app is in, falling back to the raw code. A
+  /// full ISO table is 250 entries to carry for a label, and "GB" is
+  /// not a worse answer than a country name nobody expected to see.
+  static String _countryName(String code) {
+    const names = {
+      'GB': 'UK',
+      'US': 'USA',
+      'IE': 'Ireland',
+      'FR': 'France',
+      'DE': 'Germany',
+      'ES': 'Spain',
+      'IT': 'Italy',
+      'NL': 'Netherlands',
+      'BE': 'Belgium',
+      'PT': 'Portugal',
+      'PL': 'Poland',
+      'SE': 'Sweden',
+      'NO': 'Norway',
+      'DK': 'Denmark',
+      'CH': 'Switzerland',
+      'AT': 'Austria',
+      'AU': 'Australia',
+      'NZ': 'New Zealand',
+      'CA': 'Canada',
+      'AE': 'UAE',
+      'ZA': 'South Africa',
+      'JP': 'Japan',
+    };
+
+    return names[code] ?? code;
   }
 
   /// The dark card: vehicle on top, reminder underneath.

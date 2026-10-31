@@ -305,6 +305,9 @@ class _MyAppState extends State<MyApp> {
             // than left to fall back through titleSmall — see the note
             // on DlType.tabBarTheme.
             tabBarTheme: DlType.tabBarTheme(),
+            // The floor for every AppBar title. Screens with their
+            // own style still win; this is what the rest inherit.
+            appBarTheme: DlType.appBarTheme(),
             pageTransitionsTheme: const PageTransitionsTheme(
               builders: {
                 TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
@@ -314,11 +317,38 @@ class _MyAppState extends State<MyApp> {
           ),
           // Add this builder to set a white background immediately
           builder: (context, child) {
-            return Container(
-              color: Colors.white,
-              // Above the navigator, so the strip survives every push and
-              // pop rather than each screen having to know about it.
-              child: OfflineBanner(child: child ?? const SizedBox.shrink()),
+            // The app's default status bar: dark icons, because almost
+            // every screen is white.
+            //
+            // This exists so the vehicle screen can give itself back.
+            // AnnotatedRegion does not "restore" anything on pop — it
+            // simply stops contributing, and whatever region is found
+            // next wins. With this the only one in the app, popping off
+            // the vehicle hero found nothing underneath and the last
+            // style applied just stayed, which is why the clock stayed
+            // white on every screen afterwards.
+            //
+            // Sitting above the navigator makes it the fallback for
+            // every route, and a route with its own AnnotatedRegion is
+            // deeper in the tree and still wins.
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: const SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                // Opposite senses on purpose. Android asks what the
+                // ICONS should be (dark); iOS asks what the BACKGROUND
+                // is (light). Setting one and not the other is how this
+                // ends up correct on one platform and invisible on the
+                // other.
+                statusBarIconBrightness: Brightness.dark,
+                statusBarBrightness: Brightness.light,
+              ),
+              child: Container(
+                color: Colors.white,
+                // Above the navigator, so the strip survives every push
+                // and pop rather than each screen having to know about
+                // it.
+                child: OfflineBanner(child: child ?? const SizedBox.shrink()),
+              ),
             );
           },
           initialRoute: AppRoutes.splash,

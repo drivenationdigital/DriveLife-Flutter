@@ -982,29 +982,47 @@ class _ChatScreenState extends State<ChatScreen> {
                                       ),
                                       child: ClipRRect(
                                         borderRadius: BorderRadius.circular(14),
-                                        child: CachedNetworkImage(
-                                          imageUrl: msg.imageUrl!,
-                                          // Fixed width, free height. A
-                                          // portrait photograph at full bubble
-                                          // width pushes everything said after
-                                          // it off the screen.
-                                          width: 210,
-                                          fit: BoxFit.cover,
-                                          placeholder: (_, __) => Container(
-                                            width: 210,
-                                            height: 150,
-                                            color: Colors.black12,
+                                        // A BOX it fits inside, not a width
+                                        // it must match.
+                                        //
+                                        // It was `width: 210` with
+                                        // BoxFit.cover and no height. With
+                                        // the height free that happens not
+                                        // to crop — the image sizes to its
+                                        // own ratio and cover has nothing to
+                                        // trim — but it meant a tall
+                                        // portrait came out 210 wide and
+                                        // several hundred tall, filling the
+                                        // screen on its own.
+                                        //
+                                        // maxWidth AND maxHeight with
+                                        // contain shows the whole photo
+                                        // either way: a wide one is limited
+                                        // by the width, a tall one by the
+                                        // height, and neither is cut.
+                                        child: ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 210,
+                                            maxHeight: 280,
                                           ),
-                                          errorWidget: (_, __, ___) =>
-                                              Container(
-                                                width: 210,
-                                                height: 150,
-                                                color: Colors.black12,
-                                                child: const Icon(
-                                                  Icons.broken_image_outlined,
-                                                  color: Colors.white70,
-                                                ),
+                                          child: CachedNetworkImage(
+                                            imageUrl: msg.imageUrl!,
+                                            fit: BoxFit.contain,
+                                            placeholder: (_, _) => Container(
+                                              width: 210,
+                                              height: 150,
+                                              color: Colors.black12,
+                                            ),
+                                            errorWidget: (_, _, _) => Container(
+                                              width: 210,
+                                              height: 150,
+                                              color: Colors.black12,
+                                              child: const Icon(
+                                                Icons.broken_image_outlined,
+                                                color: Colors.white70,
                                               ),
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),

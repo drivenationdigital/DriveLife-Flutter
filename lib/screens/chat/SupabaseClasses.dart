@@ -1075,6 +1075,25 @@ class InboxRepository {
 
       final hasLastMsg = row['last_message_content'] != null;
 
+      // get_inbox has a fixed column list and does not return the
+      // message's image today, which is why the preview was blank for a
+      // photo: the ChatMessage below was built with no imageUrl, so
+      // hasImage was always false and the "Photo" branch in the row
+      // could never fire.
+      //
+      // Read optionally, so this starts working the moment the function
+      // is updated — see supabase/sql/inbox-last-message.sql — and
+      // falls back to inferring it until then. A message with no text
+      // is a photo, because sendMessage refuses one that is neither.
+      final lastImage = row['last_message_image'] as String?;
+      final lastDeleted = row['last_message_deleted'];
+
+      final lastIsPhoto =
+          lastImage != null && lastImage.isNotEmpty ||
+          (lastImage == null &&
+              lastDeleted == null &&
+              '${row['last_message_content']}'.trim().isEmpty);
+
       return ConversationPreview(
         conversation: conv,
         otherUserId: otherUserId,
@@ -1088,6 +1107,15 @@ class InboxRepository {
                 content: row['last_message_content'] as String,
                 createdAt: DateTime.parse(row['last_message_at']),
                 isRead: true,
+                // Real when the function returns it. The sentinel is
+                // what makes hasImage true on the inferred path, where
+                // the URL is unknown but the fact is not — the inbox
+                // row only ever asks WHETHER there is an image, never
+                // renders it.
+                imageUrl: lastIsPhoto ? (lastImage ?? 'photo') : null,
+                deletedAt: lastDeleted == null
+                    ? null
+                    : DateTime.tryParse('$lastDeleted'),
               )
             : null,
       );
