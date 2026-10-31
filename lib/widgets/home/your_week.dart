@@ -1,3 +1,4 @@
+import 'package:drivelife/api/guess_api.dart';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -65,6 +66,9 @@ class YourWeekPanelState extends State<YourWeekPanel> {
   bool _isDream = false;
   List<Map<String, dynamic>> _events = const [];
 
+  /// Today's puzzle, or null when none is scheduled.
+  GuessGame? _guess;
+
   bool _loading = true;
 
   @override
@@ -76,6 +80,15 @@ class YourWeekPanelState extends State<YourWeekPanel> {
   /// Reload everything. Called by the screen's pull-to-refresh.
   Future<void> refresh() => _load();
 
+  /// Just the game. Cheaper than _load for the one thing that
+  /// changes when somebody comes back from playing it.
+  Future<void> _loadGuess() async {
+    final game = await GuessAPI.today();
+    if (!mounted) return;
+
+    setState(() => _guess = game);
+  }
+
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
 
@@ -85,6 +98,7 @@ class YourWeekPanelState extends State<YourWeekPanel> {
     final results = await Future.wait([
       _loadVehicleAndReminder(),
       _loadEvents(),
+      GuessAPI.today(),
     ]);
 
     if (!mounted) return;
@@ -102,6 +116,7 @@ class YourWeekPanelState extends State<YourWeekPanel> {
       _reminder = garage.reminder;
       _isDream = garage.isDream;
       _events = results[1] as List<Map<String, dynamic>>;
+      _guess = results[2] as GuessGame?;
       _loading = false;
     });
   }
@@ -363,6 +378,7 @@ class YourWeekPanelState extends State<YourWeekPanel> {
               if (_vehicle != null) _garageCard(theme) else _emptyGarage(theme),
               const SizedBox(height: 28),
               _eventsSection(theme),
+              _guessCard(theme),
             ],
           ],
         ),
@@ -1160,6 +1176,162 @@ class YourWeekPanelState extends State<YourWeekPanel> {
     return miles < 10
         ? '${miles.toStringAsFixed(1)} mi'
         : '${miles.round()} mi';
+  }
+
+  /// The daily game, under the events row.
+  ///
+  /// Nothing at all when no game is scheduled. An empty frame saying
+  /// "no game today" is a worse answer than silence — it draws the eye
+  /// to an absence the user cannot do anything about.
+  Widget _guessCard(ThemeProvider theme) {
+    final game = _guess;
+    if (game == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 26),
+      child: Material(
+        color: _cardBlack,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () async {
+            await Navigator.pushNamed(context, AppRoutes.guess);
+            // Coming back from a guess changes what this card says, so
+            // it re-reads rather than showing yesterday's state.
+            if (mounted) await _loadGuess();
+          },
+          child: SizedBox(
+            height: 168,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Guarded, like the other two images on this panel.
+                // CachedNetworkImage treats an empty string as a URL to
+                // fetch and throws "No host specified in URI", which
+                // takes the whole screen down rather than leaving one
+                // grey rectangle.
+                if (game.image.trim().isEmpty)
+                  const ColoredBox(color: _cardInner)
+                else
+                  CachedNetworkImage(
+                    imageUrl: game.image,
+                    fit: BoxFit.cover,
+                    placeholder: (_, _) => const ColoredBox(color: _cardInner),
+                    errorWidget: (_, _, _) =>
+                        const ColoredBox(color: _cardInner),
+                  ),
+
+                // Dark from the bottom up, so the title reads over
+                // whatever the photograph happens to be.
+                const Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.black26, Colors.black87],
+                          stops: [0.3, 1],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'DAILY',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // What the card is FOR: whether there is anything to do.
+                // "Closes 7pm" on a game already guessed would invite a
+                // tap that cannot change anything.
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      _guessStatus(game),
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 14,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const DlHeading(
+                        'Guess the car',
+                        fontSize: 24,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        game.isClosed
+                            ? 'Answer: ${game.answer ?? 'revealed'}'
+                            : '+${game.points} points if you get it right',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade300,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _guessStatus(GuessGame game) {
+    if (game.isClosed) {
+      if (!game.hasPlayed) return 'Missed';
+      return game.myCorrect == true ? 'Correct' : 'Wrong';
+    }
+
+    if (game.hasPlayed) return 'Guessed';
+    if (!game.isOpen) return 'Opens 7am';
+
+    return 'Closes 7pm';
   }
 
   /// Grey bars in the shape of what is coming.

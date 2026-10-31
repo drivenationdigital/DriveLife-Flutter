@@ -1,3 +1,4 @@
+import 'package:drivelife/screens/guess/guess_screen.dart';
 import 'package:drivelife/screens/points/points_screen.dart';
 import 'package:drivelife/main.dart';
 import 'package:drivelife/screens/auth/forgot_password_screen.dart';
@@ -68,6 +69,7 @@ class AppRoutes {
   static const String postDetail = '/post-detail';
   static const String vehicleDetail = '/vehicle-detail';
   static const String points = '/points';
+  static const String guess = '/guess';
 
   static const String editProfile = '/edit-profile';
   static const String manageSocialLinks = '/manage-social-links';
@@ -374,6 +376,13 @@ class AppRoutes {
             postId: args['postId'].toString(),
             highlightCommentId: args['highlightCommentId'],
           ),
+        );
+      case guess:
+        // Optional arguments: opened from the home card there are
+        // none, opened from a result notification there is a tab.
+        final guessArgs = settings.arguments as Map<String, dynamic>?;
+        return _slide(
+          GuessScreen(initialTab: (guessArgs?['tab'] as num?)?.toInt() ?? 0),
         );
       case points:
         return _slide(const PointsScreen());

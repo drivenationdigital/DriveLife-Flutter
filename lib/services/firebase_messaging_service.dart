@@ -298,6 +298,14 @@ class FirebaseMessagingService {
           MaterialPageRoute(builder: (_) => const GalleryTagRequestsScreen()),
         );
         break;
+      case 'guess-view':
+        // The result push lands on the leaderboard, because the result
+        // is why it was sent. Anything else opens the puzzle.
+        nav.pushNamed(
+          AppRoutes.guess,
+          arguments: {'tab': id == 'leaderboard' ? 1 : 0},
+        );
+        break;
       default:
         print('Unknown deep link type: $type');
     }
