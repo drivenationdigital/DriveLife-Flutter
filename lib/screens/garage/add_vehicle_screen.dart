@@ -1,3 +1,4 @@
+import 'package:drivelife/widgets/points/points_reward.dart';
 import 'package:drivelife/widgets/garage/photo_matches_sheet.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -235,6 +236,35 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   void initState() {
     super.initState();
     _loadVehicleData();
+    _loadDreamAllowance();
+  }
+
+  /// How many dream cars are left, from the server.
+  ///
+  /// Starts permissive. If the check has not come back, or the request
+  /// failed, the option stays enabled and the server refuses — which is
+  /// the right way round: the endpoint is the limit, and this is only
+  /// here so somebody does not fill in a whole form to be told no.
+  int _dreamsLeft = 1;
+
+  /// Shown in the greyed-out label. Comes from the server so it cannot
+  /// disagree with DL_MAX_DREAM_CARS.
+  int _dreamLimit = 5;
+
+  /// Editing a vehicle that is ALREADY a dream car must not be blocked
+  /// by the limit it is itself part of — otherwise saving a change to
+  /// one of your five would flip it to Current.
+  bool get _canAddDream =>
+      _dreamsLeft > 0 || (_isEditMode && _ownership == 'dream_car');
+
+  Future<void> _loadDreamAllowance() async {
+    final allowance = await GarageAPI.dreamAllowance();
+    if (!mounted || allowance == null) return;
+
+    setState(() {
+      _dreamsLeft = allowance.remaining;
+      _dreamLimit = allowance.limit;
+    });
   }
 
   @override
@@ -559,12 +589,29 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       // makes the parser read `?[` as a second conditional rather than
       // as a null-aware index — "Conditions must have a static type of
       // 'bool'" pointing at a line with no condition on it.
+      // The server has the last word on the dream-car limit, and says
+      // so with a code rather than only a message. The greyed-out
+      // option should normally prevent this, but the allowance can go
+      // stale while the form is open, or on another device.
+      if (res['code'] == 'dream_limit') {
+        _toast('${res['message'] ?? 'You have reached the dream car limit.'}');
+        return;
+      }
+
       final dynamic vehicleId;
+
+      var pointsAwarded = 0;
 
       if (_isEditMode) {
         vehicleId = (widget.vehicle as Map?)?['id'];
       } else {
         vehicleId = (res as Map?)?['id'];
+
+        // What the server actually paid, not what the button promised.
+        // It is 0 for anybody who has already had this rule, so the
+        // reward only appears when points genuinely changed hands.
+        pointsAwarded =
+            int.tryParse('${(res as Map?)?['points_awarded']}') ?? 0;
       }
 
       // Photos of this plate may already be on the site — the scan records
@@ -619,6 +666,20 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
           if (!mounted) return;
         }
       }
+
+      // Last, and awaited. Everything above can push a sheet or a
+      // dialog of its own, and a reward that fires in the middle of
+      // that either stacks on top of it or is dismissed with it.
+      //
+      // show() ignores a zero, so there is no condition here to keep in
+      // step with the server's rules.
+      await PointsReward.show(
+        context,
+        points: pointsAwarded,
+        reason: 'For adding a vehicle to your garage',
+      );
+
+      if (!mounted) return;
 
       Navigator.pop(context, _isEditMode ? 'updated' : vehicleId);
     } catch (e) {
@@ -881,6 +942,14 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   }
 
   /// The gallery strip: a tile per photograph, and one to add more.
+  /// Three to a row, wrapping.
+  ///
+  /// This was a 92px horizontal strip, which is fine for two or three
+  /// photographs and awkward past that: you end up scrolling sideways
+  /// to find a tile AND dragging it inside the same sideways scroller,
+  /// so the list runs away under your finger. A wrapping grid shows
+  /// nine without scrolling at all, and a drag only ever has to cross
+  /// cells that are already on screen.
   Widget _buildGallerySection() {
     final existing = _keptGallery;
 
@@ -896,7 +965,8 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                 Expanded(
                   child: Text(
                     _isEditMode
-                        ? 'Drag to reorder. The first photo is the cover.'
+                        ? 'Hold and drag to reorder, or tap a photo to make '
+                              'it the cover.'
                         : 'Add more once the vehicle is saved.',
                     style: TextStyle(
                       fontSize: 12.5,
@@ -918,88 +988,83 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
             ),
             const SizedBox(height: 12),
 
-            SizedBox(
-              height: 92,
-              // Reorderable, and that is the only way to set the cover:
-              // first IS the cover, so dragging one to the front is the
-              // whole gesture. A separate "make cover" control could
-              // disagree with the order on screen, and then one of them
-              // would be lying.
-              //
-              // Only the saved ones can be dragged. A photograph that
-              // has not been uploaded yet has no identity the server
-              // could be told about, so the new ones queue after them
-              // and take their order from the upload.
-              child: ReorderableListView(
-                scrollDirection: Axis.horizontal,
-                buildDefaultDragHandles: false,
-                onReorder: (from, to) {
-                  setState(() {
-                    if (to > from) to -= 1;
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const spacing = 8.0;
+                const columns = 3;
 
-                    final moved = existing.removeAt(from);
-                    existing.insert(to, moved);
+                // Floored, so three tiles plus two gaps can never come
+                // to more than the width available. A rounding error
+                // here wraps one tile onto a row of its own.
+                final tile =
+                    ((constraints.maxWidth - spacing * (columns - 1)) / columns)
+                        .floorToDouble();
 
-                    // _keptGallery is a filtered copy, so the order has
-                    // to be written back to the list it came from —
-                    // with the removed ones left where they are, since
-                    // they are on their way out anyway.
-                    _existingGallery = [
-                      ...existing,
-                      ..._existingGallery.where(
-                        (row) => _galleryRemovals.contains('${row['image']}'),
-                      ),
-                    ];
-
-                    _orderChanged = true;
-                  });
-                },
-                footer: Row(
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
                   children: [
+                    for (var i = 0; i < existing.length; i++)
+                      _draggableTile(
+                        index: i,
+                        child: _galleryTile(
+                          size: tile,
+                          child: Image.network(
+                            '${existing[i]['url']}',
+                            width: tile,
+                            height: tile,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const ColoredBox(
+                              color: Color(0xFFF0F0F0),
+                              child: Icon(
+                                Icons.broken_image,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ),
+                          // The first one, whatever it is now. Not
+                          // row['is_cover'], which is what the server
+                          // last saw — reordering changes which is the
+                          // cover and the badge has to follow the
+                          // order, not the response.
+                          isCover: i == 0,
+                          // Tapping promotes it. Dragging from the
+                          // ninth cell to the first is a long way and
+                          // easy to drop halfway; this is the same
+                          // outcome in one tap, which is why setting a
+                          // cover no longer depends on dragging well.
+                          onMakeCover: i == 0
+                              ? null
+                              : () => _reorderGallery(i, 0),
+                          onRemove: () => setState(
+                            () =>
+                                _galleryRemovals.add('${existing[i]['image']}'),
+                          ),
+                        ),
+                      ),
+
+                    // Picked but not uploaded. Not draggable: a photo
+                    // the server has never seen has no identity to send
+                    // an order for, so these queue after the saved ones
+                    // and take their position from the upload.
                     for (final file in _galleryPicks)
                       _galleryTile(
+                        size: tile,
+                        isNew: true,
                         child: Image.file(
                           file,
-                          width: 86,
-                          height: 86,
+                          width: tile,
+                          height: tile,
                           fit: BoxFit.cover,
                         ),
-                        isNew: true,
                         onRemove: () =>
                             setState(() => _galleryPicks.remove(file)),
                       ),
-                    if (_galleryCount < _maxGallery) _addTile(),
+
+                    if (_galleryCount < _maxGallery) _addTile(tile),
                   ],
-                ),
-                children: [
-                  for (var i = 0; i < existing.length; i++)
-                    ReorderableDragStartListener(
-                      key: ValueKey('${existing[i]['image']}'),
-                      index: i,
-                      child: _galleryTile(
-                        child: Image.network(
-                          '${existing[i]['url']}',
-                          width: 86,
-                          height: 86,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const ColoredBox(
-                            color: Color(0xFFF0F0F0),
-                            child: Icon(Icons.broken_image, color: Colors.grey),
-                          ),
-                        ),
-                        // The first one, whatever it is now. Not
-                        // row['is_cover'], which is what the server
-                        // last saw — dragging changes which is the
-                        // cover and the badge has to follow the drag,
-                        // not the response.
-                        isCover: i == 0,
-                        onRemove: () => setState(
-                          () => _galleryRemovals.add('${existing[i]['image']}'),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+                );
+              },
             ),
           ],
         ),
@@ -1007,28 +1072,106 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     );
   }
 
-  /// The "add more" square at the end of the strip.
-  Widget _addTile() {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: InkWell(
-        onTap: _pickGalleryImages,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          width: 86,
-          height: 86,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFDDDDDD)),
+  /// Move a saved photo, and remember that the order changed.
+  ///
+  /// _keptGallery is a filtered copy, so the new order has to be written
+  /// back to the list it came from — with the removed ones left on the
+  /// end, since they are on their way out anyway.
+  void _reorderGallery(int from, int to) {
+    if (from == to) return;
+
+    setState(() {
+      final kept = _keptGallery;
+      final moved = kept.removeAt(from);
+      kept.insert(to.clamp(0, kept.length), moved);
+
+      _existingGallery = [
+        ...kept,
+        ..._existingGallery.where(
+          (row) => _galleryRemovals.contains('${row['image']}'),
+        ),
+      ];
+
+      _orderChanged = true;
+    });
+  }
+
+  /// One saved tile, pick-up-able and drop-on-able.
+  ///
+  /// Hand-rolled rather than ReorderableListView because that reorders
+  /// along one axis and cannot wrap — which is the whole reason the
+  /// strip was hard to use. Draggable plus DragTarget works in a Wrap
+  /// and needs no package.
+  Widget _draggableTile({required int index, required Widget child}) {
+    // Only saved photos can be reordered, and only in edit mode: a new
+    // vehicle has no order on the server to rearrange yet.
+    if (!_isEditMode) return child;
+
+    return DragTarget<int>(
+      onWillAcceptWithDetails: (details) => details.data != index,
+      onAcceptWithDetails: (details) => _reorderGallery(details.data, index),
+      builder: (context, candidate, _) {
+        final hovering = candidate.isNotEmpty;
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          // foregroundDecoration, NOT decoration.
+          //
+          // A border in `decoration` is laid out: it added 2px a side,
+          // so three tiles came to 12px more than the width measured
+          // for them and the third wrapped onto the next row — which
+          // looked like an empty cell in the top right.
+          //
+          // foregroundDecoration paints over the child and takes no
+          // space at all, so the tile stays exactly the size the grid
+          // was divided into.
+          foregroundDecoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            // Shows where it will land. Without it a drop is a guess,
+            // because the tile being dragged covers the one under it.
+            border: Border.all(
+              color: hovering ? const Color(0xFFAE9159) : Colors.transparent,
+              width: 2,
+            ),
           ),
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.add, color: Colors.grey),
-              SizedBox(height: 2),
-              Text('Add', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
-            ],
+          child: LongPressDraggable<int>(
+            data: index,
+            feedback: Material(
+              color: Colors.transparent,
+              child: Opacity(
+                opacity: 0.9,
+                child: Transform.scale(scale: 1.06, child: child),
+              ),
+            ),
+            // The gap it left, so the grid does not reflow mid-drag and
+            // move the targets out from under the finger.
+            childWhenDragging: Opacity(opacity: 0.25, child: child),
+            child: child,
           ),
+        );
+      },
+    );
+  }
+
+  /// The "add more" square, last in the grid.
+  Widget _addTile(double size) {
+    return InkWell(
+      onTap: _pickGalleryImages,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFDDDDDD)),
+        ),
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add, color: Colors.grey),
+            SizedBox(height: 2),
+            Text('Add', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
+          ],
         ),
       ),
     );
@@ -1037,15 +1180,26 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   Widget _galleryTile({
     required Widget child,
     required VoidCallback onRemove,
+    required double size,
+    VoidCallback? onMakeCover,
     bool isNew = false,
     bool isCover = false,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
+    return SizedBox(
+      width: size,
+      height: size,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          ClipRRect(borderRadius: BorderRadius.circular(10), child: child),
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: onMakeCover,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: child,
+              ),
+            ),
+          ),
 
           Positioned(
             top: -4,
@@ -1064,10 +1218,10 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
             ),
           ),
 
-          // First in the row, and therefore the cover. Said on the
+          // First in the order, and therefore the cover. Said on the
           // tile rather than in a caption, because the whole point of
           // merging the two pickers was that the answer to "which one
-          // is the cover" should be visible in the order.
+          // is the cover" should be visible in the grid.
           if (isCover)
             Positioned(
               left: 4,
@@ -1083,9 +1237,30 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   style: TextStyle(color: Colors.white, fontSize: 10),
                 ),
               ),
+            )
+          // Only on tiles that can become one, so it never shows on a
+          // photo the server has not got yet.
+          else if (onMakeCover != null)
+            Positioned(
+              left: 4,
+              bottom: 4,
+              child: GestureDetector(
+                onTap: onMakeCover,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(
+                    Icons.star_outline,
+                    color: Colors.white,
+                    size: 13,
+                  ),
+                ),
+              ),
             ),
 
-          // Marked, so it is obvious which ones have not been saved yet.
           if (isNew)
             Positioned(
               left: 4,
@@ -1527,22 +1702,55 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                           isExpanded: true,
                           icon: _caret,
                           decoration: _dec('Ownership *'),
-                          items: const [
-                            DropdownMenuItem(
+                          items: [
+                            const DropdownMenuItem(
                               value: 'current',
                               child: Text('Current Vehicle'),
                             ),
-                            DropdownMenuItem(
+                            const DropdownMenuItem(
                               value: 'past',
                               child: Text('Past Vehicle'),
                             ),
                             DropdownMenuItem(
                               value: 'dream_car',
-                              child: Text('Dream Vehicle'),
+                              // Still listed when the allowance is used
+                              // up, greyed with the reason beside it.
+                              // Removing the option entirely would just
+                              // raise the question of where it went.
+                              enabled: _canAddDream,
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'Dream Vehicle',
+                                    style: TextStyle(
+                                      color: _canAddDream
+                                          ? null
+                                          : Colors.grey.shade400,
+                                    ),
+                                  ),
+                                  if (!_canAddDream) ...[
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '$_dreamLimit max reached',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        color: Colors.grey.shade400,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           ],
                           onChanged: (v) {
                             if (v == null) return;
+
+                            // A disabled DropdownMenuItem cannot be
+                            // tapped, so this is belt and braces for
+                            // the case where the allowance runs out
+                            // while the form is already open.
+                            if (v == 'dream_car' && !_canAddDream) return;
+
                             setState(() {
                               _ownership = v;
                               if (_ownership != 'past') _ownedTo = null;

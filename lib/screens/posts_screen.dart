@@ -138,9 +138,17 @@ class PostsScreenState extends State<PostsScreen>
         curve: Curves.easeOut,
       );
     }
-    // Your week has no _PostsTab, so _activeTab is null while it shows
-    // and the line below would quietly do nothing. It has its own
-    // reload, and pulling down on it should run it.
+    await refreshActive();
+  }
+
+  /// Reload whichever tab is showing.
+  ///
+  /// The ONE place that knows Your week is not a _PostsTab. _activeTab
+  /// resolves a key to a _PostsTabState, so while Your week shows it is
+  /// null and `_activeTab?.refresh()` silently does nothing — which is
+  /// how pull-to-refresh came to complete instantly and reload nothing.
+  /// Both callers go through here so there is no second place to forget.
+  Future<void> refreshActive() async {
     if (_visibleTabs[_tabController.index] == PostTabType.yourWeek) {
       await _yourWeekPanelKey.currentState?.refresh();
       return;
@@ -241,9 +249,7 @@ class PostsScreenState extends State<PostsScreen>
       // Awaited, not fired. `() async => f()` completes as soon as the
       // call is made, so the spinner vanished a frame after it appeared
       // rather than when the posts arrived.
-      onRefresh: () async {
-        await _activeTab?.refresh();
-      },
+      onRefresh: refreshActive,
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
           // Vertical only: a carousel inside a post card would otherwise

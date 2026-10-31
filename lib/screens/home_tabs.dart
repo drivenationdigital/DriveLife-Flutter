@@ -131,6 +131,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     return _currentIndex == _dHome &&
         const {
           BottomNavProvider.forYou,
+          BottomNavProvider.events,
           BottomNavProvider.places,
           BottomNavProvider.tracks,
         }.contains(_homeTab);
@@ -467,7 +468,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         header: _buildChrome(theme),
         headerHeight: _chromeHeight,
       ),
-      EventsScreen(),
+      EventsScreen(
+        chrome: _chrome,
+        header: _buildChrome(theme),
+        headerHeight: _chromeHeight,
+      ),
       VenuesScreen(
         chrome: _chrome,
         header: _buildChrome(theme),

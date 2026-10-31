@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/api/garage_api.dart';
 import 'package:drivelife/api/garage_reminders_service.dart';
+import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/theme/dl_type.dart';
 import 'package:drivelife/routes.dart';
@@ -59,6 +60,9 @@ class YourWeekPanelState extends State<YourWeekPanel> {
 
   Map<String, dynamic>? _vehicle;
   Map<String, dynamic>? _reminder;
+
+  /// Whether [_vehicle] is a dream car rather than one they own.
+  bool _isDream = false;
   List<Map<String, dynamic>> _events = const [];
 
   bool _loading = true;
@@ -91,10 +95,12 @@ class YourWeekPanelState extends State<YourWeekPanel> {
               as ({
                 Map<String, dynamic>? vehicle,
                 Map<String, dynamic>? reminder,
+                bool isDream,
               });
 
       _vehicle = garage.vehicle;
       _reminder = garage.reminder;
+      _isDream = garage.isDream;
       _events = results[1] as List<Map<String, dynamic>>;
       _loading = false;
     });
@@ -105,34 +111,65 @@ class YourWeekPanelState extends State<YourWeekPanel> {
   /// One method because the reminder lookup needs the vehicle's id, so
   /// they cannot run in parallel with each other even though they can
   /// run in parallel with the events.
-  Future<({Map<String, dynamic>? vehicle, Map<String, dynamic>? reminder})>
+  Future<
+    ({
+      Map<String, dynamic>? vehicle,
+      Map<String, dynamic>? reminder,
+      bool isDream,
+    })
+  >
   _loadVehicleAndReminder() async {
     try {
       final garage = await GarageAPI.getUserGarage(widget.userId) ?? const [];
 
-      final current = garage
+      final all = garage
           .whereType<Map>()
           .map((v) => Map<String, dynamic>.from(v))
-          .where(_isCurrent)
           .toList();
 
-      if (current.isEmpty) {
-        return (vehicle: null, reminder: null);
+      // Owned first, dreamed of second.
+      //
+      // A car somebody actually has is the one with reminders against
+      // it and the one they came to look at. A dream car is worth
+      // showing when there is nothing else — it is still their garage —
+      // but it must never displace a real one, and the card has to say
+      // which it is or the reminder row would be promising to remind
+      // somebody about a car they do not own.
+      final current = all.where(_isCurrent).toList();
+      final dreams = all.where(_isDreamCar).toList();
+
+      final shelf = current.isNotEmpty ? current : dreams;
+
+      if (shelf.isEmpty) {
+        return (vehicle: null, reminder: null, isDream: false);
       }
 
-      // Most liked. The brief says "current vehicle, most liked" — the
-      // shelf narrows it and the likes break the tie, so somebody with
-      // four cars gets the one the app has most to say about rather
-      // than whichever the database returned first.
-      current.sort((a, b) => _likes(b).compareTo(_likes(a)));
-      final vehicle = current.first;
+      // Most liked within whichever shelf won. The shelf narrows it and
+      // the likes break the tie, so somebody with four cars gets the one
+      // the app has most to say about rather than whichever the
+      // database happened to return first.
+      shelf.sort((a, b) => _likes(b).compareTo(_likes(a)));
+      final vehicle = shelf.first;
 
-      return (vehicle: vehicle, reminder: await _nextReminder(vehicle));
+      final isDream = current.isEmpty;
+
+      return (
+        vehicle: vehicle,
+        // A dream car has nothing to remind anybody about. Asking would
+        // be a wasted request on every load for the people most likely
+        // to have an empty garage.
+        reminder: isDream ? null : await _nextReminder(vehicle),
+        isDream: isDream,
+      );
     } catch (e) {
       debugPrint('[YourWeek] garage failed: $e');
-      return (vehicle: null, reminder: null);
+      return (vehicle: null, reminder: null, isDream: false);
     }
   }
+
+  /// A car they want, not one they have. primary_car == '2'.
+  static bool _isDreamCar(Map<String, dynamic> vehicle) =>
+      vehicle['primary_car']?.toString() == '2';
 
   /// Currently owned, and not a dream car.
   ///
@@ -323,8 +360,8 @@ class YourWeekPanelState extends State<YourWeekPanel> {
             if (_loading)
               _skeleton()
             else ...[
-              if (_vehicle != null) _garageCard(theme),
-              if (_vehicle != null) const SizedBox(height: 28),
+              if (_vehicle != null) _garageCard(theme) else _emptyGarage(theme),
+              const SizedBox(height: 28),
               _eventsSection(theme),
             ],
           ],
@@ -421,7 +458,11 @@ class YourWeekPanelState extends State<YourWeekPanel> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'YOUR GARAGE',
+                          // Says which shelf this came from. Without it
+                          // the card would present a car somebody only
+                          // wishes they owned as the one in their
+                          // garage.
+                          _isDream ? 'DREAM GARAGE' : 'YOUR GARAGE',
                           style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w800,
@@ -484,6 +525,117 @@ class YourWeekPanelState extends State<YourWeekPanel> {
         ],
       ),
     );
+  }
+
+  /// The card when there is no vehicle at all.
+  ///
+  /// Not a hidden section. An empty garage is the state the app most
+  /// wants to change, and a card that simply is not there says nothing
+  /// about what the screen could do once it is filled — so this says
+  /// what is missing, what it unlocks, and offers the one tap that
+  /// fixes it.
+  ///
+  /// The points are on the button rather than in the body copy because
+  /// that is where somebody decides, and "+500 points" is the reason
+  /// that survives being skim-read.
+  Widget _emptyGarage(ThemeProvider theme) {
+    return Material(
+      color: _cardBlack,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'YOUR GARAGE',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.1,
+                color: theme.primaryColor,
+              ),
+            ),
+            const SizedBox(height: 6),
+
+            // Condensed capitals here, where the vehicle name is not:
+            // this line is the screen announcing something, not a name
+            // out of the database.
+            const DlHeading(
+              'Your garage is empty',
+              fontSize: 26,
+              color: Colors.white,
+            ),
+            const SizedBox(height: 8),
+
+            Text(
+              "Add the car you drive, or the one you're dreaming of, to "
+              'unlock reminders, groups and points.',
+              style: TextStyle(
+                fontSize: 14.5,
+                height: 1.4,
+                color: Colors.grey.shade400,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            SizedBox(
+              width: double.infinity,
+              child: Material(
+                color: _cardInner,
+                borderRadius: BorderRadius.circular(12),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: _addVehicle,
+                  child: Container(
+                    height: 52,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFF3A3A3E)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Add a vehicle',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          '+500 points',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: theme.primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addVehicle() async {
+    final added = await Navigator.of(context).push<dynamic>(
+      MaterialPageRoute(builder: (_) => const AddVehicleScreen()),
+    );
+
+    // Only on a result. AddVehicleScreen returns null when it is backed
+    // out of, and reloading then would be a request for nothing.
+    if (added != null && mounted) await _load();
   }
 
   Widget _vehicleThumb(Map<String, dynamic> vehicle) {

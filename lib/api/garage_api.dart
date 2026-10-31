@@ -382,6 +382,45 @@ class GarageAPI {
     }
   }
 
+  /// How many dream cars this account may still add.
+  ///
+  /// Dream cars are capped and real ones are not — a dream car needs no
+  /// plate and no proof, so it is the cheapest row to invent and the
+  /// first thing a points rule would be farmed through.
+  ///
+  /// Null on any failure, and the caller should stay PERMISSIVE when it
+  /// is null: the server enforces the limit, and this exists only so
+  /// somebody is told before filling in a form rather than after.
+  static Future<({int used, int limit, int remaining})?>
+  dreamAllowance() async {
+    try {
+      final user = await AuthService().getUser();
+      final userId = user?['id'];
+      if (userId == null) return null;
+
+      final response = await http.get(
+        Uri.parse(
+          '$_apiUrl/wp-json/app/v2/garage/dream-allowance?user_id=$userId',
+        ),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode != 200) return null;
+
+      final body = jsonDecode(response.body);
+      if (body is! Map || body['success'] != true) return null;
+
+      return (
+        used: (body['used'] as num?)?.toInt() ?? 0,
+        limit: (body['limit'] as num?)?.toInt() ?? 5,
+        remaining: (body['remaining'] as num?)?.toInt() ?? 0,
+      );
+    } catch (e) {
+      debugPrint('[Garage] dreamAllowance threw: $e');
+      return null;
+    }
+  }
+
   static Future<List<dynamic>?> getUserGarage(int userId) async {
     try {
       final response = await http.get(

@@ -1,4 +1,5 @@
 import 'package:drivelife/providers/cart_provider.dart';
+import 'package:flutter/services.dart';
 import 'package:drivelife/theme/dl_type.dart';
 import 'package:drivelife/utils/crash_trace.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
@@ -119,6 +120,26 @@ class BottomNavProvider extends ChangeNotifier {
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Portrait only.
+  //
+  // Every screen in this app is laid out for a tall viewport — the feed,
+  // the chat composer, the vehicle hero — and none of them has a
+  // landscape design. Allowing the rotation does not produce a wide
+  // version of a screen, it produces a squashed tall one.
+  //
+  // This is the Flutter-side lock and it is the one that matters at
+  // runtime, but it is not the only place: the native manifests set it
+  // too, so the OS never starts the app in landscape before this line
+  // runs. See android/app/src/main/AndroidManifest.xml and
+  // ios/Runner/Info.plist.
+  //
+  // portraitDown is included on Android, where some devices and docks
+  // use it, and ignored on iPhone, which does not offer it.
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
 
   // Reprints build-time crashes with our own frames and the widget the
   // framework blames, because the default dump is forty frames of

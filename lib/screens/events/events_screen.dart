@@ -18,25 +18,52 @@ import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/widgets/events/filter_bottom_sheet.dart';
+import 'package:drivelife/widgets/nav/chrome_visibility.dart';
+import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
 
 class EventsScreen extends StatefulWidget {
-  const EventsScreen({super.key});
+  /// Told which way this screen is scrolling, so the shell can slide its
+  /// bottom bar out of the way. Null when nothing is listening.
+  final ChromeVisibility? chrome;
+
+  /// The shell's header and section tabs, drawn INSIDE this screen's own
+  /// scroll view rather than above it.
+  ///
+  /// Same arrangement as Places and the feed: the scroll moves the
+  /// header, so there is no animation to run and no layout above the
+  /// content to resize. A collapsing widget above a scroll view changes
+  /// the viewport's height on every frame, and a viewport that resizes
+  /// mid-drag has to keep correcting its own offset.
+  final Widget? header;
+
+  /// How tall [header] is. A sliver header declares its extent up front.
+  final double headerHeight;
+
+  const EventsScreen({
+    super.key,
+    this.chrome,
+    this.header,
+    this.headerHeight = 0,
+  });
 
   @override
   State<EventsScreen> createState() => _EventsScreenState();
 }
 
 class _EventsScreenState extends State<EventsScreen>
-    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+        // TickerProvider, not SingleTicker: the tab controller wants one
+        // ticker and the floating chrome header wants another.
+        with
+        TickerProviderStateMixin,
+        AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
   late TabController _tabController;
   final PageController _bannerController = PageController();
-  final ScrollController _scrollController = ScrollController();
 
   final TextEditingController _customLocationController =
       TextEditingController();
@@ -90,7 +117,6 @@ class _EventsScreenState extends State<EventsScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     attachTabHaptics(_tabController);
-    _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -142,7 +168,6 @@ class _EventsScreenState extends State<EventsScreen>
   void dispose() {
     _tabController.dispose();
     _bannerController.dispose();
-    _scrollController.dispose();
     _scrollDebounce?.cancel();
     _customLocationController.dispose();
     _searchController.dispose();
@@ -150,13 +175,20 @@ class _EventsScreenState extends State<EventsScreen>
     super.dispose();
   }
 
-  void _onScroll() {
+  /// Load the next page when the list nears its end.
+  ///
+  /// Driven by scroll notifications rather than by a ScrollController.
+  /// Inside a NestedScrollView the list that is actually moving belongs
+  /// to the inner scroll view, which this screen does not own a
+  /// controller for — and attaching one would stop the outer header
+  /// responding to the same gesture.
+  void _maybeLoadMore(ScrollMetrics metrics) {
     if (_scrollDebounce?.isActive ?? false) _scrollDebounce!.cancel();
 
     _scrollDebounce = Timer(const Duration(milliseconds: 200), () {
-      if (_scrollController.hasClients &&
-          _scrollController.position.pixels >=
-              _scrollController.position.maxScrollExtent - 500 &&
+      if (!mounted) return;
+
+      if (metrics.pixels >= metrics.maxScrollExtent - 500 &&
           !_isLoading &&
           _hasMore &&
           _tabController.index == 0) {
@@ -811,109 +843,151 @@ class _EventsScreenState extends State<EventsScreen>
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Column(
-        children: [
-          // Search Bar
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              controller: _searchController,
-              onChanged: _onSearchChanged,
-              decoration: InputDecoration(
-                hintText: 'Search events',
-                hintStyle: TextStyle(color: Colors.grey.shade400),
-                prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(Icons.clear, color: Colors.grey.shade400),
-                        onPressed: _clearSearch,
-                      )
-                    : null,
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          // Vertical only: a carousel inside an event card would
+          // otherwise page the screen sideways into loading more.
+          if (notification.metrics.axis != Axis.vertical) return false;
+
+          widget.chrome?.handle(notification);
+          _maybeLoadMore(notification.metrics);
+          return false;
+        },
+        child: NestedScrollView(
+          // The chrome, the search box and the tab bar are all slivers in
+          // the OUTER scroll view, which is what lets them move with the
+          // finger. They used to be fixed rows in a Column above a
+          // TabBarView, so the header sat there however far you read.
+          headerSliverBuilder: (context, _) => [
+            // Floating, not pinned: it leaves as you read on and comes
+            // back the moment you scroll up, without having to reach the
+            // top. Matches the feed and Places.
+            if (widget.header != null && widget.headerHeight > 0)
+              SliverPersistentHeader(
+                floating: true,
+                delegate: FloatingChromeHeader(
+                  height: widget.headerHeight,
+                  vsync: this,
+                  child: widget.header!,
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+              ),
+
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: _onSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: 'Search events',
+                    hintStyle: TextStyle(color: Colors.grey.shade400),
+                    prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(
+                              Icons.clear,
+                              color: Colors.grey.shade400,
+                            ),
+                            onPressed: _clearSearch,
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: Colors.grey.shade100,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
 
-          if (_searchController.text.isEmpty)
-            // Tab Bar
-            Container(
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+            // Pins. This one IS navigation — losing it mid-list would
+            // mean scrolling back to the top to change tab.
+            if (_searchController.text.isEmpty)
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _EventsTabBar(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Colors.grey.shade200,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: TabBar(
+                      controller: _tabController,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      indicatorColor: theme.primaryColor,
+                      indicatorWeight: 3,
+                      labelColor: theme.primaryColor,
+                      unselectedLabelColor: theme.subtextColor,
+                      labelStyle: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                      isScrollable: false,
+                      tabs: const [
+                        Tab(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.event, size: 16),
+                              SizedBox(width: 4),
+                              Text('Upcoming'),
+                            ],
+                          ),
+                        ),
+                        Tab(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.favorite_border, size: 16),
+                              SizedBox(width: 4),
+                              Text('My Events'),
+                            ],
+                          ),
+                        ),
+                        Tab(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.confirmation_number_outlined,
+                                size: 16,
+                              ),
+                              SizedBox(width: 4),
+                              Text('Tickets'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-              child: TabBar(
-                controller: _tabController,
-                indicatorSize: TabBarIndicatorSize.tab,
-                indicatorColor: theme.primaryColor,
-                indicatorWeight: 3,
-                labelColor: theme.primaryColor,
-                unselectedLabelColor: theme.subtextColor,
-                labelStyle: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-                isScrollable: false,
-                tabs: const [
-                  Tab(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.event, size: 16),
-                        SizedBox(width: 4),
-                        Text('Upcoming'),
-                      ],
-                    ),
-                  ),
-                  Tab(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.favorite_border, size: 16),
-                        SizedBox(width: 4),
-                        Text('My Events'),
-                      ],
-                    ),
-                  ),
-                  Tab(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.confirmation_number_outlined, size: 16),
-                        SizedBox(width: 4),
-                        Text('Tickets'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          ],
 
-          // Content
-          Expanded(
-            child: _searchController.text.isNotEmpty
-                ? _buildSearchResults(
-                    theme,
-                  ) // NEW: Show search results when searching
-                : TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildUpcomingEventsTab(theme),
-                      _buildMyEventsTab(),
-                      _buildMyTicketsTab(),
-                    ],
-                  ),
-          ),
-        ],
+          // The body of a NestedScrollView is what scrolls under the
+          // headers above. No Expanded here: the NestedScrollView gives
+          // it the remaining height itself.
+          body: _searchController.text.isNotEmpty
+              ? _buildSearchResults(theme)
+              : TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildUpcomingEventsTab(theme),
+                    _buildMyEventsTab(),
+                    _buildMyTicketsTab(),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -1008,7 +1082,9 @@ class _EventsScreenState extends State<EventsScreen>
       color: theme.primaryColor,
       onRefresh: () => _refreshEvents(),
       child: ListView(
-        controller: _scrollController,
+        // No controller. Inside a NestedScrollView the inner list has
+        // to use the PrimaryScrollController it is given, or the outer
+        // header never sees the gesture and will not collapse.
         padding: EdgeInsets.zero,
         children: [
           if (_showLocationBanner) ...[
@@ -1628,4 +1704,38 @@ class _LocationBannerState extends State<LocationBanner>
       ),
     );
   }
+}
+
+/// Holds the Upcoming / My events / Tickets bar at the top of the list.
+///
+/// A pinned sliver rather than a row in a Column: the chrome above it
+/// scrolls away, and the tab bar has to stay put while that happens.
+/// Changing tab is navigation, and navigation that scrolls out of reach
+/// means scrolling back to the top to use it.
+class _EventsTabBar extends SliverPersistentHeaderDelegate {
+  final Widget child;
+
+  /// Declared, not measured — a persistent header has to know its extent
+  /// before layout. 46 for the TabBar's own height plus the 1px divider
+  /// its Container draws underneath. If the tab labels or their icons
+  /// change size, this changes with them.
+  static const double _height = 47;
+
+  const _EventsTabBar({required this.child});
+
+  @override
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlaps) {
+    // Opaque, so the list does not show through the bar once it is
+    // pinned and content is sliding underneath.
+    return Material(color: Colors.white, child: child);
+  }
+
+  @override
+  bool shouldRebuild(_EventsTabBar oldDelegate) => oldDelegate.child != child;
 }
