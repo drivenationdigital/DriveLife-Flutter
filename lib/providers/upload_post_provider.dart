@@ -14,6 +14,10 @@ class UploadPostData {
   final List<File> mediaFiles;
   final List<bool> isVideoList;
   final String caption;
+
+  /// The car, when this is a spot. Null for an ordinary post.
+  final String? spottedVehicle;
+
   final String? linkType;
   final String? linkUrl;
   final List<TaggedEntity> taggedUsers;
@@ -34,6 +38,7 @@ class UploadPostData {
     required this.mediaFiles,
     required this.isVideoList,
     required this.caption,
+    this.spottedVehicle,
     this.linkType,
     this.linkUrl,
     required this.taggedUsers,
@@ -336,6 +341,7 @@ class UploadPostProvider with ChangeNotifier {
         userId: data.userId,
         media: uploadedMedia,
         caption: data.caption,
+        spottedVehicle: data.spottedVehicle,
         location: data.location,
         linkType: data.linkType,
         linkUrl: data.linkUrl,

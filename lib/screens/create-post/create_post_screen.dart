@@ -1,3 +1,4 @@
+import 'package:drivelife/data/vehicle_suggestions.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:drivelife/models/search_view_model.dart';
@@ -19,8 +20,6 @@ import 'package:video_compress/video_compress.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
 import 'package:drivelife/providers/feature_tips_provider.dart';
 import 'package:drivelife/widgets/feature_tip_target.dart';
-
-enum MediaPickerMode { images, videos, ask }
 
 class MediaItem {
   final File file;
@@ -58,11 +57,19 @@ class MediaItem {
 }
 
 class CreatePostScreen extends StatefulWidget {
+  /// Open on the Spotted tab rather than Post.
+  ///
+  /// So "Add Vehicle Spot" in the Create menu lands somewhere that is
+  /// already asking what you saw, instead of on a post form the user
+  /// has to notice a toggle on.
+  final bool startAsSpot;
+
   final String? associationId;
   final String? associationType;
   final String? associationLabel;
 
   const CreatePostScreen({
+    this.startAsSpot = false,
     super.key,
     this.associationId,
     this.associationType,
@@ -75,6 +82,20 @@ class CreatePostScreen extends StatefulWidget {
 
 class _CreatePostScreenState extends State<CreatePostScreen> {
   final TextEditingController _linkUrlController = TextEditingController();
+
+  /// What was spotted, when the Spotted tab is showing.
+  final TextEditingController _spotController = TextEditingController();
+
+  /// Suggestions currently showing under the spot field.
+  List<String> _spotSuggestions = const [];
+
+  /// Whether this is a spot rather than an ordinary post.
+  ///
+  /// Only ever read through to `spottedVehicle` at submit time, so
+  /// toggling back to Post cannot leave a vehicle name attached to an
+  /// ordinary post — the server reads a non-null name as "this is a
+  /// spot" and there is no second flag to disagree with.
+  late bool _isSpot = widget.startAsSpot;
   final FlutterTaggerController _captionController = FlutterTaggerController();
   final ImagePicker _picker = ImagePicker();
   final PageController _pageController = PageController();
@@ -156,6 +177,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     _captionController.removeListener(_autoFormatHashtags);
     _captionController.dispose();
     _linkUrlController.dispose();
+    _spotController.dispose();
     _pageController.dispose();
     _locationController.dispose();
 
@@ -378,197 +400,207 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
   }
 
-  Future<void> _pickMedia(MediaPickerMode mode) async {
-    String? choice;
+  /// Ask which kind, then pick.
+  ///
+  /// Two separate flows rather than one mixed picker, because the
+  /// platform pickers behave differently: images come back as a batch
+  /// and compress in the background, a video is measured and possibly
+  /// re-encoded one at a time. Choosing first is also how somebody
+  /// picking ten photos avoids scrolling past every clip they own.
+  ///
+  /// Built on _addImages and _addVideo, which the mixed picker below
+  /// also uses — the choice is the only thing that differs.
+  Future<void> _pickMedia() async {
+    if (_selectedMedia.length >= 10) {
+      _showMessage('Maximum 10 items allowed');
+      return;
+    }
 
-    try {
-      switch (mode) {
-        case MediaPickerMode.images:
-          choice = 'images';
-          break;
-        case MediaPickerMode.videos:
-          choice = 'videos';
-          break;
-        case MediaPickerMode.ask:
-          choice = await showModalBottomSheet<String>(
-            context: context,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            builder: (context) => Container(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Select Media Type',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 24),
-                  _MediaTypeCard(
-                    icon: Icons.photo_library_rounded,
-                    title: 'Images',
-                    subtitle: 'Select from gallery',
-                    onTap: () => Navigator.pop(context, 'images'),
-                  ),
-                  const SizedBox(height: 12),
-                  _MediaTypeCard(
-                    icon: Icons.videocam_rounded,
-                    title: 'Videos',
-                    subtitle:
-                        'Select from gallery (max '
-                        '${_maxVideoDuration.inMinutes} mins)',
-                    onTap: () => Navigator.pop(context, 'videos'),
-                  ),
-                  const SizedBox(height: 12),
-                ],
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-          );
-          break;
-      }
+            const SizedBox(height: 24),
+            const Text(
+              'Select Media Type',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 24),
+            _MediaTypeCard(
+              icon: Icons.photo_library_rounded,
+              title: 'Images',
+              subtitle: 'Select from gallery',
+              onTap: () => Navigator.pop(sheetContext, 'images'),
+            ),
+            const SizedBox(height: 12),
+            _MediaTypeCard(
+              icon: Icons.videocam_rounded,
+              title: 'Videos',
+              subtitle:
+                  'Select from gallery (max '
+                  '${_maxVideoDuration.inMinutes} mins)',
+              onTap: () => Navigator.pop(sheetContext, 'videos'),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
 
-      if (choice == null) return;
+    if (choice == null || !mounted) return;
 
+    try {
       if (choice == 'images') {
-        // Nothing is shown before this call. The platform picker covers the
-        // app while it runs, so an overlay put up beforehand is invisible
-        // underneath it and only surfaces in the moment before the picker
-        // opens — claiming to prepare photos nobody has chosen yet.
-        //
-        // Picked at full fidelity on purpose. image_picker's own imageQuality
-        // and maxWidth re-encode every image on the platform encoder, which
-        // costs a generation even when nothing needed resizing —
-        // MediaCompressor decides what actually needs touching.
-        //
-        // The platform interface throws on a limit below 2, so the last free
-        // slot has to go through uncapped and be trimmed on the way back —
-        // with 9 already picked, this threw.
         final remainingSlots = 10 - _selectedMedia.length;
 
         setState(() => _picking = true);
 
-        final List<XFile> images = await _picker.pickMultiImage(
+        // Picked at full fidelity on purpose. image_picker's own
+        // imageQuality and maxWidth re-encode every image on the
+        // platform encoder, which costs a generation even when nothing
+        // needed resizing — MediaCompressor decides what to touch.
+        //
+        // The platform interface throws on a limit below 2, so the last
+        // free slot goes through uncapped and is trimmed on return.
+        final images = await _picker.pickMultiImage(
           limit: remainingSlots >= 2 ? remainingSlots : null,
         );
 
         if (!mounted) return;
         setState(() => _picking = false);
 
-        if (images.isNotEmpty) {
-          final remaining = 10 - _selectedMedia.length;
-          final imagesToAdd = images.take(remaining).toList();
-
-          // Into the grid immediately, as picked. Compression follows in the
-          // background, and each tile says it is still working — ten large
-          // photos used to sit behind a blocking overlay that took its time
-          // even appearing, with nothing to show it had registered the pick.
-          if (!mounted) return;
-          setState(() {
-            _selectedMedia.addAll([
-              for (final image in imagesToAdd)
-                MediaItem(
-                  file: File(image.path),
-                  isVideo: false,
-                  preparing: true,
-                ),
-            ]);
-          });
-
-          if (images.length > remaining) {
-            _showMessage('Maximum 10 items allowed');
-          }
-
-          await _prepareImages(imagesToAdd.map((x) => x.path).toList());
-        }
+        await _addImages(images);
       } else {
-        final XFile? video = await _picker.pickVideo(
+        final video = await _picker.pickVideo(
           source: ImageSource.gallery,
           maxDuration: _maxVideoDuration,
         );
 
-        if (video != null && _selectedMedia.length < 10) {
-          File file = File(video.path);
-
-          // maxDuration above is a hint the picker may ignore — on Android it
-          // trims rather than blocks, and some gallery apps skip it entirely —
-          // so the real check happens here.
-          final info = await VideoCompress.getMediaInfo(file.path);
-          final seconds = info.duration == null
-              ? null
-              : (info.duration! / 1000).round();
-
-          if (seconds != null && seconds > _maxVideoDuration.inSeconds) {
-            _showMessage(
-              'Please select a video shorter than '
-              '${_maxVideoDuration.inMinutes} minutes ($seconds seconds)',
-            );
-            return;
-          }
-
-          // Only re-encode when the clip is actually above the tier's ceiling.
-          // Cloudflare Stream transcodes its own renditions, so a local pass on
-          // an already-modest video is a second generation for nothing.
-          final quality = await UploadQualityPrefs.current();
-          final needsCompression = MediaCompressor.shouldCompressVideo(
-            quality: quality,
-            width: info.width,
-            height: info.height,
-            bytes: info.filesize,
-          );
-
-          if (needsCompression) {
-            final compressedFile = await _compressVideo(file, quality);
-            if (compressedFile != null) {
-              file = compressedFile;
-            }
-          }
-
-          final controller = VideoPlayerController.file(file);
-          await controller.initialize();
-
-          final mediaItem = MediaItem(
-            file: file,
-            isVideo: true,
-            height: controller.value.size.height,
-            width: controller.value.size.width,
-            duration: controller.value.duration,
-            videoController: controller,
-          );
-
-          if (mounted) {
-            setState(() {
-              _selectedMedia.add(mediaItem);
-            });
-          }
-        } else if (_selectedMedia.length >= 10) {
-          _showMessage('Maximum 10 items allowed');
-        }
+        if (video == null || !mounted) return;
+        await _addVideo(video);
       }
     } catch (e) {
-      print('Error picking media: $e');
-
-      // Whatever went wrong, the busy state comes down with it — it used to
-      // sit over the screen for good, looking like a hang.
       if (mounted) {
-        setState(() {
-          _picking = false;
-          _isUploading = false;
-          _uploadProgress = 0.0;
-          _uploadStatus = '';
-        });
+        setState(() => _picking = false);
+        _showMessage('Could not open the picker: $e', isError: true);
+      }
+    }
+  }
+
+  /// Put picked images in the grid and start preparing them.
+  ///
+  /// Extracted so the mixed picker and the images-only path share it
+  /// rather than keeping two copies of the ten-item rule.
+  Future<void> _addImages(List<XFile> images) async {
+    if (images.isEmpty) return;
+
+    final remaining = 10 - _selectedMedia.length;
+    if (remaining <= 0) {
+      _showMessage('Maximum 10 items allowed');
+      return;
+    }
+
+    final imagesToAdd = images.take(remaining).toList();
+
+    // Into the grid immediately, as picked. Compression follows in the
+    // background and each tile says it is still working — ten large
+    // photos used to sit behind a blocking overlay that took its time
+    // even appearing, with nothing to show the pick had registered.
+    if (!mounted) return;
+    setState(() {
+      _selectedMedia.addAll([
+        for (final image in imagesToAdd)
+          MediaItem(file: File(image.path), isVideo: false, preparing: true),
+      ]);
+    });
+
+    if (images.length > remaining) {
+      _showMessage('Maximum 10 items allowed');
+    }
+
+    await _prepareImages(imagesToAdd.map((x) => x.path).toList());
+  }
+
+  /// Measure a picked video, compress it if it needs it, and add it.
+  ///
+  /// Lifted out of the old _pickMedia so the mixed picker can call
+  /// it once per clip. One at a time on purpose: initialising a
+  /// controller and possibly re-encoding is heavy, and doing three
+  /// at once is how a mid-range phone runs out of memory.
+  Future<void> _addVideo(XFile video) async {
+    try {
+      File file = File(video.path);
+
+      // maxDuration above is a hint the picker may ignore — on Android it
+      // trims rather than blocks, and some gallery apps skip it entirely —
+      // so the real check happens here.
+      final info = await VideoCompress.getMediaInfo(file.path);
+      final seconds = info.duration == null
+          ? null
+          : (info.duration! / 1000).round();
+
+      if (seconds != null && seconds > _maxVideoDuration.inSeconds) {
+        _showMessage(
+          'Please select a video shorter than '
+          '${_maxVideoDuration.inMinutes} minutes ($seconds seconds)',
+        );
+        return;
       }
 
-      _showMessage('Failed to pick media: $e', isError: true);
+      // Only re-encode when the clip is actually above the tier's ceiling.
+      // Cloudflare Stream transcodes its own renditions, so a local pass on
+      // an already-modest video is a second generation for nothing.
+      final quality = await UploadQualityPrefs.current();
+      final needsCompression = MediaCompressor.shouldCompressVideo(
+        quality: quality,
+        width: info.width,
+        height: info.height,
+        bytes: info.filesize,
+      );
+
+      if (needsCompression) {
+        final compressedFile = await _compressVideo(file, quality);
+        if (compressedFile != null) {
+          file = compressedFile;
+        }
+      }
+
+      final controller = VideoPlayerController.file(file);
+      await controller.initialize();
+
+      final mediaItem = MediaItem(
+        file: file,
+        isVideo: true,
+        height: controller.value.size.height,
+        width: controller.value.size.width,
+        duration: controller.value.duration,
+        videoController: controller,
+      );
+
+      if (mounted) {
+        setState(() {
+          _selectedMedia.add(mediaItem);
+        });
+      }
+    } catch (e) {
+      debugPrint('[CreatePost] could not add video: $e');
+      if (mounted) {
+        _showMessage('Could not add that video', isError: true);
+      }
     }
   }
 
@@ -699,9 +731,220 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 
+  /// Post or Spotted, as two halves of one control.
+  ///
+  /// A segmented pair rather than a checkbox because it changes what
+  /// the whole screen is for — the title, the prompt and the first
+  /// field all follow it. A tick box reads as an option on a post;
+  /// this reads as a choice between two things to make.
+  Widget _buildSpotToggle() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F2F2),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Expanded(child: _spotTab(label: 'Post', spot: false)),
+            Expanded(child: _spotTab(label: 'Spotted', spot: true)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _spotTab({required String label, required bool spot}) {
+    final selected = _isSpot == spot;
+
+    return GestureDetector(
+      onTap: () {
+        if (_isSpot == spot) return;
+
+        setState(() => _isSpot = spot);
+
+        // Cleared on the way back to Post, not just ignored. Leaving
+        // the text behind means a half-typed car name reappears if the
+        // user flips to Spotted again later and does not notice it.
+        if (!spot) {
+          _spotController.clear();
+          _spotSuggestions = const [];
+        }
+      },
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(
+            // The Spotted tab outlines itself in gold when chosen, so
+            // the difference between the two modes is visible at a
+            // glance rather than only in the title.
+            color: selected && spot
+                ? const Color(0xFFAE9159)
+                : Colors.transparent,
+            width: 1.6,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 6,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              spot ? Icons.photo_camera_outlined : Icons.chat_bubble_outline,
+              size: 17,
+              color: selected ? const Color(0xFF0B0B0B) : Colors.grey.shade500,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 15.5,
+                fontWeight: FontWeight.w700,
+                color: selected
+                    ? const Color(0xFF0B0B0B)
+                    : Colors.grey.shade500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// "What did you spot?"
+  ///
+  /// Dark, because it is the one field that makes this a spot rather
+  /// than a post, and it should not look like another optional box.
+  Widget _buildSpotField() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0B0B0B),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'WHAT DID YOU SPOT?',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+                color: Color(0xFFAE9159),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _spotController,
+              textCapitalization: TextCapitalization.words,
+              style: const TextStyle(fontSize: 15.5, color: Colors.white),
+              // Rebuilds so Next enables the moment there is a name,
+              // and re-runs the suggestions against what is now typed.
+              onChanged: (value) =>
+                  setState(() => _spotSuggestions = suggestVehicles(value)),
+              decoration: InputDecoration(
+                hintText: 'Make & model, e.g. Porsche Carrera GT',
+                hintStyle: TextStyle(color: Colors.grey.shade600),
+                prefixIcon: Icon(
+                  Icons.search,
+                  size: 20,
+                  color: Colors.grey.shade600,
+                ),
+                filled: true,
+                fillColor: const Color(0xFF1E1E21),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(11),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+
+            // Suggestions, inside the dark panel so they read as part
+            // of the same question rather than a dropdown floating
+            // over the form.
+            if (_spotSuggestions.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final name in _spotSuggestions)
+                    GestureDetector(
+                      onTap: () {
+                        _spotController.text = name;
+                        // Caret to the end, or the next keystroke lands
+                        // in the middle of the name just inserted.
+                        _spotController.selection = TextSelection.collapsed(
+                          offset: name.length,
+                        );
+
+                        // Cleared on pick: leaving them up invites a
+                        // second tap that replaces the first choice.
+                        setState(() => _spotSuggestions = const []);
+                        FocusScope.of(context).unfocus();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2A2A2E),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _createPost() async {
     if (_selectedMedia.isEmpty && !_isEntityPost) {
       _showMessage('Please select at least one image or video', isError: true);
+      return;
+    }
+
+    // A spot without a car is just a post. The name is the ONLY thing
+    // that makes it a spot — there is no separate flag on the server —
+    // so an empty one would silently save as an ordinary post and the
+    // 300 points would not arrive.
+    if (_isSpot && _spotController.text.trim().isEmpty) {
+      _showMessage('Tell us what you spotted', isError: true);
       return;
     }
 
@@ -758,6 +1001,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       mediaFiles: _selectedMedia.map((m) => m.file).toList(),
       isVideoList: _selectedMedia.map((m) => m.isVideo).toList(),
       caption: _captionController.formattedText,
+      // Only when the Spotted tab is the one showing. Switching back to
+      // Post must not leave a vehicle name attached to an ordinary
+      // post — the server would read that as a spot.
+      spottedVehicle: _isSpot ? _spotController.text.trim() : null,
       location: _taggedLocationName != null
           ? {
               'name': _taggedLocationName!,
@@ -919,7 +1166,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
                 // "Add" tile — only show if under the cap
                 if (_selectedMedia.length < 10)
-                  _MediaAddTile(onTap: () => _pickMedia(MediaPickerMode.ask)),
+                  _MediaAddTile(onTap: _pickMedia),
               ],
             ),
           ),
@@ -1110,18 +1357,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _ToolButton(
-                icon: Icons.image_outlined,
-                label: 'Photo',
-                onTap: () => _pickMedia(MediaPickerMode.images),
-              ),
-              _ToolButton(
-                icon: Icons.videocam_outlined,
-                label: 'Video',
-                onTap: () => _pickMedia(
-                  MediaPickerMode.videos,
-                ), // same picker handles both
-              ),
+              // Photo and Video have gone. The Add tile in the media
+              // grid above does both now, so these were a second route
+              // to the same picker — and two of them implied a choice
+              // that does not exist, since a post can hold a mix.
               _ToolButton(
                 icon: Icons.location_on_outlined,
                 label: 'Location',
@@ -1296,7 +1535,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 Expanded(
                   child: Center(
                     child: Text(
-                      _isEntityPost ? 'New post' : 'New post',
+                      _isSpot ? 'New spot' : 'New post',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -1357,7 +1596,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _buildSpotToggle(),
                 _buildPostingToBanner(),
+                if (_isSpot) _buildSpotField(),
+
+                // The caption box has no margin of its own, so without
+                // this it sits directly under whatever precedes it —
+                // and against the dark spot panel it read as part of
+                // the same control rather than the next question.
+                const SizedBox(height: 16),
 
                 Padding(
                   padding: const EdgeInsets.all(0),
@@ -1572,69 +1819,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         ],
       ),
       bottomNavigationBar: _buildBottomToolbar(),
-    );
-  }
-}
-
-class _MediaTypeCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _MediaTypeCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFAE9159).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: const Color(0xFFAE9159)),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -2009,11 +2193,26 @@ class _ToolButton extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(999),
-        child: Container(
-          width: 40,
-          height: 40,
-          alignment: Alignment.center,
-          child: Icon(icon, size: 24, color: const Color(0xFF0B0B0B)),
+        // The label was passed in and never drawn — every one of
+        // these was an unlabelled glyph, and "what does the chart icon
+        // do" is not a question a compose screen should ask.
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 23, color: const Color(0xFF0B0B0B)),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF5A5A5A),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3140,6 +3339,71 @@ class _PollSheetState extends State<_PollSheet> {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MediaTypeCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _MediaTypeCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                // withValues, not the deprecated withOpacity this was
+                // written with — same colour, current API.
+                color: const Color(0xFFAE9159).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: const Color(0xFFAE9159)),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded),
           ],
         ),
       ),

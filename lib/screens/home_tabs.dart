@@ -33,7 +33,6 @@ import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/profile/my_club_profile_view.dart';
-import 'package:drivelife/screens/news/create_news_post_screen.dart';
 import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/screens/media/new_gallery_screen.dart';
 import 'package:drivelife/screens/media/media_screen.dart';
@@ -640,7 +639,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     final accountManager = Provider.of<AccountManager>(context, listen: false);
 
     final isUser = accountManager.activeAccount?.isUserAccount ?? false;
-    final isAdmin = accountManager.activeAccount?.user.isAdmin ?? false;
 
     showModalBottomSheet(
       context: context,
@@ -656,15 +654,30 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           if (isUser)
             _CreateAction(
               label: 'Add Post',
+              points: 100,
               icon: Icons.image_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
                 const CreatePostScreen(),
               ),
             ),
+          // Straight onto the Spotted tab. The destination is the same
+          // screen as Add Post, which is why it sits beside it: a spot
+          // IS a post, with one extra field and a bigger reward.
+          if (isUser)
+            _CreateAction(
+              label: 'Add Vehicle Spot',
+              points: 300,
+              icon: Icons.photo_camera_outlined,
+              onTap: () => NavigationHelper.navigateTo(
+                context,
+                const CreatePostScreen(startAsSpot: true),
+              ),
+            ),
           if (isUser)
             _CreateAction(
               label: 'Add Gallery',
+              points: 200,
               icon: Icons.collections_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
@@ -673,39 +686,37 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
             ),
           if (isUser)
             _CreateAction(
-              label: 'Add Group',
-              svg: 'assets/app-icons/07-groups.svg',
-              onTap: _createClub,
-            ),
-          if (isUser)
-            _CreateAction(
               label: 'Add Vehicle',
+              points: 500,
               icon: Icons.directions_car_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
                 const AddVehicleScreen(),
               ),
             ),
+          if (isUser)
+            _CreateAction(
+              label: 'Add Group',
+              subtitle: 'For clubs & interests',
+              svg: 'assets/app-icons/07-groups.svg',
+              onTap: _createClub,
+            ),
           _CreateAction(
-            label: 'Add Event',
+            label: 'Event Manager',
+            subtitle: 'For organisers',
             icon: Icons.calendar_today_outlined,
             onTap: () => openEventEditor(context),
           ),
           _CreateAction(
             label: 'Add Venue',
+            subtitle: 'For organisers',
             icon: Icons.place_outlined,
             onTap: () =>
                 NavigationHelper.navigateTo(context, const CreateVenueScreen()),
           ),
-          if (isUser && isAdmin)
-            _CreateAction(
-              label: 'Add News',
-              icon: Icons.article_outlined,
-              onTap: () => NavigationHelper.navigateTo(
-                context,
-                const CreateNewsScreen(),
-              ),
-            ),
+          // Add News has gone from this menu. It was admin-only
+          // and the screen it opened is untouched — CreateNewsScreen
+          // just has no entry point here any more.
         ];
 
         return SafeArea(
@@ -1193,11 +1204,25 @@ class _CreateAction {
 
   final VoidCallback onTap;
 
+  /// What this earns, shown in gold under the label.
+  ///
+  /// Only set it where the SERVER actually pays. A card promising
+  /// points that never arrive is worse than one promising nothing —
+  /// the first person to notice stops believing the rest of them.
+  /// dl_points_rules() in endpoints/points.php is the list that
+  /// decides, and these numbers have to match it.
+  final int? points;
+
+  /// A plain line instead, for the actions that earn nothing.
+  final String? subtitle;
+
   const _CreateAction({
     required this.label,
     required this.onTap,
     this.icon,
     this.svg,
+    this.points,
+    this.subtitle,
   });
 }
 
@@ -1258,6 +1283,31 @@ class _CreateCard extends StatelessWidget {
                   color: theme.textColor,
                 ),
               ),
+
+              // Gold for points, grey for anything else. The colour is
+              // the distinction: one is a reward and the other is a
+              // description, and they should not read alike.
+              if (action.points != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  '+${action.points} points',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: theme.primaryColor,
+                  ),
+                ),
+              ] else if (action.subtitle != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  action.subtitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 14, color: theme.subtextColor),
+                ),
+              ],
             ],
           ),
         ),

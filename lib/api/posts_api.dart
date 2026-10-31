@@ -691,6 +691,13 @@ class PostsAPI {
     required int userId,
     required List<Map<String, dynamic>> media,
     required String caption,
+
+    /// The car, when this post is a spot. Null for an ordinary post.
+    ///
+    /// The server treats a non-null value as "this IS a spot" — there
+    /// is no separate flag, so sending an empty string here would make
+    /// every post a spot of nothing. Hence null, never ''.
+    String? spottedVehicle,
     Map<String, dynamic>? location,
     String? linkType,
     String? linkUrl,
@@ -706,6 +713,8 @@ class PostsAPI {
       final body = {
         'user_id': userId.toString(),
         'caption': caption,
+        if (spottedVehicle != null && spottedVehicle.trim().isNotEmpty)
+          'spotted_vehicle': spottedVehicle.trim(),
         'media': json.encode(media),
       };
 
