@@ -324,12 +324,16 @@ class YourWeekPanelState extends State<YourWeekPanel> {
 
   /// An invitation to log a spot.
   ///
-  /// Light where the game tile is dark, because it is an empty slot
-  /// waiting for a photograph rather than a thing to look at — and two
-  /// dark tiles side by side would read as one wide card.
+  /// A photograph behind it rather than the flat grey it used to be:
+  /// the tile is asking for a picture of a car, and showing one says
+  /// that faster than the words do.
+  ///
+  /// Everything on top is white over a scrim, because the artwork is
+  /// fixed but not plain — text straight onto it would be legible in
+  /// the dark corners and not in the sky.
   Widget _logSpotTile(ThemeProvider theme) {
     return Material(
-      color: const Color(0xFFF2F2F2),
+      color: _cardBlack,
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -342,47 +346,73 @@ class YourWeekPanelState extends State<YourWeekPanel> {
           );
           if (mounted) await _load();
         },
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: const BoxDecoration(
-                  color: _cardBlack,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.photo_camera_outlined,
-                  size: 24,
-                  color: Colors.white,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                'Log a spot',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: theme.textColor,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              'assets/spot1.jpg',
+              fit: BoxFit.cover,
+              // A missing or unreadable asset must not take the home
+              // page down — the tile still works as a dark card.
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
+
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Color(0xE6000000), Color(0x40000000)],
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                'Seen something rare?',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 14,
-                  height: 1.25,
-                  color: Colors.grey.shade600,
-                ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.photo_camera_outlined,
+                      size: 24,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const Spacer(),
+                  const Text(
+                    'Log a spot',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Seen something rare?',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.25,
+                      color: Colors.white.withValues(alpha: 0.82),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

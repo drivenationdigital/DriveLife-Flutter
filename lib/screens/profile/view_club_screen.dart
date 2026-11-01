@@ -8,6 +8,10 @@ import 'package:drivelife/screens/clubs/request_modal.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/announcement-card.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/event-card.dart';
 import 'package:drivelife/screens/clubs/ui-widgets/member-listing.dart';
+import 'package:drivelife/api/club_tabs_api.dart';
+import 'package:drivelife/routes.dart';
+import 'package:drivelife/models/group_content.dart';
+import 'package:drivelife/widgets/groups/group_chrome.dart';
 import 'package:drivelife/widgets/media/entity_galleries_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/widgets/nav/dl_haptics.dart';
@@ -60,6 +64,20 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   bool _loadingMembers = false;
   bool _membersLoaded = false;
 
+  // The two tabs clubs gained with the group UI. Both are DERIVED on
+  // the server from data that already exists — members' vehicles, and
+  // club posts that are spots — so there is nothing stored to keep in
+  // step and nothing here is written back.
+  List<GroupVehicle> _garages = [];
+  bool _garagesLoaded = false;
+  bool _loadingGarages = false;
+
+  List<GroupSpot> _spots = [];
+  bool _spotsLoaded = false;
+  bool _loadingSpots = false;
+
+  ClubTabCounts _tabCounts = const ClubTabCounts();
+
   List<dynamic> _clubPosts = [];
   bool _loadingClubPosts = false;
   bool _clubPostsLoaded = false;
@@ -75,7 +93,10 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    // Six: Latest, Garages, Spots, Events, Media, About. The bar
+    // scrolls, which is why six fits where the old segmented control
+    // could only hold four.
+    _tabController = TabController(length: 6, vsync: this);
     attachTabHaptics(_tabController);
     _tabController.addListener(_onTabChanged);
 
@@ -147,16 +168,79 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     }
   }
 
+  /// Tab order is Latest 0, Garages 1, Spots 2, Events 3, Media 4,
+  /// About 5. Events was 1 before the group UI added two tabs in front
+  /// of it — every index in this file moved with it.
   void _onTabChanged() {
     if (_tabController.index == 0 &&
         !_clubPostsLoaded &&
         !_isLockedForPrivacy) {
       _loadClubPosts();
     }
-    if (_tabController.index == 1 && !_eventsLoaded) {
+    if (_tabController.index == 1 && !_garagesLoaded) {
+      _loadGarages();
+    }
+    if (_tabController.index == 2 && !_spotsLoaded) {
+      _loadSpots();
+    }
+    if (_tabController.index == 3 && !_eventsLoaded) {
       _loadClubEvents();
+      _loadTabCounts();
     }
     // Members loader removed — triggered when the modal opens instead
+  }
+
+  /// This club's post id.
+  ///
+  /// It arrives either as a constructor argument or on the loaded club
+  /// data, depending on how the screen was opened — the existing
+  /// loaders already read it both ways.
+  int get _clubId =>
+      widget.clubPostId ?? int.tryParse('${_clubData?['id'] ?? ''}') ?? 0;
+
+  /// Vehicles owned by this club's members.
+  Future<void> _loadGarages() async {
+    if (_loadingGarages || _clubId <= 0) return;
+
+    setState(() => _loadingGarages = true);
+
+    final vehicles = await ClubTabsApi.fetchGarages(_clubId);
+
+    if (!mounted) return;
+
+    setState(() {
+      _garages = vehicles;
+      _garagesLoaded = true;
+      _loadingGarages = false;
+    });
+  }
+
+  /// Posts made to this club that are spots.
+  Future<void> _loadSpots() async {
+    if (_loadingSpots || _clubId <= 0) return;
+
+    setState(() => _loadingSpots = true);
+
+    final spots = await ClubTabsApi.fetchSpots(_clubId);
+
+    if (!mounted) return;
+
+    setState(() {
+      _spots = spots;
+      _spotsLoaded = true;
+      _loadingSpots = false;
+    });
+  }
+
+  /// The tab-bar numbers. Cheap, and wanted before any tab is opened.
+  Future<void> _loadTabCounts() async {
+    if (_clubId <= 0) return;
+
+    final counts = await ClubTabsApi.fetchCounts(_clubId);
+
+    if (!mounted) return;
+
+    setState(() => _tabCounts = counts);
   }
 
   void _onUploadsChanged() {
@@ -614,15 +698,29 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             });
           });
         } else {
-          // Regular tab navigation (feed/events/about)
-          final tabIndex = ['feed', 'events', 'about'].indexOf(tab);
-          if (tabIndex != -1) {
+          // Regular tab navigation. A map rather than indexOf on a
+          // list: the indices are no longer 0,1,2 now that Garages and
+          // Spots sit between Latest and Events, and a positional list
+          // would silently send 'events' to the wrong tab.
+          const tabIndices = {
+            'feed': 0,
+            'garages': 1,
+            'spots': 2,
+            'events': 3,
+            'media': 4,
+            'about': 5,
+          };
+
+          final tabIndex = tabIndices[tab];
+
+          if (tabIndex != null) {
             _tabController.index = tabIndex;
           }
         }
       }
 
       _loadClubEvents();
+      _loadTabCounts();
       _loadClubPosts();
       _loadPendingRequestsCount();
       _loadMembers();
@@ -682,7 +780,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         // actions — and the rest get the compact one. It follows the
         // position rather than the tab, so moving Community to the front
         // moved the header with it.
-        final isFirstTab = _tabController.index == 0;
         return Scaffold(
           backgroundColor: Colors.white,
           // appBar: isUpdates ? null : _buildAppBar(),
@@ -690,16 +787,46 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             children: [
               Column(
                 children: [
-                  if (!isFirstTab) _buildCompactHeader(theme),
+                  // Permanent now, on every tab. It used to appear only
+                  // from the second tab on, with the first tab's
+                  // controls floating over the cover photo — but the
+                  // header carries the tab bar, so it cannot come and
+                  // go. The cover photo is still the first thing in the
+                  // Latest panel and scrolls under this.
+                  _buildCompactHeader(theme),
+
+                  GroupTabBar(
+                    controller: _tabController,
+                    theme: theme,
+                    tabs: [
+                      // No count on Latest: a number beside it would be
+                      // a post count nobody asked for.
+                      const GroupTab('Latest'),
+                      GroupTab('Garages', _tabCounts.garages),
+                      GroupTab('Spots', _tabCounts.spots),
+                      // Null, not 0, until the events have loaded.
+                      // They load lazily, so a literal 0 here would be
+                      // wrong rather than empty — and a grey "0" on a
+                      // club that has six events reads as a bug.
+                      GroupTab('Events', _eventsLoaded ? _events.length : null),
+                      const GroupTab('Media'),
+                      const GroupTab('About'),
+                    ],
+                  ),
+
+                  Divider(height: 1, color: Colors.grey.shade200),
+
                   Expanded(
                     child: TabBarView(
                       controller: _tabController,
                       physics: const NeverScrollableScrollPhysics(),
                       children: [
-                        // Community leads, and carries the club's header.
+                        // Community leads, and carries the club's cover.
                         // Updates used to lead and held the committee's own
                         // posts; it is folded into this one.
                         _buildCommunityPanel(theme),
+                        _buildGaragesPanel(theme),
+                        _buildSpotsPanel(theme),
                         _buildEventsPanel(theme),
                         _buildMediaPanel(theme),
                         _buildAboutPanel(theme),
@@ -707,15 +834,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                     ),
                   ),
                 ],
-              ),
-              // The back and more buttons float over the cover photo, so
-              // they belong to the tab that has one.
-              if (isFirstTab) _buildTopOverlay(context),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _buildBottomSegmentedNav(theme),
               ),
             ],
           ),
@@ -1088,6 +1206,103 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     }
   }
 
+  /// Vehicles owned by the club's members.
+  ///
+  /// Derived per request rather than stored, so a car is here because
+  /// its owner is a member TODAY and leaves when they do.
+  Widget _buildGaragesPanel(ThemeProvider theme) {
+    if (_loadingGarages && _garages.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_garages.isEmpty) {
+      return ListView(
+        // Explicit, because a ListView with padding: null adopts
+        // MediaQuery.padding — the status-bar inset — and draws it as a
+        // blank band under the header. CustomScrollView does not, which
+        // is why only some tabs showed the gap.
+        padding: EdgeInsets.zero,
+        children: [
+          GroupEmptyNote(
+            theme: theme,
+            title: 'No vehicles yet',
+            body:
+                'This shows the vehicles owned by the group\u2019s '
+                'members. Nobody here has added a car to their garage '
+                'yet.',
+          ),
+        ],
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadGarages,
+      child: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+        itemCount: _garages.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 14,
+          childAspectRatio: 0.82,
+        ),
+        itemBuilder: (_, i) => GroupGarageCard(
+          vehicle: _garages[i],
+          theme: theme,
+          onTap: () => Navigator.pushNamed(
+            context,
+            AppRoutes.vehicleDetail,
+            arguments: {'garageId': '${_garages[i].id}'},
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Spot posts made to this club.
+  Widget _buildSpotsPanel(ThemeProvider theme) {
+    if (_loadingSpots && _spots.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_spots.isEmpty) {
+      return ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          GroupEmptyNote(
+            theme: theme,
+            title: 'No spots yet',
+            body:
+                'Spots posted to this group appear here. Nobody has '
+                'logged one yet.',
+          ),
+        ],
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadSpots,
+      child: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 40),
+        itemCount: _spots.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 6,
+          mainAxisSpacing: 6,
+        ),
+        itemBuilder: (_, i) => GroupSpotTile(
+          spot: _spots[i],
+          theme: theme,
+          onTap: () => Navigator.pushNamed(
+            context,
+            AppRoutes.postDetail,
+            arguments: {'postId': _spots[i].postId},
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCompactHeader(ThemeProvider theme) {
     final title = _clubData?['title'] ?? '';
     final logo = _clubData?['logo'];
@@ -1183,84 +1398,11 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                   child: const Icon(Icons.add, size: 20, color: Colors.white),
                 ),
               ),
+              const SizedBox(width: 8),
             ],
+
+            _moreMenu(),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomSegmentedNav(ThemeProvider theme) {
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: AnimatedBuilder(
-        animation: _tabController,
-        builder: (context, _) {
-          return Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(999),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.14),
-                  blurRadius: 30,
-                  offset: const Offset(0, 10),
-                ),
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-              border: Border.all(color: Colors.black.withOpacity(0.04)),
-            ),
-            child: Row(
-              children: [
-                _segButton(label: 'Community', index: 0),
-                _segButton(label: 'Events', index: 1),
-                _segButton(label: 'Media', index: 2),
-                _segButton(label: 'About', index: 3),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _segButton({required String label, required int index}) {
-    final isActive = _tabController.index == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => _tabController.animateTo(index),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 11),
-          decoration: BoxDecoration(
-            color: isActive ? _gold : Colors.transparent,
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: isActive
-                ? [
-                    BoxShadow(
-                      color: _gold.withOpacity(0.35),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isActive ? Colors.white : _muted,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.01,
-            ),
-          ),
         ),
       ),
     );
@@ -1301,109 +1443,77 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     );
   }
 
-  Widget _buildTopOverlay(BuildContext context) {
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + 8,
-      left: 12,
-      right: 12,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Back
-          GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.4),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.arrow_back_ios_new,
-                size: 18,
-                color: Colors.white,
-              ),
+  /// Share, edit, leave, delete — whatever this viewer is allowed.
+  ///
+  /// Lifted out of the old floating overlay, which only existed on the
+  /// first tab because it sat on the cover photo. The header is
+  /// permanent now, so this is reachable from every tab instead of one.
+  Widget _moreMenu() {
+    return PopupMenuButton<String>(
+      position: PopupMenuPosition.under,
+      offset: const Offset(0, 8),
+      color: Colors.white,
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      itemBuilder: (context) {
+        // Owner / admin — full menu
+        if (_isOwner || _isAdmin) {
+          return [
+            _menuItem('share', Icons.share_outlined, 'Share', _ink),
+            _menuItem('edit', Icons.edit_outlined, 'Edit group', _ink),
+            const PopupMenuDivider(height: 1),
+            _menuItem(
+              'delete',
+              Icons.delete_outline,
+              'Delete group',
+              Colors.red,
+              textColor: Colors.red,
             ),
-          ),
+          ];
+        }
 
-          // More — PopupMenuButton from above
-          PopupMenuButton<String>(
-            position: PopupMenuPosition.under,
-            offset: const Offset(0, 8),
-            color: Colors.white,
-            elevation: 8,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+        // Member — Share + Leave
+        if (_isMember) {
+          return [
+            _menuItem('share', Icons.share_outlined, 'Share', _ink),
+            const PopupMenuDivider(height: 1),
+            _menuItem(
+              'leave',
+              Icons.logout,
+              'Leave group',
+              Colors.red,
+              textColor: Colors.red,
             ),
-            itemBuilder: (context) {
-              // Owner / admin — full menu
-              if (_isOwner || _isAdmin) {
-                return [
-                  _menuItem('share', Icons.share_outlined, 'Share', _ink),
-                  _menuItem('edit', Icons.edit_outlined, 'Edit group', _ink),
-                  const PopupMenuDivider(height: 1),
-                  _menuItem(
-                    'delete',
-                    Icons.delete_outline,
-                    'Delete group',
-                    Colors.red,
-                    textColor: Colors.red,
-                  ),
-                ];
-              }
+          ];
+        }
 
-              // Member — Share + Leave
-              if (_isMember) {
-                return [
-                  _menuItem('share', Icons.share_outlined, 'Share', _ink),
-                  const PopupMenuDivider(height: 1),
-                  _menuItem(
-                    'leave',
-                    Icons.logout,
-                    'Leave group',
-                    Colors.red,
-                    textColor: Colors.red,
-                  ),
-                ];
-              }
-
-              // Pending request — Share + Cancel request
-              if (_hasPendingRequest) {
-                return [
-                  _menuItem('share', Icons.share_outlined, 'Share', _ink),
-                  const PopupMenuDivider(height: 1),
-                  _menuItem(
-                    'cancel_request',
-                    Icons.close,
-                    'Cancel request',
-                    Colors.red,
-                    textColor: Colors.red,
-                  ),
-                ];
-              }
-
-              // Not a member — Share only
-              return [_menuItem('share', Icons.share_outlined, 'Share', _ink)];
-            },
-            onSelected: _handleMoreMenuSelection,
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.4),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.more_horiz,
-                size: 18,
-                color: Colors.white,
-              ),
+        // Pending request — Share + Cancel request
+        if (_hasPendingRequest) {
+          return [
+            _menuItem('share', Icons.share_outlined, 'Share', _ink),
+            const PopupMenuDivider(height: 1),
+            _menuItem(
+              'cancel_request',
+              Icons.close,
+              'Cancel request',
+              Colors.red,
+              textColor: Colors.red,
             ),
-          ),
-        ],
+          ];
+        }
+
+        // Not a member — Share only
+        return [_menuItem('share', Icons.share_outlined, 'Share', _ink)];
+      },
+      onSelected: _handleMoreMenuSelection,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: const BoxDecoration(color: _chip, shape: BoxShape.circle),
+        alignment: Alignment.center,
+        // Dark on light now that it sits in the white header rather
+        // than over a photograph.
+        child: const Icon(Icons.more_horiz, size: 18, color: _ink),
       ),
     );
   }
@@ -1544,6 +1654,17 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     final verified = _clubData?['is_verified'] == true;
 
     return SafeArea(
+      // top: false — the status bar is already dealt with.
+      //
+      // This cover used to be the very top of the screen, with the back
+      // and more buttons floating over it, so it had to inset itself.
+      // The compact header sits above it now and has its own SafeArea;
+      // this subtree still sees the full MediaQuery padding, because a
+      // SafeArea only clears the inset for its OWN descendants, not for
+      // a sibling in another subtree. Leaving it on added the status
+      // bar height a second time as a band of white between the tabs
+      // and the photograph.
+      top: false,
       bottom: false,
       child: Stack(
         clipBehavior: Clip.none,
@@ -1994,8 +2115,10 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     if (result == true && mounted) {
       // _refreshClub();
       if (_isMember) {
-        // goto community tab if regular member (so they can see their new post)
-        _tabController.animateTo(2);
+        // Community, which is tab 0. This said animateTo(2) and its own
+        // comment said community — 2 was Media, so posting sent people
+        // to the gallery. Wrong before the tabs moved; named now.
+        _tabController.animateTo(0);
       }
     }
   }
@@ -2229,6 +2352,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     if (result == true && mounted) {
       setState(() => _eventsLoaded = false);
       _loadClubEvents();
+      _loadTabCounts();
     }
   }
 
@@ -2669,6 +2793,11 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
       // club you want to see the name and the badge of, and the Join
       // button lives up there.
       return ListView(
+        // Explicit, because a ListView with padding: null adopts
+        // MediaQuery.padding — the status-bar inset. The member view
+        // below is a CustomScrollView, which does not, so the gap
+        // appeared for non-members only.
+        padding: EdgeInsets.zero,
         children: [
           if (widget.header != null) widget.header!,
           _buildPrivateLockedView(),
@@ -2812,8 +2941,13 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
             ),
           ),
 
-          // Bottom padding for floating pill nav
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+          // Clearance at the end of the feed.
+          //
+          // This was 100 to clear the floating pill nav that used to sit
+          // over the bottom of the screen. The nav moved to the top with
+          // the group UI, so most of that height became a blank band
+          // under the last post — 24 is just breathing room now.
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
     );

@@ -5,6 +5,15 @@ Written while rebuilding the groups list page
 Nothing below is built yet; this records the agreed shape and the
 questions still open, so the app and the server end up meeting.
 
+> **Superseded in part.** This document assumes scene and marque groups
+> are WordPress clubs carrying an ACF `kind` field. They are not — they
+> became global objects in custom tables, because their activity is
+> mainly generated at our end and because a CPT cannot be global. See
+> `global-groups-design.md`. What stays true here: the three kinds, the
+> app-side `GroupKind` mapping, the decision to drop filters, and the
+> gaps listed under "Still missing". What does not: the ACF field and
+> the suggestion to extend `/app/v1/clubs` with a `kind` filter.
+
 Two sections are live. The rest draw from placeholder lists at the top
 of that file.
 

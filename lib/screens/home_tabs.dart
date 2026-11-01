@@ -1058,7 +1058,14 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         ),
         DlNavItem(
           label: 'Map',
-          icon: (sel) => svg('assets/nav-icons/03-map.svg', sel),
+          // app-icons, NOT nav-icons. The Discover icon lives with the
+          // older set and pubspec declares it by full path; nav-icons
+          // has no Discover, and pointing at a missing asset throws
+          // before the first frame rather than drawing nothing.
+          //
+          // Capital D, matching the file on disk — asset lookups are
+          // case-sensitive once bundled, whatever Windows does locally.
+          icon: (sel) => svg('assets/app-icons/03_Discover.svg', sel),
         ),
         DlNavItem(
           label: 'Groups',

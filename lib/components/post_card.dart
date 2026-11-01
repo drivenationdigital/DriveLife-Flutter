@@ -827,6 +827,7 @@ class _PostCardState extends State<PostCard>
                 commentsEnabled: false,
                 username: '',
                 caption: widget.post['caption'] ?? '',
+                spottedVehicle: _str(widget.post['spotted_vehicle']),
                 commentsCount: 0,
                 onViewComments: () => _openComments(context),
                 isEvent: false,
@@ -1005,6 +1006,7 @@ class _PostCardState extends State<PostCard>
                   excerpt: _str(widget.post['news_excerpt']),
                   username: widget.post['username'] ?? '',
                   caption: widget.post['caption'] ?? '',
+                  spottedVehicle: _str(widget.post['spotted_vehicle']),
                   commentsCount: widget.post['comments_count'] ?? 0,
                   onViewComments: () => _openComments(context),
                   isEvent: widget.post['is_event'] == true,
@@ -2372,6 +2374,15 @@ class _PostCaptionSection extends StatefulWidget {
 
   final String username;
   final String caption;
+
+  /// The vehicle on a spot post, or null on an ordinary one.
+  ///
+  /// Rendered as its own first line above the caption rather than
+  /// glued onto the caption text: the stored caption stays exactly
+  /// what its author typed, so editing a post never hands them a
+  /// prefix they did not write and cannot delete.
+  final String? spottedVehicle;
+
   final int commentsCount;
   final VoidCallback onViewComments;
   final bool commentsEnabled;
@@ -2384,6 +2395,7 @@ class _PostCaptionSection extends StatefulWidget {
   const _PostCaptionSection({
     required this.username,
     required this.caption,
+    this.spottedVehicle,
     this.isNews = false,
     this.excerpt,
     required this.commentsCount,
@@ -2457,6 +2469,9 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
     return excerpt;
   }
 
+  /// The spotted vehicle, trimmed. Empty on an ordinary post.
+  String get _spotted => (widget.spottedVehicle ?? '').trim();
+
   @override
   Widget build(BuildContext context) {
     final username = widget.username;
@@ -2476,6 +2491,23 @@ class _PostCaptionSectionState extends State<_PostCaptionSection> {
                 fontSize: 14,
               ),
             ),
+
+          // The first line of a spot post, before anything the user
+          // wrote. Outside the caption's isNotEmpty branch on
+          // purpose: a spot with no caption is ordinary, and it still
+          // has to say what was spotted.
+          if (_spotted.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              '📸 Spotted: $_spotted',
+              style: const TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                height: 1.3,
+              ),
+            ),
+          ],
 
           // The headline, where an ordinary post has its author's name,
           // and the standfirst under it. Bold then regular, which is how a

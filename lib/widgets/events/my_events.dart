@@ -20,7 +20,7 @@ class EventsManagerBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: const Color(0xFF0B0B0B),
         borderRadius: BorderRadius.circular(16),
@@ -31,22 +31,22 @@ class EventsManagerBanner extends StatelessWidget {
           const Text(
             'ORGANISERS',
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 11.5,
               fontWeight: FontWeight.w700,
-              letterSpacing: 1.4,
+              letterSpacing: 1.3,
               color: _gold,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           const Text(
             'Host or manage events?',
             style: TextStyle(
-              fontSize: 20,
+              fontSize: 16.5,
               fontWeight: FontWeight.w700,
               color: Colors.white,
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: Material(
@@ -56,20 +56,20 @@ class EventsManagerBanner extends StatelessWidget {
               child: InkWell(
                 onTap: onOpenManager,
                 child: const SizedBox(
-                  height: 54,
+                  height: 48,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
                         'Load Events Manager',
                         style: TextStyle(
-                          fontSize: 17,
+                          fontSize: 15,
                           fontWeight: FontWeight.w700,
                           color: Colors.white,
                         ),
                       ),
-                      SizedBox(width: 10),
-                      Icon(Icons.chevron_right, size: 22, color: Colors.white),
+                      SizedBox(width: 8),
+                      Icon(Icons.chevron_right, size: 20, color: Colors.white),
                     ],
                   ),
                 ),

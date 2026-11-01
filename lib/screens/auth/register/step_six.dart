@@ -151,6 +151,17 @@ class RegisterStepSixScreen extends StatelessWidget {
   }
 
   void _finish(BuildContext context) {
-    Navigator.pushReplacementNamed(context, AppRoutes.home);
+    // Removes ALL previous routes, not just this one.
+    //
+    // pushReplacementNamed only replaces the top of the stack, so every
+    // earlier signup step stayed underneath home — and an iOS edge
+    // swipe from the homepage took the user back into a signup they had
+    // already completed. Matches login_screen, which has always done
+    // this correctly.
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      AppRoutes.home,
+      (route) => false,
+    );
   }
 }

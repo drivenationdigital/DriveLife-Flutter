@@ -2,7 +2,9 @@ import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/api/garage_api.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/club_api_service.dart';
+import 'package:drivelife/api/global_groups_api.dart';
 import 'package:drivelife/models/my_clubs.dart';
+import 'package:drivelife/screens/clubs/global_group_screen.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/clubs/open_club_creator.dart';
@@ -74,6 +76,22 @@ class GroupSummary {
   /// endpoints return no avatars today, so this is always empty.
   final List<String> memberAvatars;
 
+  /// Set for a GLOBAL GROUP, empty for a club.
+  ///
+  /// This is also how the two are told apart. A club id is a WordPress
+  /// post id and a group id is a ce_groups id: both small integers, so
+  /// "42" alone cannot say which table it came from, and opening the
+  /// wrong one is a silent bug rather than an error. A slug is
+  /// unambiguous, and only global groups have one.
+  final String slug;
+
+  /// draft | published | hidden, for a global group.
+  ///
+  /// Shown as a badge while testing, because the endpoint is
+  /// deliberately returning drafts and a test build should not look
+  /// identical to a live one.
+  final String status;
+
   const GroupSummary({
     required this.id,
     required this.title,
@@ -81,7 +99,29 @@ class GroupSummary {
     this.kind = GroupKind.club,
     this.image,
     this.memberAvatars = const [],
+    this.slug = '',
+    this.status = '',
   });
+
+  /// True for a global group, false for a club.
+  bool get isGlobal => slug.isNotEmpty;
+
+  /// From /app/v1/groups.
+  ///
+  /// The API's three kinds collapse into two here: `marque` and
+  /// `model` share one section on this page ("Marque & model"), and a
+  /// third enum value would have to be handled by every switch for no
+  /// visible difference. The real kind is still on the group itself
+  /// and the detail screen reads it from the API.
+  factory GroupSummary.fromGlobalGroup(GlobalGroup group) => GroupSummary(
+    id: '${group.id}',
+    title: group.title,
+    memberCount: group.memberCount,
+    image: group.image,
+    kind: group.kind == 'scene' ? GroupKind.scene : GroupKind.marque,
+    slug: group.slug,
+    status: group.status,
+  );
 
   /// From /clubs/my-clubs.
   ///
@@ -122,65 +162,6 @@ const _mockGarageMatches = <GroupSummary>[
   ),
 ];
 
-const _mockSceneGroups = <GroupSummary>[
-  GroupSummary(
-    id: 'mock-4x4',
-    title: '4x4 & Overlanding',
-    memberCount: 3200,
-    kind: GroupKind.scene,
-  ),
-  GroupSummary(
-    id: 'mock-jdm',
-    title: 'JDM',
-    memberCount: 5800,
-    kind: GroupKind.scene,
-  ),
-  GroupSummary(
-    id: 'mock-classics',
-    title: 'Classics',
-    memberCount: 4100,
-    kind: GroupKind.scene,
-  ),
-  GroupSummary(
-    id: 'mock-supercars',
-    title: 'Supercars',
-    memberCount: 7300,
-    kind: GroupKind.scene,
-  ),
-  GroupSummary(
-    id: 'mock-track',
-    title: 'Track Days',
-    memberCount: 2600,
-    kind: GroupKind.scene,
-  ),
-  GroupSummary(
-    id: 'mock-detailing',
-    title: 'Detailing',
-    memberCount: 3900,
-    kind: GroupKind.scene,
-  ),
-];
-
-const _mockMarques = <GroupSummary>[
-  GroupSummary(
-    id: 'mock-defender',
-    title: 'Land Rover Defender',
-    memberCount: 860,
-    kind: GroupKind.marque,
-  ),
-  GroupSummary(
-    id: 'mock-mx5-marque',
-    title: 'Mazda MX-5',
-    memberCount: 1240,
-    kind: GroupKind.marque,
-  ),
-  GroupSummary(
-    id: 'mock-gr86',
-    title: 'Toyota GR86',
-    memberCount: 640,
-    kind: GroupKind.marque,
-  ),
-];
 
 // ─── Screen ──────────────────────────────────────────────────────────
 
@@ -296,22 +277,35 @@ class _GroupsScreenState extends State<GroupsScreen>
     super.dispose();
   }
 
-  /// Groups of one kind.
+  /// Groups of one kind. LIVE.
   ///
-  /// THE SWAP POINT. When the admin `kind` field exists, each of these
-  /// becomes the same call with a different argument — something like
-  /// ClubApiService.fetchClubs(kind: 'scene') — and the placeholder
-  /// list goes. Until then every section draws from a const above, and
-  /// this is the only method that needs to change.
+  /// This was the swap point and it has been swapped: both sections
+  /// now read /app/v1/groups, which serves the ce_groups table rather
+  /// than anything to do with clubs.
   ///
-  /// Deliberately async already, so turning it into a request does not
-  /// also mean turning three widgets into loading states.
+  /// Marque and model are fetched together because this page shows
+  /// them in one section, and the endpoint takes a comma-separated
+  /// list so that costs one request rather than two.
+  ///
+  /// A failure returns an empty list, which hides the section. The API
+  /// client already logs the reason; a section that cannot load should
+  /// disappear rather than take the page down.
   Future<List<GroupSummary>> _loadKind(GroupKind kind) async {
     switch (kind) {
       case GroupKind.scene:
-        return _mockSceneGroups;
+        final groups = await GlobalGroupsApi.fetchGroups(
+          kinds: const ['scene'],
+          perPage: 12,
+        );
+        return groups.map(GroupSummary.fromGlobalGroup).toList();
+
       case GroupKind.marque:
-        return _mockMarques;
+        final groups = await GlobalGroupsApi.fetchGroups(
+          kinds: const ['marque', 'model'],
+          perPage: 20,
+        );
+        return groups.map(GroupSummary.fromGlobalGroup).toList();
+
       case GroupKind.club:
         return const [];
     }
@@ -891,7 +885,7 @@ class _GroupsScreenState extends State<GroupsScreen>
     );
   }
 
-  // ─── Scene groups  [PLACEHOLDER DATA] ──────────────────────────────
+  // ─── Scene groups  [LIVE: /app/v1/groups?kind=scene] ─────────────
 
   Widget _sceneGrid(ThemeProvider theme) {
     return Padding(
@@ -1011,7 +1005,7 @@ class _GroupsScreenState extends State<GroupsScreen>
     );
   }
 
-  // ─── Marque & model  [PLACEHOLDER DATA] ────────────────────────────
+  // ─── Marque & model  [LIVE: kind=marque,model] ──────────────────
 
   Widget _marqueList(ThemeProvider theme) {
     return Column(
@@ -1220,6 +1214,21 @@ class _GroupsScreenState extends State<GroupsScreen>
   // ─── Shared ────────────────────────────────────────────────────────
 
   void _openGroup(GroupSummary group) {
+    // A GLOBAL GROUP, which is not a club and must not be opened as
+    // one. Both carry a bare numeric id from different tables, so
+    // group 42 and club 42 both exist — routing on the id alone would
+    // silently open the wrong thing. The slug is what disambiguates,
+    // and only a global group has one.
+    if (group.isGlobal) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GlobalGroupScreen(slug: group.slug),
+        ),
+      );
+      return;
+    }
+
     // A placeholder row has no club behind it, so there is nowhere to
     // go. Said out loud rather than silently ignored, so it is obvious
     // in testing which rows are not wired up yet.
