@@ -77,6 +77,22 @@ class YourWeekPanelState extends State<YourWeekPanel> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(YourWeekPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Whose garage this is can change AFTER the first build.
+    //
+    // The shell builds this panel before the profile has finished
+    // loading, so the first build gets whoever was signed in last —
+    // which, right after a profile switch, is the previous account.
+    // UserProvider lands a moment later and rebuilds us with the right
+    // id, but a State keeps its data across a rebuild, so without this
+    // the cards went on showing the other account's car until somebody
+    // pulled to refresh. Which is exactly what they had to do.
+    if (oldWidget.userId != widget.userId) _load();
+  }
+
   /// Reload everything. Called by the screen's pull-to-refresh.
   Future<void> refresh() => _load();
 
@@ -243,17 +259,31 @@ class YourWeekPanelState extends State<YourWeekPanel> {
     return null;
   }
 
-  /// The next five events, nearest first.
+  /// How many upcoming events to look at before picking the five.
   ///
-  /// getEvents already defaults to the user's country off last_location,
-  /// so this asks for 'near-me' and lets the server apply the radius and
-  /// the ordering it already has for that case.
+  /// The five nearest in the whole country cannot be asked for: the
+  /// server orders by date and knows nothing about distance, so the
+  /// nearest one might be the fortieth it returns. This is the window
+  /// that gets searched — wide enough that the answer is almost always
+  /// really the nearest five, small enough to stay one cheap request.
+  static const int _eventSearchWindow = 60;
+
+  /// The five nearest events in the user's country, in date order.
+  ///
+  /// Two different orderings, and they are not in conflict: distance
+  /// decides WHICH five (there is no point offering somebody an event
+  /// four hundred miles away), and the date decides what order they are
+  /// read in, because a list of things to go to that jumps backwards
+  /// and forwards through the calendar cannot be planned against.
+  ///
+  /// Country-wide rather than 'near-me': the radius was leaving people
+  /// outside the big cities with an empty section, which says "nothing
+  /// is happening" when it means "nothing is happening within 25 miles".
   Future<List<Map<String, dynamic>>> _loadEvents() async {
     try {
       final response = await EventsAPI.getEvents(
         page: 1,
-        limit: 5,
-        location: 'near-me',
+        limit: _eventSearchWindow,
         dateFilter: 'upcoming',
       );
 
@@ -282,7 +312,23 @@ class YourWeekPanelState extends State<YourWeekPanel> {
         events.sort((a, b) => _distance(a).compareTo(_distance(b)));
       }
 
-      return events.take(5).toList();
+      // Whichever five came out of that, read in date order. Without a
+      // location to measure from there is no distance pass at all and
+      // these are simply the next five, which is already what the
+      // server sent.
+      final nearest = events.take(5).toList()
+        ..sort((a, b) {
+          final left = _parseEventDate(a['start_date']);
+          final right = _parseEventDate(b['start_date']);
+
+          // An unparseable date sinks rather than scrambling the rest.
+          if (left == null) return right == null ? 0 : 1;
+          if (right == null) return -1;
+
+          return left.compareTo(right);
+        });
+
+      return nearest;
     } catch (e) {
       debugPrint('[YourWeek] events failed: $e');
       return const [];
@@ -378,6 +424,14 @@ class YourWeekPanelState extends State<YourWeekPanel> {
               if (_vehicle != null) _garageCard(theme) else _emptyGarage(theme),
               const SizedBox(height: 28),
               _eventsSection(theme),
+
+              // A heading for the section below, so the daily game
+              // reads as something to join in with rather than another
+              // card in the same list as the events.
+              if (_guess != null) ...[
+                const SizedBox(height: 28),
+                DlHeading('Get involved', fontSize: 22, color: theme.textColor),
+              ],
               _guessCard(theme),
             ],
           ],
@@ -390,7 +444,10 @@ class YourWeekPanelState extends State<YourWeekPanel> {
     final name = widget.firstName?.trim();
 
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      // Centred, not baseline-aligned. The chip is a 17pt emoji next
+      // to a 28pt heading, and aligning their BOTTOMS hung the flag
+      // below the cap line where it read as having slipped.
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
           // Condensed and in capitals. The old -0.6 tracking went with
@@ -423,7 +480,13 @@ class YourWeekPanelState extends State<YourWeekPanel> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(_flag(code), style: const TextStyle(fontSize: 17)),
+        // Nudged up a hair. Emoji glyphs carry their own internal
+        // padding and sit low in their line box, so optical centring
+        // needs a pixel the layout will not give.
+        Transform.translate(
+          offset: const Offset(0, -1),
+          child: Text(_flag(code), style: const TextStyle(fontSize: 18)),
+        ),
         const SizedBox(width: 6),
         Text(
           _countryName(code),

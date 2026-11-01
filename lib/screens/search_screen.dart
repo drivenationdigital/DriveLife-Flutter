@@ -778,6 +778,11 @@ class _SearchScreenState extends State<SearchScreen>
               ],
             ),
       body: SafeArea(
+        // Not at the top when embedded. The shell above already draws a
+        // status-bar spacer under its own header, so a second inset here
+        // stacked on it and left a gap exactly the height of the status
+        // bar between the header and the search field.
+        top: !widget.embedded,
         child: Column(
           children: [
             // Search Bar

@@ -90,7 +90,6 @@
 		<false/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
-
 		<!-- URL Schemes (for fallback) -->
 		<key>CFBundleURLTypes</key>
 		<array>
@@ -105,7 +104,6 @@
 				</array>
 			</dict>
 		</array>
-
 		<!-- Universal Links -->
 		<key>com.apple.developer.associated-domains</key>
 		<array>

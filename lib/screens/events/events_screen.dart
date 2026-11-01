@@ -1,9 +1,8 @@
+import 'package:drivelife/screens/events/events_manager_web.dart';
 import 'package:drivelife/screens/events/open_event_overview.dart';
-import 'package:drivelife/screens/events/open_event_editor.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/screens/account-settings/app_permissions_screen.dart';
-import 'package:drivelife/screens/events/event_community_gallery_screen.dart';
 import 'package:drivelife/screens/events/order_ticket_view.dart';
 import 'package:drivelife/utils/date.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
@@ -91,7 +90,6 @@ class _EventsScreenState extends State<EventsScreen>
   List<Map<String, dynamic>> _upcomingEvents = [];
   List<Map<String, dynamic>> _featuredEvents = [];
   List<Map<String, dynamic>> _likedEvents = [];
-  List<Map<String, dynamic>> _myCreatedEvents = [];
   List<Map<String, dynamic>> _categories = [];
 
   List<Map<String, dynamic>> _activeTickets = [];
@@ -444,10 +442,6 @@ class _EventsScreenState extends State<EventsScreen>
       if (response != null && response['success'] == true && mounted) {
         final events = response['events'];
         setState(() {
-          _myCreatedEvents =
-              (events['my_events'] as List<dynamic>?)
-                  ?.cast<Map<String, dynamic>>() ??
-              [];
           _likedEvents =
               (events['saved_events'] as List<dynamic>?)
                   ?.cast<Map<String, dynamic>>() ??
@@ -1450,18 +1444,31 @@ class _EventsScreenState extends State<EventsScreen>
     );
   }
 
+  /// Opens the dashboard's Events Manager, or says why it could not.
+  ///
+  /// The failure is worth a word: it means the session exchange refused,
+  /// which from the outside looks exactly like a button that does nothing.
+  Future<void> _openEventsManager(BuildContext context) async {
+    final opened = await EventsManagerWeb.open(context);
+
+    if (opened || !context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Could not open the events manager. Please try again.'),
+      ),
+    );
+  }
+
   // My Events Tab
   Widget _buildMyEventsTab() {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
 
     return MyEventsTabContent(
-      myCreatedEvents: _myCreatedEvents,
       likedEvents: _likedEvents,
       primaryColor: theme.primaryColor,
       onRefresh: _fetchProfileEvents,
-      onAddEvent: () {
-        openEventEditor(context);
-      },
+      onOpenManager: () => _openEventsManager(context),
 
       onEventTap: (event) {
         if (event['is_owner'] == true) {
@@ -1482,20 +1489,6 @@ class _EventsScreenState extends State<EventsScreen>
           '/event-detail',
           arguments: {'event': event},
         );
-      },
-      onSharePhotos: (event) async {
-        final uploaded = await NavigationHelper.navigateTo<bool>(
-          context,
-          EventCommunityGalleryScreen(
-            eventId: event['id'].toString(),
-            eventTitle: event['title'] ?? 'Untitled Event',
-            eventCoverUrl: event['thumbnail'],
-          ),
-        );
-
-        if (uploaded == true) {
-          _fetchProfileEvents();
-        }
       },
       formatEventDate: (date, index) => DateHelpers.formatEventDate(date),
       onUnlikeEvent: (eventId, site, eventIndex) async {

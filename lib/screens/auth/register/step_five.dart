@@ -1,8 +1,8 @@
+import 'package:drivelife/screens/auth/register/step_six.dart';
 import 'package:drivelife/api/profile_api.dart';
 import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
-import 'package:drivelife/routes.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -185,8 +185,12 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
       // Clear registration data
       registrationProvider.reset();
 
-      // Navigate to home
-      Navigator.pushReplacementNamed(context, AppRoutes.home);
+      // One more step: the garage prompt. pushReplacement so Back
+      // from there cannot return to a completed signup form.
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const RegisterStepSixScreen()),
+      );
     } catch (e) {
       print('❌ Error completing registration: $e');
 

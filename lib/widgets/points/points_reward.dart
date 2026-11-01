@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:drivelife/theme/dl_type.dart';
+import 'package:drivelife/providers/points_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 /// "You earned 500 points", as something worth watching.
 ///
@@ -47,6 +49,17 @@ class PointsReward {
 
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) return;
+
+    // Every rule that pays out ends here, which makes this the one
+    // place that can keep the header honest without each caller
+    // remembering to. Fired now rather than after: the points were
+    // awarded server-side before this was called, so the balance is
+    // already stale, and refreshing under the animation means the
+    // number has changed by the time the overlay clears.
+    //
+    // listen: false — this is not a build, and the overlay does not
+    // care what the balance is, only that somebody re-reads it.
+    unawaited(context.read<PointsProvider>().refresh());
 
     // A short tap, not a notification buzz. The animation is the event;
     // the haptic is punctuation under it.

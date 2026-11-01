@@ -338,12 +338,13 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
-        // The owner sees it and cannot press it. Visible because the
-        // count lives here and the owner is the one person guaranteed
-        // to care about it; inert because liking your own vehicle
-        // inflates a leaderboard that ranks on a headcount of distinct
-        // people. The server refuses it too — see dl_garage_like_toggle.
-        onPressed: (_likeBusy || isVehiclePublisher()) ? null : _toggleLike,
+        // The owner can press it too. It was inert for them, on the
+        // grounds that a self-like inflates the leaderboard — but a
+        // vehicle'''s likers already counted anybody who liked a POST
+        // tagged to the car, owner included, so the rule only ever
+        // applied to this one button. Being the single like nobody
+        // could cast, it read as a broken button rather than a rule.
+        onPressed: _likeBusy ? null : _toggleLike,
         icon: Icon(
           liked ? Icons.favorite : Icons.favorite_border,
           size: 19,
@@ -754,14 +755,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                       : null,
                 ),
 
-                // Add photos. Bottom left, under the dots rather than
-                // beside them: the dots move as the gallery is swiped
-                // and a button that shifts with them is a target that
-                // will not hold still.
+                // Add photos, in the corner the 1/4 counter used to
+                // hold. It sits level with the dots rather than above
+                // them now — the dots are on the left and this is on
+                // the right, so neither moves the other.
                 if (isVehiclePublisher())
                   Positioned(
                     right: 16,
-                    bottom: 56,
+                    bottom: 14,
                     child: _AddPhotosButton(
                       busy: _uploadingGallery,
                       onTap: _addGalleryPhotos,

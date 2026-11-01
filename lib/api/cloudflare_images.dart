@@ -29,10 +29,45 @@ class CloudflareImages {
 
   /// The variant group avatars are stored at.
   ///
-  /// 'thumbnail' is 400px on its longest side. The avatar is drawn at 56
-  /// points, so 168 physical pixels on a 3x phone — 400 is comfortable
-  /// and it is the smallest variant that is.
+  /// 'thumbnail' is 400x400 — a SQUARE, which crops anything that is not
+  /// already one. For an avatar that is exactly right: it is drawn in a
+  /// circle at 56 points, so a square source is what it wants.
+  ///
+  /// It is wrong for anything else, which is what [photo] is for.
   static const _variant = 'thumbnail';
+
+  /// The variant photographs are stored at.
+  ///
+  /// 'public' keeps the aspect ratio. Measured rather than assumed: the
+  /// same source image comes back 400x400 through 'thumbnail' and at
+  /// its own 399x332 through this one.
+  ///
+  /// Chat photographs were going up as 'thumbnail', so a portrait
+  /// picture arrived in the thread already square — nothing in the UI
+  /// was cropping it, the stored image WAS the crop.
+  static const photo = 'public';
+
+  /// Rewrite a stored delivery URL to a different variant.
+  ///
+  /// Every chat photograph sent before [photo] existed has a
+  /// /thumbnail URL written into its Supabase row, and those rows
+  /// cannot be rebuilt from here — see the note on [uploadAndGetUrl].
+  /// The variant is the last path segment though, so an old URL can be
+  /// pointed at the uncropped rendition of the SAME upload as it is
+  /// displayed. Cloudflare still holds the original; only the
+  /// rendition asked for was square.
+  ///
+  /// Anything that is not one of this account's delivery URLs is
+  /// returned untouched.
+  static String? asVariant(String? url, String variant) {
+    if (url == null || url.isEmpty) return url;
+    if (!url.startsWith(_delivery)) return url;
+
+    final cut = url.lastIndexOf('/');
+    if (cut <= _delivery.length) return url;
+
+    return '${url.substring(0, cut)}/$variant';
+  }
 
   /// The delivery URL for an image id.
   static String urlFor(String imageId, {String variant = _variant}) =>
@@ -57,9 +92,10 @@ class CloudflareImages {
   static Future<String?> uploadAndGetUrl({
     required Uint8List bytes,
     required String fileName,
+    String variant = _variant,
   }) async {
     final id = await uploadAndGetId(bytes: bytes, fileName: fileName);
-    return id == null ? null : urlFor(id);
+    return id == null ? null : urlFor(id, variant: variant);
   }
 
   /// Upload [bytes] and return the Cloudflare image id.

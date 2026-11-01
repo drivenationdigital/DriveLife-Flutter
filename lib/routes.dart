@@ -379,10 +379,14 @@ class AppRoutes {
         );
       case guess:
         // Optional arguments: opened from the home card there are
-        // none, opened from a result notification there is a tab.
+        // none, from a result notification there is a tab, and from a
+        // shared link there is a date.
         final guessArgs = settings.arguments as Map<String, dynamic>?;
         return _slide(
-          GuessScreen(initialTab: (guessArgs?['tab'] as num?)?.toInt() ?? 0),
+          GuessScreen(
+            initialTab: (guessArgs?['tab'] as num?)?.toInt() ?? 0,
+            date: guessArgs?['date'] as String?,
+          ),
         );
       case points:
         return _slide(const PointsScreen());

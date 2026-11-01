@@ -16,6 +16,11 @@ class RegisterStepThreeScreen extends StatelessWidget {
     4: 'Hotrods & Dragsters',
     5: 'Race Cars',
     6: 'Motorbikes',
+    // Appended rather than inserted. The ids are stored against the
+    // user, so renumbering the list would silently change what
+    // everybody who already signed up is interested in.
+    7: '4x4 & Offroad',
+    8: 'Trucks & Pickups',
   };
 
   @override

@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 4.7.5+10
+version: 4.7.5+11
 
 environment:
   sdk: ^3.9.2
@@ -111,12 +111,19 @@ flutter_launcher_icons:
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
+# Regenerate after changing any of this, or nothing happens:
+#   flutter test tool/render_splash_png.dart   (only if the SVG changed)
+#   dart run flutter_native_splash:create
+#
+# splash-intro.png is baked from assets/intro-logo.svg so the native
+# splash and the Dart one that replaces it are the same artwork. It is
+# transparent on purpose - the background below is what paints it.
 flutter_native_splash:
-  color: "#FFFFFF"
-  image: assets/splash2.png
+  color: "#151515"
+  image: assets/splash-intro.png
   android_12:
-    image: assets/splash1.png
-    icon_background_color: "#FFFFFF"
+    image: assets/splash-intro.png
+    icon_background_color: "#151515"
 
 
 # The following section is specific to Flutter packages.
@@ -143,7 +150,9 @@ flutter:
     - assets/profile-placeholder.jpg
     - assets/logo-large.png
     - assets/logo-flag-black.svg
+    - assets/intro-logo.svg
     - assets/bg-points.jpg
+    - assets/nav-icons/
     - assets/video01.mp4
     - assets/svgs/heart.svg
     - assets/svgs/heart_full.svg

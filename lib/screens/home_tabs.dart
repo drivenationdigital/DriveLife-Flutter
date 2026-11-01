@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:drivelife/api/moderation_api.dart';
-import 'package:drivelife/api/points_api.dart';
+import 'package:drivelife/providers/points_provider.dart';
+import 'package:drivelife/screens/search_screen.dart';
 import 'package:drivelife/api/notifications_api.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:drivelife/screens/store/shop_screen.dart';
@@ -30,7 +31,6 @@ import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
-import 'package:drivelife/screens/places/add_venue_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/profile/my_club_profile_view.dart';
 import 'package:drivelife/config/feature_flags.dart';
@@ -44,6 +44,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
+import 'package:shimmer/shimmer.dart';
 import 'posts_screen.dart';
 import 'profile/profile_screen.dart';
 
@@ -215,7 +216,12 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     // is re-read on the way back rather than only at launch.
     WidgetsBinding.instance.addObserver(this);
     _loadNotificationCount();
-    _loadPoints();
+
+    // After the first frame. A provider read in initState works, but
+    // this one kicks off a request whose result calls notifyListeners,
+    // and notifying while the tree is still building is the classic
+    // way to get "setState() or markNeedsBuild() called during build".
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPoints());
 
     _buildScreens();
     _reloadUserData();
@@ -345,11 +351,18 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
       // Rebuilt every frame so it tracks _homeTab. The sections inside keep
       // their state regardless: Flutter reconciles them by type and
       // position, and the feed carries a key.
+      // Positional, and matched to BottomNavProvider's constants by
+      // the assert below. The order here IS the order on the bar.
       _buildHome(theme),
+      _buildGarage(theme),
       _buildDiscover(),
       _buildGroups(theme),
       ..._screens.skip(3).take(1),
-      _buildGarage(theme),
+
+      // Search, which previously existed only as a route. embedded:
+      // true because the shell already supplies the scaffold and the
+      // bottom bar — the standalone version brings its own.
+      const SearchScreen(embedded: true),
     ];
 
     assert(
@@ -392,12 +405,16 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   /// it is what tells somebody the thing exists — a pill that appears
   /// the first time they earn a point is a feature they never knew was
   /// coming.
-  int _points = 0;
-
-  Future<void> _loadPoints() async {
-    final mine = await PointsAPI.mine();
-    if (!mounted || mine.current == _points) return;
-    setState(() => _points = mine.current);
+  /// Ask the provider for a fresh balance.
+  ///
+  /// The number itself is no longer held here: it moved to
+  /// PointsProvider so that the screens which EARN points can update
+  /// the header, which they had no way to reach from inside a pushed
+  /// route. This just pokes it at the two moments the shell knows
+  /// about — launch and coming back from the background.
+  void _loadPoints() {
+    if (!mounted) return;
+    context.read<PointsProvider>().refresh();
   }
 
   /// Whether Discover has ever been opened.
@@ -707,13 +724,9 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
             icon: Icons.calendar_today_outlined,
             onTap: () => openEventEditor(context),
           ),
-          _CreateAction(
-            label: 'Add Venue',
-            subtitle: 'For organisers',
-            icon: Icons.place_outlined,
-            onTap: () =>
-                NavigationHelper.navigateTo(context, const CreateVenueScreen()),
-          ),
+          // Add Venue has gone from this menu. CreateVenueScreen is
+          // untouched and still reachable from Places; it just has no
+          // entry point here.
           // Add News has gone from this menu. It was admin-only
           // and the screen it opened is untouched — CreateNewsScreen
           // just has no entry point here any more.
@@ -863,6 +876,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
 
   // Default app bar for all tabs
   Widget _buildHeader(ThemeProvider theme) {
+    // Watched once for the whole header rather than per field, so the
+    // balance and the loaded flag can never disagree about which
+    // snapshot they came from.
+    final points = context.watch<PointsProvider>();
+
     return _Header(
       // Left, not centred. The logo is the app saying where you are; a
       // centred one competes with the section row below it for the eye.
@@ -879,12 +897,13 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         // somebody might want to read rather than an action they might
         // want to take.
         _PointsPill(
-          points: _points,
+          points: points.current,
+          loaded: points.loaded,
           onTap: () async {
             await Navigator.pushNamed(context, AppRoutes.points);
             // Re-read on the way back: the screen itself refreshes, and
             // a balance that changed there should not be stale up here.
-            await _loadPoints();
+            _loadPoints();
           },
         ),
         const SizedBox(width: 8),
@@ -1031,20 +1050,29 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         _setIndex(index);
       },
       items: [
+        // Order, and the constants in BottomNavProvider, must stay in
+        // step: the bar hands its tapped POSITION to _setIndex, and the
+        // assert below is what catches the two drifting apart.
         DlNavItem(
           label: 'Home',
-          icon: (sel) => svg('assets/app-icons/01-Home.svg', sel),
+          icon: (sel) => svg('assets/nav-icons/01-home.svg', sel),
         ),
         DlNavItem(
-          label: 'Discover',
-          icon: (sel) => svg('assets/app-icons/header-search.svg', sel),
+          label: 'Garage',
+          // A real icon at last. This was a borrowed Material glyph
+          // because assets/app-icons had no car.
+          icon: (sel) => svg('assets/nav-icons/02-garage.svg', sel),
+        ),
+        DlNavItem(
+          label: 'Map',
+          icon: (sel) => svg('assets/nav-icons/03-map.svg', sel),
         ),
         DlNavItem(
           label: 'Groups',
-          icon: (sel) => svg('assets/app-icons/07-groups.svg', sel),
+          icon: (sel) => svg('assets/nav-icons/04-groups.svg', sel),
         ),
         DlNavItem(
-          label: 'Photos',
+          label: 'Media',
           // Carries the unseen-tag count. Unseen rather than the whole
           // pending queue: a badge mirroring every outstanding tag would
           // never clear, and a dot that is always on is one people stop
@@ -1055,20 +1083,12 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
               color: theme.primaryColor,
               child: child!,
             ),
-            child: svg('assets/app-icons/06-photo.svg', sel),
+            child: svg('assets/nav-icons/05-media.svg', sel),
           ),
         ),
         DlNavItem(
-          label: 'Garage',
-          // A Material glyph: assets/app-icons has no car, and the Tracks
-          // tab already sets the precedent of borrowing one rather than
-          // shipping a tab with somebody else's icon on it. Swaps to an
-          // SVG by changing this one line.
-          icon: (sel) => Icon(
-            Icons.directions_car_rounded,
-            size: 21,
-            color: sel ? theme.primaryColor : Colors.grey,
-          ),
+          label: 'Search',
+          icon: (sel) => svg('assets/nav-icons/06-search.svg', sel),
         ),
       ],
     );
@@ -1545,9 +1565,18 @@ class _HeaderAccount extends StatelessWidget {
 /// grow until it is a pill anyway.
 class _PointsPill extends StatelessWidget {
   final int points;
+
+  /// False until the first balance arrives, when the number is a
+  /// skeleton instead.
+  final bool loaded;
+
   final VoidCallback onTap;
 
-  const _PointsPill({required this.points, required this.onTap});
+  const _PointsPill({
+    required this.points,
+    required this.onTap,
+    this.loaded = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1584,14 +1613,38 @@ class _PointsPill extends StatelessWidget {
                   child: const Icon(Icons.star, size: 16, color: Colors.white),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  _format(points),
-                  style: const TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF111113),
+
+                // The star stays. It is chrome, not data — it is the
+                // same star whatever the balance turns out to be, and
+                // blanking it too would make the whole pill flicker
+                // for something only the digits are waiting on.
+                if (!loaded)
+                  Shimmer.fromColors(
+                    baseColor: Colors.grey.shade300,
+                    highlightColor: Colors.grey.shade100,
+                    child: Container(
+                      // About as wide as a four-figure balance. Close
+                      // enough that the pill does not visibly resize
+                      // when the real number lands, which is the whole
+                      // reason to draw a placeholder rather than
+                      // nothing.
+                      width: 34,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  )
+                else
+                  Text(
+                    _format(points),
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF111113),
+                    ),
                   ),
-                ),
               ],
             ),
           ),

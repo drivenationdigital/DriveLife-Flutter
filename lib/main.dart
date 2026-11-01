@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'routes.dart';
 import 'providers/user_provider.dart';
+import 'providers/points_provider.dart';
 import 'providers/account_provider.dart';
 import 'providers/video_mute_provider.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
@@ -58,21 +59,37 @@ final rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 /// again: `BottomNavProvider.events` cannot drift, where `1` can.
 class BottomNavProvider extends ChangeNotifier {
   // ── bottom bar destinations, in the order they appear ──────────────
+  //
+  // Renumbered when the bar was reordered to Home, Garage, Map, Groups,
+  // Media, Search. Renumbering is safe BECAUSE everything navigates by
+  // name — `BottomNavProvider.garage` follows the constant wherever it
+  // moves, where a literal 4 would silently start opening the map.
   static const int home = 0;
-  static const int discover = 1;
-  static const int groups = 2;
-  static const int photos = 3;
 
   /// Garage, where Account used to be.
   ///
   /// The account avatar moved to the header — it is a thing you ARE, not a
   /// place you go, and it was spending a fifth of the bar to say so. The
   /// garage is a place you go.
-  static const int garage = 4;
+  static const int garage = 1;
+
+  /// The map. Still called `discover` because that is what the screen
+  /// and its route are called; only the label on the bar says Map.
+  static const int discover = 2;
+
+  static const int groups = 3;
+
+  /// Photos. Labelled Media on the bar, since it holds galleries and
+  /// video as well as stills.
+  static const int photos = 4;
+
+  /// Search, which had no place on the bar at all — it was reachable
+  /// only from a route nothing linked to.
+  static const int search = 5;
 
   /// How many destinations there are. The shell asserts its own list
   /// against this, because the two are matched by position.
-  static const int destinationCount = garage + 1;
+  static const int destinationCount = search + 1;
 
   // ── sections of Home, in the order of its top tab row ──────────────
   static const int forYou = 0;
@@ -209,6 +226,10 @@ void main() async {
         ChangeNotifierProvider(create: (_) => RegistrationProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => UnreadCountProvider()),
+        // Above the navigator, because points are earned on screens
+        // that are pushed and popped and the header outlives all of
+        // them.
+        ChangeNotifierProvider(create: (_) => PointsProvider()),
         ChangeNotifierProvider(create: (_) => BottomNavProvider()),
         ChangeNotifierProvider(create: (_) => PendingTagsProvider()),
         ChangeNotifierProvider(create: (_) => LocationAccessProvider()),

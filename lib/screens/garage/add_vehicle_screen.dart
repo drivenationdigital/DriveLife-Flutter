@@ -832,11 +832,11 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                     strokeWidth: 2,
                     color: gold,
                   )
-                : const Icon(
-                    Icons.auto_fix_high_rounded,
-                    size: 18,
-                    color: gold,
-                  ),
+                // A magnifying glass, not a wand. It looks the
+                // registration up against a vehicle database — that is
+                // a search, and a wand suggested something magical and
+                // unspecified was about to happen to the form.
+                : const Icon(Icons.search_rounded, size: 20, color: gold),
           ),
         ),
       ),
@@ -1781,6 +1781,31 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   _card(
                     child: Column(
                       children: [
+                        // Registration first. It is the field that
+                        // fills in every other one — typing a plate and
+                        // tapping search populates make, model, year
+                        // and colour — so asking for it last meant
+                        // either typing all of that by hand or
+                        // discovering the shortcut after the work.
+                        TextFormField(
+                          controller: _regCtrl,
+                          textCapitalization: TextCapitalization.characters,
+                          decoration:
+                              _dec(
+                                'Registration',
+                                hint: 'Your vehicle reg',
+                              ).copyWith(
+                                suffixIcon: Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: _autoFillButton(),
+                                ),
+                                suffixIconConstraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  minHeight: 48,
+                                ),
+                              ),
+                        ),
+                        _divider(),
                         DropdownButtonFormField<String>(
                           dropdownColor: theme.cardColor,
                           focusColor: theme.primaryColor,
@@ -1823,25 +1848,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                             'Variant',
                             hint: 'Add any vehicle variant info',
                           ),
-                        ),
-                        _divider(),
-                        TextFormField(
-                          controller: _regCtrl,
-                          textCapitalization: TextCapitalization.characters,
-                          decoration:
-                              _dec(
-                                'Registration',
-                                hint: 'Your vehicle reg',
-                              ).copyWith(
-                                suffixIcon: Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: _autoFillButton(),
-                                ),
-                                suffixIconConstraints: const BoxConstraints(
-                                  minWidth: 48,
-                                  minHeight: 48,
-                                ),
-                              ),
                         ),
                         _divider(),
                         TextFormField(

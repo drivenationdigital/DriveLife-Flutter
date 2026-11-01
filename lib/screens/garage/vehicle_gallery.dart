@@ -137,14 +137,12 @@ class _VehicleGalleryState extends State<VehicleGallery> {
             ),
           ),
 
-          if (many) ...[
+          // The dots stay; the 1/4 counter has gone. It said the same
+          // thing as the dots in a second way, and it occupied the one
+          // corner the Add photos button wanted — which is now where
+          // that button sits.
+          if (many)
             Positioned(left: 20, bottom: 16, child: _dots(images.length)),
-            Positioned(
-              right: 16,
-              bottom: 14,
-              child: _counter(_page + 1, images.length),
-            ),
-          ],
         ],
       ),
     );
@@ -175,41 +173,6 @@ class _VehicleGalleryState extends State<VehicleGallery> {
           ),
         ],
       ],
-    );
-  }
-
-  /// "1 / 4", on a dark chip.
-  ///
-  /// The dots say where you are in a gallery you can see the whole of;
-  /// this says how much there is when there are more dots than anybody
-  /// counts at a glance.
-  Widget _counter(int current, int total) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.photo_library_outlined,
-            size: 13,
-            color: Colors.white,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            '$current / $total',
-            style: const TextStyle(
-              fontSize: 12.5,
-              height: 1,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

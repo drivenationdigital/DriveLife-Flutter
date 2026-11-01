@@ -366,6 +366,9 @@ class _ChatScreenState extends State<ChatScreen> {
       url = await CloudflareImages.uploadAndGetUrl(
         bytes: await image.readAsBytes(),
         fileName: 'chat_${DateTime.now().microsecondsSinceEpoch}.jpg',
+        // Not the default. That one is square, and a photograph of a
+        // car is almost never square.
+        variant: CloudflareImages.photo,
       );
 
       if (!mounted) return;
@@ -417,6 +420,15 @@ class _ChatScreenState extends State<ChatScreen> {
           : _pendingImageBody(image),
     );
   }
+
+  /// A message photograph, at a variant that is not a square crop.
+  ///
+  /// New messages are uploaded at CloudflareImages.photo already. This
+  /// is for every one sent before that, whose Supabase row holds a
+  /// /thumbnail URL and cannot be rewritten from the app — the same
+  /// upload is re-asked for uncropped as it is displayed.
+  static String _photoUrl(String stored) =>
+      CloudflareImages.asVariant(stored, CloudflareImages.photo) ?? stored;
 
   Widget _pendingImageBody(File image) {
     return Padding(
@@ -976,7 +988,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       onTap: () => Navigator.of(context).push(
                                         MaterialPageRoute<void>(
                                           builder: (_) => ImageViewerScreen(
-                                            images: [msg.imageUrl!],
+                                            images: [_photoUrl(msg.imageUrl!)],
                                           ),
                                         ),
                                       ),
@@ -1006,7 +1018,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                             maxHeight: 280,
                                           ),
                                           child: CachedNetworkImage(
-                                            imageUrl: msg.imageUrl!,
+                                            imageUrl: _photoUrl(msg.imageUrl!),
                                             fit: BoxFit.contain,
                                             placeholder: (_, _) => Container(
                                               width: 210,

@@ -16,23 +16,27 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('bottom bar', () {
     test('the destinations are in the order the bar shows them', () {
-      // Home, Discover, Groups, Photos, Account. Garage is no longer a
-      // destination; it is reached from a profile and the Hot row.
+      // Home, Garage, Map, Groups, Media, Search — the third reorder, and
+      // the reason these assertions are written against names. The bar
+      // labels Map and Media; the constants keep the names the screens and
+      // routes already use.
       expect(BottomNavProvider.home, 0);
-      expect(BottomNavProvider.discover, 1);
-      expect(BottomNavProvider.groups, 2);
-      expect(BottomNavProvider.photos, 3);
       // Garage, where Account used to be. The account avatar moved to the
       // header: it is a thing you ARE, not a place you go, and it was
       // spending a fifth of the bar to say so.
-      expect(BottomNavProvider.garage, 4);
+      expect(BottomNavProvider.garage, 1);
+      expect(BottomNavProvider.discover, 2);
+      expect(BottomNavProvider.groups, 3);
+      expect(BottomNavProvider.photos, 4);
+      // Search, which until now existed only as a route nothing linked to.
+      expect(BottomNavProvider.search, 5);
     });
 
     test('the count matches the names', () {
       // The shell asserts its destination list against this, because the two
       // are matched by position and a mismatch sends taps to the wrong
       // screen rather than failing.
-      expect(BottomNavProvider.destinationCount, 5);
+      expect(BottomNavProvider.destinationCount, 6);
     });
   });
 
@@ -56,10 +60,13 @@ void main() {
     });
 
     test('a section index is not a destination index', () {
-      // The whole bug in one line: Events as a Home section is 1, and 1 as a
-      // destination is Discover. Anything navigating with a bare number is
-      // one reorder away from being wrong.
-      expect(BottomNavProvider.events, BottomNavProvider.discover);
+      // The whole bug in one line: Events as a Home section is 1, and 1 as
+      // a destination is the Garage. Anything navigating with a bare number
+      // is one reorder away from being wrong — and this line has already
+      // had to be rewritten once, because the reorder that moved Garage to
+      // 1 moved Discover off it. The collision survived; only its victim
+      // changed.
+      expect(BottomNavProvider.events, BottomNavProvider.garage);
     });
   });
 

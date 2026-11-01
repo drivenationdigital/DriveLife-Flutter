@@ -108,6 +108,18 @@ class DeepLinkHandler {
   /// That is why the website's "Open in app" button did nothing. It emits the
   /// custom scheme for every entity — venue, club, post, profile — so this was
   /// never about one page.
+  /// A real YYYY-MM-DD, as the guess links carry.
+  ///
+  /// The round trip is what rejects 2026-02-31, which DateTime.parse
+  /// accepts and rolls forward into March.
+  static bool _isGameDate(String value) {
+    final parsed = DateTime.tryParse(value);
+
+    return parsed != null &&
+        value.length == 10 &&
+        parsed.toIso8601String().startsWith(value);
+  }
+
   Uri _normalise(Uri uri) {
     if (uri.scheme == 'http' || uri.scheme == 'https') return uri;
     if (uri.host.isEmpty) return uri;
@@ -377,6 +389,48 @@ class DeepLinkHandler {
         navigatorKey.currentState?.pushNamed(
           AppRoutes.vehicleDetail,
           arguments: {'garageId': garageId},
+        );
+        return;
+      }
+
+      // GUESS — /guess, /guess/<date>, or ?dl-guess=1, from the share
+      // button and the SEO page's app-link tags.
+      //
+      // Both lengths, because the share sends the DATED form. Matching
+      // only the bare /guess meant a shared link opened the app and
+      // then sat on the home screen, which looks exactly like the app
+      // ignoring the link.
+      //
+      // The date is carried through, so a link shared on Tuesday still
+      // opens Tuesday's car when it is tapped on Friday.
+      //
+      // Session-free, like the vehicle branch above and for the same
+      // reason: a shared puzzle is one of the few things that reaches
+      // somebody who has never opened the app. The screen decides for
+      // itself what a signed-out visitor can do, which is look but not
+      // play — a guess has to be recorded against an account.
+      //
+      // `tab` so the result notification can land on the leaderboard
+      // while the share lands on the puzzle.
+      final isGuessPath =
+          uri.pathSegments.isNotEmpty && uri.pathSegments.first == 'guess';
+
+      if (params.containsKey('dl-guess') || isGuessPath) {
+        final tab = int.tryParse(params['dl-guess-tab'] ?? '') ?? 0;
+        final date = isGuessPath && uri.pathSegments.length > 1
+            ? uri.pathSegments[1].split('&').first.trim()
+            : null;
+        debugPrint('🔗 [DeepLink] Guess the car, tab $tab, date $date');
+
+        navigatorKey.currentState?.pushNamed(
+          AppRoutes.guess,
+          // Only a well-formed date travels. Anything else in that slot
+          // is a mistyped URL, and today's game is a better answer to
+          // one of those than an empty screen.
+          arguments: {
+            'tab': tab,
+            if (date != null && _isGameDate(date)) 'date': date,
+          },
         );
         return;
       }

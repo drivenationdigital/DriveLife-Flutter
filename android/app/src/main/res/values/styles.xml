@@ -19,7 +19,6 @@
     <style name="NormalTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
-
     <!-- SQUARE — dropped with the native checkout.
          sqip.Theme.CardEntry inherits sqip.Theme.BaseCardEntry, which ships
          with the Square SDK, so this cannot compile without it. The
@@ -73,5 +72,4 @@
         <item name="android:activityCloseExitAnimation">@anim/card_entry_slide_down</item>
     </style>
     -->
-
 </resources>

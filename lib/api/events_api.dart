@@ -291,13 +291,26 @@ class EventsAPI {
   /// must not open the editor without one: the dashboard would bounce to its
   /// own login screen, which is not something anybody can finish inside an
   /// in-app browser.
-  static Future<String?> getDashboardSessionToken() async {
+  ///
+  /// [scope] names what the session is being opened FOR. `manager` is the
+  /// organiser's events list, which somebody browses rather than fills in
+  /// once — the server is meant to give that one a longer life than the
+  /// fifteen minutes an editor handoff needs. It does not read the
+  /// parameter yet, so a manager session is currently fifteen minutes like
+  /// any other; sending it now means the app needs no release when it does.
+  static Future<String?> getDashboardSessionToken({String? scope}) async {
     try {
       final token = await _authService.getToken();
       if (token == null || token.isEmpty) return null;
 
+      final endpoint = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v1/dashboard-session',
+      );
+
       final response = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/wp-json/app/v1/dashboard-session'),
+        scope == null
+            ? endpoint
+            : endpoint.replace(queryParameters: {'scope': scope}),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',

@@ -1,43 +1,78 @@
-import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-/// Banner prompting users to add their own event
-class AddEventBanner extends StatelessWidget {
-  final VoidCallback onAddEvent;
+/// The organiser's way in to the Events Manager.
+///
+/// Replaces an outlined "Hosting an event? [Add Event]" strip that offered
+/// exactly one thing: the create wizard. Running events is more than
+/// creating them — orders, applications, editing what is already live — and
+/// all of that already exists on the dashboard, so this opens the manager
+/// rather than a single form.
+class EventsManagerBanner extends StatelessWidget {
+  final VoidCallback onOpenManager;
 
-  const AddEventBanner({Key? key, required this.onAddEvent}) : super(key: key);
+  const EventsManagerBanner({Key? key, required this.onOpenManager})
+    : super(key: key);
+
+  static const Color _gold = Color(0xFFB8935E);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFB8935E), width: 2),
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFF0B0B0B),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Hosting an event?',
+            'ORGANISERS',
             style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.4,
+              color: _gold,
             ),
           ),
-          ElevatedButton.icon(
-            onPressed: onAddEvent,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add Event'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFB8935E),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          const SizedBox(height: 8),
+          const Text(
+            'Host or manage events?',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: Material(
+              color: _gold,
+              borderRadius: BorderRadius.circular(10),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onOpenManager,
+                child: const SizedBox(
+                  height: 54,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Load Events Manager',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Icon(Icons.chevron_right, size: 22, color: Colors.white),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -173,43 +208,6 @@ class EventCard extends StatelessWidget {
   }
 }
 
-/// Compact "add photos" affordance for the community gallery
-class SharePhotosButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const SharePhotosButton({Key? key, required this.onTap}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.add_photo_alternate_outlined,
-              size: 22,
-              color: Color(0xFFB8935E),
-            ),
-            SizedBox(height: 2),
-            Text(
-              'Photos',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFB8935E),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Empty state for saved events
 class EmptySavedEventsState extends StatelessWidget {
   const EmptySavedEventsState({Key? key}) : super(key: key);
@@ -263,12 +261,17 @@ class SectionHeader extends StatelessWidget {
 }
 
 /// Main events tab content widget
+/// The My Events tab: the organiser's way in, then saved events.
+///
+/// It used to open with a list of the events the user had CREATED. That
+/// list has gone: an organiser's own events are managed in the Events
+/// Manager above, where the things you actually want to do to them live,
+/// and showing them twice made the tab read as two half-lists rather than
+/// one. What is left is the half nothing else shows — the ones they saved.
 class MyEventsTabContent extends StatelessWidget {
-  final List<Map<String, dynamic>> myCreatedEvents;
   final List<Map<String, dynamic>> likedEvents;
-  final VoidCallback onAddEvent;
+  final VoidCallback onOpenManager;
   final Function(Map<String, dynamic>) onEventTap;
-  final Function(Map<String, dynamic>) onSharePhotos;
   final Function(String, int) formatEventDate;
   final Function(String eventId, String site, int eventIndex) onUnlikeEvent;
   final Future<void> Function() onRefresh;
@@ -276,11 +279,9 @@ class MyEventsTabContent extends StatelessWidget {
 
   const MyEventsTabContent({
     Key? key,
-    required this.myCreatedEvents,
     required this.likedEvents,
-    required this.onAddEvent,
+    required this.onOpenManager,
     required this.onEventTap,
-    required this.onSharePhotos,
     required this.formatEventDate,
     required this.onUnlikeEvent,
     required this.onRefresh,
@@ -297,28 +298,9 @@ class MyEventsTabContent extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Add Event Banner
-          AddEventBanner(onAddEvent: onAddEvent),
+          EventsManagerBanner(onOpenManager: onOpenManager),
 
           const SizedBox(height: 24),
-
-          // My Events Section
-          if (myCreatedEvents.isNotEmpty) ...[
-            const SectionHeader(title: 'My Events'),
-            const SizedBox(height: 12),
-            ...myCreatedEvents.map((event) {
-              return EventCard(
-                event: event,
-                formattedDate: formatEventDate(event['start_date'] ?? '', 0),
-                dateColor: primaryColor,
-                onTap: () => onEventTap(event),
-                trailingWidget: FeatureFlags.eventCommunityGallery
-                    ? SharePhotosButton(onTap: () => onSharePhotos(event))
-                    : null,
-              );
-            }),
-            const SizedBox(height: 24),
-          ],
 
           // Saved Events Section
           const SectionHeader(title: 'Saved Events'),
@@ -341,11 +323,15 @@ class MyEventsTabContent extends StatelessWidget {
                 ),
                 dateColor: primaryColor,
                 onTap: () => onEventTap(event),
+                // Photos has gone from a SAVED event. Saving one is
+                // an intention to go, not a record of having been —
+                // offering to add photographs to something that has
+                // not happened yet reads as a prompt to do something
+                // impossible. It stays on the events above, which are
+                // ones the user is involved in running.
                 trailingWidget: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (FeatureFlags.eventCommunityGallery)
-                      SharePhotosButton(onTap: () => onSharePhotos(event)),
                     IconButton(
                       icon: const Icon(
                         Icons.favorite,

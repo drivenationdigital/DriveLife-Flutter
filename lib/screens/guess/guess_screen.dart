@@ -1,3 +1,4 @@
+import 'package:share_plus/share_plus.dart';
 import 'dart:ui' show ImageFilter;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/guess_api.dart';
@@ -24,7 +25,16 @@ class GuessScreen extends StatefulWidget {
   /// game that is already over.
   final int initialTab;
 
-  const GuessScreen({super.key, this.initialTab = 0});
+  /// One particular day, YYYY-MM-DD, or null for today.
+  ///
+  /// Shared links are dated, so that one sent on Tuesday still means
+  /// Tuesday's car on Friday. Without this the app opened on whatever
+  /// was running when the link was tapped, which for anybody who
+  /// followed it late was a different game entirely from the one being
+  /// talked about.
+  final String? date;
+
+  const GuessScreen({super.key, this.initialTab = 0, this.date});
 
   @override
   State<GuessScreen> createState() => _GuessScreenState();
@@ -71,11 +81,25 @@ class _GuessScreenState extends State<GuessScreen>
     super.dispose();
   }
 
+  /// The day being looked at, or null for today.
+  ///
+  /// Starts at whatever the link asked for and clears when the person
+  /// taps back to today, so the screen is never stuck in the past.
+  late String? _viewingDate = widget.date;
+
+  /// Back to the current game.
+  void _backToToday() {
+    if (_viewingDate == null) return;
+
+    setState(() => _viewingDate = null);
+    _load();
+  }
+
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
 
     final results = await Future.wait([
-      GuessAPI.today(),
+      GuessAPI.today(date: _viewingDate),
       GuessAPI.history(),
       GuessAPI.leaderboard(scope: _scope),
     ]);
@@ -151,6 +175,14 @@ class _GuessScreenState extends State<GuessScreen>
         elevation: 0,
         title: const Text('Guess the car'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share_rounded),
+            tooltip: 'Share',
+            onPressed: _share,
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: _loading
           ? _skeleton(theme)
@@ -322,6 +354,56 @@ class _GuessScreenState extends State<GuessScreen>
     );
   }
 
+  /// Where a shared game points.
+  ///
+  /// The SEO site, not the app: a share lands on people who have never
+  /// installed it, and a drivelife:// link does nothing for them. The
+  /// page carries the app-link meta tags, so anybody who DOES have the
+  /// app gets offered it on arrival.
+  ///
+  /// Dated, so the link keeps meaning the game it was sent about. The
+  /// bare /guess is always today — right this evening, wrong next week,
+  /// when it would show a stranger a car nobody was talking about.
+  static String _shareUrl(GuessGame? game) {
+    final path = game == null ? '/guess' : '/guess/${game.date}';
+
+    return 'https://app.mydrivelife.com$path?ref=share';
+  }
+
+  /// Share today's game.
+  ///
+  /// Never the answer, closed or not. The line itself goes into a group
+  /// chat, where it is read by people who have not played yet; the page
+  /// behind the link does the revealing, to somebody who chose to
+  /// follow it.
+  Future<void> _share() async {
+    final game = _today;
+    final box = context.findRenderObject() as RenderBox?;
+
+    final text = game == null
+        ? 'Guess the car on DriveLife.'
+        : game.isClosed
+        ? 'The results are in for today\'s Guess the car on DriveLife. '
+              'Think you would have got it?'
+        : "Today's Guess the car is up on DriveLife. "
+              'You have until 7pm.';
+
+    await SharePlus.instance.share(
+      ShareParams(
+        // The link, not just a sentence. Shared without one there was
+        // nothing to tap: the message named a game and then left the
+        // reader to go and find it.
+        text: '$text\n\n${_shareUrl(game)}',
+        subject: 'Guess the car',
+        // iPad anchors the sheet to this. Without it the share pops
+        // from the corner of the screen or throws outright.
+        sharePositionOrigin: box == null
+            ? null
+            : box.localToGlobal(Offset.zero) & box.size,
+      ),
+    );
+  }
+
   // ── Play ───────────────────────────────────────────────────────────
 
   Widget _playTab(ThemeProvider theme) {
@@ -331,6 +413,7 @@ class _GuessScreenState extends State<GuessScreen>
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
         children: [
+          if (_viewingDate != null) _pastDayBar(theme),
           if (_today == null) _noGame(theme) else _gameCard(theme, _today!),
           if (_history.isNotEmpty) ...[
             const SizedBox(height: 28),
@@ -338,6 +421,49 @@ class _GuessScreenState extends State<GuessScreen>
             const SizedBox(height: 8),
             for (final game in _history) _historyRow(theme, game),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// "Viewing 28 Oct — Today", above a game that is not today's.
+  ///
+  /// Without it a closed game with its answer showing is hard to tell
+  /// from today's having already finished, and there is no way back to
+  /// the live one short of leaving the screen.
+  Widget _pastDayBar(ThemeProvider theme) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Icon(Icons.history, size: 17, color: theme.primaryColor),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              'Viewing ${_prettyDate(_viewingDate!)}',
+              style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w700,
+                color: theme.textColor,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _backToToday,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              "Today's game",
+              style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w800,
+                color: theme.primaryColor,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -358,10 +484,16 @@ class _GuessScreenState extends State<GuessScreen>
             color: Colors.white24,
           ),
           const SizedBox(height: 12),
-          const DlHeading('No game today', fontSize: 22, color: Colors.white),
+          DlHeading(
+            _viewingDate == null ? 'No game today' : 'No game that day',
+            fontSize: 22,
+            color: Colors.white,
+          ),
           const SizedBox(height: 6),
           Text(
-            'Check back tomorrow morning.',
+            _viewingDate == null
+                ? 'Check back tomorrow morning.'
+                : 'Nothing was set for that date.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 14.5, color: Colors.grey.shade500),
           ),

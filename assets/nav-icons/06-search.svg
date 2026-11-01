@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 128 128">
+  <!-- Inline attributes, not CSS classes. Strokes here, so a dropped
+       <style> block would lose the line weights entirely. -->
+  <path fill="none" stroke="#2b2b2b" stroke-width="13.5" stroke-linecap="round" d="M78.4,77.8l29.9,29.6"/>
+  <circle fill="none" stroke="#2b2b2b" stroke-width="11.5" cx="51.3" cy="49.8" r="34.4"/>
+</svg>

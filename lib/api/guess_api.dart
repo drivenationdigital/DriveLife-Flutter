@@ -161,13 +161,23 @@ class GuessAPI {
   /// Null is a normal answer, not a failure: somebody has to schedule
   /// these and may not have. The home card shows nothing rather than an
   /// empty frame.
-  static Future<GuessGame?> today() async {
+  /// [date] is YYYY-MM-DD for one particular day; omit it for today.
+  ///
+  /// The server clamps a future date to today rather than refusing it,
+  /// so the caller is told which day it actually got — see
+  /// GuessGame.date — and nothing here can read tomorrow's puzzle
+  /// tonight.
+  static Future<GuessGame?> today({String? date}) async {
     try {
       final headers = await _headers();
       if (headers == null) return null;
 
+      final endpoint = Uri.parse('$_base/wp-json/app/v2/guess/today');
+
       final response = await http.get(
-        Uri.parse('$_base/wp-json/app/v2/guess/today'),
+        date == null
+            ? endpoint
+            : endpoint.replace(queryParameters: {'date': date}),
         headers: headers,
       );
 
