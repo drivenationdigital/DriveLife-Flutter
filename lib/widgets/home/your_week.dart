@@ -1,3 +1,6 @@
+import 'package:drivelife/screens/create-post/create_post_screen.dart';
+import 'package:drivelife/api/club_api_service.dart';
+import 'package:drivelife/screens/clubs/open_club_creator.dart';
 import 'package:drivelife/api/guess_api.dart';
 import 'dart:math' as math;
 
@@ -55,6 +58,28 @@ class YourWeekPanel extends StatefulWidget {
   State<YourWeekPanel> createState() => YourWeekPanelState();
 }
 
+/// One spotted car, as the Recent spots list needs it.
+///
+/// `rarity` is the LEGENDARY / EPIC badge in the design. Spots are to
+/// get a status we set, and nothing carries one yet — see
+/// docs/spots-backend-notes.md — so it is null today and the badge is
+/// simply not drawn.
+class RecentSpot {
+  final String postId;
+  final String vehicle;
+  final String spotterName;
+  final String? image;
+  final String? rarity;
+
+  const RecentSpot({
+    required this.postId,
+    required this.vehicle,
+    required this.spotterName,
+    this.image,
+    this.rarity,
+  });
+}
+
 class YourWeekPanelState extends State<YourWeekPanel> {
   static const Color _cardBlack = Color(0xFF111113);
   static const Color _cardInner = Color(0xFF232326);
@@ -68,6 +93,15 @@ class YourWeekPanelState extends State<YourWeekPanel> {
 
   /// Today's puzzle, or null when none is scheduled.
   GuessGame? _guess;
+
+  /// Recently spotted cars. Empty hides the section — the tile that
+  /// invites somebody to log one stays either way, because an empty
+  /// list is exactly when the invitation matters most.
+  List<RecentSpot> _spots = const [];
+
+  /// Groups within reach, most active first. Empty is a real answer —
+  /// plenty of places have none yet — and the section hides itself.
+  List<Map<String, dynamic>> _groups = const [];
 
   bool _loading = true;
 
@@ -115,6 +149,8 @@ class YourWeekPanelState extends State<YourWeekPanel> {
       _loadVehicleAndReminder(),
       _loadEvents(),
       GuessAPI.today(),
+      _loadGroups(),
+      _loadSpots(),
     ]);
 
     if (!mounted) return;
@@ -133,6 +169,8 @@ class YourWeekPanelState extends State<YourWeekPanel> {
       _isDream = garage.isDream;
       _events = results[1] as List<Map<String, dynamic>>;
       _guess = results[2] as GuessGame?;
+      _groups = results[3] as List<Map<String, dynamic>>;
+      _spots = results[4] as List<RecentSpot>;
       _loading = false;
     });
   }
@@ -257,6 +295,464 @@ class YourWeekPanelState extends State<YourWeekPanel> {
       if (parsed != null) return parsed;
     }
     return null;
+  }
+
+  /// The two things to do today, side by side.
+  ///
+  /// The game is only there when one is scheduled; logging a spot
+  /// always is. So the row is a pair most days and a single full-width
+  /// tile on the days it is not, rather than a gap where the game
+  /// would have been.
+  Widget _playRow(ThemeProvider theme) {
+    const height = 168.0;
+
+    if (_guess == null) {
+      return SizedBox(height: height, child: _logSpotTile(theme));
+    }
+
+    return SizedBox(
+      height: height,
+      child: Row(
+        children: [
+          Expanded(child: _guessCard(theme)),
+          const SizedBox(width: 12),
+          Expanded(child: _logSpotTile(theme)),
+        ],
+      ),
+    );
+  }
+
+  /// An invitation to log a spot.
+  ///
+  /// Light where the game tile is dark, because it is an empty slot
+  /// waiting for a photograph rather than a thing to look at — and two
+  /// dark tiles side by side would read as one wide card.
+  Widget _logSpotTile(ThemeProvider theme) {
+    return Material(
+      color: const Color(0xFFF2F2F2),
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => const CreatePostScreen(startAsSpot: true),
+            ),
+          );
+          if (mounted) await _load();
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: const BoxDecoration(
+                  color: _cardBlack,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.photo_camera_outlined,
+                  size: 24,
+                  color: Colors.white,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'Log a spot',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: theme.textColor,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Seen something rare?',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.25,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// One spotted car.
+  Widget _spotRow(ThemeProvider theme, RecentSpot spot) {
+    return InkWell(
+      onTap: () => Navigator.pushNamed(
+        context,
+        AppRoutes.postDetail,
+        arguments: {'postId': spot.postId},
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                width: 74,
+                height: 56,
+                color: const Color(0xFFEDEDED),
+                child: (spot.image ?? '').isEmpty
+                    ? Icon(
+                        Icons.directions_car_outlined,
+                        size: 22,
+                        color: Colors.grey.shade400,
+                      )
+                    : CachedNetworkImage(
+                        imageUrl: spot.image!,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, _, _) => const SizedBox.shrink(),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    spot.vehicle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: theme.textColor,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    spot.spotterName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (spot.rarity != null) ...[
+              const SizedBox(width: 10),
+              _rarityBadge(theme, spot.rarity!),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// LEGENDARY, EPIC, and whatever else the statuses turn out to be.
+  ///
+  /// Two styles only: the top status is black, everything else is
+  /// gold. Written against the NAME rather than a list of known
+  /// values, so a status nobody has told this widget about still draws
+  /// as a badge instead of disappearing.
+  Widget _rarityBadge(ThemeProvider theme, String rarity) {
+    final top = rarity.toUpperCase() == 'LEGENDARY';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+      decoration: BoxDecoration(
+        color: top ? _cardBlack : theme.primaryColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        rarity.toUpperCase(),
+        style: TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.6,
+          color: top ? theme.primaryColor : Colors.white,
+        ),
+      ),
+    );
+  }
+
+  /// Groups within reach, as pills.
+  ///
+  /// Pills rather than cards or a list. A group here is one word and a
+  /// number — enough to recognise one you already know of, or to be
+  /// curious about one you do not — and six cards would be a page of
+  /// its own for something that is meant to be a glance. Wrapping also
+  /// means a short name costs a short pill, so the row packs rather
+  /// than leaving every tile the width of the longest title.
+  Widget _nearYou(ThemeProvider theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: DlHeading(
+                'Near you',
+                fontSize: 22,
+                color: theme.textColor,
+              ),
+            ),
+            // The way out for somebody whose area has nothing they
+            // want. Next to the heading rather than under the pills,
+            // where it would read as a seventh group.
+            TextButton(
+              onPressed: () => openClubCreator(context),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                'Start a group',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: theme.primaryColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        // Two to a row wherever two will go.
+        //
+        // A Wrap gives each child as much width as it asks for, and a
+        // pill asks for its whole name — so with real group names
+        // ("North East Supercar Owners") almost every pill claimed the
+        // full row and the section became a column with half the page
+        // empty beside it. Capping each at half the row means any two
+        // pills fit together, so the wrap pairs them off and only a
+        // leftover odd one sits alone.
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const gap = 10.0;
+            final half = (constraints.maxWidth - gap) / 2;
+
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [
+                for (final group in _groups)
+                  _groupPill(theme, group, maxWidth: half),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  /// One group: its name, and how many are in it.
+  ///
+  /// [maxWidth] is the widest it may be — half the row, so a pair
+  /// always fits. A short name still makes a short pill; only a long
+  /// one is held to it, and ellipsised.
+  Widget _groupPill(
+    ThemeProvider theme,
+    Map<String, dynamic> group, {
+    required double maxWidth,
+  }) {
+    final title = '${group['title'] ?? ''}'.trim();
+    if (title.isEmpty) return const SizedBox.shrink();
+
+    final members = (group['member_count'] as num?)?.toInt() ?? 0;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Material(
+        color: Colors.transparent,
+        shape: StadiumBorder(side: BorderSide(color: Colors.grey.shade300)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => _openGroup(group),
+          child: Padding(
+            // Tighter than the mock's. At half a phone's width the
+            // padding is competing with the name for the same pixels,
+            // and the name is the part worth reading.
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Flexible, not a fixed cap: it takes what the name
+                // needs up to whatever is left inside the pill, so a
+                // short name shrinks the pill and a long one
+                // ellipsises instead of overflowing it.
+                Flexible(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w700,
+                      color: theme.textColor,
+                    ),
+                  ),
+                ),
+                // Only when there is somebody in it. "0" next to a
+                // name is a worse advertisement than no number at all.
+                //
+                // Never squeezed: the count is three characters and
+                // the name gives way first, so this sits outside the
+                // Flexible above.
+                if (members > 0) ...[
+                  const SizedBox(width: 7),
+                  Text(
+                    '$members',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openGroup(Map<String, dynamic> group) {
+    final id = group['ID'] ?? group['id'];
+    if (id == null) return;
+
+    Navigator.pushNamed(
+      context,
+      AppRoutes.clubDetail,
+      arguments: {'clubId': id},
+    );
+  }
+
+  /// An invitation to start a club, at the foot of the page.
+  ///
+  /// Last on purpose. It is the one thing here addressed to a minority
+  /// — most people are not going to run anything — so it sits below
+  /// everything that is for everybody, where it reads as an offer
+  /// rather than a demand for attention.
+  ///
+  /// Quiet by design too: a grey card, not a gold one. The sections
+  /// above are about this person's own week, and an advertisement
+  /// competing with them would be the loudest thing on a page it has
+  /// the least claim to.
+  Widget _runAClub(ThemeProvider theme) {
+    return Material(
+      color: const Color(0xFFF2F2F2),
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => openClubCreator(context),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.verified_user_outlined,
+                  size: 26,
+                  color: Color(0xFF111113),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Not a DlHeading. Headings here are uppercase, and
+                    // "RUN A CLUB?" shouts a question nobody asked.
+                    const Text(
+                      'Run a club?',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF111113),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Verified page, RSVP calendar, run routes and '
+                      'members-only chat',
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        height: 1.35,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right, size: 22, color: Colors.grey.shade500),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The last few cars anybody spotted.
+  ///
+  /// THE SWAP POINT. Nothing reads spots back yet: create-post writes
+  /// `spotted_vehicle` and no endpoint selects it, so there is no feed
+  /// to ask. Returning empty is therefore not a placeholder, it is the
+  /// truth — there are no spots to show — and the section correctly
+  /// hides itself until a feed exists.
+  ///
+  /// See docs/spots-backend-notes.md for the endpoint this wants.
+  Future<List<RecentSpot>> _loadSpots() async {
+    return const [];
+  }
+
+  /// Groups near enough to turn up to.
+  ///
+  /// 'near-me' rather than the whole country, because this section is
+  /// the one place on the page about a thing you would physically go
+  /// to. The server applies the radius from the user's last location
+  /// and orders by engagement, so these are the nearby groups with
+  /// something actually happening in them.
+  ///
+  /// Six, because they are pills on a wrap: more than that is a
+  /// paragraph of chips, and the last row ends up a ragged orphan.
+  Future<List<Map<String, dynamic>>> _loadGroups() async {
+    try {
+      final result = await ClubApiService.fetchClubs(
+        location: 'near-me',
+        perPage: 6,
+      );
+
+      return (result ?? const [])
+          .whereType<Map>()
+          .map((c) => Map<String, dynamic>.from(c))
+          .toList();
+    } catch (e) {
+      debugPrint('[YourWeek] groups failed: $e');
+      return const [];
+    }
   }
 
   /// How many upcoming events to look at before picking the five.
@@ -428,11 +924,24 @@ class YourWeekPanelState extends State<YourWeekPanel> {
               // A heading for the section below, so the daily game
               // reads as something to join in with rather than another
               // card in the same list as the events.
-              if (_guess != null) ...[
+              const SizedBox(height: 28),
+              DlHeading('Get involved', fontSize: 22, color: theme.textColor),
+              _playRow(theme),
+
+              if (_spots.isNotEmpty) ...[
                 const SizedBox(height: 28),
-                DlHeading('Get involved', fontSize: 22, color: theme.textColor),
+                DlHeading('Recent spots', fontSize: 22, color: theme.textColor),
+                const SizedBox(height: 4),
+                for (final spot in _spots) _spotRow(theme, spot),
               ],
-              _guessCard(theme),
+
+              if (_groups.isNotEmpty) ...[
+                const SizedBox(height: 28),
+                _nearYou(theme),
+              ],
+
+              const SizedBox(height: 14),
+              _runAClub(theme),
             ],
           ],
         ),
@@ -1250,135 +1759,131 @@ class YourWeekPanelState extends State<YourWeekPanel> {
     final game = _guess;
     if (game == null) return const SizedBox.shrink();
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 26),
-      child: Material(
-        color: _cardBlack,
-        borderRadius: BorderRadius.circular(16),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () async {
-            await Navigator.pushNamed(context, AppRoutes.guess);
-            // Coming back from a guess changes what this card says, so
-            // it re-reads rather than showing yesterday's state.
-            if (mounted) await _loadGuess();
-          },
-          child: SizedBox(
-            height: 168,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Guarded, like the other two images on this panel.
-                // CachedNetworkImage treats an empty string as a URL to
-                // fetch and throws "No host specified in URI", which
-                // takes the whole screen down rather than leaving one
-                // grey rectangle.
-                if (game.image.trim().isEmpty)
-                  const ColoredBox(color: _cardInner)
-                else
-                  CachedNetworkImage(
-                    imageUrl: game.image,
-                    fit: BoxFit.cover,
-                    placeholder: (_, _) => const ColoredBox(color: _cardInner),
-                    errorWidget: (_, _, _) =>
-                        const ColoredBox(color: _cardInner),
-                  ),
+    return Material(
+      color: _cardBlack,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () async {
+          await Navigator.pushNamed(context, AppRoutes.guess);
+          // Coming back from a guess changes what this card says, so
+          // it re-reads rather than showing yesterday's state.
+          if (mounted) await _loadGuess();
+        },
+        child: SizedBox(
+          height: 168,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Guarded, like the other two images on this panel.
+              // CachedNetworkImage treats an empty string as a URL to
+              // fetch and throws "No host specified in URI", which
+              // takes the whole screen down rather than leaving one
+              // grey rectangle.
+              if (game.image.trim().isEmpty)
+                const ColoredBox(color: _cardInner)
+              else
+                CachedNetworkImage(
+                  imageUrl: game.image,
+                  fit: BoxFit.cover,
+                  placeholder: (_, _) => const ColoredBox(color: _cardInner),
+                  errorWidget: (_, _, _) => const ColoredBox(color: _cardInner),
+                ),
 
-                // Dark from the bottom up, so the title reads over
-                // whatever the photograph happens to be.
-                const Positioned.fill(
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Colors.black26, Colors.black87],
-                          stops: [0.3, 1],
-                        ),
+              // Dark from the bottom up, so the title reads over
+              // whatever the photograph happens to be.
+              const Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.black26, Colors.black87],
+                        stops: [0.3, 1],
                       ),
                     ),
                   ),
                 ),
+              ),
 
-                Positioned(
-                  top: 12,
-                  left: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
+              Positioned(
+                top: 12,
+                left: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'DAILY',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                      color: Colors.white,
                     ),
-                    decoration: BoxDecoration(
-                      color: theme.primaryColor,
-                      borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
+
+              // What the card is FOR: whether there is anything to do.
+              // "Closes 7pm" on a game already guessed would invite a
+              // tap that cannot change anything.
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _guessStatus(game),
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
                     ),
-                    child: const Text(
-                      'DAILY',
+                  ),
+                ),
+              ),
+
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 14,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const DlHeading(
+                      'Guess the car',
+                      fontSize: 24,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      game.isClosed
+                          ? 'Answer: ${game.answer ?? 'revealed'}'
+                          : '+${game.points} points if you get it right',
                       style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
-                        color: Colors.white,
+                        fontSize: 14,
+                        color: Colors.grey.shade300,
                       ),
                     ),
-                  ),
+                  ],
                 ),
-
-                // What the card is FOR: whether there is anything to do.
-                // "Closes 7pm" on a game already guessed would invite a
-                // tap that cannot change anything.
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _guessStatus(game),
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 14,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const DlHeading(
-                        'Guess the car',
-                        fontSize: 24,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        game.isClosed
-                            ? 'Answer: ${game.answer ?? 'revealed'}'
-                            : '+${game.points} points if you get it right',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade300,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

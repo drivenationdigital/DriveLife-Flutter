@@ -22,11 +22,14 @@ import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/auth/entity_switcher.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
-import 'package:drivelife/screens/clubs/add_club_screen.dart';
 import 'package:drivelife/screens/places/coming_soon_screen.dart';
 import 'package:drivelife/screens/tracks/tracks_screen.dart';
-import 'package:drivelife/screens/clubs/club_creation_screen.dart';
+import 'package:drivelife/screens/clubs/groups_screen.dart';
+// Kept imported: _buildGroups can be pointed back at MyClubsScreen
+// in one line while the new list's sections are wired up.
+// ignore: unused_import
 import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
+import 'package:drivelife/screens/clubs/open_club_creator.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
@@ -317,7 +320,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   /// theme, and a widget captured once into a cached list never sees
   /// either change.
   Widget _buildGroups(ThemeProvider theme) {
-    return MyClubsScreen(
+    // The redesigned list. MyClubsScreen is still in the tree and still
+    // works — swap this one line back to compare them, or to fall back
+    // if the new one is missing something while its sections are still
+    // being wired to real data.
+    return GroupsScreen(
       chrome: _chrome,
       header: _buildChrome(theme),
       headerHeight: _chromeHeight,
@@ -855,24 +862,10 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   }
 
   /// Picking a club type comes first, and only then the edit screen.
-  Future<void> _createClub() async {
-    final result = await showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => const ClubTypeSelectionSheet(),
-    );
-
-    if (!mounted || result == null || result['clubId'] == null) return;
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            CreateClubScreen(existingClubId: result['clubId']),
-      ),
-    );
-  }
+  /// Moved to openClubCreator, which the "Run a club?" card on the home
+  /// page calls too — the sheet and the screen after it are a pair, and
+  /// two copies of that pair is one copy too many.
+  Future<void> _createClub() => openClubCreator(context);
 
   // Default app bar for all tabs
   Widget _buildHeader(ThemeProvider theme) {
