@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/models/group_content.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 
 /// The shared furniture of a group page.
 ///
@@ -372,8 +373,15 @@ class GroupAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A person icon rather than a blank disc. An empty circle reads as
+    // something still loading; this reads as somebody without a photo,
+    // which is what it is — and it matches the club composer.
     if ((url ?? '').isEmpty) {
-      return CircleAvatar(radius: radius, backgroundColor: theme.dividerColor);
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: theme.dividerColor,
+        child: Icon(Icons.person, size: radius, color: Colors.white),
+      );
     }
 
     return CircleAvatar(
@@ -393,4 +401,234 @@ String groupCompactCount(int n) {
   return thousands >= 10
       ? '${thousands.round()}k'
       : '${thousands.toStringAsFixed(1)}k';
+}
+
+// ─── Loading skeletons ───────────────────────────────────────────────
+//
+// Shared by the group screen, the browse list and the groups page, so
+// a group looks the same while it is arriving wherever you are.
+//
+// Shaped like the content they stand in for rather than a spinner in
+// the middle of an empty screen: the page does not jump when the data
+// lands, and the shapes themselves say what is coming.
+
+/// A shimmering grey block.
+class GroupBlock extends StatelessWidget {
+  const GroupBlock({super.key, this.width, this.height = 14, this.radius = 7});
+
+  final double? width;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+}
+
+/// Wraps blocks in the house shimmer.
+///
+/// One wrapper around a whole skeleton rather than one per block: the
+/// animation then sweeps across the group as a single surface, which
+/// is the effect, instead of every block pulsing on its own clock.
+class GroupShimmer extends StatelessWidget {
+  const GroupShimmer({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey.shade300,
+      highlightColor: Colors.grey.shade100,
+      child: child,
+    );
+  }
+}
+
+/// The Garages tab, mid-load: a two-up grid of cards.
+class GroupGarageGridSkeleton extends StatelessWidget {
+  const GroupGarageGridSkeleton({super.key, this.count = 6});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return GroupShimmer(
+      child: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: count,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 14,
+          childAspectRatio: 0.82,
+        ),
+        itemBuilder: (_, _) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Expanded(child: GroupBlock(radius: 12, height: 999)),
+            const SizedBox(height: 9),
+            const GroupBlock(width: 120),
+            const SizedBox(height: 7),
+            const GroupBlock(width: 80, height: 11),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The Spots tab, mid-load: a three-up grid of squares.
+class GroupSpotGridSkeleton extends StatelessWidget {
+  const GroupSpotGridSkeleton({super.key, this.count = 9});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return GroupShimmer(
+      child: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 40),
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: count,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 6,
+          mainAxisSpacing: 6,
+        ),
+        itemBuilder: (_, _) => const GroupBlock(radius: 10, height: 999),
+      ),
+    );
+  }
+}
+
+/// The Latest tab, mid-load: author line, picture, actions.
+class GroupFeedSkeleton extends StatelessWidget {
+  const GroupFeedSkeleton({super.key, this.count = 2});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return GroupShimmer(
+      child: Column(
+        children: [
+          for (var i = 0; i < count; i++) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+              child: Row(
+                children: [
+                  const GroupBlock(width: 42, height: 42, radius: 21),
+                  const SizedBox(width: 11),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      GroupBlock(width: 120, height: 15),
+                      SizedBox(height: 6),
+                      GroupBlock(width: 80, height: 12),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const AspectRatio(
+              aspectRatio: 1,
+              child: GroupBlock(radius: 0, height: 999),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 20),
+              child: Row(
+                children: [
+                  GroupBlock(width: 56, height: 18),
+                  SizedBox(width: 18),
+                  GroupBlock(width: 56, height: 18),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A list of group rows: thumbnail, name, subtitle.
+///
+/// Used by the browse page and by the Marque & model section.
+class GroupRowsSkeleton extends StatelessWidget {
+  const GroupRowsSkeleton({super.key, this.count = 6});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return GroupShimmer(
+      child: Column(
+        children: [
+          for (var i = 0; i < count; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  const GroupBlock(width: 64, height: 48, radius: 10),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      GroupBlock(width: 160, height: 15),
+                      SizedBox(height: 7),
+                      GroupBlock(width: 90, height: 12),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A two-up grid of scene tiles.
+class GroupTileGridSkeleton extends StatelessWidget {
+  const GroupTileGridSkeleton({super.key, this.count = 6});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return GroupShimmer(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            const gap = 12.0;
+            final tile = (constraints.maxWidth - gap) / 2;
+
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [
+                for (var i = 0; i < count; i++)
+                  SizedBox(
+                    width: tile,
+                    height: tile * 0.62,
+                    child: const GroupBlock(radius: 16, height: 999),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
 }

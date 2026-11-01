@@ -54,6 +54,7 @@ class GlobalGroupsApi {
   static Future<List<GlobalGroup>> fetchGroups({
     List<String> kinds = const [],
     String? search,
+    bool mine = false,
     int page = 1,
     int perPage = 20,
   }) async {
@@ -62,6 +63,10 @@ class GlobalGroupsApi {
         'page': '$page',
         'per_page': '$perPage',
         if (kinds.isNotEmpty) 'kind': kinds.join(','),
+        // Only groups this person has joined. Used by YOUR GROUPS,
+        // which otherwise shows clubs alone and silently omits every
+        // global group somebody has joined.
+        if (mine) 'mine': '1',
         if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
       };
 
@@ -209,6 +214,74 @@ class GlobalGroupsApi {
     return raw.map(GlobalGroupEvent.fromJson).toList();
   }
 
+  /// "Based on your garage" — groups whose rules match a car this
+  /// person owns.
+  ///
+  /// Suggestions only. Nothing is joined by fetching these, and a
+  /// group the user has already left is never suggested again.
+  static Future<List<GlobalGroup>> fetchSuggested({int limit = 5}) async {
+    try {
+      final response = await http.get(
+        _uri('groups/suggested', {'limit': '$limit'}),
+        headers: await _headers(),
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint('[GlobalGroups] suggested failed: ${response.statusCode}');
+        return const [];
+      }
+
+      final body = json.decode(response.body);
+
+      if (body is! Map || body['success'] != true) return const [];
+
+      final raw = body['suggestions'];
+
+      if (raw is! List) return const [];
+
+      return raw
+          .whereType<Map>()
+          .map((e) => GlobalGroup.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (e) {
+      debugPrint('[GlobalGroups] suggested error: $e');
+      return const [];
+    }
+  }
+
+  /// Join a group. Returns true only if the server confirmed it.
+  ///
+  /// The caller needs the real answer rather than a fire-and-forget,
+  /// because the button has to go back to "Join" if this failed —
+  /// showing "Joined" for a membership that does not exist is the one
+  /// outcome worth avoiding.
+  static Future<bool> join(String slug) => _membership(slug, 'join');
+
+  /// Leave a group. The server keeps a tombstone, so the group will
+  /// not come back as a suggestion afterwards.
+  static Future<bool> leave(String slug) => _membership(slug, 'leave');
+
+  static Future<bool> _membership(String slug, String action) async {
+    try {
+      final response = await http.post(
+        _uri('groups/$slug/$action'),
+        headers: await _headers(),
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint('[GlobalGroups] $action failed: ${response.statusCode}');
+        return false;
+      }
+
+      final body = json.decode(response.body);
+
+      return body is Map && body['success'] == true;
+    } catch (e) {
+      debugPrint('[GlobalGroups] $action error: $e');
+      return false;
+    }
+  }
+
   /// Shared plumbing for the paged list endpoints.
   ///
   /// Returns an empty list on any failure, logging the reason: a tab
@@ -275,6 +348,13 @@ class GlobalGroup {
   /// What the group matches on, for the detail screen.
   final List<GlobalGroupRule> rules;
 
+  /// Why this group was suggested: "Because of your Mazda MX-5".
+  ///
+  /// Only set on /groups/suggested. A recommendation that explains
+  /// itself is one somebody can disagree with, which is the whole
+  /// difference between a suggestion and a guess.
+  final String? reason;
+
   /// The tab-bar numbers, sent with the detail so the tabs render with
   /// their counts on the first frame rather than four requests deep.
   final int latestCount;
@@ -297,6 +377,7 @@ class GlobalGroup {
     this.isMember = false,
     this.status = 'draft',
     this.rules = const [],
+    this.reason,
     this.latestCount = 0,
     this.garageCount = 0,
     this.spotCount = 0,
@@ -317,6 +398,7 @@ class GlobalGroup {
     int count(String key) => (counts[key] as num?)?.toInt() ?? 0;
 
     return GlobalGroup(
+      reason: json['reason'] as String?,
       latestCount: count('latest'),
       garageCount: count('garages'),
       spotCount: count('spots'),

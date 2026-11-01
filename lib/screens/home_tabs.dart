@@ -1,6 +1,9 @@
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:drivelife/api/moderation_api.dart';
+import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:drivelife/providers/points_provider.dart';
+import 'package:drivelife/providers/upload_post_provider.dart';
+import 'package:drivelife/widgets/points/points_reward.dart';
 import 'package:drivelife/screens/search_screen.dart';
 import 'package:drivelife/api/notifications_api.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
@@ -220,6 +223,19 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _loadNotificationCount();
 
+    // Give the background upload providers somewhere to announce
+    // points. They publish long after the composer has gone, so they
+    // cannot show a dialog themselves — they queue, and this shell
+    // shows it on the next build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final points = context.read<PointsProvider>();
+
+      context.read<UploadPostProvider>().points = points;
+      context.read<GalleryUploadProvider>().points = points;
+    });
+
     // After the first frame. A provider read in initState works, but
     // this one kicks off a request whose result calls notifyListeners,
     // and notifying while the tree is still building is the classic
@@ -423,6 +439,43 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     if (!mounted) return;
     context.read<PointsProvider>().refresh();
   }
+
+  /// Show any reward a background upload has queued.
+  ///
+  /// The shell is the only place this can happen: posts and galleries
+  /// are published by providers that outlive the screen that started
+  /// them, so there is no composer left to put the dialog on.
+  ///
+  /// Guarded by [_showingReward] because build runs on every provider
+  /// tick and an award sits in the queue until it has been shown —
+  /// without it, one post would stack a dialog per rebuild.
+  void _showQueuedReward(PointsProvider points) {
+    if (_showingReward || points.pendingPoints <= 0) return;
+
+    _showingReward = true;
+
+    final amount = points.pendingPoints;
+    final reason = points.pendingReason ?? '';
+
+    // Cleared before showing, not after: the dialog awaits, and a
+    // rebuild during it would otherwise see the award still pending.
+    points.clearPendingReward();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _showingReward = false;
+        return;
+      }
+
+      await PointsReward.show(context, points: amount, reason: reason);
+
+      if (mounted) setState(() {});
+      _showingReward = false;
+    });
+  }
+
+  /// A reward dialog is on screen or about to be.
+  bool _showingReward = false;
 
   /// Whether Discover has ever been opened.
   ///
@@ -873,6 +926,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     // balance and the loaded flag can never disagree about which
     // snapshot they came from.
     final points = context.watch<PointsProvider>();
+
+    // A post or gallery that finished in the background may have left
+    // a reward waiting. Checked here because this is already the one
+    // place the shell watches the provider.
+    _showQueuedReward(points);
 
     return _Header(
       // Left, not centred. The logo is the app saying where you are; a

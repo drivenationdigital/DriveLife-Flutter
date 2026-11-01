@@ -23,6 +23,57 @@ class PointsProvider extends ChangeNotifier {
   int _current = 0;
   int _lifetime = 0;
 
+  // ── A reward waiting to be shown ───────────────────────────────────
+  //
+  // Posts and galleries are published by BACKGROUND PROVIDERS, long
+  // after the composer that started them has been popped. There is no
+  // context to show a dialog from at the moment the server pays, and
+  // the screen that would have shown it no longer exists.
+  //
+  // So the award is queued here instead and the app shell — which is
+  // always mounted and already watches this provider for the header
+  // pill — shows it. One mechanism serves posts, galleries and
+  // anything else that earns points away from a live screen.
+
+  int _pendingPoints = 0;
+  String? _pendingReason;
+
+  /// Points earned but not yet shown to the user. Zero means nothing
+  /// is waiting.
+  int get pendingPoints => _pendingPoints;
+
+  /// What they were for, for the reward's subtitle.
+  String? get pendingReason => _pendingReason;
+
+  /// Queue a reward and refresh the balance behind it.
+  ///
+  /// Ignores a zero, so callers can hand over whatever the server
+  /// said without first checking whether it paid — a request that hit
+  /// a daily cap returns 0 and must show nothing.
+  void queueReward(int points, String reason) {
+    if (points <= 0) {
+      // Still worth a refresh: a capped award pays nothing, but
+      // something else may have moved the balance since.
+      refresh();
+      return;
+    }
+
+    _pendingPoints = points;
+    _pendingReason = reason;
+    notifyListeners();
+
+    refresh();
+  }
+
+  /// Called by the shell once the reward has been shown.
+  ///
+  /// Silent — notifying here would rebuild the shell immediately after
+  /// a dialog closed, for a change nothing renders.
+  void clearPendingReward() {
+    _pendingPoints = 0;
+    _pendingReason = null;
+  }
+
   /// Spendable. What the header shows.
   int get current => _current;
 

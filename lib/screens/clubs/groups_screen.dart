@@ -1,15 +1,15 @@
-import 'package:drivelife/services/auth_service.dart';
-import 'package:drivelife/api/garage_api.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/club_api_service.dart';
 import 'package:drivelife/api/global_groups_api.dart';
 import 'package:drivelife/models/my_clubs.dart';
 import 'package:drivelife/screens/clubs/global_group_screen.dart';
+import 'package:drivelife/screens/clubs/group_browse_screen.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/clubs/open_club_creator.dart';
 import 'package:drivelife/theme/dl_type.dart';
 import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
+import 'package:drivelife/widgets/groups/group_chrome.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -18,9 +18,10 @@ import 'package:provider/provider.dart';
 ///
 /// WHAT IS REAL AND WHAT IS NOT
 ///
-/// Two sections are live: the search field and YOUR GROUPS, which read
-/// /clubs and /clubs/my-clubs. The rest are drawn from the placeholder
-/// lists below, because the backend has no concept of them yet.
+/// EVERY section is live. Search and YOUR GROUPS read /clubs; scene,
+/// marque and model read /app/v1/groups; BASED ON YOUR GARAGE reads
+/// /app/v1/groups/suggested, which matches the group rules against
+/// this person's own vehicles. No placeholder data remains.
 ///
 /// They will come from ONE new field, not three new endpoints. A group
 /// is to be classified by an admin as a scene, a marque/model, or an
@@ -85,6 +86,12 @@ class GroupSummary {
   /// unambiguous, and only global groups have one.
   final String slug;
 
+  /// Why this group is being suggested: "Because of your Mazda MX-5".
+  ///
+  /// Only set on the garage-match list. Null everywhere else, which is
+  /// how the row knows whether to show a second line.
+  final String? reason;
+
   /// draft | published | hidden, for a global group.
   ///
   /// Shown as a badge while testing, because the endpoint is
@@ -101,6 +108,7 @@ class GroupSummary {
     this.memberAvatars = const [],
     this.slug = '',
     this.status = '',
+    this.reason,
   });
 
   /// True for a global group, false for a club.
@@ -121,6 +129,7 @@ class GroupSummary {
     kind: group.kind == 'scene' ? GroupKind.scene : GroupKind.marque,
     slug: group.slug,
     status: group.status,
+    reason: group.reason,
   );
 
   /// From /clubs/my-clubs.
@@ -137,31 +146,6 @@ class GroupSummary {
     image: club.coverImage ?? club.logo,
   );
 }
-
-/// Suggested from the user's garage. Marques, because that is what a
-/// vehicle can be matched to — a scene is too broad to infer from a
-/// car, and an ordinary club is somebody else's to advertise.
-const _mockGarageMatches = <GroupSummary>[
-  GroupSummary(
-    id: 'mock-ev',
-    title: 'EV Owners',
-    memberCount: 2140,
-    kind: GroupKind.marque,
-  ),
-  GroupSummary(
-    id: 'mock-polestar',
-    title: 'Polestar Owners',
-    memberCount: 412,
-    kind: GroupKind.marque,
-  ),
-  GroupSummary(
-    id: 'mock-mx5',
-    title: 'Mazda MX-5',
-    memberCount: 1240,
-    kind: GroupKind.marque,
-  ),
-];
-
 
 // ─── Screen ──────────────────────────────────────────────────────────
 
@@ -201,6 +185,13 @@ class _GroupsScreenState extends State<GroupsScreen>
   List<GroupSummary> _mine = const [];
   bool _loadingMine = true;
 
+  /// The scene and marque sections, before their first response.
+  ///
+  /// Separate from _loadingMine because they are separate requests —
+  /// and without it both sections simply did not exist until they
+  /// arrived, so the page assembled itself under the reader.
+  bool _loadingSections = true;
+
   // Read from the loaders above rather than straight from the consts,
   // so the widgets below are already reading state and nothing but the
   // loader changes when these become requests.
@@ -231,6 +222,10 @@ class _GroupsScreenState extends State<GroupsScreen>
   /// button does something when pressed, because a button that does
   /// nothing reads as broken rather than as unfinished.
   final Set<String> _joined = <String>{};
+
+  /// Groups with a join or leave in flight, so a second tap cannot
+  /// start a second request against the same row.
+  final Set<String> _busy = <String>{};
 
   @override
   void initState() {
@@ -266,6 +261,7 @@ class _GroupsScreenState extends State<GroupsScreen>
       _scenes = results[0];
       _marques = results[1];
       _garageMatchList = results[2];
+      _loadingSections = false;
     });
   }
 
@@ -295,14 +291,14 @@ class _GroupsScreenState extends State<GroupsScreen>
       case GroupKind.scene:
         final groups = await GlobalGroupsApi.fetchGroups(
           kinds: const ['scene'],
-          perPage: 12,
+          perPage: _sectionSize,
         );
         return groups.map(GroupSummary.fromGlobalGroup).toList();
 
       case GroupKind.marque:
         final groups = await GlobalGroupsApi.fetchGroups(
           kinds: const ['marque', 'model'],
-          perPage: 20,
+          perPage: _sectionSize,
         );
         return groups.map(GroupSummary.fromGlobalGroup).toList();
 
@@ -324,23 +320,130 @@ class _GroupsScreenState extends State<GroupsScreen>
   /// impression of the feature, since it would be recommending on the
   /// basis of nothing at all.
   Future<List<GroupSummary>> _loadGarageMatches() async {
-    try {
-      final user = await AuthService().getUser();
-      final id = (user?['id'] as num?)?.toInt();
-      if (id == null) return const [];
+    final suggestions = await GlobalGroupsApi.fetchSuggested(limit: 5);
 
-      final garage = await GarageAPI.getUserGarage(id);
-      if (garage == null || garage.isEmpty) return const [];
+    return suggestions.map(GroupSummary.fromGlobalGroup).toList();
+  }
 
-      return _mockGarageMatches;
-    } catch (e) {
-      debugPrint('[Groups] garage check failed: $e');
-      return const [];
+  /// Join or leave, from the suggestion row.
+  ///
+  /// Optimistic: the pill flips immediately and goes back if the
+  /// server disagreed. A join that silently failed but still reads
+  /// "Joined" is the one outcome worth engineering against — the user
+  /// walks away believing they are in a group they are not.
+  ///
+  /// The group is NOT removed from the list on joining. It would be
+  /// tidier, but a row vanishing under the finger that just tapped it
+  /// reads as a mis-tap; it goes on the next load instead, by which
+  /// point the suggestion endpoint has stopped returning it.
+  Future<void> _toggleJoin(GroupSummary group) async {
+    if (group.slug.isEmpty) return;
+
+    final wasJoined = _joined.contains(group.id);
+
+    // Ask before leaving, never before joining.
+    //
+    // The two are not symmetrical: joining is trivially undone by the
+    // same button, while leaving loses a membership and — because
+    // leaving writes a tombstone — stops the group being suggested
+    // again. A confirm on join would just be a tax on the common case.
+    if (wasJoined && !await _confirmLeave(group)) return;
+
+    setState(() {
+      _busy.add(group.id);
+      // The pill shows a spinner while this is in flight rather than
+      // flipping straight to its new label: it switched instantly
+      // before, which made a slow request look like it had finished.
+    });
+
+    final ok = wasJoined
+        ? await GlobalGroupsApi.leave(group.slug)
+        : await GlobalGroupsApi.join(group.slug);
+
+    if (!mounted) return;
+
+    setState(() {
+      _busy.remove(group.id);
+
+      // Applied on success only. The pill waited rather than guessing,
+      // so a failure leaves it exactly where it was and there is
+      // nothing to roll back.
+      if (ok) {
+        wasJoined ? _joined.remove(group.id) : _joined.add(group.id);
+      }
+    });
+
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            wasJoined
+                ? 'Could not leave ${group.title}.'
+                : 'Could not join ${group.title}.',
+          ),
+        ),
+      );
+      return;
     }
+
+    // YOUR GROUPS is a different query from this list, so it does not
+    // know anything happened. Reloading it here is what puts the group
+    // at the top of the page straight away rather than on next open.
+    await _loadMine();
+  }
+
+  /// "Leave this group?"
+  ///
+  /// Says what leaving actually costs, because one consequence is not
+  /// obvious: the group stops being suggested afterwards. Somebody who
+  /// leaves expecting to find it again in BASED ON YOUR GARAGE would
+  /// be surprised, and the dialog is the only place to say so.
+  Future<bool> _confirmLeave(GroupSummary group) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Leave ${group.title}?'),
+        content: const Text(
+          'Your vehicles will be removed from this group, and it will '
+          'stop being suggested to you. You can join again by finding '
+          'it in the groups list.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+
+    return confirmed == true;
   }
 
   /// How many groups a page of the full list holds.
   static const int _pageSize = 15;
+
+  /// How many of a kind the page shows before "See all".
+  ///
+  /// Six fills the scene grid exactly three rows deep and keeps the
+  /// marque list short enough that the sections below it are still
+  /// reachable without scrolling past a catalogue.
+  static const int _sectionSize = 6;
+
+  /// Open the full, paginated list of one or more kinds.
+  void _seeAll(String title, List<String> kinds) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GroupBrowseScreen(title: title, kinds: kinds),
+      ),
+    );
+  }
 
   /// The full list, from the top.
   ///
@@ -423,14 +526,36 @@ class _GroupsScreenState extends State<GroupsScreen>
         .toList();
   }
 
+  /// YOUR GROUPS — clubs AND joined global groups.
+  ///
+  /// Two sources, because they are two different things on the server:
+  /// a club is a WordPress post with ACF membership, a global group is
+  /// a row in ce_group_members. Reading only the first is why a group
+  /// somebody had just joined did not appear here, even though opening
+  /// it showed them as a member.
+  ///
+  /// Global groups lead. They are the ones somebody has joined most
+  /// recently and the ones they are least likely to be able to find
+  /// again by name.
   Future<void> _loadMine() async {
-    final response = await ClubApiService.getMyClubs();
+    // Both started before either is awaited, so they overlap — but
+    // without Future.wait, which erases the two different types into
+    // List<Object> and needs casting back.
+    final clubsRequest = ClubApiService.getMyClubs();
+    final groupsRequest = GlobalGroupsApi.fetchGroups(mine: true, perPage: 50);
+
+    final clubsResponse = await clubsRequest;
+    final groups = await groupsRequest;
+
     if (!mounted) return;
 
+    final clubs = clubsResponse.data?.clubs;
+
     setState(() {
-      _mine = (response.data?.clubs ?? const <MyClub>[])
-          .map(GroupSummary.fromMyClub)
-          .toList();
+      _mine = [
+        ...groups.map(GroupSummary.fromGlobalGroup),
+        ...(clubs ?? const <MyClub>[]).map(GroupSummary.fromMyClub),
+      ];
       _loadingMine = false;
     });
   }
@@ -580,40 +705,19 @@ class _GroupsScreenState extends State<GroupsScreen>
         _sliver(_garageMatches(theme)),
       ],
 
-      if (_scenes.isNotEmpty) ...[
+      if (_loadingSections || _scenes.isNotEmpty) ...[
         _sliver(const SizedBox(height: 26)),
         _sliver(
           _sectionHeader(
             theme,
             'Scene groups',
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.verified, size: 16, color: theme.primaryColor),
-                const SizedBox(width: 6),
-                Text(
-                  'Hosted by DriveLife',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        _sliver(_sceneGrid(theme)),
-      ],
-
-      if (_marques.isNotEmpty) ...[
-        _sliver(const SizedBox(height: 26)),
-        _sliver(
-          _sectionHeader(
-            theme,
-            'Marque & model',
+            // "See all" rather than the "Hosted by DriveLife" badge
+            // that used to sit here. Both will not fit beside a 24pt
+            // heading on a phone, and the badge moved to its own line
+            // under the grid where it still reads as the section's
+            // provenance.
             trailing: TextButton(
-              onPressed: () {},
+              onPressed: () => _seeAll('Scene groups', const ['scene']),
               style: _linkStyle,
               child: Text(
                 'See all',
@@ -626,7 +730,38 @@ class _GroupsScreenState extends State<GroupsScreen>
             ),
           ),
         ),
-        _sliver(_marqueList(theme)),
+        _sliver(
+          _loadingSections ? const GroupTileGridSkeleton() : _sceneGrid(theme),
+        ),
+        _sliver(_hostedByDriveLife(theme)),
+      ],
+
+      if (_loadingSections || _marques.isNotEmpty) ...[
+        _sliver(const SizedBox(height: 26)),
+        _sliver(
+          _sectionHeader(
+            theme,
+            'Marque & model',
+            trailing: TextButton(
+              onPressed: () =>
+                  _seeAll('Marque & model', const ['marque', 'model']),
+              style: _linkStyle,
+              child: Text(
+                'See all',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: theme.primaryColor,
+                ),
+              ),
+            ),
+          ),
+        ),
+        _sliver(
+          _loadingSections
+              ? const GroupRowsSkeleton(count: 4)
+              : _marqueList(theme),
+        ),
       ],
 
       // ── Everything else ──────────────────────────────────────────
@@ -650,6 +785,31 @@ class _GroupsScreenState extends State<GroupsScreen>
     minimumSize: Size.zero,
     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
   );
+
+  /// "Hosted by DriveLife", under the scene grid.
+  ///
+  /// It was beside the heading until "See all" needed that space. It
+  /// is still worth saying: a scene group is ours, not somebody's club,
+  /// and that is the difference between the two sections.
+  Widget _hostedByDriveLife(ThemeProvider theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: Row(
+        children: [
+          Icon(Icons.verified, size: 15, color: theme.primaryColor),
+          const SizedBox(width: 6),
+          Text(
+            'Hosted by DriveLife',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _sectionHeader(ThemeProvider theme, String title, {Widget? trailing}) {
     return Padding(
@@ -820,67 +980,100 @@ class _GroupsScreenState extends State<GroupsScreen>
   Widget _garageRow(ThemeProvider theme, GroupSummary group) {
     final joined = _joined.contains(group.id);
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  group.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
+    return Material(
+      color: _panel,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        // The row opens the group; only the pill joins it. Deciding
+        // whether to join something you cannot look at first is a poor
+        // ask, and the pill already stops the tap from reaching here.
+        onTap: () => _openGroup(group),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      group.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      // The reason, when there is one, in place of the
+                      // member count. Which car put this group in front of
+                      // them is more use than how many people are in it —
+                      // it is the difference between a recommendation and
+                      // an advert.
+                      group.reason ?? _members(group.memberCount),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  _members(group.memberCount),
-                  style: TextStyle(fontSize: 14.5, color: Colors.grey.shade500),
+              ),
+              const SizedBox(width: 12),
+              Material(
+                color: joined ? Colors.transparent : theme.primaryColor,
+                shape: StadiumBorder(
+                  side: joined
+                      ? BorderSide(color: Colors.grey.shade700)
+                      : BorderSide.none,
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Material(
-            color: joined ? Colors.transparent : theme.primaryColor,
-            shape: StadiumBorder(
-              side: joined
-                  ? BorderSide(color: Colors.grey.shade700)
-                  : BorderSide.none,
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => setState(() {
-                joined ? _joined.remove(group.id) : _joined.add(group.id);
-              }),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 11,
-                ),
-                child: Text(
-                  joined ? 'Joined' : 'Join',
-                  style: TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w700,
-                    color: joined ? Colors.grey.shade400 : Colors.white,
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: _busy.contains(group.id)
+                      ? null
+                      : () => _toggleJoin(group),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 11,
+                    ),
+                    child: _busy.contains(group.id)
+                        // Sized to the text it replaces, so the row
+                        // does not jump while the request is in
+                        // flight.
+                        ? SizedBox(
+                            height: 19,
+                            width: 19,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: joined
+                                  ? Colors.grey.shade400
+                                  : Colors.white,
+                            ),
+                          )
+                        : Text(
+                            joined ? 'Joined' : 'Join',
+                            style: TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w700,
+                              color: joined
+                                  ? Colors.grey.shade400
+                                  : Colors.white,
+                            ),
+                          ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1222,9 +1415,7 @@ class _GroupsScreenState extends State<GroupsScreen>
     if (group.isGlobal) {
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => GlobalGroupScreen(slug: group.slug),
-        ),
+        MaterialPageRoute(builder: (_) => GlobalGroupScreen(slug: group.slug)),
       );
       return;
     }

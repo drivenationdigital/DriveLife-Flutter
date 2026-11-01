@@ -5,6 +5,7 @@ import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/services/media_compressor.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:drivelife/services/upload_quality_prefs.dart';
+import 'package:drivelife/providers/points_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -146,6 +147,17 @@ class GalleryUploadBatch {
 /// What it deliberately does NOT do: survive the app being killed or suspended
 /// by iOS for a long stretch. That needs an OS-level background task.
 class GalleryUploadProvider with ChangeNotifier {
+  /// Where earned points are announced.
+  ///
+  /// Attached once by the app shell rather than passed in at every
+  /// call site: an upload can be started from several screens, and
+  /// threading the same provider through all of them would be four
+  /// places to forget it.
+  ///
+  /// Nullable so an upload still works if nothing attached one — the
+  /// post publishes, it just says nothing about points.
+  PointsProvider? points;
+
   final Map<String, GalleryUploadBatch> _batches = {};
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
@@ -493,6 +505,14 @@ class GalleryUploadProvider with ChangeNotifier {
       if (batch.galleryId == null && id != null) {
         batch.galleryId = id is int ? id : int.tryParse('$id');
       }
+
+      // Only the chunk that CREATED the gallery pays; every later one
+      // returns 0, and queueReward ignores those — so a gallery of
+      // forty photos still shows one reward.
+      points?.queueReward(
+        int.tryParse('${result?['points_awarded']}') ?? 0,
+        'For creating a gallery',
+      );
     } catch (e) {
       // The bytes are safely in Cloudflare; only the attach failed. Mark the
       // photos failed so a retry re-runs them rather than reporting a success

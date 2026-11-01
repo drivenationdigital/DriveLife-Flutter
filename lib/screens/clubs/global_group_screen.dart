@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/global_groups_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/widgets/groups/group_chrome.dart';
 import 'package:flutter/material.dart';
@@ -64,6 +65,15 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
   bool _loading = true;
   bool _failed = false;
 
+  /// A join or leave in flight, so a second tap cannot start a second
+  /// request.
+  bool _joining = false;
+
+  /// The membership state while the server catches up, or null to use
+  /// whatever the group last said. Cleared by the reload that follows
+  /// a successful join.
+  bool? _joinedOverride;
+
   @override
   void initState() {
     super.initState();
@@ -105,6 +115,11 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
       _events = results[4] as List<GlobalGroupEvent>;
       _loading = false;
       _failed = group == null && _group == null;
+
+      // Fresh truth from the server supersedes the optimistic flip.
+      // Left in place, a stale override would keep claiming "Joined"
+      // through any later reload.
+      if (group != null) _joinedOverride = null;
     });
   }
 
@@ -128,10 +143,62 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
     }
 
     if (group == null) {
+      // The page's own shape, not a spinner in the middle of nothing:
+      // the header, the tab bar and a feed are all coming, and laying
+      // them out now means nothing jumps when they land.
       return Scaffold(
         backgroundColor: theme.backgroundColor,
-        appBar: AppBar(backgroundColor: theme.backgroundColor),
-        body: const Center(child: CircularProgressIndicator()),
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 16, 12),
+                child: Row(
+                  children: [
+                    _circleBack(theme),
+                    const SizedBox(width: 10),
+                    const GroupShimmer(
+                      child: Row(
+                        children: [
+                          GroupBlock(width: 36, height: 36, radius: 8),
+                          SizedBox(width: 10),
+                          GroupBlock(width: 150, height: 18),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    const GroupShimmer(
+                      child: GroupBlock(width: 86, height: 42, radius: 21),
+                    ),
+                  ],
+                ),
+              ),
+              const GroupShimmer(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  child: Row(
+                    children: [
+                      GroupBlock(width: 60, height: 16),
+                      SizedBox(width: 22),
+                      GroupBlock(width: 78, height: 16),
+                      SizedBox(width: 22),
+                      GroupBlock(width: 62, height: 16),
+                    ],
+                  ),
+                ),
+              ),
+              Divider(height: 1, color: theme.dividerColor),
+              const Expanded(
+                child: SingleChildScrollView(
+                  physics: NeverScrollableScrollPhysics(),
+                  child: GroupFeedSkeleton(),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -171,6 +238,8 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
           _circleBack(theme),
           const SizedBox(width: 10),
 
+          _headerLogo(theme, group),
+
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -181,7 +250,11 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 21,
+                    // 17, matching the club header. 21 competed with
+                    // the tab labels directly beneath it, and left
+                    // nothing for a long marque name beside the logo
+                    // and the Join pill.
+                    fontSize: 17,
                     fontWeight: FontWeight.w800,
                     color: theme.textColor,
                   ),
@@ -214,6 +287,47 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
     );
   }
 
+  /// The group's mark, between the back button and the name.
+  ///
+  /// Prefers the logo over the cover: a logo is made to be small and
+  /// square, while a cover photo cropped to 36px is usually an
+  /// unreadable scrap of bodywork. Falls back to the cover only
+  /// because a scrap is still better than a grey square, and to an
+  /// icon when there is neither.
+  ///
+  /// Takes no space at all when the group has no images, rather than
+  /// leaving a placeholder gap — most groups have none yet.
+  Widget _headerLogo(ThemeProvider theme, GlobalGroup group) {
+    final url = (group.logo ?? '').isNotEmpty
+        ? group.logo
+        : (group.coverImage ?? '');
+
+    if ((url ?? '').isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: CachedNetworkImage(
+            imageUrl: url!,
+            fit: BoxFit.cover,
+            errorWidget: (_, _, _) => Container(
+              color: theme.cardColor,
+              child: Icon(
+                Icons.groups_outlined,
+                size: 19,
+                color: theme.subtextColor,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _circleBack(ThemeProvider theme) {
     return Material(
       color: theme.cardColor,
@@ -234,27 +348,119 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
     );
   }
 
-  /// Drawn, but inert.
+  /// Join or leave. The one thing on this screen that writes.
   ///
-  /// Joining writes a membership and is a later step. Showing the
-  /// control and saying "not yet" is more honest than hiding it: the
-  /// design has it, and its absence would read as a layout bug.
+  /// Optimistic, and it puts itself back if the server disagreed —
+  /// showing "Joined" for a membership that does not exist would send
+  /// somebody away believing they are in a group they are not.
   Widget _joinPill(ThemeProvider theme, GlobalGroup group) {
-    final joined = group.isMember;
+    final joined = _joinedOverride ?? group.isMember;
 
     return OutlinedButton(
-      onPressed: () => _notYet('Joining a group'),
+      onPressed: _joining ? null : () => _toggleJoin(group, joined),
       style: OutlinedButton.styleFrom(
         shape: const StadiumBorder(),
         side: BorderSide(color: theme.dividerColor),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         foregroundColor: theme.textColor,
+        backgroundColor: joined ? null : theme.textColor,
+        disabledForegroundColor: theme.subtextColor,
       ),
-      child: Text(
-        joined ? 'Joined' : 'Join',
-        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+      child: _joining
+          ? SizedBox(
+              height: 18,
+              width: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.2,
+                color: joined ? theme.textColor : theme.textColorSecondary,
+              ),
+            )
+          : Text(
+              joined ? 'Joined' : 'Join',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+                color: joined ? theme.textColor : theme.textColorSecondary,
+              ),
+            ),
+    );
+  }
+
+  Future<void> _toggleJoin(GlobalGroup group, bool joined) async {
+    // Ask before leaving, never before joining — leaving loses a
+    // membership and stops the group being suggested again, while
+    // joining is undone by the same button.
+    if (joined && !await _confirmLeave(group)) return;
+
+    setState(() {
+      // No optimistic flip: the pill shows a spinner and changes only
+      // when the server has agreed. Flipping first made a slow request
+      // look finished, and a failed one look successful.
+      _joining = true;
+    });
+
+    final ok = joined
+        ? await GlobalGroupsApi.leave(group.slug)
+        : await GlobalGroupsApi.join(group.slug);
+
+    if (!mounted) return;
+
+    if (!ok) {
+      // Nothing to roll back: the pill never claimed the new state.
+      setState(() => _joining = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            joined
+                ? 'Could not leave ${group.title}.'
+                : 'Could not join ${group.title}.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _joining = false;
+      _joinedOverride = !joined;
+    });
+
+    // Reload: joining puts this person's matching cars into the
+    // group's garage, so the Garages tab and its count are both stale
+    // the moment the server says yes.
+    await _load();
+  }
+
+  /// "Leave this group?"
+  ///
+  /// Names the two consequences that are not obvious from the button:
+  /// the member's cars come out of the group's garage, and the group
+  /// stops being suggested to them afterwards.
+  Future<bool> _confirmLeave(GlobalGroup group) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Leave ${group.title}?'),
+        content: const Text(
+          'Your vehicles will be removed from this group, and it will '
+          'stop being suggested to you. You can join again at any time.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Leave'),
+          ),
+        ],
       ),
     );
+
+    return confirmed == true;
   }
 
   // ─── Tabs ──────────────────────────────────────────────────────────
@@ -287,10 +493,7 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
           if (_garages.isNotEmpty) _latestGarages(theme),
 
           if (_loading && _latest.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 40),
-              child: Center(child: CircularProgressIndicator()),
-            )
+            const GroupFeedSkeleton()
           else if (_latest.isEmpty)
             GroupEmptyNote(
               theme: theme,
@@ -319,7 +522,19 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
         ),
         child: Row(
           children: [
-            CircleAvatar(radius: 19, backgroundColor: theme.dividerColor),
+            // The signed-in user's own photo, like the club composer —
+            // it is their post being invited, so it should be their
+            // face. listen: false because the avatar does not change
+            // while this row is on screen, and rebuilding the whole
+            // feed when the provider ticks would be wasteful.
+            GroupAvatar(
+              url: Provider.of<UserProvider>(
+                context,
+                listen: false,
+              ).user?.profileImage,
+              radius: 19,
+              theme: theme,
+            ),
             const SizedBox(width: 11),
             Expanded(
               child: Text(
@@ -544,7 +759,7 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
   Widget _garagesTab(ThemeProvider theme) {
     if (_loading && _garages.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const SingleChildScrollView(child: GroupGarageGridSkeleton());
     }
 
     if (_garages.isEmpty) {
@@ -590,7 +805,7 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
   Widget _spotsTab(ThemeProvider theme) {
     if (_loading && _spots.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const SingleChildScrollView(child: GroupSpotGridSkeleton());
     }
 
     if (_spots.isEmpty) {

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:drivelife/providers/points_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:flutter/material.dart';
@@ -98,6 +99,17 @@ class UploadPostProgress {
 }
 
 class UploadPostProvider with ChangeNotifier {
+  /// Where earned points are announced.
+  ///
+  /// Attached once by the app shell rather than passed in at every
+  /// call site: an upload can be started from several screens, and
+  /// threading the same provider through all of them would be four
+  /// places to forget it.
+  ///
+  /// Nullable so an upload still works if nothing attached one — the
+  /// post publishes, it just says nothing about points.
+  PointsProvider? points;
+
   final Map<String, UploadPostProgress> _uploads = {};
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
@@ -396,6 +408,23 @@ class UploadPostProvider with ChangeNotifier {
       );
 
       await userProvider.refreshUser();
+
+      // The reward, queued rather than shown.
+      //
+      // By the time a post finishes uploading the composer is long
+      // gone, so there is no context here to put a dialog on. The app
+      // shell watches PointsProvider and shows it; this just says what
+      // was earned.
+      //
+      // The server's number, not a guess: it is 0 once the daily cap
+      // in dl_points_rules() is reached, and queueReward ignores a
+      // zero, so nobody is promised points they did not get.
+      points?.queueReward(
+        int.tryParse('${postResult['points_awarded']}') ?? 0,
+        (data.spottedVehicle ?? '').trim().isNotEmpty
+            ? 'For logging a spot'
+            : 'For adding a post',
+      );
 
       // Auto-remove after 3 seconds
       Future.delayed(const Duration(seconds: 3), () {
