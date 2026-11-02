@@ -55,6 +55,47 @@ class PostsAPI {
     return [];
   }
 
+  /// The most recent spots, for the home page's RECENT SPOTS section.
+  ///
+  /// `spotted_vehicle` was write-only until this endpoint existed —
+  /// the composer set it and nothing ever selected it back, which is
+  /// why that section had an empty list hardcoded into its loader.
+  ///
+  /// Returns an empty list on any failure: the section hides itself
+  /// when there is nothing in it, which is the right outcome for a
+  /// request that did not come back.
+  static Future<List<Map<String, dynamic>>> recentSpots({int limit = 3}) async {
+    try {
+      final token = await _authService.getToken();
+
+      final response = await http.get(
+        Uri.parse('$_baseUrl/wp-json/app/v2/spots?limit=$limit'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        print('Failed to fetch spots: ${response.statusCode}');
+        return [];
+      }
+
+      final data = jsonDecode(response.body);
+
+      if (data is! Map || data['success'] != true) return [];
+
+      return List<Map<String, dynamic>>.from(
+        (data['spots'] as List? ?? const []).whereType<Map>().map(
+          (e) => Map<String, dynamic>.from(e),
+        ),
+      );
+    } catch (e) {
+      print('Error fetching spots: $e');
+      return [];
+    }
+  }
+
   static Future<Map<String, dynamic>> getPostsByHashtag({
     required String hashtag,
     int page = 1,

@@ -83,13 +83,18 @@ class BottomNavProvider extends ChangeNotifier {
   /// video as well as stills.
   static const int photos = 4;
 
-  /// Search, which had no place on the bar at all — it was reachable
-  /// only from a route nothing linked to.
-  static const int search = 5;
+  // Search is NOT a bottom-bar destination. It lives in the For You
+  // pill row, beside Your week / Following / Latest, and is pushed as
+  // a route — searching is something you do from where you already
+  // are, not a sixth place to stand.
+  //
+  // It was the LAST index, so removing it renumbers nothing. That is
+  // also why every one of these is referred to by name: a literal 5
+  // would now be out of range rather than merely wrong.
 
   /// How many destinations there are. The shell asserts its own list
   /// against this, because the two are matched by position.
-  static const int destinationCount = search + 1;
+  static const int destinationCount = photos + 1;
 
   // ── sections of Home, in the order of its top tab row ──────────────
   static const int forYou = 0;

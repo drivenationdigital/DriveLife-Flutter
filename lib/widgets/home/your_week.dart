@@ -2,6 +2,7 @@ import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/api/club_api_service.dart';
 import 'package:drivelife/screens/clubs/open_club_creator.dart';
 import 'package:drivelife/api/guess_api.dart';
+import 'package:drivelife/api/posts_api.dart';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -303,22 +304,49 @@ class YourWeekPanelState extends State<YourWeekPanel> {
   /// always is. So the row is a pair most days and a single full-width
   /// tile on the days it is not, rather than a gap where the game
   /// would have been.
+  /// How much taller than wide each tile is.
+  ///
+  /// The design measures 138 x 150 (1.087); this is a touch taller
+  /// again, which reads better with the smaller type inside.
+  ///
+  /// A ratio rather than a fixed height, because tile WIDTH depends on
+  /// the screen — two earlier constants were wrong in opposite
+  /// directions, 168 too tall on a small phone and 148 landscape on a
+  /// large one.
+  static const double _tileAspect = 1.18;
+
+  /// The gap between the two tiles.
+  static const double _tileGap = 12.0;
+
+  /// The two things to do today, side by side.
+  ///
+  /// The height comes from the WIDTH the row is given rather than a
+  /// constant, so the tiles keep the design's proportions from a small
+  /// phone to a tablet instead of being right on exactly one device.
   Widget _playRow(ThemeProvider theme) {
-    const height = 168.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final paired = (constraints.maxWidth - _tileGap) / 2;
+        final height = paired * _tileAspect;
 
-    if (_guess == null) {
-      return SizedBox(height: height, child: _logSpotTile(theme));
-    }
+        // On a day with no game the invitation takes the full width —
+        // but keeps the PAIRED height, because scaling it to a
+        // full-width tile would make a banner half the screen tall.
+        if (_guess == null) {
+          return SizedBox(height: height, child: _logSpotTile(theme));
+        }
 
-    return SizedBox(
-      height: height,
-      child: Row(
-        children: [
-          Expanded(child: _guessCard(theme)),
-          const SizedBox(width: 12),
-          Expanded(child: _logSpotTile(theme)),
-        ],
-      ),
+        return SizedBox(
+          height: height,
+          child: Row(
+            children: [
+              Expanded(child: _guessCard(theme)),
+              const SizedBox(width: _tileGap),
+              Expanded(child: _logSpotTile(theme)),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -367,47 +395,30 @@ class YourWeekPanelState extends State<YourWeekPanel> {
               ),
             ),
 
-            Padding(
-              padding: const EdgeInsets.all(16),
+            // Bottom-left, exactly like the game card beside it. The
+            // camera-in-a-circle that used to sit at the top is gone:
+            // the design has no icon, the photograph already says what
+            // the tile is about, and the two tiles only read as a pair
+            // when they are built the same way.
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 14,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.35),
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.photo_camera_outlined,
-                      size: 24,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const Spacer(),
-                  const Text(
+                  const DlHeading(
                     'Log a spot',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
+                    fontSize: 18,
+                    color: Colors.white,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     'Seen something rare?',
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14,
-                      height: 1.25,
-                      color: Colors.white.withValues(alpha: 0.82),
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade300),
                   ),
                 ],
               ),
@@ -427,14 +438,16 @@ class YourWeekPanelState extends State<YourWeekPanel> {
         arguments: {'postId': spot.postId},
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 7),
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(9),
               child: Container(
-                width: 74,
-                height: 56,
+                // 56x44, from the design. The old 74x56 made each row
+                // tall enough that three spots filled the screen.
+                width: 56,
+                height: 44,
                 color: const Color(0xFFEDEDED),
                 child: (spot.image ?? '').isEmpty
                     ? Icon(
@@ -460,18 +473,18 @@ class YourWeekPanelState extends State<YourWeekPanel> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 17,
+                      fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: theme.textColor,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 1),
                   Text(
                     spot.spotterName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 14.5,
+                      fontSize: 13.5,
                       color: Colors.grey.shade600,
                     ),
                   ),
@@ -498,7 +511,7 @@ class YourWeekPanelState extends State<YourWeekPanel> {
     final top = rarity.toUpperCase() == 'LEGENDARY';
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: top ? _cardBlack : theme.primaryColor,
         borderRadius: BorderRadius.circular(999),
@@ -506,9 +519,9 @@ class YourWeekPanelState extends State<YourWeekPanel> {
       child: Text(
         rarity.toUpperCase(),
         style: TextStyle(
-          fontSize: 12.5,
+          fontSize: 10.5,
           fontWeight: FontWeight.w800,
-          letterSpacing: 0.6,
+          letterSpacing: 0.7,
           color: top ? theme.primaryColor : Colors.white,
         ),
       ),
@@ -755,7 +768,27 @@ class YourWeekPanelState extends State<YourWeekPanel> {
   ///
   /// See docs/spots-backend-notes.md for the endpoint this wants.
   Future<List<RecentSpot>> _loadSpots() async {
-    return const [];
+    try {
+      final spots = await PostsAPI.recentSpots(limit: 3);
+
+      return spots.map((spot) {
+        final user = spot['user'];
+        final name = user is Map ? (user['short_name'] ?? user['name']) : null;
+
+        return RecentSpot(
+          postId: '${spot['post_id']}',
+          vehicle: (spot['spotted_vehicle'] ?? '').toString(),
+          spotterName: (name ?? '').toString(),
+          image: spot['image'] as String?,
+          // Null for everything today — nothing stores a rarity yet, and
+          // the badge simply is not drawn when it is absent.
+          rarity: spot['rarity'] as String?,
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('[YourWeek] spots failed: $e');
+      return const [];
+    }
   }
 
   /// Groups near enough to turn up to.
@@ -956,12 +989,13 @@ class YourWeekPanelState extends State<YourWeekPanel> {
               // card in the same list as the events.
               const SizedBox(height: 28),
               DlHeading('Get involved', fontSize: 22, color: theme.textColor),
+              const SizedBox(height: 10),
               _playRow(theme),
 
               if (_spots.isNotEmpty) ...[
-                const SizedBox(height: 28),
+                const SizedBox(height: 26),
                 DlHeading('Recent spots', fontSize: 22, color: theme.textColor),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 for (final spot in _spots) _spotRow(theme, spot),
               ],
 
@@ -1283,7 +1317,10 @@ class YourWeekPanelState extends State<YourWeekPanel> {
                         ),
                         const SizedBox(width: 10),
                         Text(
-                          '+500 points',
+                          // 150, matching vehicle_added in dl_points_rules().
+                          // Hardcoded here, so it has to be changed whenever
+                          // that rule is.
+                          '+150 points',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
@@ -1800,8 +1837,11 @@ class YourWeekPanelState extends State<YourWeekPanel> {
           // it re-reads rather than showing yesterday's state.
           if (mounted) await _loadGuess();
         },
-        child: SizedBox(
-          height: 168,
+        // No height of its own: the card fills whatever _playRow gives
+        // it. It used to carry a second copy of the number, which meant
+        // the row and the card could disagree — and only one of them
+        // could win.
+        child: SizedBox.expand(
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -1895,18 +1935,34 @@ class YourWeekPanelState extends State<YourWeekPanel> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // 20, matching Log a spot. At 24 the two tiles had
+                    // different-sized titles, which is the first thing
+                    // the eye picks up on a pair.
                     const DlHeading(
                       'Guess the car',
-                      fontSize: 24,
+                      fontSize: 18,
                       color: Colors.white,
                     ),
                     const SizedBox(height: 2),
                     Text(
+                      // "#214 · 3 guesses" — which game it is and how
+                      // many people have played it.
+                      //
+                      // In place of "+500 points if you get it right",
+                      // which said the same thing every single day and
+                      // so stopped being read. A guess count changes,
+                      // and a number that moves is a reason to look.
+                      //
+                      // The answer still wins once the game has closed:
+                      // at that point the only thing anybody wants from
+                      // this card is what the car was.
                       game.isClosed
                           ? 'Answer: ${game.answer ?? 'revealed'}'
-                          : '+${game.points} points if you get it right',
+                          : _guessSubtitle(game),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 12,
                         color: Colors.grey.shade300,
                       ),
                     ),
@@ -1918,6 +1974,22 @@ class YourWeekPanelState extends State<YourWeekPanel> {
         ),
       ),
     );
+  }
+
+  /// "#214 · 3 guesses".
+  ///
+  /// The number is dropped if the server has not sent one, rather than
+  /// printing "#0" — an old build talking to an updated server is the
+  /// normal case during a rollout, and so is the reverse.
+  ///
+  /// "guess" singular at one, because "1 guesses" on the first play of
+  /// the day is the sort of thing people screenshot.
+  static String _guessSubtitle(GuessGame game) {
+    final guesses = game.guessCount == 1
+        ? '1 guess'
+        : '${game.guessCount} guesses';
+
+    return game.number > 0 ? '#${game.number} · $guesses' : guesses;
   }
 
   static String _guessStatus(GuessGame game) {

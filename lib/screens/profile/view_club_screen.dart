@@ -72,10 +72,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   bool _garagesLoaded = false;
   bool _loadingGarages = false;
 
-  List<GroupSpot> _spots = [];
-  bool _spotsLoaded = false;
-  bool _loadingSpots = false;
-
   ClubTabCounts _tabCounts = const ClubTabCounts();
 
   List<dynamic> _clubPosts = [];
@@ -93,10 +89,13 @@ class _ClubViewScreenState extends State<ClubViewScreen>
   @override
   void initState() {
     super.initState();
-    // Six: Latest, Garages, Spots, Events, Media, About. The bar
-    // scrolls, which is why six fits where the old segmented control
-    // could only hold four.
-    _tabController = TabController(length: 6, vsync: this);
+    // Five: Latest, Garages, Events, Media, About.
+    //
+    // No Spots. Clubs have no spot of their own worth a tab — a spot
+    // posted to a club already appears in Latest, and the tab was all
+    // but always empty. Global groups keep theirs, because a scene or
+    // marque group gathers spots by matching, which is a real source.
+    _tabController = TabController(length: 5, vsync: this);
     attachTabHaptics(_tabController);
     _tabController.addListener(_onTabChanged);
 
@@ -168,9 +167,12 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     }
   }
 
-  /// Tab order is Latest 0, Garages 1, Spots 2, Events 3, Media 4,
-  /// About 5. Events was 1 before the group UI added two tabs in front
-  /// of it — every index in this file moved with it.
+  /// Tab order is Latest 0, Garages 1, Events 2, Media 3, About 4.
+  ///
+  /// Events has moved twice: it was 1 before the group UI, 3 while
+  /// Spots existed, and is 2 now. Every index in this file follows it,
+  /// which is why they are named here rather than left to be counted
+  /// off the TabBarView.
   void _onTabChanged() {
     if (_tabController.index == 0 &&
         !_clubPostsLoaded &&
@@ -180,10 +182,7 @@ class _ClubViewScreenState extends State<ClubViewScreen>
     if (_tabController.index == 1 && !_garagesLoaded) {
       _loadGarages();
     }
-    if (_tabController.index == 2 && !_spotsLoaded) {
-      _loadSpots();
-    }
-    if (_tabController.index == 3 && !_eventsLoaded) {
+    if (_tabController.index == 2 && !_eventsLoaded) {
       _loadClubEvents();
       _loadTabCounts();
     }
@@ -212,23 +211,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
       _garages = vehicles;
       _garagesLoaded = true;
       _loadingGarages = false;
-    });
-  }
-
-  /// Posts made to this club that are spots.
-  Future<void> _loadSpots() async {
-    if (_loadingSpots || _clubId <= 0) return;
-
-    setState(() => _loadingSpots = true);
-
-    final spots = await ClubTabsApi.fetchSpots(_clubId);
-
-    if (!mounted) return;
-
-    setState(() {
-      _spots = spots;
-      _spotsLoaded = true;
-      _loadingSpots = false;
     });
   }
 
@@ -702,13 +684,15 @@ class _ClubViewScreenState extends State<ClubViewScreen>
           // list: the indices are no longer 0,1,2 now that Garages and
           // Spots sit between Latest and Events, and a positional list
           // would silently send 'events' to the wrong tab.
+          // 'spots' deliberately absent: a link to a tab that no
+          // longer exists should land on the club rather than on
+          // whatever happens to sit at that index now.
           const tabIndices = {
             'feed': 0,
             'garages': 1,
-            'spots': 2,
-            'events': 3,
-            'media': 4,
-            'about': 5,
+            'events': 2,
+            'media': 3,
+            'about': 4,
           };
 
           final tabIndex = tabIndices[tab];
@@ -803,7 +787,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                       // a post count nobody asked for.
                       const GroupTab('Latest'),
                       GroupTab('Garages', _tabCounts.garages),
-                      GroupTab('Spots', _tabCounts.spots),
                       // Null, not 0, until the events have loaded.
                       // They load lazily, so a literal 0 here would be
                       // wrong rather than empty — and a grey "0" on a
@@ -826,7 +809,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                         // posts; it is folded into this one.
                         _buildCommunityPanel(theme),
                         _buildGaragesPanel(theme),
-                        _buildSpotsPanel(theme),
                         _buildEventsPanel(theme),
                         _buildMediaPanel(theme),
                         _buildAboutPanel(theme),
@@ -1253,50 +1235,6 @@ class _ClubViewScreenState extends State<ClubViewScreen>
             context,
             AppRoutes.vehicleDetail,
             arguments: {'garageId': '${_garages[i].id}'},
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Spot posts made to this club.
-  Widget _buildSpotsPanel(ThemeProvider theme) {
-    if (_loadingSpots && _spots.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_spots.isEmpty) {
-      return ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          GroupEmptyNote(
-            theme: theme,
-            title: 'No spots yet',
-            body:
-                'Spots posted to this group appear here. Nobody has '
-                'logged one yet.',
-          ),
-        ],
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadSpots,
-      child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 40),
-        itemCount: _spots.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 6,
-          mainAxisSpacing: 6,
-        ),
-        itemBuilder: (_, i) => GroupSpotTile(
-          spot: _spots[i],
-          theme: theme,
-          onTap: () => Navigator.pushNamed(
-            context,
-            AppRoutes.postDetail,
-            arguments: {'postId': _spots[i].postId},
           ),
         ),
       ),

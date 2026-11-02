@@ -16,6 +16,16 @@ class GuessGame {
   final bool isClosed;
   final int points;
 
+  /// The game's number, as shown on the home card: "#214".
+  ///
+  /// The server sends the row id. One game per date means ids run with
+  /// the days, and an id never changes — a number ranked on date would
+  /// renumber every later game whenever an old one was deleted.
+  final int number;
+
+  /// How many people have played this game so far.
+  final int guessCount;
+
   /// Which option this user picked, or null if they have not played.
   final int? myChoice;
 
@@ -41,6 +51,8 @@ class GuessGame {
     required this.isOpen,
     required this.isClosed,
     required this.points,
+    this.number = 0,
+    this.guessCount = 0,
     this.myChoice,
     this.myCorrect,
     this.answerIndex,
@@ -91,7 +103,14 @@ class GuessGame {
     options: _options(map['options']),
     isOpen: map['is_open'] == true,
     isClosed: map['is_closed'] == true,
-    points: _int(map['points'], 500),
+    // 50, matching guess_correct in dl_points_rules(). Only reached
+    // when the server sends no 'points' at all — but a fallback that
+    // overstates the reward is the exact thing being guarded against.
+    points: _int(map['points'], 50),
+    // Falls back to the id, so the card still reads "#12" against a
+    // server that has not been updated yet.
+    number: _int(map['number'], _int(map['id'])),
+    guessCount: _int(map['guess_count']),
     myChoice: map['my_choice'] == null ? null : _int(map['my_choice']),
     myCorrect: map['my_correct'] is bool ? map['my_correct'] as bool : null,
     answerIndex: map['answer_index'] == null ? null : _int(map['answer_index']),

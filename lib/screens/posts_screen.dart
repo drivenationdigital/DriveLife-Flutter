@@ -7,6 +7,7 @@ import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:drivelife/api/offers_api_service.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/screens/search_screen.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/widgets/feed/offers_banner.dart';
 import 'package:drivelife/widgets/upload_progress_card.dart';
@@ -742,10 +743,43 @@ class _CustomTabBar extends StatelessWidget {
                 if (i > 0) const SizedBox(width: 10),
                 Expanded(child: _buildTab(i, _labels[tabs[i]] ?? '')),
               ],
+              const SizedBox(width: 10),
+              _searchButton(context),
             ],
           ),
         );
       },
+    );
+  }
+
+  /// Search, moved off the bottom bar.
+  ///
+  /// A circle rather than a fourth pill: it is not one of the feeds, and
+  /// giving it an Expanded share would make the three that ARE feeds
+  /// narrower to accommodate something that is not. Fixed width, so the
+  /// pills divide what is left.
+  ///
+  /// 44 square, matching the pills' height and the iOS minimum tap
+  /// target.
+  Widget _searchButton(BuildContext context) {
+    return GestureDetector(
+      // Pushed, not switched to. Search is something you do from where
+      // you already are and come back from; the bottom bar made it a
+      // place you went instead, and going back meant choosing a tab.
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
+      ),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: const Color(0xFFDDDDDD), width: 1.4),
+        ),
+        child: const Icon(Icons.search, size: 21, color: Color(0xFF111111)),
+      ),
     );
   }
 

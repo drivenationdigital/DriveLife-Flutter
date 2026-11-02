@@ -1,17 +1,16 @@
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:drivelife/api/moderation_api.dart';
 import 'package:drivelife/providers/gallery_upload_provider.dart';
+import 'package:drivelife/screens/events/events_manager_web.dart';
 import 'package:drivelife/providers/points_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/widgets/points/points_reward.dart';
-import 'package:drivelife/screens/search_screen.dart';
 import 'package:drivelife/api/notifications_api.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:drivelife/screens/store/shop_screen.dart';
 import 'package:drivelife/screens/discover/discover_map_screen.dart';
 import 'package:drivelife/widgets/nav/dl_bottom_nav.dart';
 import 'package:drivelife/widgets/nav/dl_top_tabs.dart';
-import 'package:drivelife/screens/events/open_event_editor.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/main.dart';
 import 'package:drivelife/models/account_model.dart';
@@ -381,11 +380,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
       _buildDiscover(),
       _buildGroups(theme),
       ..._screens.skip(3).take(1),
-
-      // Search, which previously existed only as a route. embedded:
-      // true because the shell already supplies the scaffold and the
-      // bottom bar — the standalone version brings its own.
-      const SearchScreen(embedded: true),
     ];
 
     assert(
@@ -707,6 +701,24 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     await accountManager.loadManagedEntities(user.id, token);
   }
 
+  /// Open the events manager, the same way My Events does.
+  ///
+  /// Mirrors _openEventsManager in events_screen.dart, including the
+  /// failure message: the manager is a web view behind a scoped
+  /// dashboard token, and a token that cannot be minted leaves nothing
+  /// on screen at all unless somebody says so.
+  Future<void> _openEventsManager() async {
+    final opened = await EventsManagerWeb.open(context);
+
+    if (opened || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Could not open the events manager. Please try again.'),
+      ),
+    );
+  }
+
   /// The Create sheet behind the header's plus button.
   ///
   /// A grid of cards rather than a list of rows: these are six equal choices
@@ -731,7 +743,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           if (isUser)
             _CreateAction(
               label: 'Add Post',
-              points: 100,
+              points: 50,
               icon: Icons.image_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
@@ -740,11 +752,12 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
             ),
           // Straight onto the Spotted tab. The destination is the same
           // screen as Add Post, which is why it sits beside it: a spot
-          // IS a post, with one extra field and a bigger reward.
+          // IS a post, with one extra field. It used to pay three times
+          // as much; the two are level now.
           if (isUser)
             _CreateAction(
               label: 'Add Vehicle Spot',
-              points: 300,
+              points: 50,
               icon: Icons.photo_camera_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
@@ -754,7 +767,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           if (isUser)
             _CreateAction(
               label: 'Add Gallery',
-              points: 200,
+              points: 75,
               icon: Icons.collections_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
@@ -764,7 +777,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           if (isUser)
             _CreateAction(
               label: 'Add Vehicle',
-              points: 500,
+              points: 150,
               icon: Icons.directions_car_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
@@ -782,7 +795,12 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
             label: 'Event Manager',
             subtitle: 'For organisers',
             icon: Icons.calendar_today_outlined,
-            onTap: () => openEventEditor(context),
+            // The MANAGER, the same place My Events sends organisers.
+            // It used to call openEventEditor(), which is the create-an-
+            // event composer — a different screen from the one the
+            // label names, and not what somebody picking "Event
+            // Manager" is asking for.
+            onTap: _openEventsManager,
           ),
           // Add Venue has gone from this menu. CreateVenueScreen is
           // untouched and still reachable from Places; it just has no
@@ -1144,10 +1162,9 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
             child: svg('assets/nav-icons/05-media.svg', sel),
           ),
         ),
-        DlNavItem(
-          label: 'Search',
-          icon: (sel) => svg('assets/nav-icons/06-search.svg', sel),
-        ),
+        // No Search item. It moved to the For You pill row — see
+        // _CustomTabBar in posts_screen.dart. 06-search.svg is still in
+        // assets and still used there.
       ],
     );
   }

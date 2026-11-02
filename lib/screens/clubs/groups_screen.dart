@@ -53,8 +53,8 @@ import 'package:provider/provider.dart';
 /// record one fact is two places to disagree.
 enum GroupKind {
   /// Broad, by interest rather than by car: JDM, Classics, Track Days.
-  /// Created and run by DriveLife, which is what the "Hosted by
-  /// DriveLife" badge on that section means.
+  /// Created and run by DriveLife rather than by a member, which is
+  /// the difference between this section and the clubs below it.
   scene,
 
   /// One make, or one model: Land Rover Defender, Mazda MX-5.
@@ -320,7 +320,7 @@ class _GroupsScreenState extends State<GroupsScreen>
   /// impression of the feature, since it would be recommending on the
   /// basis of nothing at all.
   Future<List<GroupSummary>> _loadGarageMatches() async {
-    final suggestions = await GlobalGroupsApi.fetchSuggested(limit: 5);
+    final suggestions = await GlobalGroupsApi.fetchSuggested(limit: 3);
 
     return suggestions.map(GroupSummary.fromGlobalGroup).toList();
   }
@@ -711,11 +711,9 @@ class _GroupsScreenState extends State<GroupsScreen>
           _sectionHeader(
             theme,
             'Scene groups',
-            // "See all" rather than the "Hosted by DriveLife" badge
-            // that used to sit here. Both will not fit beside a 24pt
-            // heading on a phone, and the badge moved to its own line
-            // under the grid where it still reads as the section's
-            // provenance.
+            // "See all", where a "Hosted by DriveLife" badge used to
+            // sit. Both would not fit beside a 24pt heading on a
+            // phone, and the badge has since been dropped entirely.
             trailing: TextButton(
               onPressed: () => _seeAll('Scene groups', const ['scene']),
               style: _linkStyle,
@@ -733,7 +731,6 @@ class _GroupsScreenState extends State<GroupsScreen>
         _sliver(
           _loadingSections ? const GroupTileGridSkeleton() : _sceneGrid(theme),
         ),
-        _sliver(_hostedByDriveLife(theme)),
       ],
 
       if (_loadingSections || _marques.isNotEmpty) ...[
@@ -785,31 +782,6 @@ class _GroupsScreenState extends State<GroupsScreen>
     minimumSize: Size.zero,
     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
   );
-
-  /// "Hosted by DriveLife", under the scene grid.
-  ///
-  /// It was beside the heading until "See all" needed that space. It
-  /// is still worth saying: a scene group is ours, not somebody's club,
-  /// and that is the difference between the two sections.
-  Widget _hostedByDriveLife(ThemeProvider theme) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-      child: Row(
-        children: [
-          Icon(Icons.verified, size: 15, color: theme.primaryColor),
-          const SizedBox(width: 6),
-          Text(
-            'Hosted by DriveLife',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _sectionHeader(ThemeProvider theme, String title, {Widget? trailing}) {
     return Padding(

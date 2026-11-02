@@ -95,7 +95,10 @@ class RegisterStepSixScreen extends StatelessWidget {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: const Text(
-                              '+500 points',
+                              // 150, matching vehicle_added in dl_points_rules().
+                              // Hardcoded here, so it has to be changed whenever
+                              // that rule is.
+                              '+150 points',
                               style: TextStyle(
                                 fontSize: 14.5,
                                 fontWeight: FontWeight.w800,
