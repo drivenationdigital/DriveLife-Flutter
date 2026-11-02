@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/points_api.dart';
+import 'package:drivelife/providers/points_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/theme/dl_type.dart';
@@ -22,6 +23,7 @@ class PointsScreen extends StatefulWidget {
 
 class _PointsScreenState extends State<PointsScreen> {
   static const Color _ink = Color(0xFF111113);
+  static const Color _gold = Color(0xFFAE9159);
 
   LeaderboardScope _scope = LeaderboardScope.worldwide;
 
@@ -153,10 +155,23 @@ class _PointsScreenState extends State<PointsScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                DlHeading(
-                  'Your points',
-                  fontSize: 22,
-                  color: theme.subtextColor,
+                // The heading, with the rules a tap away.
+                //
+                // mainAxisSize.min and centred, because everything below
+                // is centred: a Row left to fill the width would put the
+                // heading hard left and the icon hard right.
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DlHeading(
+                      'Your points',
+                      fontSize: 22,
+                      color: theme.subtextColor,
+                    ),
+                    const SizedBox(width: 2),
+                    _infoButton(theme),
+                  ],
                 ),
                 const SizedBox(height: 2),
 
@@ -428,6 +443,58 @@ class _PointsScreenState extends State<PointsScreen> {
   /// "2,140". Thousands separated — on your own total the exact number
   /// is the interesting part, and "2.1k" throws away what you earned
   /// this week.
+  /// A 15px info mark beside the heading.
+  ///
+  /// Deliberately small: the rules are worth having but are not what
+  /// somebody opened this screen to read. The tap target is padded out
+  /// so it is still reachable — the icon is well under the minimum on
+  /// its own.
+  Widget _infoButton(ThemeProvider theme) {
+    return GestureDetector(
+      onTap: _showRules,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(Icons.info_outline, size: 15, color: theme.subtextColor),
+      ),
+    );
+  }
+
+  /// How points work, in as few words as it can be said.
+  ///
+  /// THE WORDS COME FROM THE SERVER, built from the same rules that pay
+  /// the points — so the sentence and the amounts in it cannot disagree,
+  /// and wording that turns out to be wrong can be corrected without a
+  /// release.
+  ///
+  /// A snackbar rather than a dialog: it is a reminder, not a decision,
+  /// and a dialog would demand a dismissal for something nobody has to
+  /// act on. Eight seconds and a Got it, so it can be read at leisure
+  /// or waved away.
+  void _showRules() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 8),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: _ink,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        content: Text(
+          context.read<PointsProvider>().rules.summary,
+          style: const TextStyle(
+            fontSize: 14,
+            height: 1.45,
+            color: Colors.white,
+          ),
+        ),
+        action: SnackBarAction(
+          label: 'Got it',
+          textColor: _gold,
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+
   static String _formatPoints(int n) {
     final s = n.toString();
     final buffer = StringBuffer();

@@ -6,6 +6,71 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// One row of the leaderboard.
+/// What the server pays for each action.
+///
+/// The amounts used to be written out in four places in the app, and
+/// one of them was missed when the rewards were reduced — the guess
+/// card promised 500 for an award that paid 50. They now come from
+/// /app/v2/points/rules so the server is the only place they live.
+class PointsRules {
+  /// rule name -> amount. Unknown rules are simply absent.
+  final Map<String, int> amounts;
+
+  /// The user-facing explanation, written by the server so wording can
+  /// be corrected without a release.
+  final String summary;
+
+  const PointsRules({required this.amounts, required this.summary});
+
+  /// Today's real values, used until the fetch lands and whenever it
+  /// fails. Kept honest deliberately: a fallback that OVERSTATES a
+  /// reward is the exact failure this endpoint exists to prevent.
+  static const PointsRules fallback = PointsRules(
+    amounts: {
+      'post_added': 50,
+      'spot_added': 50,
+      'gallery_added': 75,
+      'guess_correct': 50,
+      'vehicle_added': 150,
+    },
+    summary:
+        'Posts and spots earn 50, galleries 75 and vehicles 150, with a '
+        'daily limit on each.\n\n'
+        'We trust you to log real cars. Delete something you earned '
+        'points for and those points come back off — your balance '
+        'never drops below zero.',
+  );
+
+  /// What one action pays, or the fallback's figure if the server has
+  /// not been heard from.
+  int amountFor(String rule) => amounts[rule] ?? fallback.amounts[rule] ?? 0;
+
+  factory PointsRules.fromMap(Map<String, dynamic> map) {
+    final raw = map['rules'];
+    final amounts = <String, int>{};
+
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        if (value is Map && value['amount'] != null) {
+          final amount = value['amount'];
+          amounts['$key'] = amount is num
+              ? amount.toInt()
+              : int.tryParse('$amount') ?? 0;
+        }
+      });
+    }
+
+    final summary = map['summary'];
+
+    return PointsRules(
+      amounts: amounts.isEmpty ? fallback.amounts : amounts,
+      summary: summary is String && summary.trim().isNotEmpty
+          ? summary
+          : fallback.summary,
+    );
+  }
+}
+
 class LeaderboardEntry {
   final int rank;
   final int userId;
@@ -122,6 +187,46 @@ class PointsAPI {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer $token',
     };
+  }
+
+  /// What each action is worth, and the words that explain it.
+  ///
+  /// No token: it is a price list, identical for everybody, and the
+  /// last step of signup needs it before there is reliably one.
+  ///
+  /// Returns NULL when it could not be fetched, rather than the
+  /// fallback.
+  ///
+  /// The caller already holds [PointsRules.fallback] and keeps showing
+  /// it, so handing it back here would say nothing — and it would make
+  /// a failure indistinguishable from a server that happens to agree
+  /// with the fallback, which is exactly the case where a retry is
+  /// worth attempting.
+  ///
+  /// A malformed but successful response is NOT a failure: fromMap
+  /// fills the gaps from the fallback per field and that is returned,
+  /// because the server did answer.
+  static Future<PointsRules?> rules() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_base/wp-json/app/v2/points/rules'),
+        headers: const {'Accept': 'application/json'},
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint('[Points] rules failed: ${response.statusCode}');
+        return null;
+      }
+
+      final body = jsonDecode(response.body);
+
+      if (body is! Map || body['success'] != true) return null;
+
+      return PointsRules.fromMap(Map<String, dynamic>.from(body));
+    } catch (e) {
+      debugPrint('[Points] rules threw: $e');
+      return null;
+    }
   }
 
   /// The signed-in person's balance and rank.

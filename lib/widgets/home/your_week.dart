@@ -12,6 +12,7 @@ import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/api/garage_api.dart';
 import 'package:drivelife/api/garage_reminders_service.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
+import 'package:drivelife/providers/points_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/theme/dl_type.dart';
 import 'package:drivelife/routes.dart';
@@ -1317,10 +1318,11 @@ class YourWeekPanelState extends State<YourWeekPanel> {
                         ),
                         const SizedBox(width: 10),
                         Text(
-                          // 150, matching vehicle_added in dl_points_rules().
-                          // Hardcoded here, so it has to be changed whenever
-                          // that rule is.
-                          '+150 points',
+                          // From the server, not written out. This label
+                          // and the reward it promises were two separate
+                          // numbers, and when the rewards were reduced
+                          // this one still said 500.
+                          '+${context.watch<PointsProvider>().rules.amountFor('vehicle_added')} points',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,

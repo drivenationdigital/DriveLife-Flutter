@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../routes.dart';
+import 'package:drivelife/providers/points_provider.dart';
+import 'package:provider/provider.dart';
 
 /// The last screen of signup: add your first vehicle.
 ///
@@ -94,11 +96,13 @@ class RegisterStepSixScreen extends StatelessWidget {
                               color: const Color(0xFFAE9159),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Text(
-                              // 150, matching vehicle_added in dl_points_rules().
-                              // Hardcoded here, so it has to be changed whenever
-                              // that rule is.
-                              '+150 points',
+                            child: Text(
+                              // From the server. Signup is the one place
+                              // this is read before the shell has had a
+                              // chance to fetch, which is why the
+                              // provider starts on the real amounts
+                              // rather than on nothing.
+                              '+${context.watch<PointsProvider>().rules.amountFor('vehicle_added')} points',
                               style: TextStyle(
                                 fontSize: 14.5,
                                 fontWeight: FontWeight.w800,

@@ -97,6 +97,74 @@ class PointsProvider extends ChangeNotifier {
   /// collapse into the first, and a balance that has not moved does not
   /// notify, so a rebuild only happens when the number on screen is
   /// actually about to change.
+  // ── What each action is worth ──────────────────────────────────────
+  //
+  // Held here because four screens need it — the Create sheet, the
+  // empty-garage card, the last step of signup and the rules toast —
+  // and every one of them used to carry its own copy of the numbers.
+  //
+  // Starts on the fallback rather than on nothing, so a screen built
+  // before the fetch lands shows today's real amounts instead of
+  // zeroes, and corrects itself a moment later if the server disagrees.
+
+  PointsRules _rules = PointsRules.fallback;
+
+  /// The current rewards. Never null, never zero.
+  PointsRules get rules => _rules;
+
+  bool _rulesLoaded = false;
+  bool _loadingRules = false;
+
+  /// Fetch the rules once per successful load.
+  ///
+  /// Once is enough on success: they change when somebody edits the
+  /// server, which is not something that happens while an app is open.
+  ///
+  /// A FAILURE IS RETRIED. The flag is only set once an answer has
+  /// actually arrived, so an app launched on a dead connection tries
+  /// again the next time the shell asks — which is on resume from the
+  /// background. Until then it keeps showing the fallback, which holds
+  /// the real amounts, so nothing is ever blank or wrong-by-default.
+  ///
+  /// _loadingRules is separate, and is what stops two calls in flight
+  /// at once while the first is still waiting.
+  Future<void> loadRules() async {
+    if (_rulesLoaded || _loadingRules) return;
+
+    _loadingRules = true;
+
+    try {
+      final fetched = await PointsAPI.rules();
+
+      // Null means it could not be fetched. Keep the fallback and
+      // leave _rulesLoaded false so the next call tries again.
+      if (fetched == null) return;
+
+      _rulesLoaded = true;
+
+      // Only notify on a real difference — the fallback and the server
+      // usually agree, and a rebuild of every screen that watches this
+      // for an identical answer is work nobody asked for.
+      if (fetched.summary != _rules.summary ||
+          !_sameAmounts(fetched.amounts, _rules.amounts)) {
+        _rules = fetched;
+        notifyListeners();
+      }
+    } finally {
+      _loadingRules = false;
+    }
+  }
+
+  static bool _sameAmounts(Map<String, int> a, Map<String, int> b) {
+    if (a.length != b.length) return false;
+
+    for (final entry in a.entries) {
+      if (b[entry.key] != entry.value) return false;
+    }
+
+    return true;
+  }
+
   Future<void> refresh() async {
     if (_loading) return;
     _loading = true;

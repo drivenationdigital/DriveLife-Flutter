@@ -431,7 +431,14 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   /// about — launch and coming back from the background.
   void _loadPoints() {
     if (!mounted) return;
-    context.read<PointsProvider>().refresh();
+
+    final points = context.read<PointsProvider>();
+
+    points.refresh();
+
+    // What each action is worth, for the Create sheet's tiles. Once per
+    // launch — it only changes when somebody edits the server.
+    points.loadRules();
   }
 
   /// Show any reward a background upload has queued.
@@ -727,6 +734,10 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   void _showAddMenu(ThemeProvider theme) {
     final accountManager = Provider.of<AccountManager>(context, listen: false);
 
+    // The amounts, from the server. These were four hardcoded numbers
+    // and all four were wrong after the rewards were reduced.
+    final rules = Provider.of<PointsProvider>(context, listen: false).rules;
+
     final isUser = accountManager.activeAccount?.isUserAccount ?? false;
 
     showModalBottomSheet(
@@ -743,7 +754,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           if (isUser)
             _CreateAction(
               label: 'Add Post',
-              points: 50,
+              points: rules.amountFor('post_added'),
               icon: Icons.image_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
@@ -757,7 +768,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           if (isUser)
             _CreateAction(
               label: 'Add Vehicle Spot',
-              points: 50,
+              points: rules.amountFor('spot_added'),
               icon: Icons.photo_camera_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
@@ -767,7 +778,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           if (isUser)
             _CreateAction(
               label: 'Add Gallery',
-              points: 75,
+              points: rules.amountFor('gallery_added'),
               icon: Icons.collections_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
@@ -777,7 +788,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           if (isUser)
             _CreateAction(
               label: 'Add Vehicle',
-              points: 150,
+              points: rules.amountFor('vehicle_added'),
               icon: Icons.directions_car_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
