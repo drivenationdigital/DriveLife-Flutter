@@ -102,10 +102,12 @@ class TrackRange {
   const TrackRange(this.label, this.value);
 
   static const List<TrackRange> all = [
+    // National first, and the default — see _range. A row that opens
+    // with its selected chip fourth reads as nothing being selected.
+    TrackRange('National', 'national'),
     TrackRange('Near me', 'near-me'),
     TrackRange('50 miles', '50-miles'),
     TrackRange('100 miles', '100-miles'),
-    TrackRange('National', 'national'),
   ];
 }
 
@@ -158,7 +160,10 @@ class _TracksScreenState extends State<TracksScreen>
   /// radius is applied by the server rather than to the loaded page.
   /// 100 miles, as Places starts. Near me is the tightest of the four and
   /// usually empty on a first run — a circuit is rarely round the corner.
-  String _range = '100-miles';
+  /// National, so the list fills on open without waiting on a location
+  /// permission. There are few enough tracks in the country that a
+  /// radius mostly takes things away.
+  String _range = 'national';
 
   int _page = 1;
   bool _hasMore = true;

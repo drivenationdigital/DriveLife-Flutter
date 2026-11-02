@@ -1,5 +1,7 @@
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
-import 'package:drivelife/api/club_api_service.dart';
+import 'package:drivelife/api/places_api.dart';
+import 'package:drivelife/main.dart' show BottomNavProvider;
+import 'package:drivelife/models/venue_model.dart';
 import 'package:drivelife/screens/clubs/open_club_creator.dart';
 import 'package:drivelife/api/guess_api.dart';
 import 'package:drivelife/api/posts_api.dart';
@@ -101,9 +103,8 @@ class YourWeekPanelState extends State<YourWeekPanel> {
   /// list is exactly when the invitation matters most.
   List<RecentSpot> _spots = const [];
 
-  /// Groups within reach, most active first. Empty is a real answer —
-  /// plenty of places have none yet — and the section hides itself.
-  List<Map<String, dynamic>> _groups = const [];
+  /// Venues, nearest first. Empty hides the section.
+  List<Venue> _venues = const [];
 
   bool _loading = true;
 
@@ -151,7 +152,7 @@ class YourWeekPanelState extends State<YourWeekPanel> {
       _loadVehicleAndReminder(),
       _loadEvents(),
       GuessAPI.today(),
-      _loadGroups(),
+      _loadVenues(),
       _loadSpots(),
     ]);
 
@@ -171,7 +172,7 @@ class YourWeekPanelState extends State<YourWeekPanel> {
       _isDream = garage.isDream;
       _events = results[1] as List<Map<String, dynamic>>;
       _guess = results[2] as GuessGame?;
-      _groups = results[3] as List<Map<String, dynamic>>;
+      _venues = results[3] as List<Venue>;
       _spots = results[4] as List<RecentSpot>;
       _loading = false;
     });
@@ -529,15 +530,18 @@ class YourWeekPanelState extends State<YourWeekPanel> {
     );
   }
 
-  /// Groups within reach, as pills.
+  /// Venues near this person, as cards.
   ///
-  /// Pills rather than cards or a list. A group here is one word and a
-  /// number — enough to recognise one you already know of, or to be
-  /// curious about one you do not — and six cards would be a page of
-  /// its own for something that is meant to be a glance. Wrapping also
-  /// means a short name costs a short pill, so the row packs rather
-  /// than leaving every tile the width of the longest title.
-  Widget _nearYou(ThemeProvider theme) {
+  /// This was six group pills. Cards rather than pills because a venue
+  /// is somewhere you might actually go and a photo of it is most of
+  /// what makes you want to — a group is a name and a number, which is
+  /// all a pill can hold, and a venue is not.
+  ///
+  /// Horizontal rather than wrapped, for the same reason: a card wide
+  /// enough to show a photo properly is most of the screen, and six of
+  /// them stacked would be the whole page. The next card peeking past
+  /// the edge is what says there are more.
+  Widget _venuesNearYou(ThemeProvider theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -546,23 +550,25 @@ class YourWeekPanelState extends State<YourWeekPanel> {
           children: [
             Expanded(
               child: DlHeading(
-                'Near you',
+                'Venues near you',
                 fontSize: 22,
                 color: theme.textColor,
               ),
             ),
-            // The way out for somebody whose area has nothing they
-            // want. Next to the heading rather than under the pills,
-            // where it would read as a seventh group.
             TextButton(
-              onPressed: () => openClubCreator(context),
+              // The Map destination, by name. A bare 2 here is exactly
+              // what sent "Find Events" to the map once before — see
+              // BottomNavProvider.
+              onPressed: () => context.read<BottomNavProvider>().setIndex(
+                BottomNavProvider.discover,
+              ),
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               child: Text(
-                'Start a group',
+                'All venues',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
@@ -574,114 +580,121 @@ class YourWeekPanelState extends State<YourWeekPanel> {
         ),
         const SizedBox(height: 10),
 
-        // Two to a row wherever two will go.
-        //
-        // A Wrap gives each child as much width as it asks for, and a
-        // pill asks for its whole name — so with real group names
-        // ("North East Supercar Owners") almost every pill claimed the
-        // full row and the section became a column with half the page
-        // empty beside it. Capping each at half the row means any two
-        // pills fit together, so the wrap pairs them off and only a
-        // leftover odd one sits alone.
-        LayoutBuilder(
-          builder: (context, constraints) {
-            const gap = 10.0;
-            final half = (constraints.maxWidth - gap) / 2;
-
-            return Wrap(
-              spacing: gap,
-              runSpacing: gap,
-              children: [
-                for (final group in _groups)
-                  _groupPill(theme, group, maxWidth: half),
-              ],
-            );
-          },
+        SizedBox(
+          height: _venueCardHeight,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            // The panel already pads its sides, and a horizontal list
+            // inside that padding cannot let a card run to the edge. The
+            // padding is cancelled here and re-applied per card instead,
+            // so the row scrolls edge to edge and the last card is not
+            // stranded in a gutter.
+            padding: EdgeInsets.zero,
+            clipBehavior: Clip.none,
+            itemCount: _venues.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, i) => _venueCard(theme, _venues[i]),
+          ),
         ),
       ],
     );
   }
 
-  /// One group: its name, and how many are in it.
+  /// Image, name, where it is and how far.
   ///
-  /// [maxWidth] is the widest it may be — half the row, so a pair
-  /// always fits. A short name still makes a short pill; only a long
-  /// one is held to it, and ellipsised.
-  Widget _groupPill(
-    ThemeProvider theme,
-    Map<String, dynamic> group, {
-    required double maxWidth,
-  }) {
-    final title = '${group['title'] ?? ''}'.trim();
-    if (title.isEmpty) return const SizedBox.shrink();
+  /// Height is fixed because a horizontal ListView has no other way to
+  /// size itself, so the parts have to add up: 112 of photo, 12 of
+  /// padding, the two lines of text, and 12 again underneath.
+  static const double _venueCardWidth = 216;
+  static const double _venueCardHeight = 180;
 
-    final members = (group['member_count'] as num?)?.toInt() ?? 0;
+  Widget _venueCard(ThemeProvider theme, Venue venue) {
+    final place = venue.venueLocation.trim();
+    final miles = venue.distance.round();
 
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxWidth),
+    // "Sherburn in Elmet · 12 mi", or just one of them when that is all
+    // there is. Joined rather than concatenated so a missing place does
+    // not leave a leading separator.
+    final meta = [
+      if (place.isNotEmpty) place,
+      if (miles > 0) '$miles mi',
+    ].join(' · ');
+
+    return SizedBox(
+      width: _venueCardWidth,
       child: Material(
-        color: Colors.transparent,
-        shape: StadiumBorder(side: BorderSide(color: Colors.grey.shade300)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => _openGroup(group),
-          child: Padding(
-            // Tighter than the mock's. At half a phone's width the
-            // padding is competing with the name for the same pixels,
-            // and the name is the part worth reading.
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Flexible, not a fixed cap: it takes what the name
-                // needs up to whatever is left inside the pill, so a
-                // short name shrinks the pill and a long one
-                // ellipsises instead of overflowing it.
-                Flexible(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w700,
-                      color: theme.textColor,
+          onTap: () => Navigator.pushNamed(
+            context,
+            AppRoutes.venueDetails,
+            arguments: {'venueId': venue.id},
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 112,
+                width: double.infinity,
+                child: venue.coverImage.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: venue.coverImage,
+                        fit: BoxFit.cover,
+                        placeholder: (_, _) =>
+                            Container(color: const Color(0xFFEFEFEF)),
+                        errorWidget: (_, _, _) => _venuePlaceholder(),
+                      )
+                    : _venuePlaceholder(),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      venue.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                        color: Color(0xFF111111),
+                      ),
                     ),
-                  ),
+                    if (meta.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        meta,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF8A8A8A),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                // Only when there is somebody in it. "0" next to a
-                // name is a worse advertisement than no number at all.
-                //
-                // Never squeezed: the count is three characters and
-                // the name gives way first, so this sits outside the
-                // Flexible above.
-                if (members > 0) ...[
-                  const SizedBox(width: 7),
-                  Text(
-                    '$members',
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  void _openGroup(Map<String, dynamic> group) {
-    final id = group['ID'] ?? group['id'];
-    if (id == null) return;
-
-    Navigator.pushNamed(
-      context,
-      AppRoutes.clubDetail,
-      arguments: {'clubId': id},
+  Widget _venuePlaceholder() {
+    return Container(
+      color: const Color(0xFFEFEFEF),
+      child: Icon(
+        Icons.place_outlined,
+        size: 26,
+        color: Colors.grey.shade400,
+      ),
     );
   }
 
@@ -802,19 +815,51 @@ class YourWeekPanelState extends State<YourWeekPanel> {
   ///
   /// Six, because they are pills on a wrap: more than that is a
   /// paragraph of chips, and the last row ends up a ragged orphan.
-  Future<List<Map<String, dynamic>>> _loadGroups() async {
+  /// How many venues to look at before picking the nearest few.
+  ///
+  /// Same reasoning as [_eventSearchWindow]: the server does not order by
+  /// distance, so the nearest one is not necessarily the first one back.
+  static const int _venueSearchWindow = 40;
+
+  /// How many end up on screen.
+  static const int _venueCount = 6;
+
+  /// The nearest venues in the user's country.
+  ///
+  /// Asked for NATIONALLY and then sorted here, rather than asked for
+  /// within a radius. [_loadEvents] has the same note and it was learned
+  /// the same way: a radius left everybody outside a city looking at an
+  /// empty section, which says "there are no venues" when it means
+  /// "none within 25 miles". Country-wide always has something in it,
+  /// and sorting by distance keeps the section honest about being "near
+  /// you".
+  ///
+  /// 'national' is a 2000-mile radius server-side rather than no radius
+  /// at all — see dl_radius_for_location(). That covers the UK many
+  /// times over and clips the United States, so a user in Las Vegas
+  /// still cannot see the east coast. Fine for the nearest six, and the
+  /// same cap this section would hit if it ever wanted the furthest.
+  Future<List<Venue>> _loadVenues() async {
     try {
-      final result = await ClubApiService.fetchClubs(
-        location: 'near-me',
-        perPage: 6,
+      final result = await VenueApiService.getTrendingVenues(
+        page: 1,
+        limit: _venueSearchWindow,
+        location: 'national',
       );
 
-      return (result ?? const [])
-          .whereType<Map>()
-          .map((c) => Map<String, dynamic>.from(c))
+      if (result == null || result['data'] == null) return const [];
+
+      final venues = VenuesResponse.fromJson(result).data
+          // A venue with no distance cannot be placed in a list whose
+          // whole claim is proximity, and sorts to the front as 0.
+          .where((venue) => venue.distance > 0)
           .toList();
+
+      venues.sort((a, b) => a.distance.compareTo(b.distance));
+
+      return venues.take(_venueCount).toList();
     } catch (e) {
-      debugPrint('[YourWeek] groups failed: $e');
+      debugPrint('[YourWeek] venues failed: $e');
       return const [];
     }
   }
@@ -1000,9 +1045,9 @@ class YourWeekPanelState extends State<YourWeekPanel> {
                 for (final spot in _spots) _spotRow(theme, spot),
               ],
 
-              if (_groups.isNotEmpty) ...[
+              if (_venues.isNotEmpty) ...[
                 const SizedBox(height: 28),
-                _nearYou(theme),
+                _venuesNearYou(theme),
               ],
 
               const SizedBox(height: 14),
@@ -1487,7 +1532,7 @@ class YourWeekPanelState extends State<YourWeekPanel> {
           children: [
             Expanded(
               child: DlHeading(
-                'Events happening soon',
+                'Upcoming events',
                 fontSize: 22,
                 color: theme.textColor,
               ),

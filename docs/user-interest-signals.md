@@ -5,8 +5,15 @@ something about what they are interested in, where that data lives
 today, and what it would take to turn it into a usable interest
 profile.
 
-**Nothing here is built.** This is a survey and a proposal, written so
-the decisions can be made before any of it is coded.
+**The tables are now built, and still empty.** See
+`php-api/sql/activity-log.sql` — four tables covering what somebody
+did, who we showed it to, what they did about it, and whether they
+want to be shown it at all. Nothing writes to them yet: they are
+deployed dark so the shapes can be tried before anything in the
+request path changes.
+
+The survey below is what led to them, and the open questions in §5 are
+still open.
 
 The point of an interest profile is to answer questions the app cannot
 answer now:
@@ -134,11 +141,20 @@ designed for deduplication rather than for analysis. But it is real,
 it has dates, and it is the single best existing source for "what has
 this user been doing and when".
 
-**Decision to make:** extend the ledger with non-paying verbs, or keep
-points and signals as separate concerns and write a new table. My
-inclination is a new table — the ledger's uniqueness constraint
-(one award per user/rule/subject) is exactly wrong for signals, where
-the tenth time somebody likes a Porsche is the whole point.
+**Decided: a new table.** `ce_user_activity`, in
+`php-api/sql/activity-log.sql`. The ledger's unique key on
+(user_id, rule, subject_key) exists to make a thing pay ONCE, which is
+the opposite of what a behaviour log wants — the tenth time somebody
+likes a Porsche is the whole point.
+
+The ledger keeps its job as an audit of money. It is also still the
+only real timestamped history of the paying verbs, so it remains the
+best source for a backfill if one is ever wanted.
+
+One idea from the ledger was carried across: a nullable `dedupe_key`
+with a unique index over it. NULL means log every occurrence, which is
+the default; a value means "this exact thing, once", for actions that
+can be repeated by accident rather than by intent.
 
 ---
 

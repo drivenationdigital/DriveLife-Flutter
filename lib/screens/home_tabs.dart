@@ -1099,7 +1099,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     Widget svg(String asset, bool selected) => iconSvg(
       asset,
       theme,
-      size: 20,
+      size: 24,
       isActive: selected,
       alwaysActive: selected,
     );

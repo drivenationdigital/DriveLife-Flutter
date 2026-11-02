@@ -1,213 +1,213 @@
 import 'package:flutter/material.dart';
 
+import 'policy_modal.dart';
+
+// GENERATED FILE - do not edit by hand. Source: src/privacy_content.py
+
 class PrivacyModal extends StatelessWidget {
-  const PrivacyModal({Key? key}) : super(key: key);
+  const PrivacyModal({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.9,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
-            ),
-          ),
-          child: Column(
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Privacy Policy',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(),
-              // Content
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.all(20),
-                  child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'This Privacy Policy describes Our policies and procedures on the collection, use and disclosure of Your information when You use the Service and tells You about Your privacy rights and how the law protects You.',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'We use Your Personal data to provide and improve the Service. By using the Service, You agree to the collection and use of information in accordance with this Privacy Policy.',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 20),
-                      Text(
-                        'INTERPRETATION AND DEFINITIONS',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'The words of which the initial letter is capitalized have meanings defined under the following conditions. The following definitions shall have the same meaning regardless of whether they appear in singular or in plural.',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 20),
-                      Text(
-                        'DEFINITIONS',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        '• Account: means a unique account created for You to access our Service or parts of our Service.',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        '• Company: (referred to as either "CarEvents.com", "the Company", "We", "Us" or "Our" in this Agreement) refers to Car Events Ltd, The Motorist Lennerton Lane, Sherburn In Elmet, Leeds, England, LS25 6JE.',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        '• Personal Data: is any information that relates to an identified or identifiable individual.',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        '• Service: refers to the Website.',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 20),
-                      Text(
-                        'TYPES OF DATA COLLECTED',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'Personal Data',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'While using Our Service, We may ask You to provide Us with certain personally identifiable information that can be used to contact or identify You. Personally identifiable information may include, but is not limited to:',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        '• Email address\n• First name and last name\n• Address, State, Province, ZIP/Postal code, City\n• Usage Data',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 20),
-                      Text(
-                        'USE OF YOUR PERSONAL DATA',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'The Company may use Personal Data for the following purposes:',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        '• To provide and maintain our Service\n• To manage Your Account\n• For the performance of a contract\n• To contact You\n• To manage Your requests',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 20),
-                      Text(
-                        'SECURITY OF YOUR PERSONAL DATA',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'The security of Your Personal Data is important to Us, but remember that no method of transmission over the Internet, or method of electronic storage is 100% secure. While We strive to use commercially acceptable means to protect Your Personal Data, We cannot guarantee its absolute security.',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 20),
-                      Text(
-                        'CHILDREN\'S PRIVACY',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'Our Service does not address anyone under the age of 13. We do not knowingly collect personally identifiable information from anyone under the age of 13.',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 20),
-                      Text(
-                        'CONTACT US',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'If you have any questions about this Privacy Policy, You can contact us by email at: info@CarEvents.com',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      SizedBox(height: 20),
-                      Text(
-                        'For the complete Privacy Policy, please visit our website.',
-                        style: TextStyle(
-                          height: 1.5,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+    return const PolicyModal(
+      title: 'Privacy & Cookie Notice',
+      intro: privacyIntro,
+      sections: privacySections,
     );
   }
 }
+
+const List<String> privacyIntro = [
+  'This Privacy & Cookie Notice explains how the DriveLife Group collects, uses and shares your personal data when you use CarEvents.com, the DriveLife App, the DriveLife Store and related services (together, the "Services"), and the rights you have over that data.',
+  'DriveLife is a community platform, so some of your information is designed to be seen by other users. Section 7 sets out exactly what is visible, to whom, and how you can control it. Section 5A explains how your activity in the app is shared as updates, and section 5C explains how we keep messaging safe.',
+  'This notice applies wherever you are in the world. Sections 15.1 to 15.3 contain additional information for users in the United Kingdom and European Union, the United States, and Canada.',
+];
+
+const List<PolicySection> privacySections = [
+  PolicySection('1. WHO WE ARE AND WHO IS RESPONSIBLE FOR YOUR DATA', [
+    '1.1 The Services are operated by the DriveLife Group, three companies registered in England and Wales with their registered office at The Motorist, Lennerton Lane, Sherburn In Elmet, Leeds, LS25 6JE:',
+    '• DriveLife Group Ltd (company number 16737487), the parent company of the group;',
+    '• DriveLife Ltd (company number 12656395), which operates the DriveLife App and the DriveLife Store; and',
+    '• Car Events Ltd (company number 12698619), which operates CarEvents.com, event listings and ticketing.',
+    '1.2 Because you use one account across all of the Services and the three companies share the same systems, they act as joint controllers of your personal data. They have an arrangement in place that sets out their respective responsibilities. In this notice, "DriveLife Group", "we", "us" and "our" refers to the three companies together.',
+    '1.3 You can contact us about anything in this notice, and exercise any of your rights against any of the three companies, through a single point of contact: info@drive-life.com. We have not appointed a Data Protection Officer.',
+    '1.4 If you are unhappy with how we have handled your data you can complain to the UK Information Commissioner\'s Office at ico.org.uk/make-a-complaint or on 0303 123 1113, or to the supervisory authority in your own country. We would appreciate the chance to resolve your concern first.',
+  ]),
+  PolicySection('2. WHO THIS NOTICE APPLIES TO', [
+    '2.1 This notice applies to everyone who visits or uses CarEvents.com (including its UK and USA editions), the DriveLife App, or the DriveLife Store, wherever they are located.',
+    '2.2 One account works across all of the Services. Your profile, garage, saved events, tickets, content and settings are the same whichever you use, and this notice applies to all of them.',
+    '2.3 Age limits. You must be at least 13 to browse the Services, at least 16 to register an account, post content or buy tickets, and at least 18 to create or manage event listings, sell tickets or operate a club or group on behalf of an organisation. We do not knowingly collect personal data from anyone under 13; if you believe we have, contact us and we will delete it.',
+    '2.4 Users aged 16 and 17. If you tell us you are under 18, we apply protective defaults to your account: activity sharing, personalised recommendations, Vehicle Tagging and marketing are switched off, your profile is not suggested to other users, and we do not use your data for advertising measurement. These defaults reflect the UK Age Appropriate Design Code. If you would like any of them turned on, email info@drive-life.com from the address on your account.',
+  ]),
+  PolicySection('3. INFORMATION WE COLLECT', [
+    'We collect the following types of information. You provide most of it directly; some is generated as you use the Services.',
+    '• Account details: your name, email address, username, encrypted password, date of birth or confirmation of age, and your phone number if you choose to add it.',
+    '• Profile information: profile photo, bio, the town or region you choose to display, the interests you select, social handles and links.',
+    '• Garage and vehicle information: the make, model, year, colour, specification, modifications and photos of vehicles you add to your garage, whether you currently own them, and, if you choose to enter it, the registration number (see section 13A on Vehicle Tagging).',
+    '• Content: photos, videos, captions, posts, comments, reactions, group and club posts, and anything else you publish through the Services.',
+    '• Activity information: a record of the actions you take within the Services, with the date and time, such as adding or updating a vehicle, posting, joining or leaving a group, following another user, saving an event or marking that you attended one. Section 5A explains how this is used and shared.',
+    '• Messages: the content of direct messages and group chats you send and receive, and the safety classifications described in section 5C.',
+    '• Event information (organisers): event submissions, organiser and venue details, images, descriptions, dates and ticket allocations.',
+    '• Vehicle registration plates read from photos uploaded to the DriveLife App (see section 13A).',
+    '• Marketing preferences: your newsletter and notification choices and our communication history with you.',
+    '• Location information: your approximate location derived from your IP address, and your precise device location only if you grant the App location permission (used for the discover map and to show events, venues and businesses near you). You can withdraw this permission in your device settings at any time.',
+    '• Purchase information: order IDs, items, delivery address, booking fees and transaction status for DriveLife Store orders, tickets and memberships. Ticket payments are handled by the organiser\'s payment provider (Stripe, Square, Mollie or PayPal); Store payments by our payment provider; memberships by the Apple App Store or Google Play. We never store full card numbers.',
+    '• Technical and device data: IP address, browser type, device type and identifiers, operating system, app version, language, push notification token, pages or screens viewed, session duration and referring pages.',
+    '• Communications: messages or forms you send us, such as support requests, abuse reports, survey responses and competition entries.',
+    '• Website statistics: visit counts and traffic sources collected by Piwik PRO without cookies and without identifying you.',
+    '• App analytics: how the DriveLife App is used (screens viewed, features used, session length, app version and device type), collected by Piwik PRO on our behalf. The App does not use advertising SDKs or crash-reporting tools.',
+    '• Website analytics: usage data collected by Google Analytics, only with your consent.',
+    '• Website advertising measurement: pages viewed and actions taken, collected by the Meta Pixel, only with your consent (see section 14).',
+    '• Information from others: the information shared with us if you sign in with Apple or Google; subscription status from the Apple App Store or Google Play; and attendance information from event organisers or venues where you have registered for an event.',
+    '3.1 Device permissions (DriveLife App). The App may ask for access to your camera, photo library, notifications and location services to support photo uploads, scanning, event discovery and location-based features. You can change these permissions in your device settings at any time; disabling them may stop some features working.',
+  ]),
+  PolicySection('4. HOW WE COLLECT INFORMATION', [
+    '• Directly from you, when you register, complete your profile, add vehicles, post, message, buy or contact us.',
+    '• Automatically from your device and your use of the Services, as described in section 3.',
+    '• From partners and public sources when you submit or manage event listings, and from event organisers where you have registered for an event.',
+    '• From sign-in providers and app stores, as described in section 3.',
+  ]),
+  PolicySection('5. HOW WE USE YOUR INFORMATION AND OUR LAWFUL BASIS', [
+    'Data protection law requires us to have a lawful basis for each use of your personal data. The table below sets out how we use your information and the basis we rely on. Where we rely on legitimate interests, we have assessed that our use is reasonable and does not override your rights, and you may object at any time (see section 11).',
+    '• Purpose: Provide and maintain the Services. Examples: Account management, profile, garage, posts, groups, messaging, map, event discovery, saved events, tickets. Lawful basis: Contract.',
+    '• Purpose: Operate the DriveLife ecosystem. Examples: Synchronising your account, profile and content between CarEvents.com and the DriveLife App. Lawful basis: Contract / Legitimate interests.',
+    '• Purpose: Display your profile, garage, content and activity to other users. Examples: Showing your garage on your profile; showing activity updates in groups and feeds in line with your settings (section 5A). Lawful basis: Legitimate interests (operating a community platform), supported by your controls.',
+    '• Purpose: Display public event content. Examples: Publishing event listings, venue and business pages, and show galleries. Lawful basis: Legitimate interests.',
+    '• Purpose: Personalisation and recommendations. Examples: Ordering your feed; suggesting groups, events, venues, businesses and users based on the interests you select and your activity (section 5B). Lawful basis: Legitimate interests; you can turn personalisation off.',
+    '• Purpose: Messaging safety. Examples: Automated scanning of messages for safeguarding and abuse (section 5C). Lawful basis: Legitimate interests (protecting users) / Legal obligation (online safety law).',
+    '• Purpose: Vehicle Tagging (DriveLife App). Examples: Reading registration plates in uploaded photos and offering matches to owners who switch on Vehicle Tagging (section 13A). Lawful basis: Legitimate interests / Consent (Vehicle Tagging setting).',
+    '• Purpose: DriveLife Store orders. Examples: Processing, fulfilling and delivering orders; handling returns. Lawful basis: Contract / Legal obligation (tax and accounting).',
+    '• Purpose: Memberships. Examples: Providing membership benefits; verifying subscription status with Apple or Google. Lawful basis: Contract.',
+    '• Purpose: Ticketing. Examples: Passing order details to the organiser; sending confirmations and e-tickets. Lawful basis: Contract.',
+    '• Purpose: Service communications. Examples: Confirmations, security alerts, notices of changes to the Services or these terms. Lawful basis: Contract / Legal obligation.',
+    '• Purpose: Marketing communications. Examples: Email and push updates about events, products, offers and DriveLife news. Lawful basis: Consent, or soft opt-in for existing customers under PECR; you can opt out at any time.',
+    '• Purpose: Website visit statistics. Examples: Counting visits and traffic sources with Piwik PRO (cookieless). Lawful basis: Legitimate interests (PECR statistical purposes exception).',
+    '• Purpose: App analytics. Examples: Measuring how the DriveLife App is used with Piwik PRO, to improve it. Lawful basis: Legitimate interests; you can object by email.',
+    '• Purpose: Website analytics. Examples: Measuring site use with Google Analytics. Lawful basis: Consent.',
+    '• Purpose: Advertising measurement. Examples: Measuring and personalising ads with the Meta Pixel. Lawful basis: Consent.',
+    '• Purpose: Improve and secure the Services. Examples: Troubleshooting, fraud and abuse prevention, enforcing our Terms. Lawful basis: Legitimate interests / Legal obligation.',
+    '• Purpose: Customer support. Examples: Responding to queries, reports and requests. Lawful basis: Legitimate interests / Contract.',
+    '• Purpose: Legal and compliance. Examples: Record-keeping, responding to lawful requests, establishing or defending claims. Lawful basis: Legal obligation / Legitimate interests.',
+    '## 5A. ACTIVITY UPDATES: WHAT IS SHARED AND HOW TO CONTROL IT',
+    '5A.1 We keep a record of the actions you take within the Services (your "Activity"), as described in section 3. This record is part of how the Services work: it lets us show you your own history and powers the community features below.',
+    '5A.2 Unless you have opted out, your Activity may be shown to other logged-in users as updates in three places: on your profile; in interest groups and clubs that are relevant to the Activity (for example, adding a 4x4 to your garage may appear as an update in 4x4 groups); and in the feeds of users who have expressed an interest in related topics.',
+    '5A.3 You can opt out at any time. Email info@drive-life.com from the address on your account and tell us whether you want Activity sharing turned off entirely, limited to certain types of Activity, or limited to Activity from a certain date onwards (for example, excluding anything from before this notice was introduced). We will apply your choice across the Services within 5 working days and confirm by email; previously shared updates covered by your choice are removed. We plan to add these controls to the App under Settings > Account settings and privacy, and will tell you when they are available.',
+    '5A.4 Some Activity is never shared with other users or used to generate updates: your direct messages and group chats; what you view, search for or browse; your purchases, tickets and memberships; your precise location; and your support conversations.',
+    '5A.5 If you are under 18, Activity sharing is off by default (see section 2.4).',
+    '## 5B. PERSONALISATION AND AI-GENERATED RECOMMENDATIONS',
+    '5B.1 We use automated systems, including AI models, to personalise what you see: ordering your feed, suggesting groups, events, venues, businesses and other users, and tagging content. Interest matching uses only the interests you have selected in your profile and your Activity within the Services. We do not use information from outside the Services to decide what to show you.',
+    '5B.2 These systems do not make any decision about you that has legal or similarly significant effects. Our lawful basis is legitimate interests. You can object to personalised recommendations at any time by emailing info@drive-life.com; we will switch them off for your account, although some features may then work less well.',
+    '## 5C. MESSAGING SAFETY',
+    '5C.1 Direct messages and group chats are private. We never share their content with other users, organisers, advertisers or partners, and no one at DriveLife Group reads your messages in the ordinary course.',
+    '5C.2 To keep the community safe and to meet our duties under UK online safety law, messages are scanned automatically by an AI system for signs of harm, including harassment, threats, grooming or exploitation, scams, and the sharing of illegal content. The system assigns a safety classification; it does not use the content of your messages for advertising, personalisation or any other purpose.',
+    '5C.3 If a message is flagged as high risk, or is reported to us by a participant, it may be reviewed by a small number of trained staff. Depending on the outcome we may warn, restrict or remove an account, and where the law requires or where someone is at risk of serious harm we may report the matter to law enforcement or a relevant safeguarding body.',
+    '5C.4 Our lawful bases are our legitimate interests in protecting users, and compliance with our legal obligations. Because this processing is essential to running a safe messaging service, it cannot be switched off while messaging is enabled.',
+    '## 5D. EVENT INFORMATION AND ACCURACY',
+    'Event organisers are responsible for the accuracy of their listings, including dates, times, locations, admission rules, capacity and changes. We do not verify every listing, so please check details with the organiser before travelling or attending.',
+  ]),
+  PolicySection('6. WHO WE SHARE INFORMATION WITH', [
+    'We share personal data with the following categories of recipient, only to the extent needed for the purposes in section 5. We do not sell or rent your personal data, and we do not share marketing lists with sponsors or partners.',
+    '• Group companies: DriveLife Group Ltd, DriveLife Ltd and Car Events Ltd share the systems that run the Services, as described in section 1.',
+    '• Other users: as described in section 7.',
+    '• Event organisers: the details needed to fulfil your ticket or manage an event you have registered for, which they use as independent controllers. If you tick the "keep me updated" option at checkout, your name, email address and phone number (if given) are added to that organiser\'s own mailing list (for example in Brevo or Mailchimp), governed by their privacy policy.',
+    '• Payment providers: Stripe, Square, Mollie and PayPal process ticket payments on behalf of organisers; our Store payment provider processes Store orders; all under their own terms and privacy policies.',
+    '• App stores: Apple and Google, for app distribution and billing of memberships.',
+    '• Service providers acting on our instructions: cloud hosting and storage; Cloudflare for site delivery and security; email and push notification delivery; CookieYes for recording cookie choices; Piwik PRO for website statistics and App analytics; support tools; AI safety-classification services used for section 5C; and, for Store orders, print, fulfilment and delivery partners.',
+    '• Analytics and advertising partners: Google (Google Analytics) and Meta (Meta Pixel), only where you have consented through the cookie banner on our website.',
+    '• Professional advisers: lawyers, accountants, auditors and insurers where necessary.',
+    '• Law enforcement, regulators and other authorities: where we are required to by law, or where reasonably necessary to protect the rights, property or safety of DriveLife Group, our users or others, including under section 5C.',
+    '• A buyer or successor: if DriveLife Group, either company or the Services are sold, merged or reorganised. We will tell you before your data becomes subject to a different privacy notice.',
+  ]),
+  PolicySection('7. WHO CAN SEE YOUR INFORMATION', [
+    '• Anyone, without logging in: event listings, venue and business pages, organiser content, and photographs and videos from shows published in our galleries (section 13). Nothing you create as a user is visible without logging in.',
+    '• Other logged-in users: your profile, garage, public posts and, unless you have opted out, your Activity updates. Posts within a group are visible to members of that group. If someone scans your DriveTag or QR code they are taken to your profile, which they can only view once logged in.',
+    '• Group and club administrators: the membership list of their group and the content posted in it.',
+    '• Event organisers and venues: if you register for, save or buy a ticket to an event, the organiser may receive the information needed to manage the event, such as your name and the vehicle you have said you will bring.',
+    '• People you message: your messages and your profile.',
+    '• Never shown to other users: your email address, phone number, date of birth, precise location, purchase and ticket history, membership status, and the content of your messages.',
+  ]),
+  PolicySection('8. INTERNATIONAL TRANSFERS', [
+    '8.1 We are based in the United Kingdom. Your data may be processed in the UK, the European Economic Area, the United States, Canada and other countries where we, our group companies or our service providers operate.',
+    '8.2 Where personal data leaves the UK or EEA we protect it by transferring it only to countries recognised as providing adequate protection, or under approved safeguards such as the UK International Data Transfer Agreement or Addendum, the UK Extension to the EU-US Data Privacy Framework, the EU Standard Contractual Clauses, and contractual and technical controls including encryption. You can ask us for more information about these safeguards.',
+  ]),
+  PolicySection('9. HOW LONG WE KEEP INFORMATION', [
+    '• Data: Account, profile, garage, content and Activity. Retention: While your account is active, then deleted or anonymised within 12 months of closure (we aim to complete deletion requests within 30 days).',
+    '• Data: Messages. Retention: While your account is active; messages you have sent remain visible to recipients until they delete them.',
+    '• Data: Message safety flags and moderation records. Retention: Up to 2 years after the account is closed, or longer where needed to deal with a complaint, investigation or legal matter.',
+    '• Data: Event listings and gallery media. Retention: 12 months after removal or expiry.',
+    '• Data: Registration plates read from photos. Retention: Deleted when the photo is deleted, and in any case after 3 years at most.',
+    '• Data: Website analytics data. Retention: Up to 26 months.',
+    '• Data: Cookie and marketing consent records. Retention: Up to 3 years.',
+    '• Data: Support and other communications. Retention: While necessary for support and audit.',
+    '• Data: Orders, tickets, memberships and transaction records. Retention: As required for accounting and tax, typically 6 to 7 years.',
+    '• Data: Backups. Retention: Copies may remain in routine backups for up to 90 days after deletion.',
+    '• Data: Aggregated statistics that cannot identify you. Retention: Indefinitely.',
+  ]),
+  PolicySection('10. SECURITY', [
+    'We apply technical and organisational measures appropriate to the risk, including secure hosting, encryption in transit, hashed passwords, access controls, monitoring and regular review of our systems. No method of transmission or storage is completely secure, so we cannot guarantee absolute security, but where a breach affects you we will notify you and the relevant regulator where the law requires. Please help by using a strong, unique password and keeping it confidential.',
+  ]),
+  PolicySection('11. YOUR RIGHTS', [
+    'Depending on where you live you have some or all of the following rights. In the UK and EU you have all of them.',
+    '• Access: a copy of the personal data we hold about you.',
+    '• Rectification: correction of inaccurate or incomplete data.',
+    '• Erasure: deletion of your data in certain circumstances, including where it is no longer needed.',
+    '• Restriction: limiting how we use your data in certain circumstances.',
+    '• Objection: to processing based on legitimate interests, including statistics, Activity sharing and personalisation, and to direct marketing at any time.',
+    '• Portability: receiving the data you have provided to us in a portable, machine-readable format.',
+    '• Withdrawal of consent: at any time where consent is our basis, including for analytics and advertising cookies, without affecting processing already carried out.',
+    'Some of these can be exercised directly in the App: you can edit your profile and garage, manage push notifications, and delete your account under Settings > Account settings and privacy. Account deletion applies across CarEvents.com and the App and cannot be undone; tickets you have already bought remain valid contracts with the organiser, so save their details first.',
+    'For everything else, including opting out of Activity sharing, personalised recommendations or marketing, email info@drive-life.com. We will respond within one month (which we may extend by two further months for complex requests, telling you if so) and may need to verify your identity first. We will not charge you unless a request is manifestly unfounded or excessive.',
+  ]),
+  PolicySection('12. PROFILING AND AUTOMATED DECISIONS', [
+    'We analyse account Activity to personalise content and recommendations and to classify messages for safety, as described in sections 5A to 5C. None of these activities produces a decision with legal or similarly significant effects on you. Where an account action is taken following a safety flag, a person is involved in that decision and you can ask for it to be reviewed by contacting us.',
+  ]),
+  PolicySection('13. PHOTOS AND GALLERIES', [
+    '13.1 We may host and publish photographs and videos from Car Events and DriveLife shows and events. These may include vehicles and attendees at public events. To request removal of an image of you or your vehicle, email info@drive-life.com with the URL and details.',
+    '## 13A. VEHICLE TAGGING (DRIVELIFE APP)',
+    '13A.1 If you add a vehicle to your DriveLife garage and switch on Vehicle Tagging, our in-house system can recognise its registration plate in photos uploaded by other users. You are notified of each potential match and can accept or decline it. Nothing happens until you accept: until then the photo is not linked to your profile or vehicle, and the match is not shown to anyone else.',
+    '13A.2 If Vehicle Tagging is off, your vehicle cannot be tagged or matched. It is off by default for users under 18.',
+    '13A.3 Registration plates read from uploaded photos are kept, linked to the photo, even when they do not yet match a user. These records are never shown to anyone, cannot be searched by users, and are used only for matching. They are deleted when the photo is deleted, and in any case after 3 years at most.',
+    '13A.4 We do not use facial recognition. Our lawful basis is legitimate interests, and you can object at any time.',
+    '13A.5 If you do not use DriveLife and do not want your registration matched, email info@drive-life.com with the registration number. We will delete our records of it and block it from future matching.',
+  ]),
+  PolicySection('14. COOKIES AND SIMILAR TECHNOLOGIES', [
+    '14.1 This section applies to our websites. Apart from strictly necessary cookies and cookieless visit statistics, nothing is placed on or read from your device until you click Accept in the cookie banner.',
+    '14.2 The DriveLife App does not use advertising cookies, pixels or crash-reporting tools. The only analytics tool in the App is Piwik PRO, which measures how the App is used on our behalf, as described in section 3. You can object to this by emailing info@drive-life.com.',
+    '14.3 Types of technology we use:',
+    '• Strictly necessary: security, login, forms, checkout and remembering your cookie choice. No consent required.',
+    '• Statistics (Piwik PRO): counts visits and traffic sources without cookies and without identifying you. Falls within the PECR statistical purposes exception. You can object by email.',
+    '• Functional: remembers settings such as your region. Only with consent.',
+    '• Analytics (Google Analytics): measures site use. Only with consent. We use Google Consent Mode, so Google tags do not load until you agree.',
+    '• Advertising (Meta Pixel): with your consent, collects pages viewed, actions taken (such as registering or buying a ticket), IP address, browser and device details, and Meta cookie identifiers. This is sent to Meta Platforms Ireland Ltd and Meta Platforms, Inc., which may link it to your Facebook or Instagram account and use it to measure and show relevant ads.',
+    '• Category: Strictly necessary. Cookie name (example): cookieyes-consent. Purpose: Remembers your cookie choices. Provider: CookieYes. Duration: 12 months.',
+    '• Category: Strictly necessary. Cookie name (example): ce_session. Purpose: Maintains your session and login state. Provider: CarEvents.com. Duration: Session.',
+    '• Category: Strictly necessary. Cookie name (example): csrf_token. Purpose: Protects forms against cross-site request forgery. Provider: CarEvents.com. Duration: Session.',
+    '• Category: Analytics. Cookie name (example): _ga, _ga_<property-id>. Purpose: Distinguishes users and sessions for usage statistics. Provider: Google Analytics. Duration: Up to 24 months.',
+    '• Category: Advertising. Cookie name (example): _fbp, _fbc. Purpose: Identifies browsers for ad measurement and targeting. Provider: Meta. Duration: Up to 3 months.',
+    'Cookie names may vary by implementation and this table is updated periodically.',
+    '14.4 Your choices. Use Accept All, Reject All or Customise in the banner. If you reject or do not respond, no analytics or advertising technologies load. You can change your choice at any time via "Cookie settings" in the site footer. We honour Global Privacy Control (GPC) signals as an opt-out from advertising cookies. You can also manage cookies in your browser and ad preferences in your Meta and Google account settings. Blocking strictly necessary cookies may affect login and other functions.',
+  ]),
+  PolicySection('15. REGIONAL INFORMATION', [
+    '## 15.1 UNITED KINGDOM AND EUROPEAN UNION',
+    'The UK GDPR, the Data Protection Act 2018 and the Privacy and Electronic Communications Regulations apply to UK users; the EU GDPR applies to users in the EEA. You have all of the rights in section 11, including the right to object to processing based on legitimate interests. You may complain to the UK Information Commissioner\'s Office (section 1.4) or to the supervisory authority in your EU member state.',
+    '## 15.2 UNITED STATES',
+    'If you live in California, Virginia, Colorado, Connecticut, Utah, Texas, Oregon or another US state with a comprehensive privacy law, the following additional information applies.',
+    '• Categories of personal information we collect: identifiers (name, email, account ID, IP address, device identifiers); commercial information (orders, tickets, memberships); internet or network activity (pages and screens viewed, interactions); approximate geolocation, and precise geolocation only in the App with your permission; vehicle registration numbers; photos and videos; user content and messages; limited professional information for organisers; and inferences drawn from your interests and Activity for personalisation. We do not collect biometric information or sensitive personal information such as racial or health data, and we do not use facial recognition.',
+    '• Sources: you; automatic collection from your device; sign-in providers and app stores; event organisers; and our service and analytics providers.',
+    '• Purposes: as set out in section 5.',
+    '• Disclosures: as set out in section 6. Use of the Meta Pixel on our website may count as "sharing" for cross-context behavioural advertising under California law; it runs only after you opt in. We do not sell personal information for money.',
+    '• Your rights: to know and access the personal information we hold; to delete it; to correct it; to opt out of the sale or sharing of personal information and of targeted advertising; to data portability; and to appeal a decision we make about a request. We will not discriminate against you for exercising these rights.',
+    '• How to exercise them: use the controls in the App or the "Cookie settings" link in the website footer; email info@drive-life.com with the subject "Do Not Sell or Share My Personal Information" or the right you wish to exercise; or use an authorised agent, who must provide written proof of authority. We honour Global Privacy Control signals as an opt-out for that browser or device.',
+    '## 15.3 CANADA',
+    'We handle the personal information of Canadian users under the Personal Information Protection and Electronic Documents Act (PIPEDA) and applicable provincial laws. You may request access to and correction of your personal information and withdraw consent, subject to legal and contractual restrictions, by contacting info@drive-life.com. You may also contact the Office of the Privacy Commissioner of Canada at priv.gc.ca. Where required, Quebec users receive French-language versions of our documents.',
+  ]),
+  PolicySection('16. LINKS TO OTHER WEBSITES', [
+    'The Services may link to websites and services we do not operate, including organiser, venue and business websites and social platforms. We are not responsible for their privacy practices and encourage you to read their policies.',
+  ]),
+  PolicySection('17. CHANGES TO THIS NOTICE', [
+    'We may update this notice to reflect changes in law or in how we operate. If we make a significant change, particularly to what we collect or how it is shared with other users, we will tell you through the Services or by email before the change takes effect and, where appropriate, remind you how to opt out. The current version is always available at carevents.com/uk/privacy-policy/ and in the App.',
+  ]),
+  PolicySection('18. CONTACT US', [
+    'DriveLife Group Ltd, DriveLife Ltd and Car Events Ltd\nThe Motorist, Lennerton Lane, Sherburn In Elmet, Leeds, LS25 6JE, United Kingdom\nEmail: info@drive-life.com\nPhone: +44 (0)800 488 0 650 (UK) / +1 302 440 3699 (International)',
+  ]),
+];

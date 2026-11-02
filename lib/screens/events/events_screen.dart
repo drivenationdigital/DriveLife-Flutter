@@ -81,7 +81,14 @@ class _EventsScreenState extends State<EventsScreen>
   // Filters
   String? _selectedDate = 'anytime'; // Changed default
   List<String> _selectedCategories = [];
-  String? _selectedLocation = 'near-me'; // Changed default
+  /// National by default. Near-me opened on an empty list for anybody
+  /// outside a city, and on nothing at all until the permission prompt
+  /// was answered.
+  String? _selectedLocation = _defaultLocation;
+
+  /// Where the screen starts. Named so the fallback below can differ
+  /// from it again without the two silently agreeing.
+  static const String _defaultLocation = 'national';
 
   DateTime? _customDateFrom;
   DateTime? _customDateTo;
@@ -137,7 +144,11 @@ class _EventsScreenState extends State<EventsScreen>
       final hasAccess = locationProvider.hasAccess;
       setState(() {
         _showLocationBanner = !hasAccess;
-        _selectedLocation = hasAccess ? 'near-me' : 'national';
+        // The same answer twice today, for two different reasons: it
+        // is the default, and with no permission there is no "here" to
+        // measure from. Written as two expressions so changing the
+        // default does not silently change the no-permission case.
+        _selectedLocation = hasAccess ? _defaultLocation : 'national';
       });
 
       _fetchFeaturedEvents();

@@ -1,4 +1,6 @@
 import 'package:drivelife/api/profile_api.dart';
+import 'package:drivelife/widgets/auth/privacy_modal.dart';
+import 'package:drivelife/widgets/auth/terms_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
@@ -211,6 +213,51 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     }
   }
 
+  /// Both policies open the same way they do at sign-up — the same
+  /// widgets, in the same sheet — so there is one copy of each document
+  /// rather than a second that drifts out of step with it.
+  void _showPolicy(Widget modal) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => modal,
+    );
+  }
+
+  Widget _policyLink({required String label, required VoidCallback onTap}) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(fontSize: 16, color: Colors.black),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: Colors.grey.shade500,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -230,6 +277,42 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Above the delete section, not below it: somebody who has come
+            // here to read a policy should not have to scroll past a red
+            // button to find it, and somebody who has come to delete their
+            // account is not going to be stopped by two extra rows.
+            const Text(
+              'Privacy',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'How we handle your data, and the terms you agreed to when you '
+              'signed up.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade700,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 14),
+            _policyLink(
+              label: 'Privacy Policy',
+              onTap: () => _showPolicy(const PrivacyModal()),
+            ),
+            const SizedBox(height: 8),
+            _policyLink(
+              label: 'Terms & Conditions',
+              onTap: () => _showPolicy(const TermsModal()),
+            ),
+            const SizedBox(height: 32),
+            Divider(color: Colors.grey.shade200, height: 1),
+            const SizedBox(height: 32),
+
             const Text(
               'Delete your account',
               style: TextStyle(

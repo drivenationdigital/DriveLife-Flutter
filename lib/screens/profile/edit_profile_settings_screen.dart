@@ -1,3 +1,4 @@
+import 'package:drivelife/api/test_location_api.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/services/upload_quality_prefs.dart';
@@ -173,7 +174,7 @@ class EditProfileSettingsScreen extends StatelessWidget {
           const SizedBox(height: 8),
           _buildMenuItem(
             context,
-            'Account Settings',
+            'Account Settings and Privacy',
             () => NavigationHelper.navigateTo(
               context,
               const AccountSettingsScreen(),
@@ -192,6 +193,10 @@ class EditProfileSettingsScreen extends StatelessWidget {
               const AppPermissionsScreen(),
             ),
           ),
+          const SizedBox(height: 8),
+          // Draws nothing unless the server says this account is an
+          // administrator, so it costs non-admins one request and no pixels.
+          const _TestLocationTile(),
           const SizedBox(height: 8),
           // ✅ Logout button - properly placed as separate menu item
           _buildMenuItem(
@@ -413,6 +418,190 @@ class _UploadQualityTileState extends State<_UploadQualityTile> {
             activeThumbColor: theme.primaryColor,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Pretend to be in another country.
+///
+/// ADMINS ONLY, and it is the SERVER that decides: this tile renders an empty
+/// box until a fetch comes back saying `available`. Nothing here reads
+/// isAdmin, so revoking admin rights removes the option without a new build.
+///
+/// Why it exists: which events, venues, tracks and clubs somebody sees — and
+/// the point every radius is measured from — all come from their stored
+/// location. There was no way to see what an American user sees from a desk
+/// in Britain, which is how the US event catalogue came to be a narrow strip
+/// through Colorado without anybody noticing.
+///
+/// It does NOT touch the real stored location. That row is written whenever
+/// the phone gets a fix and is read by a dozen features; this is a separate
+/// override the region queries prefer, so "Use my real location" restores it
+/// exactly rather than approximately.
+class _TestLocationTile extends StatefulWidget {
+  const _TestLocationTile();
+
+  @override
+  State<_TestLocationTile> createState() => _TestLocationTileState();
+}
+
+class _TestLocationTileState extends State<_TestLocationTile> {
+  TestLocationState _state = const TestLocationState();
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final state = await TestLocationApi.fetch();
+    if (!mounted) return;
+    setState(() => _state = state);
+  }
+
+  Future<void> _set(String? key) async {
+    setState(() => _saving = true);
+
+    final ok = await TestLocationApi.set(key);
+
+    if (!mounted) return;
+
+    if (!ok) {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not change the test location')),
+      );
+      return;
+    }
+
+    await _load();
+
+    if (!mounted) return;
+
+    setState(() => _saving = false);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          key == null
+              ? 'Back to your real location'
+              : 'Now browsing as if you were there. Reopen Events, Places or '
+                    'Groups to see it.',
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+
+    if (!_state.available) return const SizedBox.shrink();
+
+    final current = _state.current;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.public, size: 17, color: theme.primaryColor),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Browse as another country',
+                  style: TextStyle(fontSize: 16, color: Colors.black),
+                ),
+              ),
+              if (_saving)
+                SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: theme.primaryColor,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Admin only. Changes which events, venues, tracks and groups you '
+            'see, and where distances are measured from. Your real location '
+            'is left alone.',
+            style: TextStyle(
+              fontSize: 12.5,
+              color: Colors.grey.shade600,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _chip(
+                theme,
+                label: 'My real location',
+                selected: current == null,
+                onTap: () => _set(null),
+              ),
+              for (final region in _state.regions)
+                _chip(
+                  theme,
+                  // The site is the part that matters and is not always
+                  // guessable from a city name.
+                  label: '${region.label} · ${region.site}',
+                  selected: current == region.key,
+                  onTap: () => _set(region.key),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(
+    ThemeProvider theme, {
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected
+          ? theme.primaryColor.withValues(alpha: 0.12)
+          : const Color(0xFFF4F4F4),
+      shape: StadiumBorder(
+        side: BorderSide(
+          color: selected ? theme.primaryColor : Colors.transparent,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _saving ? null : onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+              color: selected ? const Color(0xFF6A5520) : Colors.grey.shade800,
+            ),
+          ),
+        ),
       ),
     );
   }

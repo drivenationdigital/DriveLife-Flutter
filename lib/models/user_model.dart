@@ -18,6 +18,15 @@ class User {
   final BillingInfo? billingInfo;
   final bool isAdmin;
 
+  /// Whether the server will serve this person the Activity tab.
+  ///
+  /// Null means the server did not say — an older API, or one without
+  /// the activity files deployed — and the caller falls back to its own
+  /// default. Not defaulted to false here: "we were not told" and "you
+  /// are not allowed" are different answers, and conflating them would
+  /// hide the tab on every server that has not been updated yet.
+  final bool? activityAccess;
+
   User({
     required this.id,
     required this.verified,
@@ -37,6 +46,7 @@ class User {
     this.profileLinks,
     this.billingInfo,
     this.isAdmin = false,
+    this.activityAccess,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -84,6 +94,9 @@ class User {
           ? BillingInfo.fromJson(json['billing_info'])
           : null,
       isAdmin: json['is_admin'] ?? false,
+      activityAccess: json['activity_access'] is bool
+          ? json['activity_access'] as bool
+          : null,
     );
   }
 
@@ -107,6 +120,7 @@ class User {
       'profile_links': profileLinks?.toJson(),
       'billing_info': billingInfo?.toJson(),
       'is_admin': isAdmin,
+      'activity_access': activityAccess,
     };
   }
 
@@ -137,6 +151,7 @@ class User {
     ProfileLinks? profileLinks,
     BillingInfo? billingInfo,
     bool? isAdmin,
+    bool? activityAccess,
   }) {
     return User(
       id: id ?? this.id,
@@ -157,6 +172,7 @@ class User {
       profileLinks: profileLinks ?? this.profileLinks,
       billingInfo: billingInfo ?? this.billingInfo,
       isAdmin: isAdmin ?? this.isAdmin,
+      activityAccess: activityAccess ?? this.activityAccess,
     );
   }
 }

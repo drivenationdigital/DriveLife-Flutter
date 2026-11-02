@@ -1,6 +1,8 @@
+import 'package:drivelife/api/activity_feed_api.dart';
 import 'package:drivelife/api/notifications_api.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/screens/activity/activity_feed_tab.dart';
 import 'package:drivelife/screens/chat/ChatList.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/notifications_screen.dart';
@@ -31,10 +33,46 @@ class MessagesScreen extends StatefulWidget {
 
 class _MessagesScreenState extends State<MessagesScreen>
     with SingleTickerProviderStateMixin {
+  /// Whether this account gets the temporary Activity tab.
+  ///
+  /// Read ONCE, here, and never updated for the life of the screen. A
+  /// TabController's length cannot disagree with the number of children
+  /// in its TabBarView without throwing, so re-reading this on every
+  /// build would mean rebuilding the controller mid-switch and risking
+  /// exactly that. Fixed at construction, it cannot.
+  ///
+  /// The cost is that an admin who switches to a non-admin account
+  /// without leaving Messages still sees the tab until they come back
+  /// to it — at which point the feed says it is unavailable, because the
+  /// server checks too. A stale tab that explains itself is a better
+  /// trade than a crash in the inbox.
+  /// THE SERVER DECIDES, when it has told us.
+  ///
+  /// `activity_access` comes down with the profile and is what the
+  /// server will actually enforce, so flipping DL_ACT_ADMINS_ONLY there
+  /// closes this tab on the next profile fetch — no new build, no
+  /// review. That is the whole reason the field exists.
+  ///
+  /// Null means an older API that does not send it, and only then does
+  /// the compile-time constant get a say.
+  late final bool _showActivity = _resolveActivityAccess();
+
+  bool _resolveActivityAccess() {
+    final user = context.read<AccountManager>().activeUser;
+    final granted = user?.activityAccess;
+
+    if (granted != null) return granted;
+
+    // Not told. Fall back to what this build was compiled to believe.
+    return !kActivityTabAdminsOnly || (user?.isAdmin ?? false);
+  }
+
+  late final int _tabCount = _showActivity ? 3 : 2;
+
   late final TabController _tabs = TabController(
-    length: 2,
+    length: _tabCount,
     vsync: this,
-    initialIndex: widget.initialTab.clamp(0, 1),
+    initialIndex: widget.initialTab.clamp(0, _tabCount - 1),
   );
 
   /// How many unread notifications there are.
@@ -45,6 +83,13 @@ class _MessagesScreenState extends State<MessagesScreen>
   /// stops showing it once the tab has been opened — see [_tabBar].
   int _notificationCount = 0;
   bool _notificationsSeen = false;
+
+  /// How many activity suggestions are waiting.
+  ///
+  /// Only the fact that it is above zero is used. Fetched through a
+  /// count-only call that records nothing — see
+  /// ActivityFeedApi.pendingCount.
+  int _pendingActivity = 0;
 
   /// Held so the compose button can reach into the inbox and put the
   /// cursor in its search field. The picker lives there, behind that
@@ -72,6 +117,8 @@ class _MessagesScreenState extends State<MessagesScreen>
 
     _loadNotificationCount();
 
+    if (_showActivity) _loadPendingActivity();
+
     _tabs.addListener(() {
       // Opening the notifications tab marks the badge spent. The screen
       // itself marks them read on the server; this is only so the number
@@ -80,7 +127,23 @@ class _MessagesScreenState extends State<MessagesScreen>
       if (_tabs.index == 1 && !_notificationsSeen) {
         setState(() => _notificationsSeen = true);
       }
+
+      // Same for Activity: the badge says "there is something here", and
+      // once you are looking at it the badge is arguing with the list in
+      // front of you. The suggestions themselves stay — they are not
+      // read receipts, and they go when they are acted on.
+      if (_tabs.index == 2 && _pendingActivity > 0) {
+        setState(() => _pendingActivity = 0);
+      }
     });
+  }
+
+  Future<void> _loadPendingActivity() async {
+    final count = await ActivityFeedApi.pendingCount();
+
+    if (!mounted) return;
+
+    setState(() => _pendingActivity = count);
   }
 
   Future<void> _loadNotificationCount() async {
@@ -168,6 +231,11 @@ class _MessagesScreenState extends State<MessagesScreen>
             key: ValueKey('notifications-${user?.id ?? 'none'}'),
             embedded: true,
           ),
+
+          // Temporary, administrators only. Keyed by account for the
+          // same reason as the two above.
+          if (_showActivity)
+            ActivityFeedTab(key: ValueKey('activity-${user?.id ?? 'none'}')),
         ],
       ),
     );
@@ -198,6 +266,10 @@ class _MessagesScreenState extends State<MessagesScreen>
               fontSize: 15.5,
               fontWeight: FontWeight.w600,
             ),
+            // Full width, three tabs or two: a scrollable row left
+            // them bunched in the middle with dead space either side,
+            // and a tab you have to scroll to find is a tab nobody
+            // finds. "Notifications" is the long one and it fits.
             tabs: [
               _tab('Inbox', unreadMessages, theme.primaryColor),
               _tab(
@@ -205,6 +277,22 @@ class _MessagesScreenState extends State<MessagesScreen>
                 unreadNotifications,
                 const Color(0xFF9A9A9A),
               ),
+              // A dot rather than a number, and the same sparkle that
+              // sits before "Because you..." on every card — it is the
+              // mark this feature uses for "we worked this out for
+              // you", so it should be the mark that announces there is
+              // some waiting.
+              //
+              // Not a count: the number is a function of how much
+              // activity happens to be logged, which is not something
+              // anybody should read as urgency.
+              if (_showActivity)
+                _tab(
+                  'Activity',
+                  _pendingActivity > 0 ? 1 : 0,
+                  theme.primaryColor,
+                  badgeIcon: Icons.auto_awesome,
+                ),
             ],
           ),
           const Divider(height: 1, thickness: 1, color: Color(0xFFEDEDED)),
@@ -217,7 +305,16 @@ class _MessagesScreenState extends State<MessagesScreen>
   ///
   /// Gold on the inbox, grey on notifications: an unread message is
   /// somebody waiting on a reply, and a notification is not.
-  Widget _tab(String label, int count, Color badge) {
+  ///
+  /// [badgeIcon] replaces the number with a glyph, for a tab where
+  /// "there is something here" is the whole message and the quantity
+  /// would be noise.
+  Widget _tab(
+    String label,
+    int count,
+    Color badge, {
+    IconData? badgeIcon,
+  }) {
     return Tab(
       height: 46,
       child: Row(
@@ -236,15 +333,17 @@ class _MessagesScreenState extends State<MessagesScreen>
                 color: badge,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Text(
-                count > 99 ? '99+' : '$count',
-                style: const TextStyle(
-                  fontSize: 11.5,
-                  height: 1,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
+              child: badgeIcon != null
+                  ? Icon(badgeIcon, size: 12, color: Colors.white)
+                  : Text(
+                      count > 99 ? '99+' : '$count',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        height: 1,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
             ),
           ],
         ],

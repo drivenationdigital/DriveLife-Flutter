@@ -102,7 +102,12 @@ class _VenuesScreenState extends State<VenuesScreen>
   String? _selectedLocation = _defaultDistance;
 
   /// Where both tabs start, and what the location banner falls back from.
-  static const String _defaultDistance = '100-miles';
+  ///
+  /// National, so the list is never empty on open and never waits on a
+  /// permission prompt to fill. A radius is something to narrow TO once
+  /// you can see there is too much, which is the opposite way round from
+  /// opening on 100 miles and wondering where everything went.
+  static const String _defaultDistance = 'national';
   bool _showLocationBanner = false;
 
   List<Map<String, String?>> _banners = [];
@@ -123,8 +128,12 @@ class _VenuesScreenState extends State<VenuesScreen>
       final hasAccess = locationProvider.hasAccess;
       setState(() {
         _showLocationBanner = !hasAccess;
-        // Without permission there is no "here" to measure from, so the
-        // only honest radius is the whole country.
+        // Both branches are National now. Kept as one expression
+        // rather than collapsed, because the reason they agree is a
+        // coincidence of the current default: without permission there
+        // is no "here" to measure from, so National is the only honest
+        // answer, and it stays the right fallback whatever the default
+        // becomes.
         _selectedLocation = hasAccess ? _defaultDistance : 'national';
       });
     });
@@ -1132,10 +1141,13 @@ class _VenuesScreenState extends State<VenuesScreen>
         _onFilterChanged();
       },
       chips: [
+        // National leads: it is the default, and a chip row whose first
+        // chip is not the selected one opens looking like nothing is
+        // selected.
+        const ListingChip(label: 'National', value: 'national'),
         const ListingChip(label: 'Near me', value: 'near-me'),
         const ListingChip(label: '50 miles', value: '50-miles'),
         const ListingChip(label: '100 miles', value: '100-miles'),
-        const ListingChip(label: 'National', value: 'national'),
         // Shows where it is pointed once it is pointed somewhere, because
         // "Custom" tells you a choice was made but not what.
         ListingChip(

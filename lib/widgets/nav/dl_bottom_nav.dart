@@ -27,10 +27,21 @@ class DlBottomNav extends StatelessWidget {
   ///
   /// Set by what has to fit inside the travelling highlight, not picked by
   /// eye. The highlight is [height] minus twice [_inset], and it has to
-  /// clear a 20px icon, a 4px gap and a line of 10.5px text — 37 in all —
-  /// with enough room left that the label is not touching the grey.
+  /// clear the icon, a 4px gap and a line of 10.5px text, with enough room
+  /// left that the label is not touching the grey.
   ///
-  ///   64 - (6 * 2) = 52, and (52 - 37) / 2 = 7.5 above and below.
+  /// The icon went 20 -> 24, which is 4 more to find. It came out of
+  /// [_inset] rather than out of [height]:
+  ///
+  ///   was  64 - (6 * 2) = 52, and (52 - 37) / 2 = 7.5 above and below
+  ///   now  64 - (5 * 2) = 54, and (54 - 41) / 2 = 6.5 above and below
+  ///
+  /// 6.5 is tighter than 7.5 and still clear of the 4.5 that put
+  /// "Account"'s descender on the edge of the pill. Raising [height]
+  /// would have been the cleaner fix and is not safe to do blind:
+  /// nothing outside this file reads it, so every scroll view that keeps
+  /// its last row clear of the bar does so with a number typed by eye,
+  /// and a taller bar would quietly cover them.
   ///
   /// It was 62 with a 7px inset, which left 4.5, and at 4.5 the descender of
   /// a word like "Account" sits all but on the edge of the pill. The icon
@@ -43,7 +54,7 @@ class DlBottomNav extends StatelessWidget {
   static const double height = 64;
 
   /// Inset of the travelling highlight from the bar's own edges.
-  static const double _inset = 6;
+  static const double _inset = 5;
 
   /// Shared by the travelling highlight and the labels it passes under, so
   /// the colour change lands with the pill rather than trailing behind it.
