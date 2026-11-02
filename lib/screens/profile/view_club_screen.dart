@@ -1207,11 +1207,8 @@ class _ClubViewScreenState extends State<ClubViewScreen>
         children: [
           GroupEmptyNote(
             theme: theme,
-            title: 'No vehicles yet',
-            body:
-                'This shows the vehicles owned by the group\u2019s '
-                'members. Nobody here has added a car to their garage '
-                'yet.',
+            title: 'No Vehicles matched yet',
+            body: 'Check back soon for new content.',
           ),
         ],
       );

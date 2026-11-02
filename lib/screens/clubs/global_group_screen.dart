@@ -1,8 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/components/post_card.dart';
 import 'package:drivelife/api/global_groups_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
+import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/widgets/groups/group_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -57,7 +59,7 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
   late final TabController _tabs;
 
   GlobalGroup? _group;
-  List<GlobalGroupPost> _latest = const [];
+  List<Map<String, dynamic>> _latest = const [];
   List<GlobalGroupVehicle> _garages = const [];
   List<GlobalGroupSpot> _spots = const [];
   List<GlobalGroupEvent> _events = const [];
@@ -109,7 +111,7 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
     setState(() {
       _group = group ?? _group;
-      _latest = results[1] as List<GlobalGroupPost>;
+      _latest = results[1] as List<Map<String, dynamic>>;
       _garages = results[2] as List<GlobalGroupVehicle>;
       _spots = results[3] as List<GlobalGroupSpot>;
       _events = results[4] as List<GlobalGroupEvent>;
@@ -121,6 +123,30 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
       // through any later reload.
       if (group != null) _joinedOverride = null;
     });
+  }
+
+  /// Open the composer with this group already attached.
+  ///
+  /// The composer takes an association as three strings and carries
+  /// them through untouched, so a group needed no special case there —
+  /// only a type the server knows, which is 'group'.
+  ///
+  /// Reloads on return: the post is written into the group's activity
+  /// index at creation, so Latest has something new to show as soon as
+  /// the upload finishes.
+  Future<void> _composeToGroup(GlobalGroup group) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => CreatePostScreen(
+          associationId: '${group.id}',
+          associationType: 'group',
+          associationLabel: group.title,
+        ),
+      ),
+    );
+
+    if (mounted) await _load();
   }
 
   void _notYet(String what) {
@@ -498,19 +524,35 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
             GroupEmptyNote(
               theme: theme,
               title: 'No activity yet',
-              body:
-                  'Posts and spots are gathered by a background pass, which '
-                  'has not run for this group. That is not the same as '
-                  'nothing matching it.',
+              body: 'Check back soon for new content.',
             )
           else
-            for (final post in _latest) _postCard(theme, post),
+            // The same widget a club feed uses. A group post and a club
+            // post are the same thing presented the same way, and the
+            // hand-rolled card this replaces had no caption, no
+            // carousel, no comments and no like button — just a
+            // picture that opened the post.
+            for (final post in _latest)
+              PostCard(
+                key: ValueKey(post['id']),
+                post: post,
+                onTapProfile: () {},
+                onLikeChanged: (isLiked) {
+                  setState(() {
+                    post['is_liked'] = isLiked;
+                    post['likes_count'] =
+                        ((post['likes_count'] as int?) ?? 0) +
+                        (isLiked ? 1 : -1);
+                  });
+                },
+                onDelete: _load,
+              ),
         ],
       ),
     );
   }
 
-  /// The composer row. Inert, like the Joined pill.
+  /// The composer row. Live.
   Widget _composer(ThemeProvider theme, GlobalGroup group) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
@@ -538,14 +580,14 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
             const SizedBox(width: 11),
             Expanded(
               child: Text(
-                'Post to ${group.title}...',
+                'Post to ${group.title}…',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 15.5, color: theme.subtextColor),
               ),
             ),
             FilledButton.icon(
-              onPressed: () => _notYet('Posting to a group'),
+              onPressed: () => _composeToGroup(group),
               icon: const Icon(Icons.add, size: 19),
               label: const Text('Post'),
               style: FilledButton.styleFrom(
@@ -617,144 +659,6 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
     );
   }
 
-  Widget _postCard(ThemeProvider theme, GlobalGroupPost post) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          // Only 6 at the bottom: the author row sits close to the
-          // photograph it belongs to, and 12 read as a gap between two
-          // unrelated things rather than a header on a card.
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-          child: Row(
-            children: [
-              GroupAvatar(url: post.user?.avatar, radius: 21, theme: theme),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      post.user?.shortName ?? 'Someone',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: theme.textColor,
-                      ),
-                    ),
-                    Text(
-                      _ago(post.happenedAt),
-                      style: TextStyle(fontSize: 14, color: theme.subtextColor),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Why this is in the group. 'member' means somebody
-              // posted it here; anything else means we matched it in,
-              // and claiming otherwise would be a small lie that adds
-              // up across a feed.
-              //
-              // Always "Matched", never "Spotted": the caption's first
-              // line already says a post is a spot, and the same word
-              // twice on one card reads as a bug.
-              if (post.source != 'member')
-                Text(
-                  'Matched',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: theme.subtextColor,
-                  ),
-                ),
-            ],
-          ),
-        ),
-
-        if ((post.image ?? '').isNotEmpty)
-          GestureDetector(
-            onTap: () => _openPost(post.postId),
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: CachedNetworkImage(
-                imageUrl: post.image!,
-                fit: BoxFit.cover,
-                errorWidget: (_, _, _) => Container(color: theme.cardColor),
-              ),
-            ),
-          ),
-
-        if ((post.spottedVehicle ?? '').trim().isNotEmpty ||
-            post.caption.trim().isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // The same first line the main feed shows, from the
-                // same field — see _PostCaptionSection in
-                // components/post_card.dart. Written out rather than
-                // shared because that widget is private to the feed
-                // card and takes a Map; if a third caller appears it
-                // is worth lifting out.
-                if ((post.spottedVehicle ?? '').trim().isNotEmpty)
-                  Text(
-                    '📸 Spotted: ${post.spottedVehicle!.trim()}',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: theme.textColor,
-                    ),
-                  ),
-
-                if (post.caption.trim().isNotEmpty)
-                  Padding(
-                    padding: EdgeInsets.only(
-                      top: (post.spottedVehicle ?? '').trim().isEmpty ? 0 : 4,
-                    ),
-                    child: Text(
-                      post.caption,
-                      style: TextStyle(fontSize: 15, color: theme.textColor),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Row(
-            children: [
-              Icon(
-                post.isLiked ? Icons.favorite : Icons.favorite_border,
-                size: 23,
-                color: post.isLiked ? Colors.red : theme.textColor,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '${post.likes}',
-                style: TextStyle(color: theme.subtextColor),
-              ),
-              const SizedBox(width: 18),
-              Icon(
-                Icons.mode_comment_outlined,
-                size: 21,
-                color: theme.textColor,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '${post.comments}',
-                style: TextStyle(color: theme.subtextColor),
-              ),
-            ],
-          ),
-        ),
-
-        Divider(height: 1, color: theme.dividerColor),
-      ],
-    );
-  }
-
   // ─── Garages ───────────────────────────────────────────────────────
 
   Widget _garagesTab(ThemeProvider theme) {
@@ -771,11 +675,8 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
         children: [
           GroupEmptyNote(
             theme: theme,
-            title: 'No vehicles matched yet',
-            body:
-                'Vehicles are matched by a background pass, which has not '
-                'run for this group. This is not the same as no car '
-                'fitting the rules.',
+            title: 'No Vehicles matched yet',
+            body: 'Check back soon for new content.',
           ),
         ],
       );
@@ -817,11 +718,8 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
         children: [
           GroupEmptyNote(
             theme: theme,
-            title: 'No spots yet',
-            body:
-                'Spots are matched to a group by name, and that matching '
-                'runs in the background pass. It has not run for this '
-                'group.',
+            title: 'No Spots yet',
+            body: 'Check back soon for new content.',
           ),
         ],
       );
@@ -858,12 +756,8 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
         children: [
           GroupEmptyNote(
             theme: theme,
-            title: 'Events are not connected yet',
-            body:
-                'Nothing relates an event to a global group — no field, no '
-                'link table, no rule. An event belongs to a region and a '
-                'site, and a global group belongs to neither, so this is '
-                'a design decision rather than a missing query.',
+            title: 'No Events yet',
+            body: 'Check back soon for new content.',
           ),
         ],
       );
@@ -967,23 +861,6 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
       // string, so an int here would be a type error at the far end.
       arguments: {'garageId': '$garageId'},
     );
-  }
-
-  String _ago(DateTime? when) {
-    if (when == null) return '';
-
-    final diff = DateTime.now().difference(when);
-
-    if (diff.inMinutes < 1) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} minutes ago';
-    if (diff.inHours < 24) {
-      return '${diff.inHours} ${diff.inHours == 1 ? 'hour' : 'hours'} ago';
-    }
-    if (diff.inDays < 7) {
-      return '${diff.inDays} ${diff.inDays == 1 ? 'day' : 'days'} ago';
-    }
-
-    return '${when.day} ${_month(when)}';
   }
 
   String _month(DateTime when) {

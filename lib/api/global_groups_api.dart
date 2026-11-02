@@ -169,21 +169,21 @@ class GlobalGroupsApi {
 
   /// The Latest feed: posts and spots, newest first.
   ///
+  /// Returns RAW POST MAPS, not a model, because the screen renders
+  /// them with the same PostCard a club feed uses — and that widget
+  /// takes the server's row as a Map rather than a typed object. The
+  /// endpoint sends the club shape for exactly this reason.
+  ///
   /// Reads the activity index, so it is empty until the refresh pass
-  /// has run — which is not the same as the group having no activity.
-  static Future<List<GlobalGroupPost>> fetchActivity(
+  /// has run — except for posts made directly to the group, which are
+  /// indexed as they are created.
+  static Future<List<Map<String, dynamic>>> fetchActivity(
     String slug, {
     int page = 1,
     int perPage = 15,
   }) async {
-    final raw = await _list(
-      'groups/$slug/activity',
-      'items',
-      page: page,
-      perPage: perPage,
-    );
-
-    return raw.map(GlobalGroupPost.fromJson).toList();
+    // 'data', the same key the club feed uses.
+    return _list('groups/$slug/activity', 'data', page: page, perPage: perPage);
   }
 
   /// The Spots grid.
