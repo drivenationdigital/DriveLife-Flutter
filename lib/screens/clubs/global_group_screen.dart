@@ -75,9 +75,31 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
   bool _latestLoadingMore = false;
   bool _spotsLoadingMore = false;
 
-  bool get _garagesHasMore => _garages.length < _garageTotal;
-  bool get _latestHasMore => _latest.length < _latestTotal;
-  bool get _spotsHasMore => _spots.length < _spotTotal;
+  /// The last page each tab has FETCHED, which is not the same as how
+  /// much of it is on screen.
+  ///
+  /// These used to be worked out as `items.length ~/ perPage + 1`. That
+  /// holds only while every row the endpoint returns becomes a card, and
+  /// Latest is a feed where plenty do not: an item_type this build does
+  /// not know resolves to nothing, a post already on the page is
+  /// deduped, a gallery that is not live hydrates to nothing. One short
+  /// page and the arithmetic stops advancing - it asks for the page it
+  /// just had, every row of it is already on screen so nothing is
+  /// appended, and it asks again on the next scroll, for ever.
+  int _garagePage = 1;
+  int _latestPage = 1;
+  int _spotPage = 1;
+
+  /// Whether the NEXT page would start before the end of the rows.
+  ///
+  /// In pages, because the totals count rows in the index and a page is a
+  /// window over them. `items.length < total` compared a card count
+  /// against a row count: a group with 1244 activity rows of which any
+  /// one fails to hydrate could never satisfy it, so the skeleton sat at
+  /// the bottom of the list for ever even with every page fetched.
+  bool get _garagesHasMore => _garagePage * _garagesPerPage < _garageTotal;
+  bool get _latestHasMore => _latestPage * _latestPerPage < _latestTotal;
+  bool get _spotsHasMore => _spotPage * _spotsPerPage < _spotTotal;
 
   /// What each tab asks for per page. Matched to the endpoints' own
   /// defaults, and used to work out which page to ask for next.
@@ -139,17 +161,20 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
       _latest = latestPage.items;
       _latestTotal = latestPage.total;
+      _latestPage = 1;
       _latestLoadingMore = false;
       final garagePage =
           results[2] as ({List<GlobalGroupVehicle> items, int total});
 
       _garages = garagePage.items;
       _garageTotal = garagePage.total;
+      _garagePage = 1;
       _garagesLoadingMore = false;
       final spotPage = results[3] as ({List<GlobalGroupSpot> items, int total});
 
       _spots = spotPage.items;
       _spotTotal = spotPage.total;
+      _spotPage = 1;
       _spotsLoadingMore = false;
       _events = results[4] as List<GlobalGroupEvent>;
       _loading = false;
@@ -547,15 +572,22 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
   /// The next page of the feed.
   ///
-  /// Page number derived from what is loaded rather than held in a
-  /// counter, so a pull-to-refresh that resets the list cannot leave a
-  /// stale index behind and skip a page.
+  /// The next page of the feed.
+  ///
+  /// The page number is held in a counter rather than derived from how
+  /// much is on screen. Deriving it was the cheaper-looking option and
+  /// the reason this tab could load for ever: see [_latestPage].
+  ///
+  /// A counter can go stale where a derived number cannot, so the one
+  /// thing it has to do is reset — [_load] puts it back to 1 along with
+  /// the list it counts, so a pull-to-refresh cannot leave it pointing
+  /// past the end.
   Future<void> _loadMoreLatest() async {
     if (_latestLoadingMore || !_latestHasMore) return;
 
     setState(() => _latestLoadingMore = true);
 
-    final next = (_latest.length ~/ _latestPerPage) + 1;
+    final next = _latestPage + 1;
 
     final page = await GlobalGroupsApi.fetchActivity(
       widget.slug,
@@ -568,10 +600,20 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
     setState(() {
       _latestLoadingMore = false;
 
+      // Recorded whether or not anything came back, so a page that
+      // hydrated to nothing is a page we move past rather than one we
+      // ask for again.
+      _latestPage = next;
+
       if (page.items.isEmpty) {
-        // The total said there was more and there was not. Believe what
-        // arrived, rather than asking again on every scroll.
-        _latestTotal = _latest.length;
+        // The total said there was more and there was not - rows
+        // removed between two fetches, or a whole page of them that
+        // hydrated to nothing. Believe what arrived and stop, rather
+        // than asking again on every scroll.
+        //
+        // Clamped to the pages FETCHED, not to _latest.length: hasMore
+        // is now counted in pages, and a card count would not end it.
+        _latestTotal = (next - 1) * _latestPerPage;
         return;
       }
 
@@ -841,7 +883,7 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
     setState(() => _garagesLoadingMore = true);
 
-    final next = (_garages.length ~/ _garagesPerPage) + 1;
+    final next = _garagePage + 1;
 
     final page = await GlobalGroupsApi.fetchVehicles(
       widget.slug,
@@ -853,12 +895,13 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
     setState(() {
       _garagesLoadingMore = false;
+      _garagePage = next;
 
       if (page.items.isEmpty) {
         // Nothing came back when the total said there should be. Trust
         // what arrived over what was promised, rather than asking again
         // on every scroll for the rest of the session.
-        _garageTotal = _garages.length;
+        _garageTotal = (next - 1) * _garagesPerPage;
         return;
       }
 
@@ -945,7 +988,7 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
     setState(() => _spotsLoadingMore = true);
 
-    final next = (_spots.length ~/ _spotsPerPage) + 1;
+    final next = _spotPage + 1;
 
     final page = await GlobalGroupsApi.fetchSpots(
       widget.slug,
@@ -957,9 +1000,10 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
     setState(() {
       _spotsLoadingMore = false;
+      _spotPage = next;
 
       if (page.items.isEmpty) {
-        _spotTotal = _spots.length;
+        _spotTotal = (next - 1) * _spotsPerPage;
         return;
       }
 
