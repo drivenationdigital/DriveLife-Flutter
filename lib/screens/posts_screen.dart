@@ -1,5 +1,6 @@
 import 'package:drivelife/main.dart' show BottomNavProvider;
 import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/widgets/home/home_activity_card.dart';
 import 'package:drivelife/widgets/home/your_week.dart';
 import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
 import 'package:flutter/rendering.dart';
@@ -68,15 +69,16 @@ class PostsScreenState extends State<PostsScreen>
 
   /// The feeds on offer, in the order they appear.
   ///
-  /// [PostTabType.yourWeek] leads, and is not a feed at all — it is the
-  /// standing summary in YourWeekPanel. Posts are in Latest and
-  /// Following, which keep working exactly as they did.
+  /// Your week used to lead this list as a tab of its own. It is not a
+  /// feed — it is the standing summary — and making it a tab put the
+  /// thing a reader wants first behind a pill they had to notice. It is
+  /// now the head of Latest, so the selector is the two feeds it always
+  /// described.
   ///
   /// The selector, the TabController's length and the slivers below all
   /// read this, so none of them can disagree about how many tabs there
   /// are — which is the usual way a hidden tab turns into a crash.
   static const List<PostTabType> _visibleTabs = [
-    PostTabType.yourWeek,
     PostTabType.latest,
     PostTabType.following,
   ];
@@ -96,7 +98,6 @@ class PostsScreenState extends State<PostsScreen>
   final GlobalKey<YourWeekPanelState> _yourWeekPanelKey =
       GlobalKey<YourWeekPanelState>();
 
-  final GlobalKey<_PostsTabState> _yourWeekKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _latestKey = GlobalKey<_PostsTabState>();
   final GlobalKey<_PostsTabState> _followingKey = GlobalKey<_PostsTabState>();
 
@@ -144,18 +145,21 @@ class PostsScreenState extends State<PostsScreen>
 
   /// Reload whichever tab is showing.
   ///
-  /// The ONE place that knows Your week is not a _PostsTab. _activeTab
-  /// resolves a key to a _PostsTabState, so while Your week shows it is
-  /// null and `_activeTab?.refresh()` silently does nothing — which is
-  /// how pull-to-refresh came to complete instantly and reload nothing.
-  /// Both callers go through here so there is no second place to forget.
+  /// Latest is now TWO things in one scroll view — the summary panel and
+  /// the feed below it — and a pull on it has to reload both. Together,
+  /// so the spinner lasts as long as the slower of them rather than
+  /// vanishing when the first finishes.
+  ///
+  /// Both callers go through here, so there is no second place to forget
+  /// that the panel is not part of the feed.
   Future<void> refreshActive() async {
-    if (_visibleTabs[_tabController.index] == PostTabType.yourWeek) {
-      await _yourWeekPanelKey.currentState?.refresh();
-      return;
-    }
+    final showing = _visibleTabs[_tabController.index];
 
-    await _activeTab?.refresh();
+    await Future.wait([
+      if (showing == PostTabType.latest)
+        Future.value(_yourWeekPanelKey.currentState?.refresh()),
+      Future.value(_activeTab?.refresh()),
+    ]);
   }
 
   /// The summary panel, with whatever it needs about the signed-in user.
@@ -190,7 +194,6 @@ class PostsScreenState extends State<PostsScreen>
   GlobalKey<_PostsTabState> _keyFor(PostTabType type) => switch (type) {
     PostTabType.latest => _latestKey,
     PostTabType.following => _followingKey,
-    PostTabType.yourWeek => _yourWeekKey,
   };
 
   GlobalKey<_PostsTabState> _getCurrentTabKey() {
@@ -309,8 +312,17 @@ class PostsScreenState extends State<PostsScreen>
               if (_opened.contains(type))
                 SliverOffstage(
                   offstage: type != active,
-                  sliver: type == PostTabType.yourWeek
-                      ? _yourWeekSliver()
+                  // Your week heads Latest and nothing else. One
+                  // group, so the panel scrolls away with the feed
+                  // under it rather than sitting above as a second
+                  // fixed thing to get past.
+                  sliver: type == PostTabType.latest
+                      ? SliverMainAxisGroup(
+                          slivers: [
+                            _yourWeekSliver(),
+                            _PostsTab(key: _keyFor(type), tabType: type),
+                          ],
+                        )
                       : _PostsTab(key: _keyFor(type), tabType: type),
                 ),
           ],
@@ -320,14 +332,16 @@ class PostsScreenState extends State<PostsScreen>
   }
 }
 
-/// [yourWeek] is NOT a feed. It is the standing summary — your vehicle,
-/// its next reminder, the events near you — and it renders YourWeekPanel
-/// rather than a _PostsTab. It replaced the old curated "Featured" feed,
-/// which shared this slot.
+/// The two feeds.
 ///
-/// [latest] and [following] remain the chronological feeds they always
-/// were, and are the only two that fetch posts.
-enum PostTabType { yourWeek, latest, following }
+/// [latest] is everything, newest first, with the network's activity
+/// merged in and the Your week summary at its head. [following] is posts
+/// from people the viewer chose, and nothing else — no activity, no
+/// summary.
+///
+/// There was a third, [yourWeek], which was not a feed at all. It is now
+/// part of Latest.
+enum PostTabType { latest, following }
 
 /// One feed's worth of posts, as slivers.
 ///
@@ -361,6 +375,33 @@ class _PostsTabState extends State<_PostsTab> {
   bool _isLoading = false;
   bool _hasMore = true;
   bool _isInitialized = false;
+
+  /// How many pages the mixed feed says there are.
+  ///
+  /// Latest can no longer tell whether it has reached the end by counting
+  /// what arrived: a page holds [_limit] POSTS plus however much activity
+  /// fell in the same date range, so `length >= limit` is true on the
+  /// last page as readily as the first and the feed would never stop
+  /// asking.
+  int _totalPages = 0;
+
+  /// Where this page ended, to be sent back as the next page's cursor.
+  ///
+  /// The posts half of the feed pages by offset; the activity half pages
+  /// by date, because a page's date RANGE leaves gaps between adjacent
+  /// posts that no page would ever claim. The server works this out and
+  /// hands it back rather than having the app derive it, so the two
+  /// cannot disagree about where the page ended.
+  String? _nextBefore;
+
+  /// Posts per page. The mixed feed returns more rows than this.
+  static const int _limit = 10;
+
+  /// Whether this feed carries activity cards as well as posts.
+  ///
+  /// Latest only. Following is posts from people the viewer chose and
+  /// should stay exactly that.
+  bool get _isMixed => widget.tabType == PostTabType.latest;
 
   Timer? _scrollDebounce;
 
@@ -434,6 +475,8 @@ class _PostsTabState extends State<_PostsTab> {
     if (refresh) {
       _page = 1;
       _hasMore = true;
+      _nextBefore = null;
+      _totalPages = 0;
       if (widget.tabType == _offersTab) _fetchOffers();
     }
 
@@ -445,21 +488,55 @@ class _PostsTabState extends State<_PostsTab> {
         followingOnly = 1;
         forYou = 0;
         break;
-      // No yourWeek case either. The curated for_you=1 fetch that used
-      // to live here went with the Featured tab; the slot now renders
-      // YourWeekPanel and never reaches this method. The backend
-      // parameter still exists if that feed is ever wanted back.
+      // The curated for_you=1 fetch that used to live here went with
+      // the Featured tab. The backend parameter still exists if that
+      // feed is ever wanted back.
       default:
         followingOnly = 0;
         forYou = 0;
     }
 
     try {
+      if (_isMixed) {
+        final page = await PostsAPI.getHomeFeed(
+          token: token,
+          userId: user.id,
+          page: _page,
+          limit: _limit,
+          before: _nextBefore,
+        );
+
+        if (!mounted) return;
+
+        setState(() {
+          if (refresh) {
+            _posts = page.items;
+          } else {
+            _posts.addAll(page.items);
+          }
+
+          _page++;
+          _totalPages = page.totalPages;
+          _nextBefore = page.nextBefore;
+
+          // In pages, not in rows. An empty page ends it too: the
+          // total can be stale by a page if something was deleted
+          // between two fetches, and a feed that keeps asking for a
+          // page that comes back empty is the skeleton that loads for
+          // ever.
+          _hasMore = page.items.isNotEmpty && _page <= _totalPages;
+          _isLoading = false;
+          _isInitialized = true;
+        });
+
+        return;
+      }
+
       final newPosts = await PostsAPI.getPosts(
         token: token,
         userId: user.id,
         page: _page,
-        limit: 10,
+        limit: _limit,
         followingOnly: followingOnly,
         forYou: forYou,
       );
@@ -473,7 +550,7 @@ class _PostsTabState extends State<_PostsTab> {
           _posts.addAll(newPosts);
         }
         _page++;
-        _hasMore = newPosts.length >= 10;
+        _hasMore = newPosts.length >= _limit;
         _isLoading = false;
         _isInitialized = true;
       });
@@ -637,8 +714,23 @@ class _PostsTabState extends State<_PostsTab> {
 
                 final post = _posts[index];
 
+                // An activity, not a post. Drawn as its own card: a car
+                // going into a garage has no caption, no likes and no
+                // comments, so a PostCard would be mostly empty boxes.
+                if (post is Map && post['feed_kind'] == 'activity') {
+                  return HomeActivityCard(
+                    // Prefixed. An activity id and a post id are both
+                    // small integers from different tables, and two
+                    // widgets with the same key is a crash, not a
+                    // glitch.
+                    key: ValueKey('activity-${post['id']}'),
+                    item: Map<String, dynamic>.from(post),
+                    theme: theme,
+                  );
+                }
+
                 return PostCard(
-                  key: ValueKey(post['id']),
+                  key: ValueKey('post-${post['id']}'),
                   post: post,
                   onTapProfile: () {
                     if (!mounted) return;
@@ -691,8 +783,6 @@ class _PostsTabState extends State<_PostsTab> {
     switch (widget.tabType) {
       case PostTabType.following:
         return 'No posts from people you follow';
-      // No yourWeek case: a _PostsTab is never built for it. That tab
-      // renders YourWeekPanel, which has no posts to be empty of.
       default:
         return 'No posts yet';
     }
@@ -726,7 +816,6 @@ class _CustomTabBar extends StatelessWidget {
   static const Map<PostTabType, String> _labels = {
     PostTabType.latest: 'Latest',
     PostTabType.following: 'Following',
-    PostTabType.yourWeek: 'Your week',
   };
 
   @override

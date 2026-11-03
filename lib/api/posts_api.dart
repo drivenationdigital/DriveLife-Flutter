@@ -5,6 +5,7 @@ import 'package:drivelife/models/tagged_entity.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/services/app_error_logger.dart';
 import 'package:drivelife/services/auth_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -16,6 +17,79 @@ class PostsAPI {
   static String get _baseUrl => AppEnvironment.wordpressBase;
   static const _storage = FlutterSecureStorage();
   static final AuthService _authService = AuthService();
+
+  /// The home feed with the network's activity mixed in, from `app/vtest`.
+  ///
+  /// A different route from [getPosts], not a parameter on it: every
+  /// released build calls `app/v2/get-posts`, and nothing on that route
+  /// changes. Only a build pointing here sees activity cards.
+  ///
+  /// Returns the envelope, not just the rows. The mixed feed needs two
+  /// things [getPosts] throws away:
+  ///
+  ///   - `total_pages`, because a page no longer holds `limit` items. The
+  ///     old `newPosts.length >= limit` test for "is there more" counted
+  ///     posts against a post limit; a page of 10 posts and 6 activities
+  ///     tells you nothing about whether an eleventh post exists.
+  ///   - `next_before`, the date the page ended on. The activity half is
+  ///     paged by cursor rather than offset, so each page picks up exactly
+  ///     where the last stopped — see php-api/endpoints/home-feed.php for
+  ///     why a date range cannot do it.
+  static Future<
+    ({List<dynamic> items, int page, int totalPages, String? nextBefore})
+  >
+  getHomeFeed({
+    required String token,
+    required int userId,
+    int page = 1,
+    int limit = 10,
+    String? before,
+  }) async {
+    const empty = (
+      items: <dynamic>[],
+      page: 1,
+      totalPages: 0,
+      nextBefore: null,
+    );
+
+    try {
+      final uri = Uri.parse('$_baseUrl/wp-json/app/vtest/get-posts').replace(
+        queryParameters: {
+          'user_id': '$userId',
+          'page': '$page',
+          'limit': '$limit',
+          if (before != null && before.isNotEmpty) 'before': before,
+        },
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint('[HomeFeed] failed: ${response.statusCode}');
+        return empty;
+      }
+
+      final data = jsonDecode(response.body);
+
+      if (data is! Map) return empty;
+
+      return (
+        items: List<dynamic>.from(data['data'] ?? const []),
+        page: int.tryParse('${data['page'] ?? page}') ?? page,
+        totalPages: int.tryParse('${data['total_pages'] ?? 0}') ?? 0,
+        nextBefore: data['next_before']?.toString(),
+      );
+    } catch (e) {
+      debugPrint('[HomeFeed] error: $e');
+      return empty;
+    }
+  }
 
   /// [forYou] powers the curated "For You" tab: pass 1 to get the hand-picked
   /// featured posts plus news items, instead of the chronological feed. Items
