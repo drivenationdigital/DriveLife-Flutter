@@ -1,6 +1,7 @@
 import 'package:drivelife/main.dart' show BottomNavProvider;
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/widgets/home/home_activity_card.dart';
+import 'package:drivelife/widgets/nav/dl_bottom_nav.dart';
 import 'package:drivelife/widgets/home/your_week.dart';
 import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
 import 'package:flutter/rendering.dart';
@@ -775,6 +776,25 @@ class _PostsTabState extends State<_PostsTab> {
               addSemanticIndexes: false,
             ),
           ),
+
+        // Room for the floating bottom bar, which sits OVER this feed.
+        //
+        // At the end of the scroll, which is the only place it makes
+        // sense: it used to live at the foot of the Your week panel,
+        // from when that was a tab and was therefore the end of its own
+        // scroll view. Now Your week heads this feed, so that padding
+        // was a gap in the middle of the page and the last post still
+        // ended up under the bar.
+        //
+        // Measured off DlBottomNav rather than typed by eye — its own
+        // documentation notes that nothing outside it reads `height`,
+        // which is why a taller bar would quietly cover things.
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height:
+                DlBottomNav.height + 24 + MediaQuery.paddingOf(context).bottom,
+          ),
+        ),
       ],
     );
   }

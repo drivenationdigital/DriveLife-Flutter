@@ -1005,18 +1005,22 @@ class YourWeekPanelState extends State<YourWeekPanel> {
       child: Padding(
         // Generous at the bottom, for two reasons that compound.
         //
-        // The floating bottom bar sits over this, so the last card ended
-        // underneath it. And the other tabs' slivers are offstage while
-        // this one shows, which means the whole scroll extent is just
-        // the header, the pills and this panel — short content made the
-        // page unscrollable altogether, so the floating header had no
-        // gesture to respond to either.
-        padding: EdgeInsets.fromLTRB(
-          16,
-          18,
-          16,
-          160 + MediaQuery.paddingOf(context).bottom,
-        ),
+        // A plain gap at the foot now, because this panel is no longer
+        // the end of anything.
+        //
+        // It used to carry 160 plus the safe area, for two reasons that
+        // both belonged to Your week being a TAB of its own: the
+        // floating bottom bar sat over its last card, and with the other
+        // tabs offstage this panel WAS the entire scroll extent, so
+        // short content left the page unscrollable and the floating
+        // header with no gesture to respond to.
+        //
+        // It is the head of Latest now, with the feed below it. The feed
+        // is the scroll extent and the feed's last post is what has to
+        // clear the bar — posts_screen pads for that. Keeping 160 here
+        // just put a hand's width of white between the Run a club tile
+        // and the first post.
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
