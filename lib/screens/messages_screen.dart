@@ -58,6 +58,16 @@ class _MessagesScreenState extends State<MessagesScreen>
   late final bool _showActivity = _resolveActivityAccess();
 
   bool _resolveActivityAccess() {
+    // Gone from Messages. The activity feed is moving to the home page,
+    // where it belongs — far more people read that than open the inbox —
+    // and two of it would be two places to keep in step.
+    //
+    // Checked BEFORE activity_access, so the server granting access
+    // cannot reopen a tab that has been taken out of the design. The
+    // endpoints are untouched and still answer; the Activity tab in
+    // Messages simply is not built any more.
+    if (!kActivityTabInMessages) return false;
+
     final user = context.read<AccountManager>().activeUser;
     final granted = user?.activityAccess;
 

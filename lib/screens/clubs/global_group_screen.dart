@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/components/post_card.dart';
 import 'package:drivelife/api/global_groups_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
@@ -116,6 +117,19 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
   /// request.
   bool _joining = false;
 
+  /// Uploads this screen has already reloaded for.
+  ///
+  /// Seeded on the first look with whatever is ALREADY finished, so
+  /// opening a group while an unrelated upload sits completed does not
+  /// reload the feed on arrival. Only an upload that completes while
+  /// this screen is mounted is news.
+  final Set<String> _seenUploads = {};
+  bool _uploadsSeeded = false;
+
+  /// One reload per burst. Several photos finishing together would
+  /// otherwise each ask for the same page.
+  bool _reloadScheduled = false;
+
   /// The membership state while the server catches up, or null to use
   /// whatever the group last said. Cleared by the reload that follows
   /// a successful join.
@@ -193,9 +207,12 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
   /// them through untouched, so a group needed no special case there —
   /// only a type the server knows, which is 'group'.
   ///
-  /// Reloads on return: the post is written into the group's activity
-  /// index at creation, so Latest has something new to show as soon as
-  /// the upload finishes.
+  /// Does NOT reload on return. [_checkUploads] does that, when the
+  /// upload finishes — which is the only moment the post exists to be
+  /// fetched. Awaiting this push and reloading after it looked right and
+  /// fired immediately: tapping Post replaces the composer with the
+  /// tagging screen, and replacing a route completes the replaced
+  /// route's future there and then.
   Future<void> _composeToGroup(GlobalGroup group) async {
     await Navigator.push(
       context,
@@ -207,8 +224,46 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
         ),
       ),
     );
+  }
 
-    if (mounted) await _load();
+  /// Reload when a post finishes uploading.
+  ///
+  /// This, and not the composer closing, is when the post exists. The
+  /// composer pushReplacement()s to the tagging screen, which completes
+  /// the awaited push straight away, and the upload itself runs on in
+  /// UploadPostProvider after both are gone — so a reload tied to either
+  /// of those ran before there was anything new to fetch.
+  ///
+  /// Delayed, like the home feed's: the upload reports completed when
+  /// the last file lands, and the post is not always queryable in the
+  /// same instant.
+  void _checkUploads(Map<String, UploadPostProgress> uploads) {
+    if (!mounted) return;
+
+    final done = uploads.entries
+        .where((e) => e.value.status == UploadStatus.completed)
+        .map((e) => e.key);
+
+    if (!_uploadsSeeded) {
+      _uploadsSeeded = true;
+      _seenUploads.addAll(done);
+      return;
+    }
+
+    final fresh = done.where((id) => !_seenUploads.contains(id)).toList();
+
+    _seenUploads
+      ..addAll(fresh)
+      ..removeWhere((id) => !uploads.containsKey(id));
+
+    if (fresh.isEmpty || _reloadScheduled) return;
+
+    _reloadScheduled = true;
+
+    Future.delayed(const Duration(milliseconds: 600), () {
+      _reloadScheduled = false;
+      if (mounted) _load();
+    });
   }
 
   void _notYet(String what) {
@@ -221,6 +276,15 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
     final group = _group;
+
+    // Watched, so a post finishing anywhere reaches this screen. The
+    // check runs after the frame because it can schedule a reload, and
+    // setState during build is an error.
+    final uploads = context.watch<UploadPostProvider>().uploads;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkUploads(uploads);
+    });
 
     if (_failed) {
       return Scaffold(
@@ -676,6 +740,10 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
   Widget _latestTab(ThemeProvider theme, GlobalGroup group) {
     return RefreshIndicator(
+      // Without these it draws Material blue, in an app that is black
+      // and gold.
+      color: theme.primaryColor,
+      backgroundColor: theme.backgroundColor,
       onRefresh: _load,
       child: NotificationListener<ScrollNotification>(
         // Fetches before the bottom is reached, so the next posts are
@@ -935,6 +1003,8 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
     }
 
     return RefreshIndicator(
+      color: theme.primaryColor,
+      backgroundColor: theme.backgroundColor,
       onRefresh: _load,
       child: NotificationListener<ScrollNotification>(
         // Fetches a page ahead of the bottom, so the next cards are
@@ -1040,6 +1110,8 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
     }
 
     return RefreshIndicator(
+      color: theme.primaryColor,
+      backgroundColor: theme.backgroundColor,
       onRefresh: _load,
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {

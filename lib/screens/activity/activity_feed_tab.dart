@@ -43,6 +43,23 @@ import 'package:provider/provider.dart';
 /// are not testing it.
 const bool kActivityTabAdminsOnly = false;
 
+/// Whether Messages carries an Activity tab at all.
+///
+/// False: the activity feed is moving to the home page, where far more
+/// people will see it, and running both would be two places to keep in
+/// step.
+///
+/// Separate from [kActivityTabAdminsOnly] because it answers a different
+/// question — that one is "who may see it", this one is "does it exist
+/// here". It is also checked BEFORE the server's `activity_access`, so
+/// granting access cannot reopen a tab that has been taken out of the
+/// design.
+///
+/// Nothing below this file changes: ActivityFeedTab, its API and its
+/// endpoints all still work, and setting this back to true brings the
+/// tab back exactly as it was.
+const bool kActivityTabInMessages = false;
+
 class ActivityFeedTab extends StatefulWidget {
   const ActivityFeedTab({super.key});
 

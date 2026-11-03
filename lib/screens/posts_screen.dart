@@ -726,7 +726,10 @@ class _CustomTabBar extends StatelessWidget {
   static const Map<PostTabType, String> _labels = {
     PostTabType.latest: 'Latest',
     PostTabType.following: 'Following',
-    PostTabType.yourWeek: 'Your week',
+    // 'Home', not 'Your week'. It is the landing tab and the thing the
+    // whole screen opens on, so naming it after its content made it read
+    // as one feed among three rather than as where you are.
+    PostTabType.yourWeek: 'Home',
   };
 
   @override
