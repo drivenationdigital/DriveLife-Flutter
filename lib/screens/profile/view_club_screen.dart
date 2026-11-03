@@ -2839,7 +2839,17 @@ class _ClubCommunityFeedState extends State<_ClubCommunityFeed>
                 return PostCard(
                   key: ValueKey(post['id']),
                   post: post,
-                  onTapProfile: () {},
+                  // Both the avatar and the username in a post's header
+                  // call this, so an empty callback left the whole
+                  // header dead — the taps registered and went nowhere.
+                  onTapProfile: () => Navigator.pushNamed(
+                    context,
+                    AppRoutes.viewProfile,
+                    arguments: {
+                      'userId': post['user_id'],
+                      'username': (post['username'] ?? '').toString(),
+                    },
+                  ),
                   onLikeChanged: (isLiked) {
                     setState(() {
                       post['is_liked'] = isLiked;

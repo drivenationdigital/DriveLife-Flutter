@@ -826,6 +826,31 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     );
   }
 
+  /// Whether to offer the registration lookup at all.
+  ///
+  /// It queries a UK vehicle database off a UK plate, so for anyone
+  /// outside Britain it is a button that can only ever fail. Worse than
+  /// useless: it is the field the form leads with and the one it tells
+  /// you fills in all the others.
+  ///
+  /// Hidden only when we POSITIVELY know they are elsewhere. An account
+  /// with no location fix yet has an empty country, and most of them are
+  /// British — taking the shortcut away from a UK user on a maybe is the
+  /// worse mistake of the two.
+  ///
+  /// GB covers Ireland too: dl_country_from_coords() puts IE in the GB
+  /// region, and Irish plates are in the same database.
+  bool get _canLookUpReg {
+    final country = Provider.of<UserProvider>(context, listen: false)
+        .user
+        ?.lastLocation
+        ?.country
+        .trim()
+        .toUpperCase();
+
+    return country == null || country.isEmpty || country == 'GB';
+  }
+
   Widget _autoFillButton() {
     const gold = Color(0xFFC4A062);
 
@@ -1798,29 +1823,38 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   _card(
                     child: Column(
                       children: [
-                        // Registration first. It is the field that
-                        // fills in every other one — typing a plate and
-                        // tapping search populates make, model, year
-                        // and colour — so asking for it last meant
-                        // either typing all of that by hand or
+                        // Registration first. For a UK car it is the
+                        // field that fills in every other one — typing a
+                        // plate and tapping search populates make,
+                        // model, year and colour — so asking for it last
+                        // meant either typing all of that by hand or
                         // discovering the shortcut after the work.
+                        //
+                        // The field stays wherever you are: a plate is
+                        // still worth recording, and it is what matches
+                        // a car in somebody else's photographs. Only the
+                        // lookup is UK-only.
                         TextFormField(
                           controller: _regCtrl,
                           textCapitalization: TextCapitalization.characters,
-                          decoration:
-                              _dec(
-                                'Registration',
-                                hint: 'Your vehicle reg',
-                              ).copyWith(
-                                suffixIcon: Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: _autoFillButton(),
+                          decoration: _canLookUpReg
+                              ? _dec(
+                                  'Registration',
+                                  hint: 'Your vehicle reg',
+                                ).copyWith(
+                                  suffixIcon: Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: _autoFillButton(),
+                                  ),
+                                  suffixIconConstraints: const BoxConstraints(
+                                    minWidth: 48,
+                                    minHeight: 48,
+                                  ),
+                                )
+                              : _dec(
+                                  'Registration',
+                                  hint: 'Your vehicle plate',
                                 ),
-                                suffixIconConstraints: const BoxConstraints(
-                                  minWidth: 48,
-                                  minHeight: 48,
-                                ),
-                              ),
                         ),
                         _divider(),
                         DropdownButtonFormField<String>(

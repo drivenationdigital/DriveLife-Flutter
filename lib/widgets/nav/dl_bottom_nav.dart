@@ -70,10 +70,24 @@ class DlBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // How far the bar sits above the bottom of the screen.
+    //
+    // A home indicator is already a gap, and the SafeArea below clears
+    // it, so on those phones this padding is a second gap stacked on the
+    // first and the bar floats higher than it needs to. Where there is
+    // no indicator this padding is the only thing keeping the bar off
+    // the edge of the glass, so it has to stay.
+    //
+    // viewPadding, not padding: SafeArea consumes `padding` on the way
+    // down, so an ancestor that already took the inset would make this
+    // read 0 and push the bar back up. viewPadding is the physical
+    // inset and is not consumed.
+    final gap = MediaQuery.viewPaddingOf(context).bottom > 0 ? 2.0 : 10.0;
+
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        padding: EdgeInsets.fromLTRB(16, 0, 16, gap),
         child: Container(
           height: height,
           decoration: BoxDecoration(

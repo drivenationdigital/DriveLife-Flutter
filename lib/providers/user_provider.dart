@@ -256,14 +256,35 @@ class UserProvider extends ChangeNotifier {
         print('📍 Got location: ${coords['latitude']}, ${coords['longitude']}');
 
         // Update location on server
-        await ProfileAPI.updateLastLocation(coords: coords, userId: userId);
+        final saved = await ProfileAPI.updateLastLocation(
+          coords: coords,
+          userId: userId,
+        );
 
         if (_user != null) {
+          // The country the SERVER worked out from these coordinates,
+          // which is the one it has stored and the one every other
+          // endpoint will answer with.
+          //
+          // This was hardcoded 'GB', so a location refresh relabelled
+          // every user as British no matter where they were — and
+          // anything keyed off the country, like whether a UK
+          // registration lookup is worth offering, read the wrong
+          // answer.
+          //
+          // Falls back to whatever was already known rather than to a
+          // guess: an older API build returns no country, and keeping
+          // the last real one beats inventing a new wrong one.
+          final country =
+              (saved?['country'] ?? '').toString().trim().isNotEmpty
+              ? saved!['country'].toString().trim()
+              : (_user!.lastLocation?.country ?? '');
+
           final newLocation = LastLocation(
             latitude: coords['latitude']!,
             longitude: coords['longitude']!,
             updatedAt: DateTime.now().toIso8601String(),
-            country: 'GB', // You might want to get this from coords
+            country: country,
           );
           _user = _user!.copyWith(lastLocation: newLocation);
           notifyListeners();
