@@ -293,7 +293,21 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
     final count = _tags.length;
     final messenger = ScaffoldMessenger.of(context);
 
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    // Back to whatever opened the composer, not to the root.
+    //
+    // popUntil(isFirst) emptied the stack to the app shell, so posting
+    // to a group threw you out of the group — you tapped Post inside the
+    // BMW group and landed on the home feed.
+    //
+    // One pop is exactly right: the composer was PUSHED from wherever
+    // you were, and this screen REPLACED the composer, so the route
+    // underneath is that same place. Guarded, because a route with
+    // nothing beneath it would pop the app off the screen.
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      navigator.pop();
+    }
 
     messenger.showSnackBar(
       SnackBar(
