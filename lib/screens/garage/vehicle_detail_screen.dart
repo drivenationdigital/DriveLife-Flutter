@@ -2014,7 +2014,7 @@ class _AddPhotosButton extends StatelessWidget {
                 Icon(Icons.add_a_photo_outlined, size: 14, color: accent),
               const SizedBox(width: 7),
               Text(
-                busy ? 'Uploading' : 'Add photos',
+                busy ? 'Uploading' : 'Add cover photos',
                 style: const TextStyle(
                   fontSize: 12.5,
                   height: 1,

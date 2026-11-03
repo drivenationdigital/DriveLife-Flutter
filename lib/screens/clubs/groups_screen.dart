@@ -767,7 +767,7 @@ class _GroupsScreenState extends State<GroupsScreen>
       // with an argument for why you in particular should look; this
       // is the rest, in the order the server ranks them.
       _sliver(const SizedBox(height: 26)),
-      _sliver(_sectionHeader(theme, 'All groups')),
+      _sliver(_sectionHeader(theme, 'Local Clubs')),
       ..._allSlivers(theme),
 
       // Clears the floating bottom bar.

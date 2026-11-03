@@ -207,6 +207,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       _associatedEntity != null &&
       _entityTypes.contains(_associatedEntity!['type']);
 
+  /// True when the post is going somewhere with a name.
+  ///
+  /// Deliberately NOT [_isEntityPost]. That one means "posting AS a club",
+  /// and it loosens the rules: media becomes optional and per-media
+  /// tagging is hidden. A group post is made by a PERSON who happens to
+  /// be posting into a group, so it keeps every normal requirement — it
+  /// just has somewhere other than a profile to say it is going.
+  ///
+  /// Adding 'group' to _entityTypes would have fixed the label and
+  /// quietly removed vehicle tagging from every group post.
+  bool get _hasNamedDestination =>
+      _associatedEntity != null &&
+      ((_associatedEntity!['label'] as String?)?.trim().isNotEmpty ?? false);
+
   /// Banner naming the destination of the post. Entity posts show the
   /// club/venue logo and name; personal posts show the user's own avatar and
   /// "Your Profile", so the destination is always explicit.
@@ -216,7 +230,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final String label;
     final bool verified;
     final String? imageUrl;
-    if (_isEntityPost) {
+    if (_hasNamedDestination) {
       label = _associatedEntity?['label'] ?? 'Group';
       verified = _associatedEntity?['verified'] == true;
       imageUrl = _associatedEntity?['logo'];
@@ -228,11 +242,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     // Entity logos keep the rounded-square treatment; a person gets a circle,
     // matching how avatars read everywhere else in the app.
-    final BorderRadius avatarRadius = _isEntityPost
+    final BorderRadius avatarRadius = _hasNamedDestination
         ? BorderRadius.circular(8)
         : BorderRadius.circular(16);
 
-    final Widget avatarFallback = _isEntityPost
+    final Widget avatarFallback = _hasNamedDestination
         ? const Text(
             '⫽',
             style: TextStyle(

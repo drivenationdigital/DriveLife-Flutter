@@ -5,6 +5,7 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
+import 'package:drivelife/widgets/groups/group_activity_card.dart';
 import 'package:drivelife/widgets/groups/group_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -578,15 +579,57 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
       // created between two page fetches shifts everything down one and
       // can hand back a row that is already on screen. PostCard is keyed
       // by id and Flutter throws on two widgets with the same key.
-      final seen = _latest.map((post) => post['id']).toSet();
+      // Keyed by kind AND id. The feed is mixed, and a garage id and a
+      // post id are both small integers from different tables — so an id
+      // on its own would drop a real vehicle because a post happens to
+      // share its number. The same reason the widget keys are prefixed.
+      String key(Map<String, dynamic> row) =>
+          '${row['group_item_type'] ?? 'post'}-${row['id']}';
+
+      final seen = _latest.map(key).toSet();
 
       _latest = [
         ..._latest,
-        ...page.items.where((post) => !seen.contains(post['id'])),
+        ...page.items.where((row) => !seen.contains(key(row))),
       ];
 
       if (page.total > 0) _latestTotal = page.total;
     });
+  }
+
+  /// Open whatever a non-post activity card is about.
+  ///
+  /// A vehicle and a photo added to one both go to the vehicle; a gallery
+  /// goes to the gallery. The id to use differs per kind, which is why
+  /// this reads the row rather than taking an id.
+  void _openActivity(Map<String, dynamic> item) {
+    final kind = item['group_item_type']?.toString() ?? '';
+
+    if (kind == 'gallery') {
+      final id = (item['gallery_id'] as int?) ??
+          int.tryParse('${item['gallery_id'] ?? item['id']}') ??
+          0;
+
+      if (id <= 0) return;
+
+      Navigator.pushNamed(
+        context,
+        AppRoutes.galleryDetail,
+        arguments: {
+          'galleryId': id,
+          'title': item['gallery_title'] ?? 'Gallery',
+        },
+      );
+
+      return;
+    }
+
+    // vehicle and garage_photo both carry the garage id.
+    final id = (item['garage_id'] as int?) ??
+        int.tryParse('${item['garage_id'] ?? item['id']}') ??
+        0;
+
+    _openVehicle(id);
   }
 
   Widget _latestTab(ThemeProvider theme, GlobalGroup group) {
@@ -620,21 +663,53 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
             // hand-rolled card this replaces had no caption, no
             // carousel, no comments and no like button — just a
             // picture that opened the post.
-            for (final post in _latest)
-              PostCard(
-                key: ValueKey(post['id']),
-                post: post,
-                onTapProfile: () {},
-                onLikeChanged: (isLiked) {
-                  setState(() {
-                    post['is_liked'] = isLiked;
-                    post['likes_count'] =
-                        ((post['likes_count'] as int?) ?? 0) +
-                        (isLiked ? 1 : -1);
-                  });
-                },
-                onDelete: _load,
-              ),
+            // The feed is mixed: ce_group_activity indexes posts, spots
+            // AND vehicles, and a vehicle has no caption, no comments and
+            // nothing to like. Drawn as a post it would be a card with
+            // every one of those parts empty, so it gets its own.
+            //
+            // Branching on group_item_type, which the endpoint stamps on
+            // every row from the index.
+            for (final item in _latest)
+              if (const ['vehicle', 'gallery', 'garage_photo'].contains(
+                item['group_item_type'],
+              ))
+                GroupActivityCard(
+                  // Keyed by kind as well as id: a garage id, a gallery id
+                  // and a post id are all small integers from different
+                  // tables, so ValueKey(id) alone can collide between them
+                  // and Flutter throws on a duplicate key.
+                  key: ValueKey('${item['group_item_type']}-${item['id']}'),
+                  item: item,
+                  theme: theme,
+                  onTap: () => _openActivity(item),
+                )
+              else
+                PostCard(
+                  key: ValueKey('post-${item['id']}'),
+                  post: item,
+                  // The avatar and the username in a post's header both
+                  // call this, so an empty callback left the whole
+                  // header dead in this feed — the taps registered and
+                  // went nowhere.
+                  onTapProfile: () => Navigator.pushNamed(
+                    context,
+                    AppRoutes.viewProfile,
+                    arguments: {
+                      'userId': item['user_id'],
+                      'username': (item['username'] ?? '').toString(),
+                    },
+                  ),
+                  onLikeChanged: (isLiked) {
+                    setState(() {
+                      item['is_liked'] = isLiked;
+                      item['likes_count'] =
+                          ((item['likes_count'] as int?) ?? 0) +
+                          (isLiked ? 1 : -1);
+                    });
+                  },
+                  onDelete: _load,
+                ),
 
           if (_latestHasMore)
             const Padding(
