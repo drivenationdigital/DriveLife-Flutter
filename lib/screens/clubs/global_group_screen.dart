@@ -61,6 +61,28 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
   GlobalGroup? _group;
   List<Map<String, dynamic>> _latest = const [];
   List<GlobalGroupVehicle> _garages = const [];
+
+  /// How many each tab holds in ALL, so a list knows whether it has
+  /// reached the end or merely the end of a page. A page length cannot
+  /// answer that: a tab with exactly one page of content would otherwise
+  /// sit waiting for a page that never comes.
+  int _garageTotal = 0;
+  int _latestTotal = 0;
+  int _spotTotal = 0;
+
+  bool _garagesLoadingMore = false;
+  bool _latestLoadingMore = false;
+  bool _spotsLoadingMore = false;
+
+  bool get _garagesHasMore => _garages.length < _garageTotal;
+  bool get _latestHasMore => _latest.length < _latestTotal;
+  bool get _spotsHasMore => _spots.length < _spotTotal;
+
+  /// What each tab asks for per page. Matched to the endpoints' own
+  /// defaults, and used to work out which page to ask for next.
+  static const int _latestPerPage = 15;
+  static const int _spotsPerPage = 30;
+  static const int _garagesPerPage = 24;
   List<GlobalGroupSpot> _spots = const [];
   List<GlobalGroupEvent> _events = const [];
 
@@ -111,9 +133,23 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
     setState(() {
       _group = group ?? _group;
-      _latest = results[1] as List<Map<String, dynamic>>;
-      _garages = results[2] as List<GlobalGroupVehicle>;
-      _spots = results[3] as List<GlobalGroupSpot>;
+      final latestPage =
+          results[1] as ({List<Map<String, dynamic>> items, int total});
+
+      _latest = latestPage.items;
+      _latestTotal = latestPage.total;
+      _latestLoadingMore = false;
+      final garagePage =
+          results[2] as ({List<GlobalGroupVehicle> items, int total});
+
+      _garages = garagePage.items;
+      _garageTotal = garagePage.total;
+      _garagesLoadingMore = false;
+      final spotPage = results[3] as ({List<GlobalGroupSpot> items, int total});
+
+      _spots = spotPage.items;
+      _spotTotal = spotPage.total;
+      _spotsLoadingMore = false;
       _events = results[4] as List<GlobalGroupEvent>;
       _loading = false;
       _failed = group == null && _group == null;
@@ -508,12 +544,64 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
   // ─── Latest ────────────────────────────────────────────────────────
 
+  /// The next page of the feed.
+  ///
+  /// Page number derived from what is loaded rather than held in a
+  /// counter, so a pull-to-refresh that resets the list cannot leave a
+  /// stale index behind and skip a page.
+  Future<void> _loadMoreLatest() async {
+    if (_latestLoadingMore || !_latestHasMore) return;
+
+    setState(() => _latestLoadingMore = true);
+
+    final next = (_latest.length ~/ _latestPerPage) + 1;
+
+    final page = await GlobalGroupsApi.fetchActivity(
+      widget.slug,
+      page: next,
+      perPage: _latestPerPage,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _latestLoadingMore = false;
+
+      if (page.items.isEmpty) {
+        // The total said there was more and there was not. Believe what
+        // arrived, rather than asking again on every scroll.
+        _latestTotal = _latest.length;
+        return;
+      }
+
+      // Guard against a duplicate: the feed is ordered by date, so a post
+      // created between two page fetches shifts everything down one and
+      // can hand back a row that is already on screen. PostCard is keyed
+      // by id and Flutter throws on two widgets with the same key.
+      final seen = _latest.map((post) => post['id']).toSet();
+
+      _latest = [
+        ..._latest,
+        ...page.items.where((post) => !seen.contains(post['id'])),
+      ];
+
+      if (page.total > 0) _latestTotal = page.total;
+    });
+  }
+
   Widget _latestTab(ThemeProvider theme, GlobalGroup group) {
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.only(bottom: 40),
-        children: [
+      child: NotificationListener<ScrollNotification>(
+        // Fetches before the bottom is reached, so the next posts are
+        // usually already there by the time the scroll gets to them.
+        onNotification: (notification) {
+          if (notification.metrics.extentAfter < 900) _loadMoreLatest();
+          return false;
+        },
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 40),
+          children: [
           _composer(theme, group),
 
           if (_garages.isNotEmpty) _latestGarages(theme),
@@ -547,7 +635,14 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
                 },
                 onDelete: _load,
               ),
-        ],
+
+          if (_latestHasMore)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: GroupFeedSkeleton(count: 1),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -661,6 +756,45 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
   // ─── Garages ───────────────────────────────────────────────────────
 
+  /// The next page of the garage.
+  ///
+  /// Page number comes from what is already loaded rather than a counter,
+  /// so a refresh that resets the list cannot leave a stale page index
+  /// behind and skip a page.
+  Future<void> _loadMoreGarages() async {
+    if (_garagesLoadingMore || !_garagesHasMore) return;
+
+    setState(() => _garagesLoadingMore = true);
+
+    final next = (_garages.length ~/ _garagesPerPage) + 1;
+
+    final page = await GlobalGroupsApi.fetchVehicles(
+      widget.slug,
+      page: next,
+      perPage: _garagesPerPage,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _garagesLoadingMore = false;
+
+      if (page.items.isEmpty) {
+        // Nothing came back when the total said there should be. Trust
+        // what arrived over what was promised, rather than asking again
+        // on every scroll for the rest of the session.
+        _garageTotal = _garages.length;
+        return;
+      }
+
+      _garages = [..._garages, ...page.items];
+
+      // The total can move between pages — somebody joins, somebody
+      // leaves — so it is taken from the newest answer.
+      if (page.total > 0) _garageTotal = page.total;
+    });
+  }
+
   Widget _garagesTab(ThemeProvider theme) {
     if (_loading && _garages.isEmpty) {
       return const SingleChildScrollView(child: GroupGarageGridSkeleton());
@@ -684,25 +818,86 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
     return RefreshIndicator(
       onRefresh: _load,
-      child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
-        itemCount: _garages.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 14,
-          childAspectRatio: 0.82,
-        ),
-        itemBuilder: (_, i) => GroupGarageCard(
-          vehicle: _garages[i],
-          theme: theme,
-          onTap: () => _openVehicle(_garages[i].id),
+      child: NotificationListener<ScrollNotification>(
+        // Fetches a page ahead of the bottom, so the next cards are
+        // usually there before the scroll reaches where they go.
+        onNotification: (notification) {
+          if (notification.metrics.extentAfter < 600) _loadMoreGarages();
+          return false;
+        },
+        child: GridView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+          // One extra row's worth of slots for the footer, which is
+          // either a spinner or the "that is all" line.
+          itemCount: _garages.length + (_garagesHasMore ? 2 : 0),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 14,
+            childAspectRatio: 0.82,
+          ),
+          itemBuilder: (_, i) {
+            // The footer slots. One shimmering tile each, not
+            // GroupGarageGridSkeleton — that is itself a GridView and
+            // would nest one inside a cell of this one.
+            if (i >= _garages.length) {
+              return GroupShimmer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              );
+            }
+
+            return GroupGarageCard(
+              vehicle: _garages[i],
+              theme: theme,
+              onTap: () => _openVehicle(_garages[i].id),
+            );
+          },
         ),
       ),
     );
   }
 
   // ─── Spots ─────────────────────────────────────────────────────────
+
+  /// The next page of spots.
+  Future<void> _loadMoreSpots() async {
+    if (_spotsLoadingMore || !_spotsHasMore) return;
+
+    setState(() => _spotsLoadingMore = true);
+
+    final next = (_spots.length ~/ _spotsPerPage) + 1;
+
+    final page = await GlobalGroupsApi.fetchSpots(
+      widget.slug,
+      page: next,
+      perPage: _spotsPerPage,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _spotsLoadingMore = false;
+
+      if (page.items.isEmpty) {
+        _spotTotal = _spots.length;
+        return;
+      }
+
+      final seen = _spots.map((spot) => spot.postId).toSet();
+
+      _spots = [
+        ..._spots,
+        ...page.items.where((spot) => !seen.contains(spot.postId)),
+      ];
+
+      if (page.total > 0) _spotTotal = page.total;
+    });
+  }
 
   Widget _spotsTab(ThemeProvider theme) {
     if (_loading && _spots.isEmpty) {
@@ -727,18 +922,38 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
 
     return RefreshIndicator(
       onRefresh: _load,
-      child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 40),
-        itemCount: _spots.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 6,
-          mainAxisSpacing: 6,
-        ),
-        itemBuilder: (_, i) => GroupSpotTile(
-          spot: _spots[i],
-          theme: theme,
-          onTap: () => _openPost(_spots[i].postId),
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification.metrics.extentAfter < 600) _loadMoreSpots();
+          return false;
+        },
+        child: GridView.builder(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 40),
+          // A row of placeholders while the next page is on its way.
+          itemCount: _spots.length + (_spotsHasMore ? 3 : 0),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 6,
+            mainAxisSpacing: 6,
+          ),
+          itemBuilder: (_, i) {
+            if (i >= _spots.length) {
+              return GroupShimmer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              );
+            }
+
+            return GroupSpotTile(
+              spot: _spots[i],
+              theme: theme,
+              onTap: () => _openPost(_spots[i].postId),
+            );
+          },
         ),
       ),
     );

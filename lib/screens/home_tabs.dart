@@ -17,7 +17,9 @@ import 'package:drivelife/models/account_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/pending_tags_provider.dart';
+import 'package:drivelife/api/announcement_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/widgets/announcement_dialog.dart';
 import 'package:drivelife/services/supabase_session.dart';
 import 'package:drivelife/services/unread_messages_watcher.dart';
 import 'package:drivelife/providers/user_provider.dart';
@@ -255,6 +257,32 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         FirebaseMessagingService.flushPendingDeepLink();
       }
     });
+
+    // A one-time notice, if the server has one for this account.
+    //
+    // Last in initState and behind its own frame callback, so it opens
+    // over a shell that has already drawn. It is also the only thing
+    // here that can put a modal on screen, which is why it goes after
+    // the deep-link flush — a notification tapped from the lock screen
+    // should land on its destination, not behind a dialog.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showAnnouncement());
+  }
+
+  /// Show the pending announcement, once, if there is one.
+  ///
+  /// Everything about whether to show it lives on the server: whether this
+  /// account is old enough for the notice to be true of it, and whether it
+  /// has already been dismissed. The app asks and obeys.
+  ///
+  /// Silent on every failure. A notice that could not be fetched waits
+  /// until the next launch, which is exactly what a server-side dismissal
+  /// buys over a local flag.
+  Future<void> _showAnnouncement() async {
+    final announcement = await AnnouncementApi.pending();
+
+    if (announcement == null || !mounted) return;
+
+    await AnnouncementDialog.present(context, announcement);
   }
 
   @override

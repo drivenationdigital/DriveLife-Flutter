@@ -133,7 +133,12 @@ class GlobalGroupsApi {
   ///
   /// Empty until dl-global-groups-refresh.php has run — an empty list
   /// means the refresh has not happened, not that nothing matches.
-  static Future<List<GlobalGroupVehicle>> fetchVehicles(
+  /// One page of a group's garage, with how many there are in all.
+  ///
+  /// Paged because a popular marque has hundreds: Land Rover matched 74
+  /// cars on its first bulk add, and a single unpaged request would have
+  /// been capped at the endpoint's 60 and silently dropped the rest.
+  static Future<({List<GlobalGroupVehicle> items, int total})> fetchVehicles(
     String slug, {
     int page = 1,
     int perPage = 24,
@@ -147,23 +152,39 @@ class GlobalGroupsApi {
         headers: await _headers(),
       );
 
-      if (response.statusCode != 200) return const [];
+      if (response.statusCode != 200) {
+        return (items: const <GlobalGroupVehicle>[], total: 0);
+      }
 
       final body = json.decode(response.body);
 
-      if (body is! Map || body['success'] != true) return const [];
+      if (body is! Map || body['success'] != true) {
+        return (items: const <GlobalGroupVehicle>[], total: 0);
+      }
 
       final raw = body['vehicles'];
 
-      if (raw is! List) return const [];
+      if (raw is! List) {
+        return (items: const <GlobalGroupVehicle>[], total: 0);
+      }
 
-      return raw
+      final items = raw
           .whereType<Map>()
           .map((e) => GlobalGroupVehicle.fromJson(Map<String, dynamic>.from(e)))
           .toList();
+
+      // The TOTAL, not the page length. Without it the screen cannot tell
+      // "that is all of them" from "that is as many as one page holds",
+      // and a group with exactly 24 cars would show a spinner forever.
+      final total = body['total'];
+
+      return (
+        items: items,
+        total: total is int ? total : int.tryParse('$total') ?? items.length,
+      );
     } catch (e) {
       debugPrint('[GlobalGroups] vehicles error: $e');
-      return const [];
+      return (items: const <GlobalGroupVehicle>[], total: 0);
     }
   }
 
@@ -177,29 +198,37 @@ class GlobalGroupsApi {
   /// Reads the activity index, so it is empty until the refresh pass
   /// has run — except for posts made directly to the group, which are
   /// indexed as they are created.
-  static Future<List<Map<String, dynamic>>> fetchActivity(
+  static Future<({List<Map<String, dynamic>> items, int total})> fetchActivity(
     String slug, {
     int page = 1,
     int perPage = 15,
   }) async {
     // 'data', the same key the club feed uses.
-    return _list('groups/$slug/activity', 'data', page: page, perPage: perPage);
+    return _listPaged(
+      'groups/$slug/activity',
+      'data',
+      page: page,
+      perPage: perPage,
+    );
   }
 
   /// The Spots grid.
-  static Future<List<GlobalGroupSpot>> fetchSpots(
+  static Future<({List<GlobalGroupSpot> items, int total})> fetchSpots(
     String slug, {
     int page = 1,
     int perPage = 30,
   }) async {
-    final raw = await _list(
+    final page_ = await _listPaged(
       'groups/$slug/spots',
       'spots',
       page: page,
       perPage: perPage,
     );
 
-    return raw.map(GlobalGroupSpot.fromJson).toList();
+    return (
+      items: page_.items.map(GlobalGroupSpot.fromJson).toList(),
+      total: page_.total,
+    );
   }
 
   /// The Events tab.
@@ -279,6 +308,57 @@ class GlobalGroupsApi {
     } catch (e) {
       debugPrint('[GlobalGroups] $action error: $e');
       return false;
+    }
+  }
+
+  /// The same, but keeping the server's total.
+  ///
+  /// A page length cannot stand in for "that is all of them": a tab whose
+  /// content happens to be exactly one page long would spin forever
+  /// waiting for a page that is never coming. Every one of these
+  /// endpoints already sends `total`; this is the helper that stops
+  /// throwing it away.
+  static Future<({List<Map<String, dynamic>> items, int total})> _listPaged(
+    String path,
+    String key, {
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    const empty = (items: <Map<String, dynamic>>[], total: 0);
+
+    try {
+      final response = await http.get(
+        _uri(path, {'page': '$page', 'per_page': '$perPage'}),
+        headers: await _headers(),
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint('[GlobalGroups] $path failed: ${response.statusCode}');
+        return empty;
+      }
+
+      final body = json.decode(response.body);
+
+      if (body is! Map || body['success'] != true) return empty;
+
+      final raw = body[key];
+
+      if (raw is! List) return empty;
+
+      final items = raw
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+
+      final total = body['total'];
+
+      return (
+        items: items,
+        total: total is int ? total : int.tryParse('$total') ?? items.length,
+      );
+    } catch (e) {
+      debugPrint('[GlobalGroups] $path error: $e');
+      return empty;
     }
   }
 

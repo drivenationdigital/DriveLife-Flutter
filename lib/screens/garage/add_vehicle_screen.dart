@@ -64,6 +64,14 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   final _variantCtrl = TextEditingController();
   final _regCtrl = TextEditingController();
   final _colourCtrl = TextEditingController();
+
+  /// Year of manufacture.
+  ///
+  /// Its own field rather than something derived from the registration
+  /// lookup, because most cars in a garage have no UK reg to look up —
+  /// imports, project cars, and every dream car. The lookup prefills it
+  /// where it can and the owner can always correct it.
+  final _yearCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
 
   final _bhpCtrl = TextEditingController();
@@ -273,6 +281,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     _variantCtrl.dispose();
     _regCtrl.dispose();
     _colourCtrl.dispose();
+    _yearCtrl.dispose();
     _descCtrl.dispose();
     _bhpCtrl.dispose();
     _zero62Ctrl.dispose();
@@ -383,6 +392,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       _regCtrl.text = v['registration']?.toString() ?? '';
       _originalReg = _regCtrl.text.trim().toUpperCase();
       _colourCtrl.text = v['colour']?.toString() ?? '';
+      _yearCtrl.text = v['year']?.toString() ?? '';
       _descCtrl.text = v['short_description']?.toString() ?? '';
 
       _bhpCtrl.text = v['vehicle_bhp']?.toString() ?? '';
@@ -505,6 +515,10 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       'variant': _variantCtrl.text.trim(),
       'registration': _regCtrl.text.trim(),
       'colour': _colourCtrl.text.trim(),
+      // Sent even when empty, so clearing it clears it. The server treats
+      // an absent key as "leave alone" and an empty one as "no year",
+      // which only works if this is always present.
+      'year': _yearCtrl.text.trim(),
       'ownedFrom': _ownedFrom?.toIso8601String() ?? '',
       'ownedTo': _ownedTo?.toIso8601String() ?? '',
       'primary_car': _ownership,
@@ -1494,6 +1508,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
       _applyLookup(_modelCtrl, model);
       _applyLookup(_colourCtrl, colour);
+      // The lookup has always found this and only ever used it to build
+      // the description sentence. It is a real field now.
+      _applyLookup(_yearCtrl, year);
       _applyLookup(_variantCtrl, spec);
 
       _applyLookup(_bhpCtrl, _fmtNum(bhp));
@@ -1848,6 +1865,37 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                             'Variant',
                             hint: 'Add any vehicle variant info',
                           ),
+                        ),
+                        _divider(),
+                        TextFormField(
+                          controller: _yearCtrl,
+                          keyboardType: TextInputType.number,
+                          maxLength: 4,
+                          decoration: _dec(
+                            'Year of manufacture',
+                            hint: 'e.g. 1972',
+                          ).copyWith(counterText: ''),
+                          validator: (value) {
+                            final text = (value ?? '').trim();
+
+                            // Optional. Plenty of owners will not know it,
+                            // and refusing to save a car over a blank year
+                            // would be a worse outcome than not having one.
+                            if (text.isEmpty) return null;
+
+                            final year = int.tryParse(text);
+
+                            if (year == null) return 'Numbers only';
+
+                            // 1885 is the Benz Patent-Motorwagen; next year
+                            // is allowed because model years run ahead of
+                            // the calendar.
+                            if (year < 1885 || year > DateTime.now().year + 1) {
+                              return 'Check the year';
+                            }
+
+                            return null;
+                          },
                         ),
                         _divider(),
                         TextFormField(
