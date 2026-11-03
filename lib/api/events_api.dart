@@ -34,6 +34,15 @@ class EventsAPI {
     /// from [location]. Null for every caller that wants the old behaviour,
     /// where the location keyword decides.
     int? radiusMiles,
+
+    /// How to sort. 'distance' for nearest first, which is what a MAP
+    /// wants; null leaves the server on its default of soonest first,
+    /// which is what a list of what's coming up wants.
+    ///
+    /// The server has read filters['order'] all along and nothing has
+    /// ever sent it, so every caller has had date order whether it suited
+    /// them or not.
+    String? order,
   }) async {
     try {
       final token = await _authService.getToken();
@@ -184,6 +193,7 @@ class EventsAPI {
       }
 
       if (radiusMiles != null) filters['radius_miles'] = radiusMiles;
+      if (order != null && order.isNotEmpty) filters['order'] = order;
 
       queryParams['filters'] = jsonEncode(filters);
       queryParams['version'] = '2';

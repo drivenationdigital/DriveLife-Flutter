@@ -39,7 +39,14 @@ class DiscoverFilters {
   static DiscoverFilters get initial => DiscoverFilters(
     kinds: DiscoverKind.shown.toSet(),
     date: 'anytime',
-    radius: 25,
+    // National.
+    //
+    // 25 miles meant most people opened an empty-looking map and had no
+    // reason to think a filter was the cause — the catalogue is national
+    // and the default was hiding it. Nearest-first ordering is what makes
+    // this safe to do: the panel still leads with what is closest, and
+    // zooming out reveals the rest rather than the rest arriving first.
+    radius: national,
   );
 
   DiscoverFilters copyWith({
@@ -105,11 +112,18 @@ class DiscoverFilters {
 
   /// "National", as a radius.
   ///
-  /// 2000 miles rather than a separate mode, because the server already
-  /// treats its own `national` keyword as a 2000-mile radius — so this needs
-  /// nothing new behind it and cannot disagree with what the list screens do.
-  /// It comfortably covers either country.
-  static const int national = 2000;
+  /// A number rather than a separate mode, because the map sends
+  /// `radius_miles` and the server honours that literally — so whatever
+  /// is here IS the national radius on this screen.
+  ///
+  /// 12,500 matches the server's DL_RADIUS_UNLIMITED: further than any
+  /// two points on Earth, so "national" means the whole of the country's
+  /// catalogue. It was 2000, chosen to mirror the server's old `national`
+  /// keyword, and 2000 does not fit the United States — the mainland is
+  /// about 2,800 miles across, so a national search from Las Vegas could
+  /// not reach the east coast. The keyword was fixed; this is the copy
+  /// of it that lives on the client and has to be fixed with it.
+  static const int national = 12500;
 
   static const List<int> radii = [5, 10, 25, 50, national];
 

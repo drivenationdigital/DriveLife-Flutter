@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:async';
 import 'dart:convert';
 
@@ -407,6 +408,11 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
         // The server otherwise pins 'custom' to 15 miles for events and 50
         // for venues, whatever the distance filter says.
         radiusMiles: _filters.radius,
+        // Nearest to the pin first. Venues and tracks have always sorted
+        // this way; events were the one kind that came back in date order,
+        // so a wide radius filled the map with whatever was on soonest
+        // anywhere rather than with what was nearby.
+        order: 'distance',
       ),
       VenueApiService.getTrendingVenues(
         page: 1,
@@ -440,6 +446,21 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
       ..._read(responses[2], DiscoverPlace.fromTrack),
     ];
 
+    // Nearest first, across all three kinds.
+    //
+    // Each endpoint already returns its own results nearest-first, but
+    // they arrive as three lists and are concatenated — so the panel was
+    // every event, then every venue, then every track. Within a 25-mile
+    // radius nobody notices. Nationally it means the first card can be an
+    // event four hundred miles away sitting above a venue down the road.
+    //
+    // Measured here rather than trusted from the server: events do not
+    // return a distance at all (see DiscoverPlace.distance), and the
+    // three endpoints would not agree on the origin anyway. Every place
+    // has coordinates, so one haversine from the search centre sorts all
+    // of them on the same basis.
+    _sortByDistance(places);
+
     setState(() {
       _places = places;
       _loading = false;
@@ -449,6 +470,84 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
     });
 
     await _push();
+  }
+
+  /// Narrow a national search down to something local, having been given
+  /// somewhere specific to look.
+  ///
+  /// Searching a town or long-pressing a spot on the map says "what is
+  /// around HERE", and a national radius answers a different question —
+  /// the pin moves, the list barely changes, and the search looks broken.
+  ///
+  /// ONLY from national. A radius the user picked themselves is left
+  /// alone: somebody comparing two towns at 10 miles each would not thank
+  /// us for widening it to 50 every time they moved the pin. National is
+  /// the default rather than a choice, so it is the one safe to override.
+  ///
+  /// Returns true when it changed something, so the caller knows whether
+  /// a reload is going to differ.
+  bool _narrowForPlace() {
+    if (_filters.radius != DiscoverFilters.national) return false;
+
+    _filters = _filters.copyWith(radius: _localRadius);
+
+    return true;
+  }
+
+  /// What a point search narrows to. Wide enough that a market town has
+  /// something in it, tight enough to mean "near here".
+  static const int _localRadius = 50;
+
+  /// Orders places by how far they are from what is being searched.
+  ///
+  /// The origin is the search centre — the pin, or the user's own location
+  /// when the map has not been moved — which is the same point the server
+  /// measured its own radius from, so the list agrees with the filter.
+  ///
+  /// Does nothing when there is no centre to measure from. An arbitrary
+  /// order is better than one computed from (0, 0), which would sort the
+  /// whole country by its distance from the Gulf of Guinea and look
+  /// deliberate.
+  void _sortByDistance(List<DiscoverPlace> places) {
+    final lat = _lat;
+    final lng = _lng;
+
+    if (lat == null || lng == null) return;
+    if (lat == 0 && lng == 0) return;
+
+    places.sort((a, b) {
+      final da = _milesBetween(lat, lng, a.latitude, a.longitude);
+      final db = _milesBetween(lat, lng, b.latitude, b.longitude);
+
+      return da.compareTo(db);
+    });
+  }
+
+  /// Great-circle miles between two points.
+  ///
+  /// The same 3958.8-mile radius the home panel uses, so the two screens
+  /// cannot quote different distances for the same event.
+  static double _milesBetween(
+    double fromLat,
+    double fromLng,
+    double toLat,
+    double toLng,
+  ) {
+    const earthRadiusMiles = 3958.8;
+
+    double radians(double deg) => deg * math.pi / 180;
+
+    final dLat = radians(toLat - fromLat);
+    final dLng = radians(toLng - fromLng);
+
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(radians(fromLat)) *
+            math.cos(radians(toLat)) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+
+    return earthRadiusMiles * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
   }
 
   /// Pulls the `data` array out of a response and parses what it can.
@@ -996,6 +1095,9 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
       _lng = lng;
       _locationLabel = 'This area';
       _selected = null;
+      // A long press is a question about one spot, so a national radius
+      // would answer the wrong one. See _narrowForPlace().
+      _narrowForPlace();
     });
     _pinAt.value = null;
 
@@ -1028,6 +1130,7 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
       _lng = result.longitude;
       _locationLabel = result.label;
       _selected = null;
+      _narrowForPlace();
     });
 
     // Asked for explicitly, so it moves the camera whatever _centred says.
