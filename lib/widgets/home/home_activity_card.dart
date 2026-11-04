@@ -554,6 +554,10 @@ class _GaragePlate extends StatelessWidget {
               CachedNetworkImage(
                 imageUrl: image!,
                 fit: BoxFit.cover,
+                // The widest this is ever drawn is the card, so there is
+                // nothing to gain from decoding beyond it. PostCard caps
+                // its own feed images the same way.
+                memCacheWidth: 1200,
                 placeholder: (_, _) =>
                     Container(color: const Color(0xFFF0F0F0)),
                 errorWidget: (_, _, _) => const _NoPhoto(),
@@ -680,6 +684,10 @@ class _GroupRow extends StatelessWidget {
                   ? CachedNetworkImage(
                       imageUrl: image!,
                       fit: BoxFit.cover,
+                      // Drawn at 46 logical pixels. A group's cover
+                      // image is a banner, and decoding a banner to fill
+                      // a thumbnail is most of a megabyte for nothing.
+                      memCacheWidth: 160,
                       placeholder: (_, _) =>
                           Container(color: const Color(0xFFEDEDED)),
                       errorWidget: (_, _, _) =>
@@ -790,7 +798,10 @@ class _PhotoGrid extends StatelessWidget {
 
   Widget _layout() {
     if (urls.length == 1) {
-      return AspectRatio(aspectRatio: 4 / 3, child: _Tile(url: urls.first));
+      return AspectRatio(
+        aspectRatio: 4 / 3,
+        child: _Tile(url: urls.first, decodeWidth: 1200),
+      );
     }
 
     if (urls.length == 2) {
@@ -798,9 +809,9 @@ class _PhotoGrid extends StatelessWidget {
         aspectRatio: 2 / 1,
         child: Row(
           children: [
-            Expanded(child: _Tile(url: urls[0])),
+            Expanded(child: _Tile(url: urls[0], decodeWidth: 700)),
             const SizedBox(width: 2),
-            Expanded(child: _Tile(url: urls[1])),
+            Expanded(child: _Tile(url: urls[1], decodeWidth: 700)),
           ],
         ),
       );
@@ -816,17 +827,18 @@ class _PhotoGrid extends StatelessWidget {
         children: [
           // Wider than the column beside it: the lead photo is the one
           // being shown, the others are evidence there are more.
-          Expanded(flex: 58, child: _Tile(url: urls[0])),
+          Expanded(flex: 58, child: _Tile(url: urls[0], decodeWidth: 900)),
           const SizedBox(width: 2),
           Expanded(
             flex: 42,
             child: Column(
               children: [
-                Expanded(child: _Tile(url: urls[1])),
+                Expanded(child: _Tile(url: urls[1], decodeWidth: 500)),
                 const SizedBox(height: 2),
                 Expanded(
                   child: _Tile(
                     url: urls[2],
+                    decodeWidth: 500,
                     overlay: more > 0 ? '+$more' : null,
                   ),
                 ),
@@ -841,10 +853,18 @@ class _PhotoGrid extends StatelessWidget {
 
 /// One photo, with an optional "+2" over it.
 class _Tile extends StatelessWidget {
-  const _Tile({required this.url, this.overlay});
+  const _Tile({required this.url, this.overlay, required this.decodeWidth});
 
   final String url;
   final String? overlay;
+
+  /// How wide this tile is actually drawn, in device pixels, so the
+  /// image is not decoded larger than it will ever be seen.
+  ///
+  /// Passed in rather than decided here: only the grid knows whether this
+  /// is the lead tile or one of the small ones, and a tile that assumed
+  /// the largest would undo the point for the other two.
+  final int decodeWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -854,6 +874,7 @@ class _Tile extends StatelessWidget {
         CachedNetworkImage(
           imageUrl: url,
           fit: BoxFit.cover,
+          memCacheWidth: decodeWidth,
           placeholder: (_, _) => Container(color: const Color(0xFFF4F4F4)),
           errorWidget: (_, _, _) => const _NoPhoto(),
         ),

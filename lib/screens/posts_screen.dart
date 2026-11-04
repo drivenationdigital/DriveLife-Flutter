@@ -267,7 +267,19 @@ class PostsScreenState extends State<PostsScreen>
         child: CustomScrollView(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
-          cacheExtent: 2000,
+          // 600, down from 2000.
+          //
+          // cacheExtent is how far BEYOND the viewport children are
+          // built, so 2000 was around two and a half extra screens of
+          // PostCards — each allocating an AnimationController with its
+          // own ticker in initState and decoding images at up to 1400px
+          // wide, roughly 6MB of bitmap apiece. A hard fling asks for all
+          // of it at once, and an app that stops answering gets signal 3
+          // and a tombstone rather than a crash log.
+          //
+          // 600 still keeps most of a screen ready ahead of the scroll,
+          // which is what the big number was reaching for.
+          cacheExtent: 600,
           slivers: [
             // Floating, not pinned: it leaves as you read on and comes back
             // the moment you scroll up, without having to reach the top.
@@ -406,6 +418,22 @@ class _PostsTabState extends State<_PostsTab> {
 
   Timer? _scrollDebounce;
 
+  /// Where the scroll was when we last heard about it.
+  ///
+  /// Read when the trigger fires rather than captured into the timer's
+  /// closure: a snapshot taken at scheduling time is already up to the
+  /// debounce stale, and on a retry it would be staler again.
+  double _lastPixels = 0;
+  double _lastExtent = 0;
+
+  /// Every row already in [_posts], by the same key the widgets use.
+  ///
+  /// The posts half of the feed pages by offset, so a post created
+  /// between two fetches shifts the window and comes back on the next
+  /// page as well. Without this the feed shows it twice and two widgets
+  /// claim one key.
+  final Set<String> _seenKeys = {};
+
   // FIX: Track completed uploads to avoid double-refresh on same upload ID
   final Set<String> _completedUploads = {};
   // FIX: Guard so multiple simultaneous completions only trigger one refresh
@@ -443,17 +471,81 @@ class _PostsTabState extends State<_PostsTab> {
   void onScroll(ScrollMetrics metrics) {
     if (!mounted) return;
 
+    _lastPixels = metrics.pixels;
+    _lastExtent = metrics.maxScrollExtent;
+
     if (_scrollDebounce?.isActive ?? false) _scrollDebounce!.cancel();
 
-    _scrollDebounce = Timer(const Duration(milliseconds: 200), () {
-      if (!mounted) return;
+    _scrollDebounce = Timer(
+      const Duration(milliseconds: 200),
+      _maybeLoadMore,
+    );
+  }
 
-      if (metrics.pixels >= metrics.maxScrollExtent - 500 &&
-          !_isLoading &&
-          _hasMore) {
-        _fetchPosts();
+  /// Load the next page if the end is in sight.
+  ///
+  /// RETRIES while a fetch is in flight rather than giving up. The old
+  /// version checked `!_isLoading` and dropped the request if it was
+  /// busy — but the debounce only fires once scrolling has stopped, so
+  /// there was no second notification coming to schedule another
+  /// attempt. One unlucky overlap and the feed stopped paging until the
+  /// reader scrolled again.
+  ///
+  /// Chaining is bounded by the conditions, not by a counter: once a page
+  /// lands, maxScrollExtent grows and the end is no longer within reach,
+  /// and _hasMore ends it at the bottom of the feed. A reader parked at
+  /// the end does keep pulling pages, which is what an endless feed is
+  /// for.
+  void _maybeLoadMore() {
+    if (!mounted) return;
+
+    // Before the first layout there is nothing to be near the end of.
+    if (_lastExtent <= 0) return;
+
+    if (_lastPixels < _lastExtent - 500 || !_hasMore) return;
+
+    if (_isLoading) {
+      _scrollDebounce = Timer(
+        const Duration(milliseconds: 250),
+        _maybeLoadMore,
+      );
+      return;
+    }
+
+    _fetchPosts();
+  }
+
+  /// A row's identity, matching the key its widget is given.
+  ///
+  /// Null ids are NOT de-duplicated. Two rows that cannot be told apart
+  /// are better shown twice than silently collapsed into one, and an id
+  /// is the only thing here that identifies anything.
+  String? _rowKey(dynamic row) {
+    if (row is! Map) return null;
+
+    final id = row['id'];
+
+    if (id == null || id.toString().isEmpty) return null;
+
+    return '${row['feed_kind'] ?? 'post'}-$id';
+  }
+
+  /// What is new in a page, in order.
+  List<dynamic> _fresh(List<dynamic> rows) {
+    final out = <dynamic>[];
+
+    for (final row in rows) {
+      final key = _rowKey(row);
+
+      if (key != null) {
+        if (_seenKeys.contains(key)) continue;
+        _seenKeys.add(key);
       }
-    });
+
+      out.add(row);
+    }
+
+    return out;
   }
 
   /// Reloads this feed from the first page. The screen scrolls; this fetches.
@@ -478,6 +570,7 @@ class _PostsTabState extends State<_PostsTab> {
       _hasMore = true;
       _nextBefore = null;
       _totalPages = 0;
+      _seenKeys.clear();
       if (widget.tabType == _offersTab) _fetchOffers();
     }
 
@@ -509,11 +602,13 @@ class _PostsTabState extends State<_PostsTab> {
 
         if (!mounted) return;
 
+        final fresh = _fresh(page.items);
+
         setState(() {
           if (refresh) {
-            _posts = page.items;
+            _posts = fresh;
           } else {
-            _posts.addAll(page.items);
+            _posts.addAll(fresh);
           }
 
           _page++;
@@ -544,13 +639,19 @@ class _PostsTabState extends State<_PostsTab> {
 
       if (!mounted) return;
 
+      final fresh = _fresh(newPosts);
+
       setState(() {
         if (refresh) {
-          _posts = newPosts;
+          _posts = fresh;
         } else {
-          _posts.addAll(newPosts);
+          _posts.addAll(fresh);
         }
         _page++;
+        // On what ARRIVED, not on what was new. A page entirely of rows
+        // already on screen still means the server had a page to give,
+        // so there is probably another behind it — judging by `fresh`
+        // would end the feed on the first repeat.
         _hasMore = newPosts.length >= _limit;
         _isLoading = false;
         _isInitialized = true;
