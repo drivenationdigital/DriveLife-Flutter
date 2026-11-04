@@ -1,5 +1,7 @@
 import 'package:drivelife/main.dart' show BottomNavProvider;
 import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/api/activity_feed_api.dart';
+import 'package:drivelife/theme/dl_type.dart';
 import 'package:drivelife/widgets/home/home_activity_card.dart';
 import 'package:drivelife/widgets/nav/dl_bottom_nav.dart';
 import 'package:drivelife/widgets/home/your_week.dart';
@@ -475,10 +477,7 @@ class _PostsTabState extends State<_PostsTab> {
 
     if (_scrollDebounce?.isActive ?? false) _scrollDebounce!.cancel();
 
-    _scrollDebounce = Timer(
-      const Duration(milliseconds: 200),
-      _maybeLoadMore,
-    );
+    _scrollDebounce = Timer(const Duration(milliseconds: 200), _maybeLoadMore);
   }
 
   /// Load the next page if the end is in sight.
@@ -796,7 +795,28 @@ class _PostsTabState extends State<_PostsTab> {
             ),
           )
         // Posts list
-        else
+        else ...[
+          // The mockup's ACTIVITY heading, where the summary above ends
+          // and the feed begins.
+          //
+          // Latest only. It marks the seam between Your week — which is
+          // about you — and everything that has happened since, and
+          // Following has no summary above it to be a seam from.
+          //
+          // Inside the else, so it is not left hanging over an empty
+          // feed or a spinner.
+          if (_isMixed)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: DlHeading(
+                  'Activity',
+                  fontSize: 22,
+                  color: theme.textColor,
+                ),
+              ),
+            ),
+
           SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) {
@@ -815,56 +835,123 @@ class _PostsTabState extends State<_PostsTab> {
 
                 final post = _posts[index];
 
+                // The grey band between items, Facebook-style.
+                //
+                // Wrapped around the card here rather than built into
+                // each one, because a card does not know whether it is
+                // the last in the list — and a separator under the final
+                // item is a line with nothing beneath it.
+                Widget separated(Widget card) {
+                  final isLast = index == _posts.length - 1 && !_hasMore;
+
+                  if (isLast) return card;
+
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      card,
+                      // A hairline, not a band. 8px of grey separated
+                      // the cards and also cut the feed into strips;
+                      // one pixel is enough to say "this ended, that
+                      // began" and disappears once you are reading.
+                      //
+                      // The cards already carry their own bottom
+                      // padding, so the line has air around it without
+                      // needing to be thick itself.
+                      const SizedBox(
+                        height: 1,
+                        width: double.infinity,
+                        child: ColoredBox(color: Color(0xFFECECEC)),
+                      ),
+
+                      // Air UNDER the line, because the cards do not
+                      // provide it evenly. What sits above the line is
+                      // the end of a card — a PostCard's likes and
+                      // comments block, with its own generous bottom
+                      // padding. What sits below is the start of the
+                      // next one, and PostCard's header is a ListTile
+                      // that begins almost immediately.
+                      //
+                      // So the line looked tucked under the card
+                      // beneath it. This is added by the list rather
+                      // than by either card, so the gap is the same
+                      // whichever kinds happen to meet here.
+                      const SizedBox(height: 10),
+                    ],
+                  );
+                }
+
                 // An activity, not a post. Drawn as its own card: a car
                 // going into a garage has no caption, no likes and no
                 // comments, so a PostCard would be mostly empty boxes.
                 if (post is Map && post['feed_kind'] == 'activity') {
-                  return HomeActivityCard(
-                    // Prefixed. An activity id and a post id are both
-                    // small integers from different tables, and two
-                    // widgets with the same key is a crash, not a
-                    // glitch.
-                    key: ValueKey('activity-${post['id']}'),
-                    item: Map<String, dynamic>.from(post),
-                    theme: theme,
+                  return separated(
+                    HomeActivityCard(
+                      // Prefixed. An activity id and a post id are both
+                      // small integers from different tables, and two
+                      // widgets with the same key is a crash, not a
+                      // glitch.
+                      key: ValueKey('activity-${post['id']}'),
+                      item: Map<String, dynamic>.from(post),
+                      theme: theme,
+                      // Teaches the interest profile. The card only draws
+                      // the buttons on a RECOMMENDATION — something from
+                      // somebody the reader already chose to follow is not
+                      // a guess that needs correcting — so passing this
+                      // unconditionally is what makes them appear on the
+                      // half of the feed that is guessing.
+                      //
+                      // Fire and forget. A dropped rating is worth less
+                      // than a spinner on a feed card, and the card has
+                      // already said "More like this" by the time this
+                      // returns.
+                      onRespond: (activityId, response) {
+                        ActivityFeedApi.respond(
+                          activityId: activityId,
+                          response: response,
+                        );
+                      },
+                    ),
                   );
                 }
 
-                return PostCard(
-                  key: ValueKey('post-${post['id']}'),
-                  post: post,
-                  onTapProfile: () {
-                    if (!mounted) return;
-                    if (post['is_event'] == true) return;
-                    Navigator.pushNamed(
-                      context,
-                      '/view-profile',
-                      arguments: {
-                        'userId': post['user_id'],
-                        'username': post['username'],
-                      },
-                    );
-                  },
-                  onLikeChanged: (isLiked) {
-                    setState(() {
-                      post['is_liked'] = isLiked;
+                return separated(
+                  PostCard(
+                    key: ValueKey('post-${post['id']}'),
+                    post: post,
+                    onTapProfile: () {
+                      if (!mounted) return;
+                      if (post['is_event'] == true) return;
+                      Navigator.pushNamed(
+                        context,
+                        '/view-profile',
+                        arguments: {
+                          'userId': post['user_id'],
+                          'username': post['username'],
+                        },
+                      );
+                    },
+                    onLikeChanged: (isLiked) {
+                      setState(() {
+                        post['is_liked'] = isLiked;
 
-                      // Parsed, not cast. `as int` threw on any endpoint
-                      // that sent the count as a string or a double, and
-                      // which endpoint filled a given post decided
-                      // whether liking it crashed.
-                      final current = switch (post['likes_count']) {
-                        final int v => v,
-                        final num v => v.toInt(),
-                        final String v => int.tryParse(v.trim()) ?? 0,
-                        _ => 0,
-                      };
+                        // Parsed, not cast. `as int` threw on any endpoint
+                        // that sent the count as a string or a double, and
+                        // which endpoint filled a given post decided
+                        // whether liking it crashed.
+                        final current = switch (post['likes_count']) {
+                          final int v => v,
+                          final num v => v.toInt(),
+                          final String v => int.tryParse(v.trim()) ?? 0,
+                          _ => 0,
+                        };
 
-                      post['likes_count'] = (current + (isLiked ? 1 : -1))
-                          .clamp(0, 9999999);
-                    });
-                  },
-                  onDelete: refresh,
+                        post['likes_count'] = (current + (isLiked ? 1 : -1))
+                            .clamp(0, 9999999);
+                      });
+                    },
+                    onDelete: refresh,
+                  ),
                 );
               },
               childCount: _posts.length + (_hasMore ? 1 : 0),
@@ -876,6 +963,7 @@ class _PostsTabState extends State<_PostsTab> {
               addSemanticIndexes: false,
             ),
           ),
+        ],
 
         // Room for the floating bottom bar, which sits OVER this feed.
         //

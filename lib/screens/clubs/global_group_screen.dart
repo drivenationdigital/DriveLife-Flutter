@@ -5,8 +5,9 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
+import 'package:drivelife/theme/dl_type.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
-import 'package:drivelife/widgets/groups/group_activity_card.dart';
+import 'package:drivelife/widgets/home/home_activity_card.dart';
 import 'package:drivelife/widgets/groups/group_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -156,48 +157,74 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
   /// says 212 and then takes a second to fill would be the worse
   /// experience. Revisit if any of these grows expensive.
   Future<void> _load() async {
+    // All five start together, but the GROUP is awaited on its own.
+    //
+    // They used to be one Future.wait, so the screen showed its skeleton
+    // page until the slowest of five requests came back — and the Latest
+    // feed is much the heaviest of them, hydrating posts, vehicles,
+    // galleries and now photo sets. Opening a group meant waiting on
+    // that before the title and the Join button would even appear, which
+    // is why a cold open spins and a second one is instant: the cost is
+    // in the feed, and by then the server has it warm.
+    //
+    // The group itself is one row. Rendering the page around it the
+    // moment it lands gives something to look at and somewhere to tap,
+    // while the tabs fill in behind their own skeletons.
+    final groupRequest = GlobalGroupsApi.fetchGroup(widget.slug);
+    final activityRequest = GlobalGroupsApi.fetchActivity(widget.slug);
+    final vehiclesRequest = GlobalGroupsApi.fetchVehicles(widget.slug);
+    final spotsRequest = GlobalGroupsApi.fetchSpots(widget.slug);
+    final eventsRequest = GlobalGroupsApi.fetchEvents(widget.slug);
+
+    final group = await groupRequest;
+
+    if (!mounted) return;
+
+    setState(() {
+      _group = group ?? _group;
+
+      // Fresh truth from the server supersedes the optimistic flip.
+      // Left in place, a stale override would keep claiming "Joined"
+      // through any later reload.
+      if (group != null) _joinedOverride = null;
+    });
+
     final results = await Future.wait([
-      GlobalGroupsApi.fetchGroup(widget.slug),
-      GlobalGroupsApi.fetchActivity(widget.slug),
-      GlobalGroupsApi.fetchVehicles(widget.slug),
-      GlobalGroupsApi.fetchSpots(widget.slug),
-      GlobalGroupsApi.fetchEvents(widget.slug),
+      activityRequest,
+      vehiclesRequest,
+      spotsRequest,
+      eventsRequest,
     ]);
 
     if (!mounted) return;
 
-    final group = results[0] as GlobalGroup?;
-
     setState(() {
-      _group = group ?? _group;
       final latestPage =
-          results[1] as ({List<Map<String, dynamic>> items, int total});
+          results[0] as ({List<Map<String, dynamic>> items, int total});
 
       _latest = latestPage.items;
       _latestTotal = latestPage.total;
       _latestPage = 1;
       _latestLoadingMore = false;
       final garagePage =
-          results[2] as ({List<GlobalGroupVehicle> items, int total});
+          results[1] as ({List<GlobalGroupVehicle> items, int total});
 
       _garages = garagePage.items;
       _garageTotal = garagePage.total;
       _garagePage = 1;
       _garagesLoadingMore = false;
-      final spotPage = results[3] as ({List<GlobalGroupSpot> items, int total});
+      final spotPage = results[2] as ({List<GlobalGroupSpot> items, int total});
 
       _spots = spotPage.items;
       _spotTotal = spotPage.total;
       _spotPage = 1;
       _spotsLoadingMore = false;
-      _events = results[4] as List<GlobalGroupEvent>;
+      _events = results[3] as List<GlobalGroupEvent>;
       _loading = false;
-      _failed = group == null && _group == null;
 
-      // Fresh truth from the server supersedes the optimistic flip.
-      // Left in place, a stale override would keep claiming "Joined"
-      // through any later reload.
-      if (group != null) _joinedOverride = null;
+      // Only now, because _failed hides the whole page. A group that
+      // loaded fine but whose feed is still in flight is not a failure.
+      _failed = _group == null;
     });
   }
 
@@ -361,8 +388,10 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
         child: Column(
           children: [
             _header(theme, group),
+            // No Divider after this any more: GroupTabBar carries its
+            // own rule top and bottom, and the one that used to sit
+            // here would be a second line directly under the first.
             _tabBar(theme, group),
-            Divider(height: 1, color: theme.dividerColor),
             Expanded(
               child: TabBarView(
                 controller: _tabs,
@@ -703,39 +732,85 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
     });
   }
 
-  /// Open whatever a non-post activity card is about.
+  /// One row of the Latest feed, with the divider under it.
   ///
-  /// A vehicle and a photo added to one both go to the vehicle; a gallery
-  /// goes to the gallery. The id to use differs per kind, which is why
-  /// this reads the row rather than taking an id.
-  void _openActivity(Map<String, dynamic> item) {
-    final kind = item['group_item_type']?.toString() ?? '';
+  /// The same hairline the home feed uses, and added here for the same
+  /// reason: only the list knows which row is last, and a separator
+  /// under the final one is a line with nothing beneath it.
+  ///
+  /// The air goes UNDER the line rather than around it, because the
+  /// cards do not provide it evenly — above is the end of a card, below
+  /// is a header that starts almost immediately.
+  Widget _latestRow(
+    ThemeProvider theme,
+    Map<String, dynamic> item,
+    bool isLast,
+  ) {
+    final isActivity = const [
+      'vehicle',
+      'gallery',
+      'garage_photo',
+    ].contains(item['group_item_type']);
 
-    if (kind == 'gallery') {
-      final id = (item['gallery_id'] as int?) ??
-          int.tryParse('${item['gallery_id'] ?? item['id']}') ??
-          0;
+    // The home feed's card, not a second one.
+    //
+    // Both feeds draw the same events, so they should draw them the same
+    // way — full-bleed photographs, the caption under them, a grid where
+    // there is a set of them. The group endpoint now sends the field
+    // names this reads, so a change to the card lands in both places
+    // rather than in one and being forgotten in the other.
+    //
+    // It navigates itself, from target_type and target_id, which is why
+    // there is no onTap — and why _openActivity has gone. Two places
+    // deciding where a gallery card opens is two places to disagree.
+    final card = isActivity
+        ? HomeActivityCard(
+            // Keyed by kind as well as id: a garage id, a gallery id and
+            // a post id are all small integers from different tables, so
+            // ValueKey(id) alone can collide between them and Flutter
+            // throws on a duplicate key.
+            key: ValueKey('${item['group_item_type']}-${item['id']}'),
+            item: item,
+            theme: theme,
+          )
+        : PostCard(
+            key: ValueKey('post-${item['id']}'),
+            post: item,
+            // The avatar and the username in a post's header both call
+            // this, so an empty callback left the whole header dead in
+            // this feed — the taps registered and went nowhere.
+            onTapProfile: () => Navigator.pushNamed(
+              context,
+              AppRoutes.viewProfile,
+              arguments: {
+                'userId': item['user_id'],
+                'username': (item['username'] ?? '').toString(),
+              },
+            ),
+            onLikeChanged: (isLiked) {
+              setState(() {
+                item['is_liked'] = isLiked;
+                item['likes_count'] =
+                    ((item['likes_count'] as int?) ?? 0) + (isLiked ? 1 : -1);
+              });
+            },
+            onDelete: _load,
+          );
 
-      if (id <= 0) return;
+    if (isLast) return card;
 
-      Navigator.pushNamed(
-        context,
-        AppRoutes.galleryDetail,
-        arguments: {
-          'galleryId': id,
-          'title': item['gallery_title'] ?? 'Gallery',
-        },
-      );
-
-      return;
-    }
-
-    // vehicle and garage_photo both carry the garage id.
-    final id = (item['garage_id'] as int?) ??
-        int.tryParse('${item['garage_id'] ?? item['id']}') ??
-        0;
-
-    _openVehicle(id);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        card,
+        const SizedBox(
+          height: 1,
+          width: double.infinity,
+          child: ColoredBox(color: Color(0xFFECECEC)),
+        ),
+        const SizedBox(height: 10),
+      ],
+    );
   }
 
   Widget _latestTab(ThemeProvider theme, GlobalGroup group) {
@@ -755,77 +830,46 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
         child: ListView(
           padding: const EdgeInsets.only(bottom: 40),
           children: [
-          _composer(theme, group),
+            _composer(theme, group),
 
-          if (_garages.isNotEmpty) _latestGarages(theme),
+            if (_garages.isNotEmpty) _latestGarages(theme),
 
-          if (_loading && _latest.isEmpty)
-            const GroupFeedSkeleton()
-          else if (_latest.isEmpty)
-            GroupEmptyNote(
-              theme: theme,
-              title: 'No activity yet',
-              body: 'Check back soon for new content.',
-            )
-          else
-            // The same widget a club feed uses. A group post and a club
-            // post are the same thing presented the same way, and the
-            // hand-rolled card this replaces had no caption, no
-            // carousel, no comments and no like button — just a
-            // picture that opened the post.
-            // The feed is mixed: ce_group_activity indexes posts, spots
-            // AND vehicles, and a vehicle has no caption, no comments and
-            // nothing to like. Drawn as a post it would be a card with
-            // every one of those parts empty, so it gets its own.
-            //
-            // Branching on group_item_type, which the endpoint stamps on
-            // every row from the index.
-            for (final item in _latest)
-              if (const ['vehicle', 'gallery', 'garage_photo'].contains(
-                item['group_item_type'],
-              ))
-                GroupActivityCard(
-                  // Keyed by kind as well as id: a garage id, a gallery id
-                  // and a post id are all small integers from different
-                  // tables, so ValueKey(id) alone can collide between them
-                  // and Flutter throws on a duplicate key.
-                  key: ValueKey('${item['group_item_type']}-${item['id']}'),
-                  item: item,
-                  theme: theme,
-                  onTap: () => _openActivity(item),
-                )
-              else
-                PostCard(
-                  key: ValueKey('post-${item['id']}'),
-                  post: item,
-                  // The avatar and the username in a post's header both
-                  // call this, so an empty callback left the whole
-                  // header dead in this feed — the taps registered and
-                  // went nowhere.
-                  onTapProfile: () => Navigator.pushNamed(
-                    context,
-                    AppRoutes.viewProfile,
-                    arguments: {
-                      'userId': item['user_id'],
-                      'username': (item['username'] ?? '').toString(),
-                    },
-                  ),
-                  onLikeChanged: (isLiked) {
-                    setState(() {
-                      item['is_liked'] = isLiked;
-                      item['likes_count'] =
-                          ((item['likes_count'] as int?) ?? 0) +
-                          (isLiked ? 1 : -1);
-                    });
-                  },
-                  onDelete: _load,
+            if (_loading && _latest.isEmpty)
+              const GroupFeedSkeleton()
+            else if (_latest.isEmpty)
+              GroupEmptyNote(
+                theme: theme,
+                title: 'No activity yet',
+                body: 'Check back soon for new content.',
+              )
+            else
+              // The same widget a club feed uses. A group post and a club
+              // post are the same thing presented the same way, and the
+              // hand-rolled card this replaces had no caption, no
+              // carousel, no comments and no like button — just a
+              // picture that opened the post.
+              // The feed is mixed: ce_group_activity indexes posts, spots
+              // AND vehicles, and a vehicle has no caption, no comments and
+              // nothing to like. Drawn as a post it would be a card with
+              // every one of those parts empty, so it gets its own.
+              //
+              // Branching on group_item_type, which the endpoint stamps on
+              // every row from the index.
+              for (final entry in _latest.asMap().entries)
+                _latestRow(
+                  theme,
+                  entry.value,
+                  // The last row only when there is nothing more coming;
+                  // otherwise the loading indicator follows it and the
+                  // line belongs.
+                  entry.key == _latest.length - 1 && !_latestHasMore,
                 ),
 
-          if (_latestHasMore)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 10),
-              child: GroupFeedSkeleton(count: 1),
-            ),
+            if (_latestHasMore)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: GroupFeedSkeleton(count: 1),
+              ),
           ],
         ),
       ),
@@ -839,7 +883,11 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 9, 9, 9),
         decoration: BoxDecoration(
-          color: theme.cardColor,
+          // A grey you can actually see. theme.cardColor is all but
+          // white against a white feed, so the box had no edges and
+          // the row read as loose text with a button after it rather
+          // than as something to tap.
+          color: const Color(0xFFF1F1F1),
           borderRadius: BorderRadius.circular(999),
         ),
         child: Row(
@@ -898,7 +946,17 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
           child: Row(
             children: [
-              Expanded(child: _sectionTitle(theme, 'Latest garages')),
+              Expanded(
+                // The same heading the home page uses for Upcoming
+                // events and Get involved — this was a 15pt uppercase
+                // Text, which read as a label on the rail rather than
+                // as a section of the page.
+                child: DlHeading(
+                  'Latest garages',
+                  fontSize: 22,
+                  color: theme.textColor,
+                ),
+              ),
               GestureDetector(
                 onTap: () => _tabs.animateTo(1),
                 child: const Text(
@@ -915,7 +973,11 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
         ),
 
         SizedBox(
-          height: 196,
+          // Taller than the 196 it was. The card is a bordered box now,
+          // so the title and the owner's name sit INSIDE it with their
+          // own padding rather than floating under a loose photograph —
+          // and that padding has to come from somewhere.
+          height: 232,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1232,18 +1294,6 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
   }
 
   // ─── Shared bits ───────────────────────────────────────────────────
-
-  Widget _sectionTitle(ThemeProvider theme, String text) {
-    return Text(
-      text.toUpperCase(),
-      style: TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 0.3,
-        color: theme.textColor,
-      ),
-    );
-  }
 
   void _openPost(int postId) {
     if (postId <= 0) return;

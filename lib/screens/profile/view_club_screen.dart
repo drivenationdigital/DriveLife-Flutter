@@ -797,8 +797,9 @@ class _ClubViewScreenState extends State<ClubViewScreen>
                     ],
                   ),
 
-                  Divider(height: 1, color: Colors.grey.shade200),
-
+                  // GroupTabBar carries its own rule top and bottom
+                  // now, so the Divider that used to sit here would be
+                  // a second line directly under the first.
                   Expanded(
                     child: TabBarView(
                       controller: _tabController,

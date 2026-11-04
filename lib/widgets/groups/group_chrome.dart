@@ -46,6 +46,22 @@ class GroupTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Ruled top and bottom, which is what separates the tabs from the
+    // header above and the feed below. dividerColor is left transparent
+    // because TabBar's own divider only draws underneath — the line
+    // above it has to come from here.
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(color: Color(0xFFECECEC)),
+          bottom: BorderSide(color: Color(0xFFECECEC)),
+        ),
+      ),
+      child: _bar(),
+    );
+  }
+
+  Widget _bar() {
     return TabBar(
       controller: controller,
       isScrollable: true,
@@ -134,15 +150,27 @@ class GroupGarageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                fit: StackFit.expand,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE6E6E6)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Expanded(
+              child: ClipRRect(
+                // Top only. The foot of the photograph meets the white
+                // the title sits on, so rounding it would leave two
+                // slivers of background inside the card.
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(13),
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
                 children: [
                   if ((vehicle.image ?? '').isNotEmpty)
                     CachedNetworkImage(
@@ -199,38 +227,54 @@ class GroupGarageCard extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 9),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(11, 10, 11, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    vehicle.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                      color: theme.textColor,
+                    ),
+                  ),
 
-          Text(
-            vehicle.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 15.5,
-              fontWeight: FontWeight.w700,
-              color: theme.textColor,
-            ),
-          ),
+                  const SizedBox(height: 7),
 
-          const SizedBox(height: 5),
-
-          Row(
-            children: [
-              GroupAvatar(url: vehicle.owner?.avatar, radius: 10, theme: theme),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  compact || vehicle.mods == 0
-                      ? (vehicle.owner?.shortName ?? '')
-                      : '${vehicle.owner?.shortName ?? ''} · ${vehicle.mods} mods',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13.5, color: theme.subtextColor),
-                ),
+                  Row(
+                    children: [
+                      GroupAvatar(
+                        url: vehicle.owner?.avatar,
+                        radius: 10,
+                        theme: theme,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          compact || vehicle.mods == 0
+                              ? (vehicle.owner?.shortName ?? '')
+                              : '${vehicle.owner?.shortName ?? ''} · ${vehicle.mods} mods',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            color: theme.subtextColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

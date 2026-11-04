@@ -216,6 +216,12 @@ class _HomeActivityCardState extends State<HomeActivityCard> {
       widget.item['activity_source']?.toString() == 'recommended';
 
   /// How long ago, from the activity's own timestamp.
+  ///
+  /// Spelled out — "3 days ago", not "3d" — to match PostCard's
+  /// _formatPostDate, thresholds included. The two cards sit in one
+  /// list, and a column reading "1w" above "3 days ago" looks like two
+  /// different measurements rather than one scale, which is exactly how
+  /// it was read.
   String get _ago {
     final when = DateTime.tryParse(
       widget.item['created_at']?.toString() ?? '',
@@ -225,12 +231,31 @@ class _HomeActivityCardState extends State<HomeActivityCard> {
 
     final gap = DateTime.now().difference(when);
 
-    if (gap.inMinutes < 60) return '${gap.inMinutes}m';
-    if (gap.inHours < 24) return '${gap.inHours}h';
-    if (gap.inDays < 7) return '${gap.inDays}d';
-    if (gap.inDays < 365) return '${(gap.inDays / 7).floor()}w';
+    if (gap.inDays >= 30) {
+      final months = (gap.inDays / 30).floor();
+      return months == 1 ? '1 month ago' : '$months months ago';
+    }
 
-    return '${(gap.inDays / 365).floor()}y';
+    if (gap.inDays >= 7) {
+      final weeks = (gap.inDays / 7).floor();
+      return weeks == 1 ? '1 week ago' : '$weeks weeks ago';
+    }
+
+    if (gap.inDays >= 1) {
+      return gap.inDays == 1 ? '1 day ago' : '${gap.inDays} days ago';
+    }
+
+    if (gap.inHours >= 1) {
+      return gap.inHours == 1 ? '1 hour ago' : '${gap.inHours} hours ago';
+    }
+
+    if (gap.inMinutes >= 1) {
+      return gap.inMinutes == 1
+          ? '1 minute ago'
+          : '${gap.inMinutes} minutes ago';
+    }
+
+    return 'Just now';
   }
 
   // ── Going places ───────────────────────────────────────────────────
@@ -324,83 +349,135 @@ class _HomeActivityCardState extends State<HomeActivityCard> {
     return InkWell(
       onTap: _open,
       child: Container(
-        // Flush on white, no rule beneath. The feed around it is posts
-        // drawn the same way, and a card with its own outline sitting
-        // among them reads as an advert.
+        // Flush on white, and the MEDIA runs the full width of the
+        // screen while the words are inset. That is how PostCard is
+        // built, and these sit in the same column as PostCards — an
+        // inset photo among full-bleed ones reads as a different kind of
+        // thing rather than the same feed.
         //
-        // Separation is space rather than a line. A hairline under every
-        // activity turned a run of them into a ruled list, which is
-        // heavier than the posts it sits between — and the eye reads
-        // whitespace as a break perfectly well without being told.
+        // So the padding is on each text block rather than on the card.
         color: Colors.white,
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _header(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: _header(),
+            ),
 
-            if (_caption != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                _caption!,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 15,
-                  height: 1.35,
-                  color: Color(0xFF111111),
+            // Edge to edge, no corner radius. Only when there is one: a
+            // gallery whose photos have all been deleted has nothing to
+            // draw, and a gap would be the only thing left of it.
+            if (_body() case final body?)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: body,
+              ),
+
+            // BELOW the photographs, like a post's caption.
+            //
+            // Above them it was a headline, and read as a second title
+            // competing with the sentence in the header — "Shaun
+            // Hawkins posted 42 photos" then "Petrolheadonism LIVE
+            // 2026", with nothing yet to show what either referred to.
+            // Under the pictures it does what a caption does: says what
+            // you have just looked at.
+            if (_caption != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Text(
+                  _caption!,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    height: 1.35,
+                    color: Color(0xFF111111),
+                  ),
                 ),
               ),
-            ],
 
-            // Only when there is a body. A gallery whose photos have all
-            // been deleted has nothing to draw, and the gap would be the
-            // only thing left of it.
-            if (_body() case final body?) ...[
-              const SizedBox(height: 11),
-              body,
-            ],
-
-            if (_answered != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                _answered == 'interested'
-                    ? 'More like this'
-                    : 'Fewer like this',
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFFA0A0A0),
+            // What the photo above is OF, under it rather than written
+            // across it. A name burned into the corner of a photograph
+            // is a caption on a poster; this is a feed.
+            if (_shape == _Shape.garage)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _title.isEmpty ? 'A car' : _title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                        color: Color(0xFF111111),
+                      ),
+                    ),
+                    if (_subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        _subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF7A7A7A),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ],
 
-            if (showButtons) ...[
-              const SizedBox(height: 11),
-              Row(
-                children: [
-                  Expanded(
-                    child: _ResponseButton(
-                      label: 'Interested',
-                      icon: Icons.favorite_border_rounded,
-                      onTap: () => _respond('interested'),
-                      emphasis: true,
-                      theme: widget.theme,
-                    ),
+            if (_answered != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Text(
+                  _answered == 'interested'
+                      ? 'More like this'
+                      : 'Fewer like this',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFA0A0A0),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _ResponseButton(
-                      label: 'Not for me',
-                      icon: Icons.close_rounded,
-                      onTap: () => _respond('not_interested'),
-                      emphasis: false,
-                      theme: widget.theme,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ],
+
+            if (showButtons)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 11, 16, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _ResponseButton(
+                        label: 'Interested',
+                        icon: Icons.favorite_border_rounded,
+                        onTap: () => _respond('interested'),
+                        emphasis: true,
+                        theme: widget.theme,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _ResponseButton(
+                        label: 'Not for me',
+                        icon: Icons.close_rounded,
+                        onTap: () => _respond('not_interested'),
+                        emphasis: false,
+                        theme: widget.theme,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -470,8 +547,6 @@ class _HomeActivityCardState extends State<HomeActivityCard> {
       case _Shape.garage:
         return _GaragePlate(
           image: _image,
-          name: _title.isEmpty ? 'A car' : _title,
-          spec: _subtitle,
           isDream: _isDream,
           accent: widget.theme.primaryColor,
         );
@@ -491,132 +566,78 @@ class _HomeActivityCardState extends State<HomeActivityCard> {
   }
 }
 
-/// A car entering somebody's garage.
+/// The photograph on a car-added card.
 ///
-/// One wide photograph with the car's name across the foot of it. A
-/// garage entry is a record rather than a set of pictures, and a single
-/// hero frame with a plate on it reads as one — you know what kind of
-/// card this is before you have read a word of it.
+/// Just the picture, edge to edge, in the same 16:9 every garage card
+/// uses. The car's name is drawn UNDER it by the card, where a post puts
+/// its caption — it used to be burned across the foot of the photo on a
+/// gradient, which reads as a poster rather than a feed, and could not
+/// wrap or be selected.
 ///
-/// The name sits on a scrim rather than under the photo so the two are
-/// one object. Underneath, it would be a caption, and a caption under a
-/// photo is what the gallery cards do.
+/// A car with no picture still gets the same shape, or it would be the
+/// one garage card that looks like a different kind of thing.
 class _GaragePlate extends StatelessWidget {
   const _GaragePlate({
     required this.image,
-    required this.name,
-    required this.spec,
     required this.isDream,
     required this.accent,
   });
 
   final String? image;
-  final String name;
-  final String? spec;
+
+  /// A car somebody WANTS. The only thing still drawn over the
+  /// photograph, because it qualifies the picture rather than naming it
+  /// — underneath it would read as part of the car's name.
   final bool isDream;
+
   final Color accent;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: AspectRatio(
-        aspectRatio: 16 / 9,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (image != null)
-              CachedNetworkImage(
-                imageUrl: image!,
-                fit: BoxFit.cover,
-                // The widest this is ever drawn is the card, so there is
-                // nothing to gain from decoding beyond it. PostCard caps
-                // its own feed images the same way.
-                memCacheWidth: 1200,
-                placeholder: (_, _) =>
-                    Container(color: const Color(0xFFF0F0F0)),
-                errorWidget: (_, _, _) => const _NoPhoto(),
-              )
-            else
-              // A car with no picture yet still deserves the same shape,
-              // or it would be the only garage card that looks like
-              // something else.
-              const _NoPhoto(),
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (image != null)
+            CachedNetworkImage(
+              imageUrl: image!,
+              fit: BoxFit.cover,
+              // The widest this is ever drawn is the screen, so there is
+              // nothing to gain from decoding beyond it. PostCard caps
+              // its own feed images the same way.
+              memCacheWidth: 1200,
+              placeholder: (_, _) => Container(color: const Color(0xFFF0F0F0)),
+              errorWidget: (_, _, _) => const _NoPhoto(),
+            )
+          else
+            const _NoPhoto(),
 
-            // Dark at the foot, clear at the top: enough to read white
-            // over a bright sky without flattening the photograph.
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.center,
-                  colors: [Color(0xCC000000), Color(0x00000000)],
-                ),
-              ),
-            ),
-
-            if (isDream)
-              Positioned(
-                top: 10,
-                left: 10,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: const Text(
-                    'DREAM CAR',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.6,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-
+          if (isDream)
             Positioned(
-              left: 14,
-              right: 14,
-              bottom: 12,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.3,
-                      color: Colors.white,
-                    ),
+              top: 12,
+              left: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 9,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: accent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Text(
+                  'DREAM CAR',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: Colors.white,
                   ),
-                  if (spec != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      spec!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFD8D8D8),
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -643,6 +664,10 @@ class _GroupRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      // Inset, unlike the photographs. This is a tinted control rather
+      // than media, and a coloured band running edge to edge would read
+      // as a section break in the feed.
+      margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.07),
@@ -764,12 +789,7 @@ class _PhotoGrid extends StatelessWidget {
   final int total;
 
   @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: _layout(),
-    );
-  }
+  Widget build(BuildContext context) => _layout();
 
   Widget _layout() {
     if (urls.length == 1) {

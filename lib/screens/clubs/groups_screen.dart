@@ -8,6 +8,9 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/clubs/open_club_creator.dart';
 import 'package:drivelife/theme/dl_type.dart';
+// FilterOption lives beside a bottom sheet rather than with the models,
+// which is where ClubApiService.fetchClubTypes() returns it from too.
+import 'package:drivelife/widgets/events/filter_bottom_sheet.dart';
 import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
 import 'package:drivelife/widgets/groups/group_chrome.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
@@ -66,6 +69,14 @@ enum GroupKind {
 }
 
 /// A group as every section here needs it, whatever its source.
+/// Which half of the screen is showing.
+///
+/// Communities are national and topical — a marque, a scene. Clubs are
+/// local and run by somebody. They were one list until now, which made
+/// "Your groups" a rail of two different kinds of thing with nothing to
+/// tell them apart.
+enum _Tab { communities, clubs }
+
 class GroupSummary {
   final String id;
   final String title;
@@ -177,13 +188,52 @@ class GroupsScreen extends StatefulWidget {
 class _GroupsScreenState extends State<GroupsScreen>
     with TickerProviderStateMixin {
   static const double _searchBarHeight = 62;
+
+  /// Label, its gap and the underline, plus the hairline beneath.
+  ///
+  /// 64, not the 56 this started at. A 16.5pt label is about 24 high
+  /// once its line height is counted, which the first number did not:
+  /// 13 + 24 + 10 + 2.5 + 13 + 1 is 63.5, and the row overflowed by the
+  /// 7.5 it was short.
+  static const double _tabBarHeight = 64;
   static const Color _ink = Color(0xFF111113);
   static const Color _panel = Color(0xFF1E1E21);
 
   final TextEditingController _search = TextEditingController();
 
+  _Tab _tab = _Tab.communities;
+
+  /// Joined communities and joined clubs, kept apart.
+  ///
+  /// These were one list. Splitting them is the point of the tabs:
+  /// each rail now shows one kind, and its count means something.
   List<GroupSummary> _mine = const [];
+  List<GroupSummary> _myClubs = const [];
   bool _loadingMine = true;
+
+  /// The two filters, which are the two MyClubsScreen had.
+  ///
+  /// NOT club_type. fetchClubs() takes that as well, but it means
+  /// public or private — a different question from the one somebody
+  /// browsing clubs is asking. Category is what kind of club, location
+  /// is where, and between them they are the filter that worked.
+  /// What kind of club, from /club-categories.
+  ///
+  /// This is the filter MyClubsScreen had, and the one that belongs
+  /// here. fetchClubs() also takes a club_type, which is national or
+  /// local, and the ACF field named club_type is the club's privacy —
+  /// three different things, and this is the one worth browsing by.
+  String _clubCategory = 'all';
+  List<FilterOption> _clubCategories = const [];
+
+  /// 'national', not 'all'.
+  ///
+  /// This is what the list asked for before it had a filter: the
+  /// Communities tab's "Local Clubs" section called
+  /// fetchClubs(location: 'national'). Defaulting the new filter to
+  /// 'all' changed the query as well as moving it, which is a bad way
+  /// to find out whether the move worked.
+  String _clubLocation = 'national';
 
   /// The scene and marque sections, before their first response.
   ///
@@ -205,7 +255,15 @@ class _GroupsScreenState extends State<GroupsScreen>
   /// list, and it is what somebody scrolls to when none of the
   /// suggestions were what they were after.
   List<GroupSummary> _all = const [];
-  bool _loadingAll = true;
+  bool _loadingAll = false;
+
+  /// The last fetch threw.
+  ///
+  /// Held so the list can SAY so. fetchClubs() rethrows on any non-200
+  /// and this was caught and dropped, so a server error and a genuinely
+  /// empty result drew the same "No groups to show yet" — and there was
+  /// no way to tell which from the outside.
+  bool _allError = false;
   bool _loadingMoreAll = false;
   bool _hasMoreAll = true;
   int _allPage = 1;
@@ -234,7 +292,10 @@ class _GroupsScreenState extends State<GroupsScreen>
     _scroll.addListener(_onScroll);
     _loadMine();
     _loadSections();
-    _loadAll();
+    // _loadAll() is NOT here. It fetches the clubs list, which only
+    // renders on the Local Clubs tab — opening that tab is what asks
+    // for it. This screen already makes two requests before it can
+    // draw, and most visits never leave Communities.
   }
 
   /// Fetch the next page a screenful before the end, so the list has
@@ -244,6 +305,11 @@ class _GroupsScreenState extends State<GroupsScreen>
 
     final position = _scroll.position;
     if (position.pixels < position.maxScrollExtent - 600) return;
+
+    // The clubs list is the only paged list on this screen, and it
+    // only renders on the clubs tab. Paging it while Communities is
+    // showing would fetch pages nobody can see.
+    if (_tab != _Tab.clubs) return;
 
     _loadMoreAll();
   }
@@ -453,12 +519,24 @@ class _GroupsScreenState extends State<GroupsScreen>
   /// empty — and an empty list they cannot do anything about is worse
   /// than a long one. Filtering returns with Club search.
   Future<void> _loadAll() async {
+    // Raised here rather than assumed. This used to start true because
+    // initState called it immediately; now that the tab calls it, the
+    // list would show its empty state for a frame first.
+    setState(() {
+      _loadingAll = true;
+      _allPage = 1;
+      _hasMoreAll = true;
+    });
+
     try {
       final raw = await ClubApiService.fetchClubs(
-        location: 'national',
+        category: _clubCategory,
+        location: _clubLocation,
         page: 1,
         perPage: _pageSize,
       );
+
+      _allError = false;
 
       if (!mounted) return;
 
@@ -472,7 +550,13 @@ class _GroupsScreenState extends State<GroupsScreen>
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loadingAll = false);
+
+      debugPrint('[Groups] clubs failed: $e');
+
+      setState(() {
+        _loadingAll = false;
+        _allError = true;
+      });
     }
   }
 
@@ -483,7 +567,8 @@ class _GroupsScreenState extends State<GroupsScreen>
 
     try {
       final raw = await ClubApiService.fetchClubs(
-        location: 'national',
+        category: _clubCategory,
+        location: _clubLocation,
         page: _allPage + 1,
         perPage: _pageSize,
       );
@@ -552,10 +637,12 @@ class _GroupsScreenState extends State<GroupsScreen>
     final clubs = clubsResponse.data?.clubs;
 
     setState(() {
-      _mine = [
-        ...groups.map(GroupSummary.fromGlobalGroup),
-        ...(clubs ?? const <MyClub>[]).map(GroupSummary.fromMyClub),
-      ];
+      // Apart, not appended. Each tab's rail shows its own kind, and
+      // the "3 joined" beside it counts that kind only.
+      _mine = groups.map(GroupSummary.fromGlobalGroup).toList();
+      _myClubs = (clubs ?? const <MyClub>[])
+          .map(GroupSummary.fromMyClub)
+          .toList();
       _loadingMine = false;
     });
   }
@@ -615,6 +702,8 @@ class _GroupsScreenState extends State<GroupsScreen>
               _chrome(),
               if (_results != null)
                 ..._searchSlivers(theme)
+              else if (_tab == _Tab.clubs)
+                ..._clubSlivers(theme)
               else
                 ..._browseSlivers(theme),
             ],
@@ -625,18 +714,278 @@ class _GroupsScreenState extends State<GroupsScreen>
   }
 
   Future<void> _refresh() async {
-    await Future.wait([_loadMine(), _loadSections(), _loadAll()]);
+    // _loadMine() feeds both tabs' rails, so it runs either way. The
+    // rest is whichever tab is showing: reloading the communities
+    // sections while somebody is pulling on the clubs list spends two
+    // requests on content they are not looking at, and leaves the list
+    // they ARE looking at untouched.
+    await Future.wait([
+      _loadMine(),
+      if (_tab == _Tab.clubs) _loadAll() else _loadSections(),
+    ]);
+  }
+
+  Future<void> _loadClubCategories() async {
+    // fetchClubTypes() rethrows, and this was once neither awaited nor
+    // caught — so a failure became an unhandled async error and left
+    // the menu holding only its own label. A filter that cannot load
+    // its options should be a filter with one option, not a crash in
+    // the console.
+    try {
+      final options = await ClubApiService.fetchClubTypes();
+
+      if (!mounted) return;
+
+      setState(() => _clubCategories = options);
+    } catch (e) {
+      debugPrint('[Groups] club categories failed: $e');
+    }
+  }
+
+  /// One of the two filter pills under ALL CLUBS.
+  ///
+  /// A menu rather than a bottom sheet: two or three short options
+  /// each, and a sheet for that is a lot of movement to change one
+  /// word.
+  Widget _clubFilter({
+    required String label,
+    required String value,
+    required List<FilterOption> options,
+    required ValueChanged<String> onPick,
+  }) {
+    final selected = options.firstWhere(
+      (o) => o.value == value,
+      orElse: () => FilterOption(label: label, value: value),
+    );
+
+    return PopupMenuButton<String>(
+      onSelected: onPick,
+      position: PopupMenuPosition.under,
+      itemBuilder: (_) => [
+        for (final option in options)
+          PopupMenuItem(value: option.value, child: Text(option.label)),
+      ],
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 11, 12, 11),
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFDDDDDD)),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                selected.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: _ink,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The Local Clubs tab.
+  List<Widget> _clubSlivers(ThemeProvider theme) {
+    return [
+      if (_loadingMine || _myClubs.isNotEmpty) ...[
+        _sliver(
+          _sectionHeader(
+            theme,
+            'Your clubs',
+            trailing: _myClubs.isEmpty
+                ? null
+                : Text(
+                    '${_myClubs.length} joined',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+          ),
+        ),
+        _sliver(
+          _loadingMine
+              ? _yourGroupsSkeleton()
+              : SizedBox(
+                  height: 150,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _myClubs.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 12),
+                    itemBuilder: (_, i) => _railCard(_myClubs[i]),
+                  ),
+                ),
+        ),
+      ],
+
+      _sliver(const SizedBox(height: 26)),
+      _sliver(_sectionHeader(theme, 'All clubs')),
+
+      _sliver(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+          child: Row(
+            children: [
+              Expanded(
+                child: _clubFilter(
+                  // "All clubs", not "Club type", for the unset state:
+                  // a pill reads as the thing it is currently showing,
+                  // and "Club type" named the question instead of the
+                  // answer.
+                  label: 'All clubs',
+                  value: _clubCategory,
+                  options: [
+                    FilterOption(label: 'All clubs', value: 'all'),
+                    ..._clubCategories,
+                  ],
+                  onPick: (value) {
+                    setState(() => _clubCategory = value);
+                    _loadAll();
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _clubFilter(
+                  label: 'Location',
+                  value: _clubLocation,
+                  // The list MyClubsScreen offered. Near me and the two
+                  // radii are the ones somebody looking for a local
+                  // club actually wants, and club_type never had them.
+                  //
+                  // 'custom' is left out: it needs a place search and
+                  // somewhere to put the coordinates, which is a bigger
+                  // change than restoring the filter.
+                  options: [
+                    FilterOption(label: 'National', value: 'national'),
+                    FilterOption(label: 'Everywhere', value: 'all'),
+                    FilterOption(label: 'Near me', value: 'near-me'),
+                    FilterOption(label: 'Within 50 miles', value: '50-miles'),
+                    FilterOption(label: 'Within 100 miles', value: '100-miles'),
+                  ],
+                  onPick: (value) {
+                    setState(() => _clubLocation = value);
+                    _loadAll();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+
+      // The list that used to sit at the foot of Communities. One
+      // loader, one list, on the tab it is named after.
+      ..._allSlivers(theme),
+
+      _sliver(const SizedBox(height: 120)),
+    ];
+  }
+
+  /// Communities | Local Clubs.
+  Widget _tabBar(ThemeProvider theme) {
+    Widget tab(_Tab which, String label) {
+      final selected = _tab == which;
+
+      return Expanded(
+        child: GestureDetector(
+          onTap: () {
+            if (_tab == which) return;
+
+            setState(() => _tab = which);
+
+            // The clubs list is fetched the first time somebody asks
+            // for it, not on open. Most people never leave
+            // Communities, and two more requests on every visit to
+            // this screen is a cost they would pay for nothing.
+            if (which == _Tab.clubs && _all.isEmpty && !_loadingAll) {
+              _loadAll();
+              _loadClubCategories();
+            }
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16.5,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    color: selected ? _ink : Colors.grey.shade500,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // The underline is part of the row rather than a
+                // decoration on the text, so both tabs are the same
+                // height whichever is selected.
+                Container(
+                  height: 2.5,
+                  color: selected ? _ink : Colors.transparent,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      color: Colors.white,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                tab(_Tab.communities, 'Communities'),
+                tab(_Tab.clubs, 'Local Clubs'),
+              ],
+            ),
+          ),
+          const SizedBox(
+            height: 1,
+            width: double.infinity,
+            child: ColoredBox(color: Color(0xFFEDEDED)),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _chrome() {
     return SliverPersistentHeader(
       floating: true,
       delegate: FloatingChromeHeader(
-        height: widget.headerHeight + _searchBarHeight,
+        // The tab row travels with the search box. Both are chrome for
+        // the list below, and leaving the tabs behind when the header
+        // floats away would strand somebody on a page with no way back
+        // to the other half of it.
+        height: widget.headerHeight + _searchBarHeight + _tabBarHeight,
         vsync: this,
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: [if (widget.header != null) widget.header!, _searchField()],
+          children: [
+            if (widget.header != null) widget.header!,
+            _searchField(),
+            _tabBar(Provider.of<ThemeProvider>(context, listen: false)),
+          ],
         ),
       ),
     );
@@ -767,8 +1116,9 @@ class _GroupsScreenState extends State<GroupsScreen>
       // with an argument for why you in particular should look; this
       // is the rest, in the order the server ranks them.
       _sliver(const SizedBox(height: 26)),
-      _sliver(_sectionHeader(theme, 'Local Clubs')),
-      ..._allSlivers(theme),
+      // The clubs list used to end this tab, under a "Local Clubs"
+      // heading. It lives on the Local Clubs tab now, which is the
+      // whole point of there being one.
 
       // Clears the floating bottom bar.
       _sliver(const SizedBox(height: 120)),
@@ -1272,9 +1622,34 @@ class _GroupsScreenState extends State<GroupsScreen>
         _sliver(
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-            child: Text(
-              'No groups to show yet.',
-              style: TextStyle(fontSize: 15.5, color: Colors.grey.shade600),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _allError
+                      ? 'Could not load clubs.'
+                      : 'No clubs match those filters.',
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                if (_allError) ...[
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: _loadAll,
+                    style: _linkStyle,
+                    child: Text(
+                      'Try again',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: theme.primaryColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ),

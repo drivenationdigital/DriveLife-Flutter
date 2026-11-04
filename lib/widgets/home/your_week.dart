@@ -1052,24 +1052,19 @@ class YourWeekPanelState extends State<YourWeekPanel> {
             else ...[
               if (_vehicle != null) _garageCard(theme) else _emptyGarage(theme),
 
-              // Get involved BEFORE the events.
-              //
-              // It is the part of this page asking to be joined in with,
-              // and under a list of dates it was the fourth thing down —
-              // read as another section rather than as an invitation.
-              // The events are a reference you scan; this is a thing you
-              // do.
-              //
-              // The heading matters for the same reason: it makes the
-              // daily game read as something to join in with rather than
-              // another card in the same list as the events.
+              // Events first, Get involved after. Swapped back: what is
+              // on soon is the more useful of the two to see at a glance,
+              // and the daily game is still there a scroll later.
+              const SizedBox(height: 28),
+              _eventsSection(theme),
+
+              // The heading makes the daily game read as something to
+              // join in with rather than another card in the same list
+              // as the events above it.
               const SizedBox(height: 28),
               DlHeading('Get involved', fontSize: 22, color: theme.textColor),
               const SizedBox(height: 10),
               _playRow(theme),
-
-              const SizedBox(height: 28),
-              _eventsSection(theme),
 
               if (_showSpots && _spots.isNotEmpty) ...[
                 const SizedBox(height: 26),
