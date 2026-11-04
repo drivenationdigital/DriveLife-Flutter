@@ -196,25 +196,13 @@ class _HomeActivityCardState extends State<HomeActivityCard> {
     return title.isEmpty ? null : title;
   }
 
-  /// The grey line under the name.
+  /// The grey line under the name: the time, and nothing else.
   ///
-  /// Just the time on garage and group cards: the body names the thing,
-  /// and naming it twice in six words of each other reads as a stutter.
-  /// On a photo card, whatever the caption has not already said.
-  String get _meta {
-    if (_shape != _Shape.photos) return _ago;
-
-    final caption = _caption ?? '';
-    bool alreadySaid(String s) => s.isNotEmpty && caption.contains(s);
-
-    final bits = <String>[
-      if (_title.isNotEmpty && !alreadySaid(_title)) _title,
-      if (_subtitle != null && !alreadySaid(_subtitle!)) _subtitle!,
-      if (_ago.isNotEmpty) _ago,
-    ];
-
-    return bits.join(' · ');
-  }
+  /// It used to carry the car and its spec as well, dot-separated. On a
+  /// phone that ran past the edge and truncated the timestamp — losing
+  /// the one thing on the line a reader cannot work out for themselves,
+  /// to make room for two they can read in the caption underneath.
+  String get _meta => _ago;
 
   int get _activityId => switch (widget.item['id']) {
     final int v => v,
@@ -226,14 +214,6 @@ class _HomeActivityCardState extends State<HomeActivityCard> {
   /// A guess, rather than something the viewer chose to see.
   bool get _isRecommendation =>
       widget.item['activity_source']?.toString() == 'recommended';
-
-  IconData get _icon => switch (_shape) {
-    _Shape.garage => _isDream
-        ? Icons.star_outline_rounded
-        : Icons.garage_outlined,
-    _Shape.group => Icons.groups_2_outlined,
-    _Shape.photos => Icons.photo_library_outlined,
-  };
 
   /// How long ago, from the activity's own timestamp.
   String get _ago {
@@ -478,11 +458,6 @@ class _HomeActivityCardState extends State<HomeActivityCard> {
               ],
             ],
           ),
-        ),
-        const SizedBox(width: 8),
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Icon(_icon, size: 18, color: Colors.grey.shade400),
         ),
       ],
     );

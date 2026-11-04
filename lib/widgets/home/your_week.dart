@@ -141,6 +141,18 @@ class YourWeekPanelState extends State<YourWeekPanel> {
     setState(() => _guess = game);
   }
 
+  /// Sections held back for now.
+  ///
+  /// Hidden rather than removed: each is finished, wired and working,
+  /// and the open question is what the home page should LEAD with, not
+  /// whether these should exist. Flipping one back to true restores both
+  /// its section and the fetch behind it.
+  static const bool _showSpots = false;
+  static const bool _showVenues = false;
+
+  /// The "Run a club?" invitation at the foot of the page.
+  static const bool _showRunAClub = false;
+
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
 
@@ -151,8 +163,17 @@ class YourWeekPanelState extends State<YourWeekPanel> {
       _loadVehicleAndReminder(),
       _loadEvents(),
       GuessAPI.today(),
-      _loadVenues(),
-      _loadSpots(),
+      // Skipped while their sections are hidden. These were two of the
+      // five round trips this panel waits on before it draws anything,
+      // and fetching what nothing renders would make the page slower in
+      // order to show less.
+      //
+      // Still occupying their slots, so the result indexes below do not
+      // shift when a section comes back — an empty future is cheaper to
+      // read than an index that means something different depending on
+      // a flag.
+      _showVenues ? _loadVenues() : Future.value(const <Venue>[]),
+      _showSpots ? _loadSpots() : Future.value(const <RecentSpot>[]),
     ]);
 
     if (!mounted) return;
@@ -1030,31 +1051,42 @@ class YourWeekPanelState extends State<YourWeekPanel> {
               _skeleton()
             else ...[
               if (_vehicle != null) _garageCard(theme) else _emptyGarage(theme),
-              const SizedBox(height: 28),
-              _eventsSection(theme),
 
-              // A heading for the section below, so the daily game
-              // reads as something to join in with rather than another
-              // card in the same list as the events.
+              // Get involved BEFORE the events.
+              //
+              // It is the part of this page asking to be joined in with,
+              // and under a list of dates it was the fourth thing down —
+              // read as another section rather than as an invitation.
+              // The events are a reference you scan; this is a thing you
+              // do.
+              //
+              // The heading matters for the same reason: it makes the
+              // daily game read as something to join in with rather than
+              // another card in the same list as the events.
               const SizedBox(height: 28),
               DlHeading('Get involved', fontSize: 22, color: theme.textColor),
               const SizedBox(height: 10),
               _playRow(theme),
 
-              if (_spots.isNotEmpty) ...[
+              const SizedBox(height: 28),
+              _eventsSection(theme),
+
+              if (_showSpots && _spots.isNotEmpty) ...[
                 const SizedBox(height: 26),
                 DlHeading('Recent spots', fontSize: 22, color: theme.textColor),
                 const SizedBox(height: 6),
                 for (final spot in _spots) _spotRow(theme, spot),
               ],
 
-              if (_venues.isNotEmpty) ...[
+              if (_showVenues && _venues.isNotEmpty) ...[
                 const SizedBox(height: 28),
                 _venuesNearYou(theme),
               ],
 
-              const SizedBox(height: 14),
-              _runAClub(theme),
+              if (_showRunAClub) ...[
+                const SizedBox(height: 14),
+                _runAClub(theme),
+              ],
             ],
           ],
         ),
