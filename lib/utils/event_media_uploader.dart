@@ -54,8 +54,8 @@ class ChunkedFileUploader {
           base64Chunk = base64Data.substring(start, end);
         }
 
-        final endpoint;
-        final idFieldName;
+        final String endpoint;
+        final String idFieldName;
         switch (uploadType) {
           case 'venue':
             endpoint = '/wp-json/app/v2/update-venue-images-cloudflare';

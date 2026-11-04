@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 class RegisterStepFourScreen extends StatelessWidget {
-  const RegisterStepFourScreen({Key? key}) : super(key: key);
+  const RegisterStepFourScreen({super.key});
 
   static const Map<int, String> profileTypeOptions = {
     0: 'Car Owner / Enthusiast',
@@ -153,7 +153,7 @@ class RegisterStepFourScreen extends StatelessWidget {
                                   ),
                                 ),
                               );
-                            }).toList(),
+                            }),
                           ],
                         ),
                       ),

@@ -3,7 +3,7 @@ import 'package:drivelife/screens/clubs/add_club_screen.dart';
 import 'package:flutter/material.dart';
 
 class ClubTypeSelectionSheet extends StatefulWidget {
-  const ClubTypeSelectionSheet({Key? key}) : super(key: key);
+  const ClubTypeSelectionSheet({super.key});
 
   @override
   State<ClubTypeSelectionSheet> createState() => _ClubTypeSelectionSheetState();

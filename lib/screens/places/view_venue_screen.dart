@@ -1801,7 +1801,7 @@ class _VenueCommunityFeedState extends State<_VenueCommunityFeed>
 
       if (!mounted) return;
 
-      final newPosts = (result as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final newPosts = (result)?.cast<Map<String, dynamic>>() ?? [];
 
       setState(() {
         _posts.addAll(newPosts);

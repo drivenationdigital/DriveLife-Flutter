@@ -125,8 +125,9 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen>
     if (status == null) return Colors.grey;
     if (status == PermissionStatus.granted) return Colors.green;
     if (status == PermissionStatus.permanentlyDenied ||
-        status == PermissionStatus.restricted)
+        status == PermissionStatus.restricted) {
       return Colors.red;
+    }
     return theme.primaryColor;
   }
 

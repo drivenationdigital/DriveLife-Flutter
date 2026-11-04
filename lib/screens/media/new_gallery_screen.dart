@@ -1098,8 +1098,9 @@ class _EventSearchSheetState extends State<_EventSearchSheet> {
       final data = events['data'];
       if (data is List) return data.whereType<Map<String, dynamic>>().toList();
     }
-    if (events is List)
+    if (events is List) {
       return events.whereType<Map<String, dynamic>>().toList();
+    }
 
     final top = json['top_results'];
     if (top is Map<String, dynamic>) {

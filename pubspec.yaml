@@ -88,6 +88,17 @@ dependencies:
   webview_flutter: ^4.14.1
   mapbox_maps_flutter: ^3.0.1
 
+  # Both were imported without being declared, which works until a clean
+  # checkout resolves a dependency tree that no longer happens to pull
+  # them in.
+  #
+  # flutter_localizations comes from the SDK, NOT from pub.dev — `dart
+  # fix` added it as `any` and pub then failed to resolve it at all,
+  # because there is no such package to download.
+  cross_file: any
+  flutter_localizations:
+    sdk: flutter
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -17,7 +17,7 @@ import 'package:flutter_quill_delta_from_html/flutter_quill_delta_from_html.dart
 class CreateVenueScreen extends StatefulWidget {
   final VenueDetail? existingVenue; // For editing
 
-  const CreateVenueScreen({Key? key, this.existingVenue}) : super(key: key);
+  const CreateVenueScreen({super.key, this.existingVenue});
 
   @override
   State<CreateVenueScreen> createState() => _CreateVenueScreenState();

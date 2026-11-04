@@ -519,11 +519,11 @@ class PostsAPI {
     Function(double progress)? onProgress,
   }) async {
     // Tell iOS to keep running even if app is backgrounded
-    const _backgroundChannel = MethodChannel('com.drivelife/background_task');
+    const backgroundChannel = MethodChannel('com.drivelife/background_task');
     String? taskId;
 
     if (Platform.isIOS) {
-      taskId = await _backgroundChannel.invokeMethod('beginBackgroundTask');
+      taskId = await backgroundChannel.invokeMethod('beginBackgroundTask');
     }
 
     try {
@@ -601,7 +601,7 @@ class PostsAPI {
     } finally {
       // Always end the background task
       if (Platform.isIOS && taskId != null) {
-        await _backgroundChannel.invokeMethod('endBackgroundTask', {
+        await backgroundChannel.invokeMethod('endBackgroundTask', {
           'taskId': taskId,
         });
       }

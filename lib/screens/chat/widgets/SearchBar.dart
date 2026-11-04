@@ -17,7 +17,7 @@ class NewChatSearchResults extends StatefulWidget {
   final List<String> selectedIds; // already picked
   final int maxReached;
 
-  const NewChatSearchResults({
+  const NewChatSearchResults({super.key, 
     required this.query,
     required this.myUserId,
     required this.onDirectMessage,
@@ -84,17 +84,19 @@ class NewChatSearchResultsState extends State<NewChatSearchResults> {
           .where((u) => u['entity_id'].toString() != widget.myUserId)
           .toList();
 
-      if (mounted)
+      if (mounted) {
         setState(() {
           _results = filtered;
           _loading = false;
         });
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _error = e.toString();
           _loading = false;
         });
+      }
     }
   }
 

@@ -13,7 +13,7 @@ import 'package:provider/provider.dart';
 class AddVehicleScreen extends StatefulWidget {
   final Map<String, dynamic>? vehicle;
 
-  const AddVehicleScreen({Key? key, this.vehicle}) : super(key: key);
+  const AddVehicleScreen({super.key, this.vehicle});
 
   @override
   State<AddVehicleScreen> createState() => _AddVehicleScreenState();
@@ -478,9 +478,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       return;
     }
 
-    final _isDream = _ownership == 'dream_car';
+    final isDream = _ownership == 'dream_car';
 
-    if (!_isDream) {
+    if (!isDream) {
       if (_ownedFrom != null && _ownedTo != null) {
         final from = _dateOnly(_ownedFrom!);
         final to = _dateOnly(_ownedTo!);
@@ -1739,7 +1739,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                     child: Column(
                       children: [
                         DropdownButtonFormField<String>(
-                          value: _ownership,
+                          initialValue: _ownership,
                           dropdownColor: Colors.white,
                           isExpanded: true,
                           icon: _caret,
@@ -1860,7 +1860,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                         DropdownButtonFormField<String>(
                           dropdownColor: theme.cardColor,
                           focusColor: theme.primaryColor,
-                          value: _make,
+                          initialValue: _make,
                           isExpanded: true,
                           icon: _caret,
                           decoration: _dec(

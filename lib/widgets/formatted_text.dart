@@ -21,7 +21,7 @@ class FormattedText extends StatelessWidget {
   final Function(String)? onHashtagPressed;
 
   FormattedText({
-    Key? key,
+    super.key,
     required this.text,
     this.maxTextLength = 300,
     this.showAllText = false,
@@ -36,8 +36,7 @@ class FormattedText extends StatelessWidget {
     this.onHashtagPressed,
   }) : _suffix = "...$suffix",
        _text = text.trim(),
-       _fontSize = fontSize ?? 14,
-       super(key: key);
+       _fontSize = fontSize ?? 14;
 
   final double _fontSize;
   late ThemeProvider _theme;

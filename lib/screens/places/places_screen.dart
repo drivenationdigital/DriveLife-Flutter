@@ -73,7 +73,7 @@ class _VenuesScreenState extends State<VenuesScreen>
   String? _errorMessage;
   bool _isSearching = false;
 
-  bool _isMyVenuesLoading = true;
+  final bool _isMyVenuesLoading = true;
   List<dynamic> _ownedVenues = [];
 
   // Pagination

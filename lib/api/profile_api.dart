@@ -496,7 +496,6 @@ class ProfileAPI {
     required Uint8List imageBytes,
     required String uploadUrl,
     required String fileName,
-    Function(double)? onProgress,
   }) async {
     try {
       final request = http.MultipartRequest('POST', Uri.parse(uploadUrl));

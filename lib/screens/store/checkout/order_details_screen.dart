@@ -203,7 +203,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            ...items.map((item) => _buildOrderItem(item)).toList(),
+            ...items.map((item) => _buildOrderItem(item)),
           ],
         ),
       ),

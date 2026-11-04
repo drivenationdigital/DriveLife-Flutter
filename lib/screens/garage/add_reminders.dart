@@ -8,8 +8,7 @@ class AddReminderScreen extends StatefulWidget {
   final String garageId;
   final Map<String, dynamic>? reminder; // For edit mode
 
-  const AddReminderScreen({Key? key, required this.garageId, this.reminder})
-    : super(key: key);
+  const AddReminderScreen({super.key, required this.garageId, this.reminder});
 
   @override
   State<AddReminderScreen> createState() => _AddReminderScreenState();
@@ -361,7 +360,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
                         vertical: 6,
                       ),
                       child: DropdownButtonFormField<String>(
-                        value: _reminderType,
+                        initialValue: _reminderType,
                         dropdownColor: Colors.white,
                         decoration: _dec(
                           'Reminder Type *',

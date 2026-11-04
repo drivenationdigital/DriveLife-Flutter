@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 class HashtagPostsPage extends StatefulWidget {
   final String hashtag;
 
-  const HashtagPostsPage({Key? key, required this.hashtag}) : super(key: key);
+  const HashtagPostsPage({super.key, required this.hashtag});
 
   @override
   State<HashtagPostsPage> createState() => _HashtagPostsPageState();

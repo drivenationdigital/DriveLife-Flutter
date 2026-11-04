@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 class RegisterStepOneScreen extends StatefulWidget {
-  const RegisterStepOneScreen({Key? key}) : super(key: key);
+  const RegisterStepOneScreen({super.key});
 
   @override
   State<RegisterStepOneScreen> createState() => _RegisterStepOneScreenState();
@@ -496,7 +496,7 @@ class _RegisterStepOneScreenState extends State<RegisterStepOneScreen> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: provider.country.isEmpty ? null : provider.country,
+          initialValue: provider.country.isEmpty ? null : provider.country,
           dropdownColor: isDark ? Colors.grey[900] : Colors.white,
           style: TextStyle(color: isDark ? Colors.white : Colors.black),
           decoration: InputDecoration(

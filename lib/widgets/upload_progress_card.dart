@@ -7,10 +7,10 @@ class UploadProgressCard extends StatelessWidget {
   final UploadPostProgress progress;
 
   const UploadProgressCard({
-    Key? key,
+    super.key,
     required this.uploadId,
     required this.progress,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

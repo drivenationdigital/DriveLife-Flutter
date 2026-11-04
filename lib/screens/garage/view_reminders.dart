@@ -9,7 +9,7 @@ import 'package:provider/provider.dart';
 class RemindersScreen extends StatefulWidget {
   final String garageId;
 
-  const RemindersScreen({Key? key, required this.garageId}) : super(key: key);
+  const RemindersScreen({super.key, required this.garageId});
 
   @override
   State<RemindersScreen> createState() => _RemindersScreenState();
@@ -73,8 +73,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
   }
 
   Widget _buildNotificationBanner() {
-    if (_notificationStatus == PermissionStatus.granted)
+    if (_notificationStatus == PermissionStatus.granted) {
       return const SizedBox.shrink();
+    }
 
     final isPermanent =
         _notificationStatus == PermissionStatus.permanentlyDenied;

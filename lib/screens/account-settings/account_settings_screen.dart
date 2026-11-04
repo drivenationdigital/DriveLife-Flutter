@@ -152,7 +152,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
 
       print('🔐 Deleting account for user: $user');
 
-      if (user == null || user.id == null) {
+      if (user == null) {
         throw Exception('User not found');
       }
 

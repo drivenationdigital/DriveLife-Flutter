@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 class RegisterStepTwoScreen extends StatefulWidget {
-  const RegisterStepTwoScreen({Key? key}) : super(key: key);
+  const RegisterStepTwoScreen({super.key});
 
   @override
   State<RegisterStepTwoScreen> createState() => _RegisterStepTwoScreenState();

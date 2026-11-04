@@ -4,7 +4,6 @@ import 'package:drivelife/widgets/home/home_activity_card.dart';
 import 'package:drivelife/widgets/nav/dl_bottom_nav.dart';
 import 'package:drivelife/widgets/home/your_week.dart';
 import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
-import 'package:flutter/rendering.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:drivelife/api/offers_api_service.dart';
 import 'package:drivelife/providers/account_provider.dart';

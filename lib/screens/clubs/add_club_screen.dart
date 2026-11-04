@@ -23,7 +23,7 @@ import 'package:shimmer/shimmer.dart';
 class CreateClubScreen extends StatefulWidget {
   final String? existingClubId;
 
-  const CreateClubScreen({Key? key, this.existingClubId}) : super(key: key);
+  const CreateClubScreen({super.key, this.existingClubId});
 
   @override
   State<CreateClubScreen> createState() => _CreateClubScreenState();

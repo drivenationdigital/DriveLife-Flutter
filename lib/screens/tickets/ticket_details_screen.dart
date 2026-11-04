@@ -357,10 +357,9 @@ class _TicketDetailsScreenState extends State<TicketDetailsScreen> {
 
       setState(() {
         _formError = invalid is Map && invalid.isNotEmpty
-            ? invalid.entries
+            ? '${invalid.entries
                       .map((entry) => '${entry.key}: ${entry.value}')
-                      .join(' · ') +
-                  ' — remove the code to continue.'
+                      .join(' · ')} — remove the code to continue.'
             : e.message;
       });
     } finally {

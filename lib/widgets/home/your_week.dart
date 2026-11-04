@@ -9,7 +9,6 @@ import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/models/user_model.dart' show LastLocation;
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/api/garage_api.dart';
 import 'package:drivelife/api/garage_reminders_service.dart';

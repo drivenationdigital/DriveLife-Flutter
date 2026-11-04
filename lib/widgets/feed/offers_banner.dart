@@ -21,7 +21,7 @@ class _OffersBannerState extends State<OffersBanner> {
 
   List<EventOffer> _offers = [];
   bool _loading = true;
-  int _currentPage = 0;
+  final int _currentPage = 0;
   Timer? _autoSlide;
 
   static const _gold = Color(0xFFB9965A);

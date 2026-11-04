@@ -104,7 +104,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
     if (!mounted) return;
 
-    if (response != null && response?['success'] != false) {
+    if (response != null && response['success'] != false) {
       final data = response['data'] ?? response;
 
       final List<dynamic> notifications = [
@@ -559,7 +559,7 @@ class _NotificationTile extends StatelessWidget {
       child: CircleAvatar(
         radius: 22,
         backgroundColor: Colors.grey.shade200,
-        backgroundImage: hasImage ? NetworkImage(imageUrl!) : null,
+        backgroundImage: hasImage ? NetworkImage(imageUrl) : null,
         child: !hasImage
             ? Icon(
                 isClub ? Icons.car_repair : Icons.place,

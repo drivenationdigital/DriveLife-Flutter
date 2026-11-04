@@ -58,7 +58,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
   String? _replyingToCommentId;
 
   bool addingComment = false;
-  Map<String, bool> _expandedReplies = {};
+  final Map<String, bool> _expandedReplies = {};
   String? _currentUserId;
 
   // Selected GIF (URL of full-size + preview)

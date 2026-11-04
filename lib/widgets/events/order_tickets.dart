@@ -4,7 +4,7 @@ import 'package:shimmer/shimmer.dart';
 
 /// Modern loading shimmer effect for tickets
 class TicketLoadingShimmer extends StatelessWidget {
-  const TicketLoadingShimmer({Key? key}) : super(key: key);
+  const TicketLoadingShimmer({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -74,10 +74,10 @@ class TicketErrorState extends StatelessWidget {
   final VoidCallback onRetry;
 
   const TicketErrorState({
-    Key? key,
+    super.key,
     required this.message,
     required this.onRetry,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -131,8 +131,7 @@ class TicketErrorState extends StatelessWidget {
 class DownloadAllButton extends StatelessWidget {
   final VoidCallback onPressed;
 
-  const DownloadAllButton({Key? key, required this.onPressed})
-    : super(key: key);
+  const DownloadAllButton({super.key, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -194,7 +193,7 @@ class TicketDetailsCard extends StatelessWidget {
   final String carClub;
 
   const TicketDetailsCard({
-    Key? key,
+    super.key,
     required this.ticketLabel,
     required this.productTitle,
     required this.eventDate,
@@ -208,7 +207,7 @@ class TicketDetailsCard extends StatelessWidget {
     this.carModel = '',
     this.carReg = '',
     this.carClub = '',
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -558,7 +557,7 @@ class TicketDetailsCard extends StatelessWidget {
 class OrderTotalsCard extends StatelessWidget {
   final List<Map<String, dynamic>> totals;
 
-  const OrderTotalsCard({Key? key, required this.totals}) : super(key: key);
+  const OrderTotalsCard({super.key, required this.totals});
 
   @override
   Widget build(BuildContext context) {

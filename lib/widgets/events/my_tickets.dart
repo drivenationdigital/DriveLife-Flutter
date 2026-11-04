@@ -14,7 +14,7 @@ class TicketCard extends StatelessWidget {
   final String eventLocation; // Placeholder for event location
 
   const TicketCard({
-    Key? key,
+    super.key,
     required this.title,
     this.imageUrl,
     required this.quantity,
@@ -22,7 +22,7 @@ class TicketCard extends StatelessWidget {
     required this.onView,
     required this.onAddToWallet,
     required this.eventLocation,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -158,7 +158,7 @@ class TicketCard extends StatelessWidget {
 /// Empty state widget for when there are no tickets
 class EmptyTicketsState extends StatelessWidget {
   final bool isPast;
-  const EmptyTicketsState({Key? key, this.isPast = false}) : super(key: key);
+  const EmptyTicketsState({super.key, this.isPast = false});
 
   @override
   Widget build(BuildContext context) {
@@ -205,7 +205,7 @@ class MyTicketsTabContent extends StatelessWidget {
   final bool isPast;
 
   const MyTicketsTabContent({
-    Key? key,
+    super.key,
     required this.isLoading,
     this.errorMessage,
     required this.tickets,
@@ -213,7 +213,7 @@ class MyTicketsTabContent extends StatelessWidget {
     required this.onAddToWallet,
     required this.onRefresh,
     required this.isPast,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

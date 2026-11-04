@@ -242,8 +242,9 @@ class OffersApi {
       if (response.statusCode != 200) {
         return OffersResult.failure('Server error (${response.statusCode})');
       }
-      if (body == null)
+      if (body == null) {
         return const OffersResult.failure('Invalid response from server');
+      }
       if (body['success'] != true) {
         return OffersResult.failure(
           body['error']?.toString() ?? 'Unknown error',
@@ -272,8 +273,9 @@ class OffersApi {
     required int offerId,
   }) async {
     final token = await _authService.getToken();
-    if (token == null)
+    if (token == null) {
       return OfferRedemptionResult.failure('Not authenticated');
+    }
 
     try {
       final res = await http
@@ -290,8 +292,9 @@ class OffersApi {
           .timeout(const Duration(seconds: 15));
 
       final body = _parseBody(res.body);
-      if (body == null)
+      if (body == null) {
         return OfferRedemptionResult.failure('Invalid response');
+      }
 
       if (res.statusCode == 401) {
         return OfferRedemptionResult.failure(body['error'] ?? 'Unauthorised');
@@ -347,8 +350,9 @@ class OffersApi {
     required int offerId,
   }) async {
     final token = await _authService.getToken();
-    if (token == null)
+    if (token == null) {
       return SpeedwellLeaderboardResult.failure('Not authenticated');
+    }
 
     try {
       final res = await http
@@ -365,8 +369,9 @@ class OffersApi {
           .timeout(const Duration(seconds: 15));
 
       final body = _parseBody(res.body);
-      if (body == null)
+      if (body == null) {
         return SpeedwellLeaderboardResult.failure('Invalid response');
+      }
 
       if (res.statusCode == 401) {
         return SpeedwellLeaderboardResult.failure(

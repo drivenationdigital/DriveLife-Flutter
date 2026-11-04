@@ -32,7 +32,7 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
   final _postcodeController = TextEditingController();
   String _selectedCountry = 'GB';
 
-  String _selectedShipping = 'standard';
+  final String _selectedShipping = 'standard';
   final List<Map<String, dynamic>> _shippingOptions = [
     {'id': 'standard', 'name': 'Standard (5-10 days)', 'price': 5.40},
     {'id': 'express', 'name': 'Express (2-3 days)', 'price': 12.99},
@@ -545,7 +545,7 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
                               child: DropdownButtonFormField<String>(
                                 dropdownColor: Colors.white,
                                 isExpanded: true,
-                                value:
+                                initialValue:
                                     ['GB', 'US', 'CA', 'AU'].contains(
                                       _selectedCountry,
                                     ) // ← include AU, you had it in items but not in this check

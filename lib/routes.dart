@@ -131,7 +131,7 @@ class AppRoutes {
         (routeName.startsWith('/') && routeName.contains('?'));
 
     if (!isDeepLink) {
-      seoDeepLinkRoutes.forEach((seoRoute) {
+      for (var seoRoute in seoDeepLinkRoutes) {
         if (routeName.contains(seoRoute)) {
           debugPrint(
             '🔍 [AppRoutes] Detected SEO deep link pattern: $seoRoute in $routeName',
@@ -139,7 +139,7 @@ class AppRoutes {
           // Treat as deep link
           isDeepLink = true;
         }
-      });
+      }
     }
 
     if (isDeepLink) {

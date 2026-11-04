@@ -39,7 +39,7 @@ class SearchResultsContent extends StatelessWidget {
   final Function(Map<String, dynamic>)? onClubTap;
 
   const SearchResultsContent({
-    Key? key,
+    super.key,
     required this.isSearching,
     required this.searchResults,
     required this.resultType,
@@ -52,7 +52,7 @@ class SearchResultsContent extends StatelessWidget {
     this.onUserTap,
     this.onVenueTap,
     this.onVehicleTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -653,7 +653,7 @@ class SearchScreen extends StatefulWidget {
   /// the app closing.
   final bool embedded;
 
-  const SearchScreen({Key? key, this.embedded = false}) : super(key: key);
+  const SearchScreen({super.key, this.embedded = false});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();

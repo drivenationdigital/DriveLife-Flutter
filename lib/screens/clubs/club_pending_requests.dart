@@ -244,7 +244,7 @@ class _ClubPendingRequestsScreenState extends State<ClubPendingRequestsScreen> {
                         ],
                       ),
                     );
-                  }).toList(),
+                  }),
                 ],
               ),
             ),

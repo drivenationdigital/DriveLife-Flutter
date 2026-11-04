@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:drivelife/config/app_environment.dart';
 import 'package:flutter/foundation.dart';

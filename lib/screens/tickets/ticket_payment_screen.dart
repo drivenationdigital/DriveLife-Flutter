@@ -1117,7 +1117,7 @@ class _TicketPaymentScreenState extends State<TicketPaymentScreen> {
                       Expanded(
                         child: Text(
                           'Paid securely to $_payee through '
-                          '${_processorName}. '
+                          '$_processorName. '
                           'Payment details never reach DriveLife.',
                           style: const TextStyle(
                             color: TicketTheme.muted,

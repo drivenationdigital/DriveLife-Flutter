@@ -232,8 +232,9 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> {
       onVisibilityChanged: (info) {
         if (_isDisposed ||
             _controller == null ||
-            !_controller!.value.isInitialized)
+            !_controller!.value.isInitialized) {
           return;
+        }
 
         VideoPlaybackManager.instance.updateVisibility(
           _visibilityKey,

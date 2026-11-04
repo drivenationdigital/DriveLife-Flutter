@@ -6,10 +6,10 @@ import 'package:provider/provider.dart';
 
 class UserListView extends StatelessWidget {
   const UserListView({
-    Key? key,
+    super.key,
     required this.tagController,
     required this.animation,
-  }) : super(key: key);
+  });
 
   final FlutterTaggerController tagController;
   final Animation<Offset> animation;
@@ -103,10 +103,10 @@ class UserListView extends StatelessWidget {
 
 class HashtagListView extends StatelessWidget {
   const HashtagListView({
-    Key? key,
+    super.key,
     required this.tagController,
     required this.animation,
-  }) : super(key: key);
+  });
 
   final FlutterTaggerController tagController;
   final Animation<Offset> animation;
@@ -194,10 +194,10 @@ class HashtagListView extends StatelessWidget {
 
 class SearchResultOverlay extends StatelessWidget {
   const SearchResultOverlay({
-    Key? key,
+    super.key,
     required this.tagController,
     required this.animation,
-  }) : super(key: key);
+  });
 
   final FlutterTaggerController tagController;
   final Animation<Offset> animation;

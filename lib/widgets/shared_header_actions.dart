@@ -179,12 +179,12 @@ class NotificationIconButton extends StatefulWidget {
   final EdgeInsets padding;
 
   const NotificationIconButton({
-    Key? key,
+    super.key,
     this.iconColor = Colors.black,
     this.badgeColor = Colors.red,
     this.iconSize = 20,
     this.padding = const EdgeInsets.only(right: 12),
-  }) : super(key: key);
+  });
 
   @override
   State<NotificationIconButton> createState() => _NotificationIconButtonState();

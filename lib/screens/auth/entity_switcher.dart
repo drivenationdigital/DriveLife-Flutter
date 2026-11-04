@@ -281,7 +281,7 @@ class EntitySwitcherSheet extends StatelessWidget {
                 icon: Icons.person,
               ),
             )
-            .toList(),
+            ,
       ],
     );
   }

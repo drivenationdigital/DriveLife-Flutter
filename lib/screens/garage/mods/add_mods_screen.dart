@@ -11,8 +11,7 @@ class AddModificationScreen extends StatefulWidget {
   final String garageId;
   final Map<String, dynamic>? mod; // For edit mode
 
-  const AddModificationScreen({Key? key, required this.garageId, this.mod})
-    : super(key: key);
+  const AddModificationScreen({super.key, required this.garageId, this.mod});
 
   @override
   State<AddModificationScreen> createState() => _AddModificationScreenState();
@@ -567,7 +566,7 @@ class _AddModificationScreenState extends State<AddModificationScreen> {
                             vertical: 6,
                           ),
                           child: DropdownButtonFormField<String>(
-                            value: _modType,
+                            initialValue: _modType,
                             dropdownColor: Colors.white,
 
                             decoration: _dec(

@@ -15,8 +15,7 @@ class EventAdminPage extends StatefulWidget {
   final String eventId;
   final String site;
 
-  const EventAdminPage({Key? key, required this.eventId, required this.site})
-    : super(key: key);
+  const EventAdminPage({super.key, required this.eventId, required this.site});
 
   @override
   State<EventAdminPage> createState() => _EventAdminPageState();
@@ -719,7 +718,7 @@ class _EventAdminPageState extends State<EventAdminPage> {
                       _buildTableCell(ticket['status'] ?? '-'),
                     ],
                   );
-                }).toList(),
+                }),
               ],
             ),
           ],

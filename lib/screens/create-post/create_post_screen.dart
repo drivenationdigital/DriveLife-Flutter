@@ -115,9 +115,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   double _uploadProgress = 0.0;
   String _uploadStatus = '';
 
-  List<MediaItem> _selectedMedia = [];
+  final List<MediaItem> _selectedMedia = [];
   int _currentPage = 0;
-  bool _isPosting = false;
+  final bool _isPosting = false;
   String? _linkType;
   Map<String, dynamic>? _associatedEntity;
 
@@ -2772,7 +2772,7 @@ class _VideoPreview extends StatefulWidget {
 }
 
 class _VideoPreviewState extends State<_VideoPreview> {
-  bool _showControls = true;
+  final bool _showControls = true;
 
   @override
   void initState() {

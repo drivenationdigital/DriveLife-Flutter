@@ -811,7 +811,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
     final entryDetails = event['entry_details']?.toString() ?? '';
     final hasTickets = event['has_tickets'] == true;
     final ticketUrl = event['ticket_url'];
-    final registrationRequired = event?['registrationRequired'] == true;
+    final registrationRequired = event['registrationRequired'] == true;
     final eventUrl = event['event_url'] ?? '';
 
     // Socials

@@ -9,13 +9,13 @@ class FeaturedBannerCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   const FeaturedBannerCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.date,
     required this.location,
     required this.imageUrl,
     this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -129,13 +129,12 @@ class CarouselPageIndicator extends StatelessWidget {
   final Color inactiveColor;
 
   const CarouselPageIndicator({
-    Key? key,
+    super.key,
     required this.itemCount,
     required this.currentIndex,
     required this.activeColor,
     Color? inactiveColor,
-  }) : inactiveColor = inactiveColor ?? const Color(0x80FFFFFF),
-       super(key: key);
+  }) : inactiveColor = inactiveColor ?? const Color(0x80FFFFFF);
 
   @override
   Widget build(BuildContext context) {
@@ -168,7 +167,7 @@ class FeaturedEventsCarousel extends StatelessWidget {
   final String Function(String date) formatEventDate;
 
   const FeaturedEventsCarousel({
-    Key? key,
+    super.key,
     required this.featuredEvents,
     required this.pageController,
     required this.currentPage,
@@ -176,7 +175,7 @@ class FeaturedEventsCarousel extends StatelessWidget {
     required this.onEventTap,
     required this.primaryColor,
     required this.formatEventDate,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

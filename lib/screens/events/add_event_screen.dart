@@ -67,7 +67,7 @@ class _AddEventScreenState extends State<AddEventScreen>
   bool _isCoverImageUploaded = false;
 
   bool _isLoading = false;
-  double _uploadProgress = 0.0; // Add this line
+  final double _uploadProgress = 0.0; // Add this line
 
   // Track which tabs have been visited for lazy loading
   final Set<int> _visitedTabs = {0};
@@ -1003,7 +1003,7 @@ class _AddEventScreenState extends State<AddEventScreen>
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: _selectedCountry,
+          initialValue: _selectedCountry,
           dropdownColor: Colors.white,
 
           decoration: const InputDecoration(border: OutlineInputBorder()),
@@ -1619,7 +1619,7 @@ class _AddEventScreenState extends State<AddEventScreen>
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: _visibility,
+          initialValue: _visibility,
           dropdownColor: Colors.white,
 
           decoration: const InputDecoration(border: OutlineInputBorder()),
@@ -1642,7 +1642,7 @@ class _AddEventScreenState extends State<AddEventScreen>
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: _status,
+          initialValue: _status,
           dropdownColor: Colors.white,
 
           decoration: const InputDecoration(border: OutlineInputBorder()),

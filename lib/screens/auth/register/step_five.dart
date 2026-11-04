@@ -10,7 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
 class RegisterStepFiveScreen extends StatefulWidget {
-  const RegisterStepFiveScreen({Key? key}) : super(key: key);
+  const RegisterStepFiveScreen({super.key});
 
   @override
   State<RegisterStepFiveScreen> createState() => _RegisterStepFiveScreenState();

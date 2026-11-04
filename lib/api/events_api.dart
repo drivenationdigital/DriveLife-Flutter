@@ -1078,8 +1078,9 @@ class EventsAPI {
   /// Returns the JPEG bytes.
   static Future<Uint8List> downloadGalleryPhoto({required int mediaId}) async {
     final token = await _authService.getToken();
-    if (token == null)
+    if (token == null) {
       throw Exception('You need to be signed in to save photos.');
+    }
 
     final uri = Uri.parse(
       '${ApiConfig.baseUrl}/wp-json/app/v2/galleries/download',

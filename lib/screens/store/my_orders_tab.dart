@@ -569,7 +569,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> {
           const SizedBox(height: 8),
           Text(
             _selectedStatus != null
-                ? 'No ${_selectedStatus} orders found'
+                ? 'No $_selectedStatus orders found'
                 : 'Start shopping to see your orders here',
             style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
           ),

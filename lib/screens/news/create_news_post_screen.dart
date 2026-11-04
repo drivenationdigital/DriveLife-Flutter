@@ -34,7 +34,7 @@ class _CreateNewsScreenState extends State<CreateNewsScreen>
   final FlutterTaggerController _captionController = FlutterTaggerController();
 
   // State
-  List<NewsMediaItem> _images = [];
+  final List<NewsMediaItem> _images = [];
   int _currentPage = 0;
   bool _isPosting = false;
   bool _toolbarVisible = false;

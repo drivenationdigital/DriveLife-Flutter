@@ -715,11 +715,12 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
           .where((u) => !widget.existingIds.contains(u['entity_id'].toString()))
           .toList();
 
-      if (mounted)
+      if (mounted) {
         setState(() {
           _results = filtered;
           _loading = false;
         });
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }

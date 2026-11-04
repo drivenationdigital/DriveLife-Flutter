@@ -40,7 +40,7 @@ class _EventCommunityGalleryScreenState
 
   final ImagePicker _picker = ImagePicker();
   final List<ImageData> _images = [];
-  bool _uploading = false;
+  final bool _uploading = false;
 
   // ── Picking ──────────────────────────────────────────────────────────
 

@@ -63,8 +63,8 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   bool _isOwnProfile = false;
 
   // Posts data
-  List<Post> _posts = [];
-  List<Post> _taggedPosts = [];
+  final List<Post> _posts = [];
+  final List<Post> _taggedPosts = [];
 
   /// Galleries this person is tagged in — directly, or because one of their
   /// vehicles is. Kept apart from [_taggedPosts] because a gallery is not a

@@ -35,7 +35,7 @@ class VehicleCard extends StatelessWidget {
   final dynamic vehicle;
   final VoidCallback onTap;
 
-  const VehicleCard({required this.vehicle, required this.onTap});
+  const VehicleCard({super.key, required this.vehicle, required this.onTap});
 
   /// "2023 · POLESTAR", or just the make when no year is recorded.
   ///

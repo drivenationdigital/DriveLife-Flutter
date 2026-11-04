@@ -24,8 +24,9 @@ class UserService {
       // Construct query parameters
       final queryParams = <String, String>{};
       if (userId != null) queryParams['user_id'] = userId.toString();
-      if (username != null && userId == null)
+      if (username != null && userId == null) {
         queryParams['username'] = username;
+      }
 
       // ✅ FIXED: Use the correct endpoint
       final uri = Uri.parse(

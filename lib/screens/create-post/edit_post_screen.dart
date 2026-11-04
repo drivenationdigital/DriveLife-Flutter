@@ -636,7 +636,7 @@ class _EditPostScreenState extends State<EditPostScreen> {
                       border: Border.all(color: Colors.grey.shade200),
                     ),
                     child: DropdownButtonFormField<String>(
-                      value: _linkType,
+                      initialValue: _linkType,
                       decoration: const InputDecoration(
                         hintText: 'Select link type',
                         contentPadding: EdgeInsets.symmetric(

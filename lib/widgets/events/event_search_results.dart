@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 class SearchLoadingState extends StatelessWidget {
   final Color primaryColor;
 
-  const SearchLoadingState({Key? key, required this.primaryColor})
-    : super(key: key);
+  const SearchLoadingState({super.key, required this.primaryColor});
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +16,7 @@ class SearchLoadingState extends StatelessWidget {
 
 /// Empty state when no search results are found
 class EmptySearchResultsState extends StatelessWidget {
-  const EmptySearchResultsState({Key? key}) : super(key: key);
+  const EmptySearchResultsState({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -55,13 +54,13 @@ class SearchResultCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const SearchResultCard({
-    Key? key,
+    super.key,
     required this.event,
     required this.formattedDate,
     this.formattedTime,
     required this.dateColor,
     required this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -189,14 +188,14 @@ class SearchResultsContent extends StatelessWidget {
   final String? Function(String? startDate, String? endDate) formatEventTime;
 
   const SearchResultsContent({
-    Key? key,
+    super.key,
     required this.isSearching,
     required this.searchResults,
     required this.primaryColor,
     required this.onEventTap,
     required this.formatEventDate,
     required this.formatEventTime,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 class RegisterStepThreeScreen extends StatelessWidget {
-  const RegisterStepThreeScreen({Key? key}) : super(key: key);
+  const RegisterStepThreeScreen({super.key});
 
   // Map of interest IDs to labels
   static const Map<int, String> interestOptions = {
@@ -149,7 +149,7 @@ class RegisterStepThreeScreen extends StatelessWidget {
                                   ),
                                 ),
                               );
-                            }).toList(),
+                            }),
                           ],
                         ),
                       ),

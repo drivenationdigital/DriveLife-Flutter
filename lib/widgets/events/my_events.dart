@@ -12,8 +12,7 @@ import 'package:provider/provider.dart';
 class EventsManagerBanner extends StatelessWidget {
   final VoidCallback onOpenManager;
 
-  const EventsManagerBanner({Key? key, required this.onOpenManager})
-    : super(key: key);
+  const EventsManagerBanner({super.key, required this.onOpenManager});
 
   static const Color _gold = Color(0xFFB8935E);
 
@@ -91,13 +90,13 @@ class EventCard extends StatelessWidget {
   final Widget? trailingWidget;
 
   const EventCard({
-    Key? key,
+    super.key,
     required this.event,
     required this.formattedDate,
     required this.dateColor,
     required this.onTap,
     this.trailingWidget,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -210,7 +209,7 @@ class EventCard extends StatelessWidget {
 
 /// Empty state for saved events
 class EmptySavedEventsState extends StatelessWidget {
-  const EmptySavedEventsState({Key? key}) : super(key: key);
+  const EmptySavedEventsState({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -245,7 +244,7 @@ class EmptySavedEventsState extends StatelessWidget {
 class SectionHeader extends StatelessWidget {
   final String title;
 
-  const SectionHeader({Key? key, required this.title}) : super(key: key);
+  const SectionHeader({super.key, required this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -278,7 +277,7 @@ class MyEventsTabContent extends StatelessWidget {
   final Color primaryColor;
 
   const MyEventsTabContent({
-    Key? key,
+    super.key,
     required this.likedEvents,
     required this.onOpenManager,
     required this.onEventTap,
@@ -286,7 +285,7 @@ class MyEventsTabContent extends StatelessWidget {
     required this.onUnlikeEvent,
     required this.onRefresh,
     required this.primaryColor,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

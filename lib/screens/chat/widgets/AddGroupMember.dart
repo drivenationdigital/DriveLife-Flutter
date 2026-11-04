@@ -11,7 +11,7 @@ class AddMemberPage extends StatefulWidget {
   final List<String> existingIds;
   final void Function(UserProfile) onAdd;
 
-  const AddMemberPage({
+  const AddMemberPage({super.key, 
     required this.myUserId,
     required this.existingIds,
     required this.onAdd,
@@ -76,11 +76,12 @@ class AddMemberPageState extends State<AddMemberPage> {
           .where((u) => !widget.existingIds.contains(u['entity_id'].toString()))
           .toList();
 
-      if (mounted)
+      if (mounted) {
         setState(() {
           _results = filtered;
           _loading = false;
         });
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
