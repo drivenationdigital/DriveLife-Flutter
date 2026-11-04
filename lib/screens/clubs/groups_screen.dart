@@ -191,11 +191,15 @@ class _GroupsScreenState extends State<GroupsScreen>
 
   /// Label, its gap and the underline, plus the hairline beneath.
   ///
-  /// 64, not the 56 this started at. A 16.5pt label is about 24 high
-  /// once its line height is counted, which the first number did not:
-  /// 13 + 24 + 10 + 2.5 + 13 + 1 is 63.5, and the row overflowed by the
-  /// 7.5 it was short.
-  static const double _tabBarHeight = 64;
+  /// 13 top + 24 label + 10 + 2.5 underline + 1 rule = 50.5, rounded
+  /// up. Measured rather than guessed: this was 56 first and overflowed
+  /// by 7.5, because a 16.5pt label is about 24 high once its line
+  /// height counts and the first number only added the paddings.
+  ///
+  /// It has to track the row exactly. Too small and it overflows; too
+  /// large and the header reserves space the row does not fill, which
+  /// just moves the gap below the rule instead of removing it.
+  static const double _tabBarHeight = 51;
   static const Color _ink = Color(0xFF111113);
   static const Color _panel = Color(0xFF1E1E21);
 
@@ -917,7 +921,11 @@ class _GroupsScreenState extends State<GroupsScreen>
           },
           behavior: HitTestBehavior.opaque,
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 13),
+            // Top only. Padding beneath would push the selected tab's
+            // underline off the rule below it, and the two are meant to
+            // meet — that join is what makes the row read as the bottom
+            // edge of the chrome rather than as two grey marks.
+            padding: const EdgeInsets.only(top: 13),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
