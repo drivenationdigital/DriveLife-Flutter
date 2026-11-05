@@ -407,7 +407,7 @@ class _HomeActivityCardState extends State<HomeActivityCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _title.isEmpty ? 'A car' : _title,
+                      _title.isEmpty ? 'A vehicle' : _title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(

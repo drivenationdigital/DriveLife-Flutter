@@ -477,7 +477,7 @@ class _ActivityFeedTabState extends State<ActivityFeedTab> {
         return 'The activity tables have not been created on this '
             'server yet.';
       case 'no_interests':
-        return 'Add a car to your garage, or like a few, and this will '
+        return 'Add a vehicle to your garage, or like a few, and this will '
             'start finding things. Right now there is nothing to match '
             'against.';
       default:

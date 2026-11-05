@@ -3,6 +3,7 @@ import 'package:drivelife/api/points_api.dart';
 import 'package:drivelife/providers/points_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
+import 'package:drivelife/screens/points/points_history_screen.dart';
 import 'package:drivelife/theme/dl_type.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -177,12 +178,56 @@ class _PointsScreenState extends State<PointsScreen> {
 
                 // The number, as big as it can reasonably be. It is the one
                 // thing this screen exists to tell somebody.
-                DlHeading(
-                  _formatPoints(_me.current),
-                  fontSize: 76,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                  color: theme.textColor,
+                //
+                // And it opens the history, because "why is it that
+                // number" is the immediate next question and the number
+                // is what somebody is looking at when they ask it.
+                //
+                // behavior.opaque, so the whole box takes the tap rather
+                // than only the glyphs — a 76pt number has a lot of
+                // empty space inside its bounds.
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const PointsHistoryScreen(),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      DlHeading(
+                        _formatPoints(_me.current),
+                        fontSize: 76,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                        color: theme.textColor,
+                      ),
+                      const SizedBox(height: 4),
+                      // Says it is tappable. A big number gives no hint
+                      // on its own, and nobody taps a total on the
+                      // chance that something happens.
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'See where these came from',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: theme.subtextColor,
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.chevron_right,
+                            size: 16,
+                            color: theme.subtextColor,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 14),
 

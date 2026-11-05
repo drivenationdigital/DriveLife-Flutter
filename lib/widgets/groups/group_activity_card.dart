@@ -79,7 +79,7 @@ class _GroupActivityCardState extends State<GroupActivityCard> {
   String get _title => (widget.item['title'] ?? '').toString().trim();
 
   String get _action =>
-      (widget.item['action'] ?? 'added a car').toString().trim();
+      (widget.item['action'] ?? 'added a vehicle').toString().trim();
 
   /// `vehicle`, `gallery` or `garage_photo`.
   ///

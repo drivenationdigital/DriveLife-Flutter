@@ -169,6 +169,83 @@ enum LeaderboardScope {
   const LeaderboardScope(this.id, this.label);
 }
 
+/// One line in somebody's points history.
+///
+/// A signed [amount]: positive is earned, negative is taken back —
+/// either a reversal, because the thing that paid was deleted, or a
+/// redemption. The server picks the wording, so a rule added later needs
+/// no app release to read properly.
+class PointsEntry {
+  /// The ledger row id. Only used as a list key.
+  final int id;
+
+  /// Signed. Never zero — the server filters those out, because a
+  /// reversal that recovered nothing is bookkeeping rather than history.
+  final int amount;
+
+  /// What the balance stood at immediately after this row.
+  final int balanceAfter;
+
+  /// "Post created", "Vehicle removed", "Redeemed".
+  final String label;
+
+  /// An admin's note on a manual grant, when there is one.
+  final String? reason;
+
+  /// UTC, as the server stores it.
+  final DateTime? at;
+
+  const PointsEntry({
+    required this.id,
+    required this.amount,
+    required this.balanceAfter,
+    required this.label,
+    this.reason,
+    this.at,
+  });
+
+  bool get isGain => amount > 0;
+
+  factory PointsEntry.fromMap(Map<String, dynamic> map) {
+    final raw = map['created_at']?.toString();
+
+    return PointsEntry(
+      id: int.tryParse('${map['id']}') ?? 0,
+      amount: int.tryParse('${map['amount']}') ?? 0,
+      balanceAfter: int.tryParse('${map['balance_after']}') ?? 0,
+      label: (map['label']?.toString().trim().isNotEmpty ?? false)
+          ? map['label'].toString().trim()
+          : 'Points adjustment',
+      reason: (map['reason']?.toString().trim().isNotEmpty ?? false)
+          ? map['reason'].toString().trim()
+          : null,
+      // The ledger stores 'Y-m-d H:i:s' with no zone marker, and writes
+      // it with current_time('mysql', 1) — so it is UTC and has to be
+      // told so, or every entry reads hours out for anybody not on GMT.
+      at: raw == null ? null : DateTime.tryParse('${raw}Z'.replaceAll(' ', 'T')),
+    );
+  }
+}
+
+/// A page of points history.
+class PointsHistory {
+  final List<PointsEntry> entries;
+  final bool hasMore;
+  final int total;
+
+  const PointsHistory({
+    required this.entries,
+    required this.hasMore,
+    required this.total,
+  });
+
+  static const empty = PointsHistory(
+    entries: <PointsEntry>[],
+    hasMore: false,
+    total: 0,
+  );
+}
+
 /// Points and the leaderboard.
 ///
 /// Nothing awards points yet, so every one of these returns zero or an
@@ -249,6 +326,50 @@ class PointsAPI {
     } catch (e) {
       debugPrint('[Points] mine threw: $e');
       return MyPoints.empty;
+    }
+  }
+
+  /// Where this person's points came from, and where they went.
+  ///
+  /// Newest first. Throws nothing: a failure is an empty page, which
+  /// the screen shows as "nothing yet" with a retry rather than an
+  /// error nobody can act on.
+  ///
+  /// Signed in only, and the server reads the user from the token —
+  /// there is no user id to pass, deliberately, because this is
+  /// somebody's own earning history.
+  static Future<PointsHistory> history({int page = 1, int perPage = 30}) async {
+    try {
+      final headers = await _headers();
+      if (headers == null) return PointsHistory.empty;
+
+      final uri = Uri.parse('$_base/wp-json/app/v2/points/history').replace(
+        queryParameters: {'page': '$page', 'per_page': '$perPage'},
+      );
+
+      final response = await http.get(uri, headers: headers);
+
+      if (response.statusCode != 200) {
+        debugPrint('[Points] history failed: ${response.statusCode}');
+        return PointsHistory.empty;
+      }
+
+      final body = jsonDecode(response.body);
+      if (body is! Map || body['success'] != true) return PointsHistory.empty;
+
+      final rows = (body['data'] as List<dynamic>?) ?? const [];
+
+      return PointsHistory(
+        entries: rows
+            .whereType<Map<String, dynamic>>()
+            .map(PointsEntry.fromMap)
+            .toList(),
+        hasMore: body['has_more'] == true,
+        total: int.tryParse('${body['total']}') ?? 0,
+      );
+    } catch (e) {
+      debugPrint('[Points] history threw: $e');
+      return PointsHistory.empty;
     }
   }
 
