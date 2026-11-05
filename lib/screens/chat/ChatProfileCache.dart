@@ -223,6 +223,13 @@ class UserAvatar extends StatelessWidget {
       radius: radius,
       backgroundColor: scheme.primaryContainer,
       backgroundImage: url != null && url.isNotEmpty ? NetworkImage(url) : null,
+      // Conditional, matching the line above: CircleAvatar asserts
+      // that a handler is only given alongside an image, so passing
+      // one unconditionally would trade a load failure for a crash on
+      // every avatar that has no photo at all.
+      onBackgroundImageError: url != null && url.isNotEmpty
+          ? (_, _) {}
+          : null,
       child: url == null || url.isEmpty
           ? Text(
               profile.bestName.isNotEmpty

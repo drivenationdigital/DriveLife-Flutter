@@ -136,6 +136,8 @@ class VenueCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             child: CachedNetworkImage(
               imageUrl: venue.coverImage,
+              // Drawn at 100.
+              memCacheWidth: 300,
               width: 100,
               height: 80,
               fit: BoxFit.cover,
@@ -179,6 +181,9 @@ class VenueCard extends StatelessWidget {
                 child: CachedNetworkImage(
                   imageUrl: venue.logo,
                   fit: BoxFit.cover,
+                  // A logo badge. Decoding a banner into it was most
+                  // of a megabyte for nothing.
+                  memCacheWidth: 160,
                   placeholder: (context, url) => Container(
                     color: Colors.white,
                     child: const SizedBox.shrink(),

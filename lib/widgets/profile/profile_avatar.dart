@@ -16,6 +16,10 @@ class ProfileAvatar extends StatelessWidget {
       backgroundImage: hasImage
           ? NetworkImage(imageUrl!)
           : const AssetImage('assets/profile-placeholder.jpg') as ImageProvider,
+      // Always safe to pass here: backgroundImage is never null — a
+      // missing photo already falls back to the bundled placeholder,
+      // so the assert that pairs these two cannot fire.
+      onBackgroundImageError: (_, _) {},
     );
 
     if (onTap != null) {

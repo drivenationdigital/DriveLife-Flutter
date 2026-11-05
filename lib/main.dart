@@ -143,6 +143,44 @@ void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
 
+  // ── A photograph that will not load is not an app error ───────────
+  //
+  // Flutter reports a failed image through FlutterError, and with no
+  // handler set that is an unhandled exception: the debugger stops on
+  // it, and on a device it is logged as a fault. The stack is always
+  // the same shape — MultiFrameImageStreamCompleter, reportError,
+  // _ImageState._getListener — and it fires while SCROLLING, because
+  // scrolling is what asks for more images.
+  //
+  // Any one of 36 CircleAvatars with a backgroundImage and no
+  // onBackgroundImageError will do it, and so will any of the 47
+  // Image.network calls without an errorBuilder. A single avatar whose
+  // URL 404s is enough.
+  //
+  // This is a network condition, not a defect. The widgets already
+  // degrade — a CircleAvatar falls back to its background colour —
+  // so the error has nowhere useful to go.
+  //
+  // NARROW on purpose. Only the image library is filtered, and only to
+  // a debugPrint; everything else still goes to presentError and is as
+  // loud as it was. Swallowing all framework errors here would hide
+  // the next real one.
+  //
+  // This is a floor, not a fix: an avatar that fails still shows an
+  // empty circle rather than initials. Handling it per widget is the
+  // better answer and this does not replace it — it stops a missing
+  // photograph being reported as a crash while that work happens.
+  final defaultOnError = FlutterError.onError;
+
+  FlutterError.onError = (FlutterErrorDetails details) {
+    if (details.library == 'image resource service') {
+      debugPrint('Image failed to load: ${details.exception}');
+      return;
+    }
+
+    defaultOnError?.call(details);
+  };
+
   // Portrait only.
   //
   // Every screen in this app is laid out for a tall viewport — the feed,

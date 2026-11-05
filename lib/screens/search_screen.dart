@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:drivelife/api/events_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/utils/date.dart';
-import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/widgets/nav/dl_haptics.dart';
 import 'package:provider/provider.dart';
@@ -772,10 +771,10 @@ class _SearchScreenState extends State<SearchScreen>
                 ],
               ),
               title: Image.asset('assets/logo-dark.png', height: 18),
-              actions: [
-                SharedHeaderIcons.qrCodeIcon(),
-                SharedHeaderIcons.notificationIcon(),
-              ],
+              // No QR or notification icons. They were carried over from
+              // the home header, where they belong — on a page whose whole
+              // job is the search field below, two unrelated shortcuts in
+              // the corner are just somewhere else to accidentally go.
             ),
       body: SafeArea(
         // Not at the top when embedded. The shell above already draws a

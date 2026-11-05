@@ -158,18 +158,22 @@ class _AddEventScreenState extends State<AddEventScreen>
         );
 
         if (response != null && response['success'] == true) {
+          // The mounted check was one line too late: it guarded the
+          // snackbar but not the setState above it, and setState on a
+          // disposed State throws. Leaving this screen while a delete
+          // is in flight is all it takes.
+          if (!mounted) return;
+
           setState(() {
             _galleryImages.removeAt(index);
           });
 
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Image deleted successfully'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Image deleted successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
         } else {
           throw Exception('Failed to delete image');
         }

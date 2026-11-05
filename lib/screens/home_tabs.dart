@@ -33,6 +33,7 @@ import 'package:drivelife/screens/clubs/groups_screen.dart';
 // in one line while the new list's sections are wired up.
 // ignore: unused_import
 import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
+import 'package:drivelife/widgets/interests_prompt.dart';
 import 'package:drivelife/screens/clubs/open_club_creator.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
@@ -280,9 +281,21 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   Future<void> _showAnnouncement() async {
     final announcement = await AnnouncementApi.pending();
 
-    if (announcement == null || !mounted) return;
+    if (announcement != null && mounted) {
+      await AnnouncementDialog.present(context, announcement);
+    }
 
-    await AnnouncementDialog.present(context, announcement);
+    if (!mounted) return;
+
+    // AFTER the announcement, never beside it. Two sheets racing for
+    // the same screen is how one of them ends up behind the other, and
+    // a notice somebody has not read yet is not the moment to ask them
+    // a question.
+    //
+    // InterestsPrompt decides for itself whether anybody needs asking,
+    // so this is a call rather than a condition — one definition of
+    // "has not answered", in the widget that acts on it.
+    await InterestsPrompt.maybeShow(context);
   }
 
   @override

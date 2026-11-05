@@ -176,6 +176,9 @@ class GroupGarageCard extends StatelessWidget {
                     CachedNetworkImage(
                       imageUrl: vehicle.image!,
                       fit: BoxFit.cover,
+                      // Half a screen at most, in a grid of two
+                      // columns that keeps building as it scrolls.
+                      memCacheWidth: 700,
                       errorWidget: (_, _, _) =>
                           Container(color: theme.cardColor),
                     )
@@ -308,6 +311,7 @@ class GroupSpotTile extends StatelessWidget {
               CachedNetworkImage(
                 imageUrl: spot.image!,
                 fit: BoxFit.cover,
+                memCacheWidth: 700,
                 errorWidget: (_, _, _) => Container(color: theme.cardColor),
               )
             else
@@ -432,6 +436,11 @@ class GroupAvatar extends StatelessWidget {
       radius: radius,
       backgroundColor: theme.dividerColor,
       backgroundImage: CachedNetworkImageProvider(url!),
+      // Without this, an avatar whose URL 404s throws an unhandled
+      // image error — and this widget is in every group rail, every
+      // activity card and every member list, so scrolling finds one
+      // eventually. The circle falls back to its background colour.
+      onBackgroundImageError: (_, _) {},
     );
   }
 }

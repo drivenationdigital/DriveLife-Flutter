@@ -298,6 +298,19 @@ class UserProvider extends ChangeNotifier {
     }
   }
 
+  /// Remember what they just told us, without refetching.
+  ///
+  /// The server has it, but the local copy is what decides whether to
+  /// ask again — and without this the prompt reappears on the next
+  /// screen that checks, which is the one thing a "we already asked
+  /// you" prompt must never do.
+  void setInterests(List<int> interests) {
+    if (_user == null) return;
+
+    _user = _user!.copyWith(interests: interests);
+    notifyListeners();
+  }
+
   Future<void> updateUserBillingDetails({
     required BillingInfo billingDetails,
   }) async {

@@ -2584,6 +2584,15 @@ class _ImageUploadBox extends StatelessWidget {
                             width: double.infinity,
                             height: height,
                             fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => Container(
+                              color: const Color(0xFFF0F0F0),
+                              alignment: Alignment.center,
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                color: Colors.grey.shade400,
+                                size: 20,
+                              ),
+                            ),
                           )
                         : Image.file(
                             image!.file!,

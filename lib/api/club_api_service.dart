@@ -61,6 +61,9 @@ class ClubApiService {
     String? search,
     String? clubType, // 'all' | 'national' | 'local'
     String? category,
+    /// 'engagement' (the server's default) | 'members' | 'newest' |
+    /// 'title'.
+    String? sort,
     double? lat,
     double? lng,
     String?
@@ -79,6 +82,9 @@ class ClubApiService {
       }
       if (category != null && category != 'all') {
         filters['category'] = [category];
+      }
+      if (sort != null && sort.isNotEmpty) {
+        filters['sort'] = sort;
       }
 
       if (lat != null && lng != null) {

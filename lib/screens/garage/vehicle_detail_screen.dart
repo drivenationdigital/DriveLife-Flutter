@@ -7,6 +7,8 @@ import 'package:drivelife/routes.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
 import 'package:drivelife/screens/garage/mods/add_mods_screen.dart';
+import 'package:drivelife/screens/create-post/create_post_screen.dart';
+import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/api/cloudflare_images.dart';
 import 'package:drivelife/screens/garage/vehicle_gallery.dart';
 import 'package:image_picker/image_picker.dart';
@@ -668,6 +670,24 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   ///
   /// Never empty, so it always has one page to draw and the dots take
   /// themselves away at one.
+  /// What to call this vehicle in prose.
+  ///
+  /// Make, model and variant, the same three the hero title shows, so
+  /// the composer's banner names the car the way the page above it just
+  /// did. Falls back to the registration, then to nothing — the caller
+  /// decides what to do with an empty string, because "a vehicle" and
+  /// "your vehicle" are not interchangeable.
+  String _vehicleDisplayName() {
+    final parts = ['make', 'model', 'variant']
+        .map((key) => '${_vehicle?[key] ?? ''}'.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    if (parts.isNotEmpty) return parts.join(' ');
+
+    return '${_vehicle?['registration'] ?? ''}'.trim();
+  }
+
   List<String> _galleryImages(String coverPhoto, bool hasCover) {
     final urls = _photos.map((row) => '${row['url']}'.trim()).toList();
 
@@ -1232,14 +1252,30 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
         body: TabBarView(
           controller: _tabController,
           children: [
-            _GaragePostsGrid(garageId: widget.garageId, tagged: false),
+            _GaragePostsGrid(
+              garageId: widget.garageId,
+              tagged: false,
+              isOwner: isVehiclePublisher(),
+              vehicleName: _vehicleDisplayName(),
+              // The photograph the page is already showing, so the
+              // composer's banner is recognisably this car.
+              vehicleImage: _galleryImages(
+                coverPhoto ?? '',
+                hasCoverPhoto,
+              ).firstWhere((url) => url.isNotEmpty, orElse: () => ''),
+            ),
             GarageModsList(
+              // Keyed for the same reason as the grid: three tab bodies
+              // sharing one anonymous PageStorage bucket is what made
+              // swiping between them restore the wrong scroll offset.
+              key: const PageStorageKey<String>('garage-mods'),
               garageId: widget.garageId,
               mods: _mods,
               onModsChanged: _loadVehicle,
               isOwner: isVehiclePublisher(),
             ),
             _GarageTaggedTab(
+              key: const PageStorageKey<String>('garage-tagged'),
               garageId: widget.garageId,
               taggingOff: _vehicle?['allow_tagging']?.toString() == '0',
               isOwner: isVehiclePublisher(),
@@ -1271,6 +1307,7 @@ class _GarageTaggedTab extends StatefulWidget {
   final bool isOwner;
 
   const _GarageTaggedTab({
+    super.key,
     required this.garageId,
     this.taggingOff = false,
     this.isOwner = false,
@@ -1280,11 +1317,22 @@ class _GarageTaggedTab extends StatefulWidget {
   State<_GarageTaggedTab> createState() => _GarageTaggedTabState();
 }
 
-class _GarageTaggedTabState extends State<_GarageTaggedTab> {
+class _GarageTaggedTabState extends State<_GarageTaggedTab>
+    with AutomaticKeepAliveClientMixin {
   List<Map<String, dynamic>> _taggedPhotos = const [];
   List<dynamic> _posts = const [];
 
   bool _loading = true;
+
+  /// Kept alive across tab swipes.
+  ///
+  /// This tab already loads in initState rather than in build, so it was
+  /// never refetching on a parent rebuild — but a TabBarView disposes
+  /// the tab you swipe away from, and being disposed sent it back
+  /// through initState and two more round trips every time somebody
+  /// came back to it.
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -1322,6 +1370,8 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     final theme = Provider.of<ThemeProvider>(context);
 
     if (_loading) {
@@ -1332,42 +1382,62 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
 
     if (_posts.isEmpty && _taggedPhotos.isEmpty) {
       if (widget.taggingOff && widget.isOwner) {
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.lock_outline, size: 40, color: Colors.grey.shade500),
-                const SizedBox(height: 14),
-                Text(
-                  'Tagging is off for this vehicle',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
+        // Scrollable for the same reason as the Upgrades empty state:
+        // a NestedScrollView body with nothing to scroll strands the
+        // header wherever it was left.
+        return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 48, 32, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.lock_outline,
+                    size: 40,
+                    color: Colors.grey.shade500,
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Nobody can tag it, and we will not look for its '
-                  'registration in anyone else\'s photos. Turn tagging on in '
-                  'Edit vehicle to start being told when it turns up.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.45,
-                    color: _mutedText,
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Tagging is off for this vehicle',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      // Was Colors.white, on a page whose Scaffold
+                      // background is white — so the one line explaining
+                      // why this tab is empty was invisible. Left over
+                      // from when this screen was dark throughout.
+                      color: Color(0xFF111111),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Nobody can tag it, and we will not look for its '
+                    "registration in anyone else's photos. Turn tagging on in "
+                    'Edit vehicle to start being told when it turns up.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.45,
+                      color: _mutedText,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
         );
       }
 
-      return Center(
-        child: Text('No tagged posts', style: TextStyle(color: _mutedText)),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 48),
+          Center(
+            child: Text('No tagged posts', style: TextStyle(color: _mutedText)),
+          ),
+        ],
       );
     }
 
@@ -1375,6 +1445,8 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
       color: theme.primaryColor,
       onRefresh: _load,
       child: CustomScrollView(
+        key: PageStorageKey<String>('garage-tagged-${widget.garageId}'),
+        physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           // One grid for both, and no headings. Being tagged is one idea;
           // two sections made a gallery photo of this car look like a
@@ -1432,80 +1504,407 @@ class _GarageTaggedTabState extends State<_GarageTaggedTab> {
   }
 }
 
-class _GaragePostsGrid extends StatelessWidget {
+/// A vehicle's posts, as a grid.
+///
+/// ── WHY THIS IS STATEFUL ────────────────────────────────────────────
+///
+/// It used to be a StatelessWidget that called the API inside build():
+///
+///     FutureBuilder(future: GarageAPI.getPostsForGarage(...), ...)
+///
+/// which starts a NEW request on every rebuild. So every setState on
+/// the screen above refetched the posts and flashed a spinner over a
+/// grid that was already correct — and _toggleLike calls setState
+/// twice, once optimistically and once with the server's answer. That
+/// is "when I like a car it reloads the posts", in one line.
+///
+/// Fetched once in initState now, and kept until something actually
+/// changes it.
+///
+/// ── AND WHY IT STAYS ALIVE ──────────────────────────────────────────
+///
+/// A TabBarView disposes the tab you swipe away from unless the child
+/// asks to be kept. Without the keep-alive this reloaded from scratch
+/// every time somebody came back to it and lost its scroll position
+/// doing so.
+class _GaragePostsGrid extends StatefulWidget {
+  const _GaragePostsGrid({
+    required this.garageId,
+    required this.tagged,
+    this.isOwner = false,
+    this.vehicleName,
+    this.vehicleImage,
+  });
+
   final String garageId;
   final bool tagged;
 
-  const _GaragePostsGrid({required this.garageId, required this.tagged});
+  /// Whether to offer "Add more photos" under the grid.
+  ///
+  /// Only the vehicle's owner gets it: it posts against their garage,
+  /// so it would be a button that cannot work for anybody else.
+  final bool isOwner;
+
+  /// What to call the vehicle in the composer's "POSTING TO" banner.
+  final String? vehicleName;
+
+  /// Its cover photograph, for the same banner.
+  final String? vehicleImage;
+
+  @override
+  State<_GaragePostsGrid> createState() => _GaragePostsGridState();
+}
+
+class _GaragePostsGridState extends State<_GaragePostsGrid>
+    with AutomaticKeepAliveClientMixin {
+  List<dynamic> _posts = const [];
+  bool _loading = true;
+
+  /// Whether an upload was in flight the last time we were notified.
+  ///
+  /// The composer does not wait for the upload — it hands the job to
+  /// UploadPostProvider and pops. So returning from it is too early to
+  /// find the new post: the request is still going up. Watching this
+  /// flag fall back to false is the moment there is actually something
+  /// new to fetch, and it means the owner sees their photo arrive
+  /// instead of having to pull down to find it.
+  bool _wasUploading = false;
+
+  /// The provider we are listening to, held rather than looked up.
+  ///
+  /// dispose() must detach the listener, and by then this State's
+  /// element is deactivated — so any ancestor lookup from it throws
+  /// "Looking up a deactivated widget's ancestor is unsafe". That
+  /// includes Provider.of with listen: false, which still walks the
+  /// tree to find the scope; listen: false only governs whether a
+  /// dependency gets registered, not whether the walk happens.
+  ///
+  /// Captured in didChangeDependencies and detached from the held
+  /// reference, which is how view_venue_screen and view_club_screen
+  /// already listen to this same provider.
+  UploadPostProvider? _uploads;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Re-resolved rather than read once in initState, so that a provider
+    // swapped above this widget is followed instead of leaving the
+    // listener attached to one nothing writes to any more.
+    final uploads = Provider.of<UploadPostProvider>(context, listen: false);
+
+    if (_uploads != uploads) {
+      _uploads?.removeListener(_onUploadsChanged);
+      _uploads = uploads;
+      _wasUploading = uploads.hasActiveUploads;
+      uploads.addListener(_onUploadsChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    _uploads?.removeListener(_onUploadsChanged);
+    super.dispose();
+  }
+
+  void _onUploadsChanged() {
+    final uploads = _uploads;
+    if (!mounted || uploads == null) return;
+
+    final nowUploading = uploads.hasActiveUploads;
+
+    final finished = _wasUploading && !nowUploading;
+    _wasUploading = nowUploading;
+
+    // Only on the falling edge, and only for the owner's own tab. Every
+    // notifyListeners during an upload reports progress, and refetching
+    // on each one would be the request-per-rebuild problem again in a
+    // different costume.
+    //
+    // Not filtered to uploads tagged to THIS garage — the provider does
+    // not say — so an unrelated post refetches this grid once. One
+    // request on a screen the user is already looking at, against the
+    // alternative of their own photo not appearing.
+    if (finished && widget.isOwner && !widget.tagged) {
+      _load(showSpinner: false);
+    }
+  }
+
+  /// Fetch the posts.
+  ///
+  /// [showSpinner] is false for a pull-to-refresh and for the return
+  /// from the composer: the RefreshIndicator is already saying so in
+  /// the first case, and in the second the grid underneath is still
+  /// perfectly readable. Replacing it with a spinner is the jumping
+  /// about this screen was doing.
+  Future<void> _load({bool showSpinner = true}) async {
+    if (showSpinner && mounted) setState(() => _loading = true);
+
+    final data = await GarageAPI.getPostsForGarage(
+      widget.garageId,
+      tagged: widget.tagged,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _posts = (data?['data'] as List<dynamic>?) ?? const [];
+      _loading = false;
+    });
+  }
+
+  /// Open the normal composer with this vehicle already attached.
+  ///
+  /// association_type 'garage' is what create-post.php turns into the
+  /// row's garage_id — see the association branch in dl_create_post.
+  /// So the post is tagged to the car without the owner picking
+  /// anything, which is the whole point: they are standing on the
+  /// car's page when they tap it.
+  ///
+  /// The banner names the vehicle. It said "Your Profile" at first,
+  /// on the reasoning that the post is the owner's rather than the
+  /// car's — but the owner tapped a button on a car's page, and being
+  /// told the destination is their profile reads as the tag having been
+  /// lost. Naming the car is what confirms it took.
+  ///
+  /// Still not an entity post: 'garage' is deliberately absent from
+  /// _entityTypes in the composer, so this keeps every normal rule —
+  /// media still required, per-media tagging still offered. Only the
+  /// banner changes, via _hasNamedDestination.
+  Future<void> _addPhotos() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => CreatePostScreen(
+          associationId: widget.garageId,
+          associationType: 'garage',
+          // Falls back to something rather than nothing: an empty label
+          // would put _hasNamedDestination back to false and silently
+          // return the banner to "Your Profile".
+          associationLabel: (widget.vehicleName?.trim().isNotEmpty ?? false)
+              ? widget.vehicleName!.trim()
+              : 'your vehicle',
+          associationImage: widget.vehicleImage,
+        ),
+      ),
+    );
+
+    // Nothing to refresh here. The composer pops before the upload has
+    // finished, so fetching now would reliably miss the new post —
+    // _onUploadsChanged does it at the moment the upload completes,
+    // whether or not the owner is still standing on this screen.
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+
+    final theme = Provider.of<ThemeProvider>(context);
+
+    if (_loading) {
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
+      );
+    }
+
+    final bool showAdd = widget.isOwner && !widget.tagged;
+
+    return RefreshIndicator(
+      color: theme.primaryColor,
+      onRefresh: () => _load(showSpinner: false),
+      child: CustomScrollView(
+        // Named, so the offset survives a swipe away and back. Without
+        // a key every tab in a TabBarView shares one anonymous bucket,
+        // which is how a Posts tab came back sitting at the Upgrades
+        // tab's scroll position — and inside a NestedScrollView an
+        // inner list restored to an offset its new content is too short
+        // for is what left the page unable to scroll back up.
+        key: PageStorageKey<String>(
+          'garage-posts-${widget.garageId}-${widget.tagged}',
+        ),
+        // Always scrollable: an empty tab still has to be pullable to
+        // refresh, and the owner still has to be able to reach the
+        // button under it.
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          if (_posts.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(32, 48, 32, 8),
+                child: Text(
+                  widget.tagged ? 'No tagged posts' : 'No posts yet',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: _mutedText),
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.all(2),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 2,
+                  mainAxisSpacing: 2,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => _buildTile(_posts[index]),
+                  childCount: _posts.length,
+                ),
+              ),
+            ),
+
+          // Under the grid rather than floating over it. The grid is
+          // the thing on this tab, and a button covering its last row
+          // is a button in the way of it.
+          if (showAdd)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+                child: _AddPhotosTile(onTap: _addPhotos),
+              ),
+            )
+          else
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTile(dynamic post) {
+    final media = post['media'];
+    String? imageUrl;
+
+    if (media != null && media is List && media.isNotEmpty) {
+      imageUrl = media[0]['media_url'];
+    }
+
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(
+        context,
+        '/post-detail',
+        arguments: {'postId': post['id'].toString()},
+      ),
+      child: Container(
+        color: _lightPanel,
+        child: imageUrl != null
+            ? Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                // A third of the screen wide, so there is nothing to
+                // gain from decoding the full-size photograph into it
+                // — and a grid of them is where that actually costs
+                // enough memory to matter.
+                cacheWidth: 400,
+                errorBuilder: (_, _, _) =>
+                    const Icon(Icons.image, color: Colors.grey),
+              )
+            : const Icon(Icons.image, color: Colors.grey),
+      ),
+    );
+  }
+}
+
+/// "Add more photos", for the vehicle's owner.
+class _AddPhotosTile extends StatelessWidget {
+  const _AddPhotosTile({required this.onTap});
+
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
 
-    return FutureBuilder<Map<String, dynamic>?>(
-      future: GarageAPI.getPostsForGarage(garageId, tagged: tagged),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(
-            child: CircularProgressIndicator(color: theme.primaryColor),
-          );
-        }
-
-        final data = snapshot.data;
-        if (data == null ||
-            data['data'] == null ||
-            (data['data'] as List).isEmpty) {
-          return Center(
-            child: Text(
-              tagged ? 'No tagged posts' : 'No posts',
-              style: TextStyle(color: _mutedText),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: CustomPaint(
+        painter: _DashedRectPainter(),
+        child: SizedBox(
+          width: double.infinity,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF0B0B0B),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(Icons.add, color: theme.primaryColor, size: 24),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Add more photos',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF111111),
+                  ),
+                ),
+              ],
             ),
-          );
-        }
-
-        final posts = data['data'] as List<dynamic>;
-        return GridView.builder(
-          padding: const EdgeInsets.all(2),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 2,
-            mainAxisSpacing: 2,
           ),
-          itemCount: posts.length,
-          itemBuilder: (context, index) {
-            final post = posts[index];
-            final media = post['media'];
-            String? imageUrl;
-
-            if (media != null && media is List && media.isNotEmpty) {
-              imageUrl = media[0]['media_url'];
-            }
-
-            return GestureDetector(
-              onTap: () {
-                Navigator.pushNamed(
-                  context,
-                  '/post-detail',
-                  arguments: {'postId': post['id'].toString()},
-                );
-              },
-              child: Container(
-                color: _lightPanel,
-                child: imageUrl != null
-                    ? Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            const Icon(Icons.image, color: Colors.grey),
-                      )
-                    : const Icon(Icons.image, color: Colors.grey),
-              ),
-            );
-          },
-        );
-      },
+        ),
+      ),
     );
   }
+}
+
+/// The dashed outline around the add tile.
+///
+/// Painted rather than pulled in as a package: one dashed rectangle is
+/// not worth a dependency, and nothing else in the app needs one.
+class _DashedRectPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFFD4D4D4)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4;
+
+    // Inset by half the stroke, or the outer half of the line falls
+    // outside the canvas and the box reads thinner than the sides.
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(0.7, 0.7, size.width - 1.4, size.height - 1.4),
+          const Radius.circular(14),
+        ),
+      );
+
+    // Walked with PathMetric rather than drawn as four dashed lines:
+    // the corners are curved, and stepping along the path is what keeps
+    // the dashes evenly spaced as they go round them.
+    for (final metric in path.computeMetrics()) {
+      double distance = 0;
+
+      while (distance < metric.length) {
+        final double next = distance + 6;
+        canvas.drawPath(
+          metric.extractPath(distance, next.clamp(0.0, metric.length)),
+          paint,
+        );
+        distance = next + 5;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedRectPainter oldDelegate) => false;
 }
 
 class GarageModsList extends StatefulWidget {
@@ -1528,15 +1927,35 @@ class GarageModsList extends StatefulWidget {
   State<GarageModsList> createState() => _GarageModsListState();
 }
 
-class _GarageModsListState extends State<GarageModsList> {
+class _GarageModsListState extends State<GarageModsList>
+    with AutomaticKeepAliveClientMixin {
+  /// Kept alive so the list holds its scroll offset across tab swipes.
+  ///
+  /// Nothing to refetch here — the mods arrive from the screen above —
+  /// but without this the ListView is rebuilt from the top every time.
+  @override
+  bool get wantKeepAlive => true;
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     if (widget.mods.isEmpty) {
-      return Center(
-        child: Text(
-          'No upgrades added yet',
-          style: TextStyle(color: _mutedText),
-        ),
+      // Scrollable, not a bare Center. This is a NestedScrollView body:
+      // if the visible tab has no inner scrollable, the outer header has
+      // nothing to drive it and a page already scrolled down cannot be
+      // scrolled back up — which is what swiping onto an empty tab did.
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 48),
+          Center(
+            child: Text(
+              'No upgrades added yet',
+              style: TextStyle(color: _mutedText),
+            ),
+          ),
+        ],
       );
     }
 
@@ -1548,6 +1967,8 @@ class _GarageModsListState extends State<GarageModsList> {
     }
 
     return ListView.builder(
+      key: PageStorageKey<String>('garage-mods-${widget.garageId}'),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       itemCount: grouped.length,
       itemBuilder: (context, index) {
@@ -1563,7 +1984,13 @@ class _GarageModsListState extends State<GarageModsList> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    type[0].toUpperCase() + type.substring(1),
+                    // Guarded: an empty mod_type would make type[0] a
+                    // RangeError, and the grouping above happily creates
+                    // an '' key because '' is not null and so survives
+                    // the ?? 'Other'.
+                    type.isEmpty
+                        ? 'Other'
+                        : type[0].toUpperCase() + type.substring(1),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,

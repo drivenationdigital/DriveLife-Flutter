@@ -31,6 +31,109 @@ import 'package:provider/provider.dart';
 // this would have failed with a message about ConversationPreview not
 // being assignable to ConversationPreview.
 
+/// The faces in a group, for the naming dialog.
+///
+/// A Wrap, deliberately. AlertDialog puts its content inside an
+/// IntrinsicWidth, and no scrollable can answer an intrinsic-width
+/// query — a ListView there throws rather than scrolls. A Row cannot be
+/// used either: it has no way to stop, which is how this overflowed by
+/// 308 pixels before.
+///
+/// So: wrap, and draw at most [_max] of them. Nobody recognises a group
+/// from its twelfth thumbnail, and the count says what the rest are.
+class _MemberPreview extends StatelessWidget {
+  const _MemberPreview({required this.members});
+
+  final List<UserProfile> members;
+
+  /// Seven faces, so the grid is two rows at most.
+  ///
+  /// Four fit across a dialog, and the "+N" tile takes a slot of its
+  /// own — so seven plus the counter is exactly eight, and eight is two
+  /// full rows with no stray third.
+  static const int _max = 7;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = members.take(_max).toList();
+    final extra = members.length - shown.length;
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 10,
+      alignment: WrapAlignment.center,
+      children: [
+        for (final m in shown)
+          SizedBox(
+            // Fixed, so one long first name cannot make its column
+            // wider than the rest and leave the grid ragged.
+            width: 52,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundImage: m.imageUrl != null
+                      ? NetworkImage(m.imageUrl!)
+                      : null,
+                  child: m.imageUrl == null
+                      ? Text(_initial(m.bestName))
+                      : null,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  m.bestName.split(' ').first,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+
+        if (extra > 0)
+          SizedBox(
+            width: 52,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: Colors.grey.shade200,
+                  child: Text(
+                    '+$extra',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'more',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// The first letter, or a dash.
+  ///
+  /// bestName falls back to displayName, which can be empty — the
+  /// profile cache guards this same call for that reason. Unguarded,
+  /// `[0]` on an empty name is a RangeError, and it would fire here
+  /// only for a member with no photograph AND no name, which is
+  /// exactly the case nobody tests.
+  static String _initial(String name) {
+    final trimmed = name.trim();
+    return trimmed.isEmpty ? '–' : trimmed[0].toUpperCase();
+  }
+}
+
 class GroupNameDialog extends StatefulWidget {
   final List<UserProfile> members;
 
@@ -47,8 +150,18 @@ class _GroupNameDialogState extends State<GroupNameDialog> {
   void initState() {
     super.initState();
     // Auto-suggest group name from member names
-    final names = widget.members.map((m) => m.bestName.split(' ').first);
-    _controller = TextEditingController(text: names.join(', '));
+    final names = widget.members
+        .map((m) => m.bestName.split(' ').first)
+        .toList();
+
+    // Three names, then a count. Joining all of them gave a twelve-name
+    // default for a group of twelve — longer than the field, and not
+    // something anybody would keep.
+    final suggestion = names.length <= 3
+        ? names.join(', ')
+        : '${names.take(3).join(', ')} +${names.length - 3}';
+
+    _controller = TextEditingController(text: suggestion);
   }
 
   @override
@@ -60,36 +173,34 @@ class _GroupNameDialogState extends State<GroupNameDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      // Scrollable, because the content is not a fixed height: the
+      // member preview grows a row at a time, and on a short screen
+      // with the keyboard up there was 48 pixels more of it than the
+      // dialog had room for.
+      //
+      // Safe here where a ListView was not. scrollable: true uses a
+      // VERTICAL SingleChildScrollView, whose intrinsic width comes
+      // from its child — so AlertDialog's IntrinsicWidth still gets an
+      // answer.
+      scrollable: true,
       title: const Text('Name this group'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Member preview
-          Row(
-            children: widget.members.map((m) {
-              return Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 22,
-                      backgroundImage: m.imageUrl != null
-                          ? NetworkImage(m.imageUrl!)
-                          : null,
-                      child: m.imageUrl == null
-                          ? Text(m.bestName[0].toUpperCase())
-                          : null,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      m.bestName.split(' ').first,
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
+          // Member preview as a WRAP, with a count for the rest.
+          //
+          // NOT a ListView, and not any other scrollable. AlertDialog
+          // wraps its content in IntrinsicWidth, and a viewport throws
+          // when asked for an intrinsic dimension — which is why the
+          // horizontal list that replaced the overflowing Row crashed
+          // the dialog outright. Worse than the overflow it fixed.
+          //
+          // A Wrap answers intrinsics happily, and capping the number
+          // drawn means it cannot grow unbounded either: the first
+          // eight faces, then "+5". Nobody identifies a group from the
+          // twelfth thumbnail.
+          _MemberPreview(members: widget.members),
+
           const SizedBox(height: 16),
           TextField(
             controller: _controller,

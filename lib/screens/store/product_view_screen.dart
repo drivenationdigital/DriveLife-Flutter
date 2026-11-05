@@ -557,6 +557,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   child: Image.network(
                     _galleryImages[index],
                     fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => Container(
+                      color: const Color(0xFFF0F0F0),
+                      alignment: Alignment.center,
+                      child: Icon(
+                        Icons.broken_image_outlined,
+                        color: Colors.grey.shade400,
+                        size: 20,
+                      ),
+                    ),
                   ),
                 );
               },
@@ -623,6 +632,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       child: Image.network(
                         _galleryImages[index],
                         fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Container(
+                          color: const Color(0xFFF0F0F0),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.grey.shade400,
+                            size: 20,
+                          ),
+                        ),
                       ),
                     ),
                   ),

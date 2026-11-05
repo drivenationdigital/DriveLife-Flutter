@@ -26,9 +26,49 @@ class ThemeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The brand gold.
+  static const Color _gold = Color(PRIMARY_COLOR_CODE);
+
+  /// Where the purple comes from.
+  ///
+  /// ThemeData.light() and .dark() ship Material 3's default scheme,
+  /// whose primary is #6750A4 — a purple nobody chose. Every widget
+  /// that is not individually coloured takes it: FilledButton,
+  /// TextButton, Checkbox, Switch, a TextField's cursor, focus ring and
+  /// selection handles, Chip, the lot.
+  ///
+  /// Most of this app's screens set their own colours, which is why it
+  /// has not been obvious — but the chat screens lean on stock widgets,
+  /// so that is where the purple showed up. Setting the scheme fixes it
+  /// everywhere at once rather than one FilledButton at a time.
+  ///
+  /// fromSeed for the supporting roles — containers, outlines, the
+  /// right text colour to sit on each — then primary pinned to the
+  /// exact brand gold, because a seeded palette shifts it for contrast
+  /// and the brand colour is not negotiable.
+  ColorScheme _scheme(Brightness brightness) {
+    final seeded = ColorScheme.fromSeed(
+      seedColor: _gold,
+      brightness: brightness,
+    );
+
+    return seeded.copyWith(
+      primary: _gold,
+      // Black on gold. The seeded answer is a very dark brown, and at
+      // this lightness the difference is invisible while the name is
+      // misleading.
+      onPrimary: Colors.white,
+      // Errors stay red. A seeded error colour drifts toward the seed,
+      // and a destructive action that is slightly gold is a
+      // destructive action nobody reads as one.
+      error: const Color(0xFFD93025),
+    );
+  }
+
   ThemeData get themeData {
     if (_isDarkMode) {
       return ThemeData.dark().copyWith(
+        colorScheme: _scheme(Brightness.dark),
         scaffoldBackgroundColor: const Color(0xFF121212),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF1E1E1E),
@@ -49,6 +89,7 @@ class ThemeProvider extends ChangeNotifier {
       );
     } else {
       return ThemeData.light().copyWith(
+        colorScheme: _scheme(Brightness.light),
         scaffoldBackgroundColor: Colors.white,
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.white,

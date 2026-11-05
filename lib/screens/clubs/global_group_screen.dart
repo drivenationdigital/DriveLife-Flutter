@@ -6,6 +6,7 @@ import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/theme/dl_type.dart';
+import 'package:drivelife/widgets/feed/feed_divider.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/widgets/home/home_activity_card.dart';
 import 'package:drivelife/widgets/groups/group_chrome.dart';
@@ -803,12 +804,7 @@ class _GlobalGroupScreenState extends State<GlobalGroupScreen>
       mainAxisSize: MainAxisSize.min,
       children: [
         card,
-        const SizedBox(
-          height: 1,
-          width: double.infinity,
-          child: ColoredBox(color: Color(0xFFECECEC)),
-        ),
-        const SizedBox(height: 10),
+        const FeedDivider(),
       ],
     );
   }

@@ -480,6 +480,7 @@ class YourWeekPanelState extends State<YourWeekPanel> {
                     : CachedNetworkImage(
                         imageUrl: spot.image!,
                         fit: BoxFit.cover,
+                        memCacheWidth: 900,
                         errorWidget: (_, _, _) => const SizedBox.shrink(),
                       ),
               ),
@@ -662,6 +663,7 @@ class YourWeekPanelState extends State<YourWeekPanel> {
                     ? CachedNetworkImage(
                         imageUrl: venue.coverImage,
                         fit: BoxFit.cover,
+                        memCacheWidth: 900,
                         placeholder: (_, _) =>
                             Container(color: const Color(0xFFEFEFEF)),
                         errorWidget: (_, _, _) => _venuePlaceholder(),
@@ -1444,6 +1446,9 @@ class YourWeekPanelState extends State<YourWeekPanel> {
 
     return CachedNetworkImage(
       imageUrl: url,
+      // Drawn at 86. Without this it decoded the full-size photograph
+      // into a thumbnail — the single biggest waste of the lot.
+      memCacheWidth: 260,
       width: 86,
       height: 64,
       fit: BoxFit.cover,

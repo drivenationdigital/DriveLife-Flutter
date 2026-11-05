@@ -27,6 +27,17 @@ class User {
   /// hide the tab on every server that has not been updated yet.
   final bool? activityAccess;
 
+  /// What they ticked at signup, as the ids step_three.dart stores.
+  ///
+  /// Ids rather than labels, because the app holds the same numbered
+  /// list and two copies of the wording would drift. Empty means they
+  /// answered nothing — either they predate the question or they
+  /// skipped it — which is what the prompt keys off.
+  final List<int> interests;
+
+  /// Which of step_four.dart's profile types they picked, or null.
+  final int? profileType;
+
   User({
     required this.id,
     required this.verified,
@@ -47,6 +58,8 @@ class User {
     this.billingInfo,
     this.isAdmin = false,
     this.activityAccess,
+    this.interests = const [],
+    this.profileType,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -94,6 +107,15 @@ class User {
           ? BillingInfo.fromJson(json['billing_info'])
           : null,
       isAdmin: json['is_admin'] ?? false,
+      interests: json['interests'] is List
+          ? (json['interests'] as List)
+                .map((v) => int.tryParse('$v'))
+                .whereType<int>()
+                .toList()
+          : const [],
+      profileType: json['profile_type'] == null
+          ? null
+          : int.tryParse('${json['profile_type']}'),
       activityAccess: json['activity_access'] is bool
           ? json['activity_access'] as bool
           : null,
@@ -121,6 +143,8 @@ class User {
       'billing_info': billingInfo?.toJson(),
       'is_admin': isAdmin,
       'activity_access': activityAccess,
+      'interests': interests,
+      'profile_type': profileType,
     };
   }
 
@@ -152,6 +176,8 @@ class User {
     BillingInfo? billingInfo,
     bool? isAdmin,
     bool? activityAccess,
+    List<int>? interests,
+    int? profileType,
   }) {
     return User(
       id: id ?? this.id,
@@ -173,6 +199,8 @@ class User {
       billingInfo: billingInfo ?? this.billingInfo,
       isAdmin: isAdmin ?? this.isAdmin,
       activityAccess: activityAccess ?? this.activityAccess,
+      interests: interests ?? this.interests,
+      profileType: profileType ?? this.profileType,
     );
   }
 }

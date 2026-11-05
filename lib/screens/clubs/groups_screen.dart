@@ -4,9 +4,9 @@ import 'package:drivelife/api/global_groups_api.dart';
 import 'package:drivelife/models/my_clubs.dart';
 import 'package:drivelife/screens/clubs/global_group_screen.dart';
 import 'package:drivelife/screens/clubs/group_browse_screen.dart';
+import 'package:drivelife/screens/clubs/group_search_screen.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/routes.dart';
-import 'package:drivelife/screens/clubs/open_club_creator.dart';
 import 'package:drivelife/theme/dl_type.dart';
 // FilterOption lives beside a bottom sheet rather than with the models,
 // which is where ClubApiService.fetchClubTypes() returns it from too.
@@ -143,6 +143,33 @@ class GroupSummary {
     reason: group.reason,
   );
 
+  /// From a club row on /app/v1/clubs.
+  ///
+  /// 'ID', capitalised, is the key format_club_for_api() actually
+  /// sends — it is the raw WordPress post id. 'id' is read as well
+  /// because other club-shaped payloads use it, and a parser that
+  /// knows only one of them drops every row silently: an empty id
+  /// fails the isNotEmpty test below and the list comes back empty
+  /// with no error anywhere.
+  ///
+  /// That is exactly what happened to the search screen, which had its
+  /// own copy of this reading only the lowercase one. Hence this being
+  /// a factory rather than a method on one screen.
+  static GroupSummary? fromClubRow(Map row) {
+    final id = '${row['ID'] ?? row['id'] ?? ''}';
+    final title = '${row['title'] ?? ''}';
+
+    if (id.isEmpty || title.isEmpty) return null;
+
+    return GroupSummary(
+      id: id,
+      title: title,
+      memberCount:
+          int.tryParse('${row['member_count'] ?? row['members'] ?? 0}') ?? 0,
+      image: (row['cover_image'] ?? row['logo'])?.toString(),
+    );
+  }
+
   /// From /clubs/my-clubs.
   ///
   /// `Id`, NOT `clubId`. A MyClub carries both: `club_id` is the
@@ -253,6 +280,14 @@ class _GroupsScreenState extends State<GroupsScreen>
   List<GroupSummary> _marques = const [];
   List<GroupSummary> _garageMatchList = const [];
 
+  /// The suggestions are still coming.
+  ///
+  /// Its own flag because its section sits ABOVE the lists and is the
+  /// slowest of the three. Without somewhere held for it, arriving
+  /// late would shove everything already on screen down the page —
+  /// which is worse than the wait it replaces.
+  bool _loadingMatches = true;
+
   /// Every group the server will give us, under everything else.
   ///
   /// The sections above are all curated or personal; this is the plain
@@ -275,8 +310,6 @@ class _GroupsScreenState extends State<GroupsScreen>
   final ScrollController _scroll = ScrollController();
 
   /// Groups matching the search box, or null when not searching.
-  List<GroupSummary>? _results;
-  bool _searching = false;
 
   /// Which placeholder rows the user has tapped Join on.
   ///
@@ -292,7 +325,6 @@ class _GroupsScreenState extends State<GroupsScreen>
   @override
   void initState() {
     super.initState();
-    _search.addListener(_onSearchChanged);
     _scroll.addListener(_onScroll);
     _loadMine();
     _loadSections();
@@ -305,7 +337,7 @@ class _GroupsScreenState extends State<GroupsScreen>
   /// Fetch the next page a screenful before the end, so the list has
   /// usually grown by the time somebody reaches the bottom of it.
   void _onScroll() {
-    if (!_scroll.hasClients || _results != null) return;
+    if (!_scroll.hasClients) return;
 
     final position = _scroll.position;
     if (position.pixels < position.maxScrollExtent - 600) return;
@@ -318,26 +350,48 @@ class _GroupsScreenState extends State<GroupsScreen>
     _loadMoreAll();
   }
 
+  /// The three browse sections, drawn as they arrive.
+  ///
+  /// All three start together, as they always did — but they used to
+  /// be one Future.wait, so NOTHING appeared until the slowest came
+  /// back. That is /groups/suggested: it joins every car in somebody's
+  /// garage against every group's rules, and it now runs a second
+  /// query for their signup interests on top. The two plain list
+  /// fetches were waiting on it, which is why a cold open sat blank
+  /// and a refresh — with the server warm — came back instantly.
+  ///
+  /// Awaited in turn instead. The scene and marque lists draw as soon
+  /// as they land, and the suggestions fill the space held for them
+  /// above.
   Future<void> _loadSections() async {
-    final results = await Future.wait([
-      _loadKind(GroupKind.scene),
-      _loadKind(GroupKind.marque),
-      _loadGarageMatches(),
-    ]);
+    final sceneRequest = _loadKind(GroupKind.scene);
+    final marqueRequest = _loadKind(GroupKind.marque);
+    final matchRequest = _loadGarageMatches();
+
+    final scenes = await sceneRequest;
 
     if (!mounted) return;
+    setState(() => _scenes = scenes);
 
+    final marques = await marqueRequest;
+
+    if (!mounted) return;
     setState(() {
-      _scenes = results[0];
-      _marques = results[1];
-      _garageMatchList = results[2];
+      _marques = marques;
       _loadingSections = false;
+    });
+
+    final matches = await matchRequest;
+
+    if (!mounted) return;
+    setState(() {
+      _garageMatchList = matches;
+      _loadingMatches = false;
     });
   }
 
   @override
   void dispose() {
-    _search.removeListener(_onSearchChanged);
     _search.dispose();
     _scroll.dispose();
     super.dispose();
@@ -536,6 +590,10 @@ class _GroupsScreenState extends State<GroupsScreen>
       final raw = await ClubApiService.fetchClubs(
         category: _clubCategory,
         location: _clubLocation,
+        // Biggest first, matching the group lists. The server's
+        // default is 'engagement', which is a different and less
+        // obvious question than the member count printed on each row.
+        sort: 'members',
         page: 1,
         perPage: _pageSize,
       );
@@ -573,6 +631,10 @@ class _GroupsScreenState extends State<GroupsScreen>
       final raw = await ClubApiService.fetchClubs(
         category: _clubCategory,
         location: _clubLocation,
+        // Biggest first, matching the group lists. The server's
+        // default is 'engagement', which is a different and less
+        // obvious question than the member count printed on each row.
+        sort: 'members',
         page: _allPage + 1,
         perPage: _pageSize,
       );
@@ -603,15 +665,8 @@ class _GroupsScreenState extends State<GroupsScreen>
   List<GroupSummary> _parseGroups(List<dynamic>? raw) {
     return (raw ?? const [])
         .whereType<Map>()
-        .map(
-          (c) => GroupSummary(
-            id: '${c['ID'] ?? c['id'] ?? ''}',
-            title: '${c['title'] ?? ''}',
-            memberCount: (c['member_count'] as num?)?.toInt() ?? 0,
-            image: c['cover_image'] as String? ?? c['logo'] as String?,
-          ),
-        )
-        .where((g) => g.id.isNotEmpty && g.title.isNotEmpty)
+        .map(GroupSummary.fromClubRow)
+        .whereType<GroupSummary>()
         .toList();
   }
 
@@ -651,41 +706,27 @@ class _GroupsScreenState extends State<GroupsScreen>
     });
   }
 
-  void _onSearchChanged() {
+  /// Hand the query to its own page.
+  ///
+  /// Searching used to happen in place: the results replaced
+  /// everything below the field, sharing its scroll, with no way back
+  /// but clearing the box. They also only covered CLUBS, while the
+  /// empty state said "no groups" — see GroupSearchScreen.
+  ///
+  /// The field is cleared on the way, so coming back shows the browse
+  /// page it left rather than a box still holding an old search.
+  Future<void> _openSearch() async {
     final query = _search.text.trim();
 
-    if (query.isEmpty) {
-      setState(() {
-        _results = null;
-        _searching = false;
-      });
-      return;
-    }
+    if (query.isEmpty) return;
 
-    setState(() => _searching = true);
-    _runSearch(query);
-  }
+    _search.clear();
+    FocusScope.of(context).unfocus();
 
-  Future<void> _runSearch(String query) async {
-    try {
-      final raw = await ClubApiService.fetchClubs(search: query, perPage: 20);
-
-      // Dropped if the box has moved on. Two keystrokes in flight finish
-      // in whatever order the network decides, and the slower one must
-      // not land on top of the newer answer.
-      if (!mounted || _search.text.trim() != query) return;
-
-      setState(() {
-        _results = _parseGroups(raw);
-        _searching = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _results = const [];
-        _searching = false;
-      });
-    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => GroupSearchScreen(query: query)),
+    );
   }
 
   @override
@@ -704,9 +745,7 @@ class _GroupsScreenState extends State<GroupsScreen>
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               _chrome(),
-              if (_results != null)
-                ..._searchSlivers(theme)
-              else if (_tab == _Tab.clubs)
+              if (_tab == _Tab.clubs)
                 ..._clubSlivers(theme)
               else
                 ..._browseSlivers(theme),
@@ -1006,8 +1045,13 @@ class _GroupsScreenState extends State<GroupsScreen>
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         child: TextField(
           controller: _search,
+          // Submit, rather than filter as you type. The results are a
+          // page of their own now, and opening one on every keystroke
+          // would be a navigation per letter.
+          textInputAction: TextInputAction.search,
+          onSubmitted: (_) => _openSearch(),
           decoration: InputDecoration(
-            hintText: 'Search groups',
+            hintText: 'Search groups and clubs',
             isDense: true,
             hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 16),
             prefixIcon: Icon(Icons.search, color: Colors.grey.shade500),
@@ -1055,6 +1099,13 @@ class _GroupsScreenState extends State<GroupsScreen>
           ),
         ),
         _sliver(_loadingMine ? _yourGroupsSkeleton() : _yourGroupsRail(theme)),
+      ],
+
+      // Space held while they load, so nothing below jumps when they
+      // land. Dropped entirely once we know there are none.
+      if (_loadingMatches && _garageMatchList.isEmpty) ...[
+        _sliver(const SizedBox(height: 26)),
+        _sliver(_garageMatchesSkeleton()),
       ],
 
       if (_garageMatchList.isNotEmpty) ...[
@@ -1143,7 +1194,12 @@ class _GroupsScreenState extends State<GroupsScreen>
 
   Widget _sectionHeader(ThemeProvider theme, String title, {Widget? trailing}) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      // 14 above, where there was nothing. The first heading on each
+      // tab sat directly under the rule beneath the tabs, so the tab
+      // row and the section below it read as one block — and the
+      // sections further down already have their own spacers, which
+      // is why only the top one looked cramped.
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -1269,6 +1325,22 @@ class _GroupsScreenState extends State<GroupsScreen>
   }
 
   // ─── Based on your garage  [PLACEHOLDER DATA] ──────────────────────
+
+  /// A block the size of the suggestions panel, while it loads.
+  Widget _garageMatchesSkeleton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: GroupShimmer(
+        child: Container(
+          height: 196,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _garageMatches(ThemeProvider theme) {
     return Padding(
@@ -1693,71 +1765,6 @@ class _GroupsScreenState extends State<GroupsScreen>
   }
 
   // ─── Search ────────────────────────────────────────────────────────
-
-  List<Widget> _searchSlivers(ThemeProvider theme) {
-    final results = _results ?? const <GroupSummary>[];
-
-    if (_searching && results.isEmpty) {
-      return [
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Center(
-            child: CircularProgressIndicator(color: theme.primaryColor),
-          ),
-        ),
-      ];
-    }
-
-    if (results.isEmpty) {
-      return [
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(32, 48, 32, 32),
-            child: Column(
-              children: [
-                Icon(Icons.search_off, size: 54, color: Colors.grey.shade300),
-                const SizedBox(height: 14),
-                Text(
-                  'No groups match “${_search.text.trim()}”',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: () => openClubCreator(context),
-                  child: Text(
-                    'Start one instead',
-                    style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w700,
-                      color: theme.primaryColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ];
-    }
-
-    return [
-      SliverList.separated(
-        itemCount: results.length,
-        separatorBuilder: (_, _) => Padding(
-          padding: const EdgeInsets.only(left: 92, right: 16),
-          child: Divider(height: 1, color: Colors.grey.shade200),
-        ),
-        itemBuilder: (_, i) => _groupRow(theme, results[i]),
-      ),
-      _sliver(const SizedBox(height: 120)),
-    ];
-  }
 
   // ─── Shared ────────────────────────────────────────────────────────
 

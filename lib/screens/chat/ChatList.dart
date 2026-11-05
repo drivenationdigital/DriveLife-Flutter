@@ -326,7 +326,12 @@ class InboxScreenState extends State<InboxScreen>
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               _floatingChrome(),
-              if (_selectedForGroup.isNotEmpty) _selectedPills(theme),
+              // One or the other, never both: once somebody is picked
+              // the chips say what the prompt was there to say.
+              if (_selectedForGroup.isNotEmpty)
+                _selectedPills(theme)
+              else if (_searchActive)
+                SliverToBoxAdapter(child: _newGroupPrompt(theme)),
               ..._body(theme),
             ],
           ),
@@ -395,58 +400,180 @@ class InboxScreenState extends State<InboxScreen>
     );
   }
 
+  /// "New group", the way a messaging app usually offers it.
+  ///
+  /// There was no entry point at all: a group happened if you noticed
+  /// that tapping a second person added them rather than opening a
+  /// chat. Nothing on the screen said groups existed, and the Start
+  /// button only appeared once you had already built one by accident.
+  ///
+  /// So this says what to do, and it is a prompt rather than a button —
+  /// the search field above it is still the way in, and a second route
+  /// to the same place would be the clunkier answer, not the clearer
+  /// one. Tapping it puts the cursor in the field.
+  ///
+  /// Shown while searching with nobody picked yet, and on an empty
+  /// inbox. It disappears the moment the first person is chosen,
+  /// because by then the chips are saying the same thing better.
+  Widget _newGroupPrompt(ThemeProvider theme) {
+    return InkWell(
+      onTap: () {
+        _searchFocus.requestFocus();
+      },
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: theme.primaryColor.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.group_add_rounded,
+                size: 22,
+                color: theme.primaryColor,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'New group',
+                    style: TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w700,
+                      color: theme.textColor,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Tap 2 or more people to start one',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: theme.subtextColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// The people picked for a new group, as removable chips.
+  ///
+  /// WRAPS, and the Start button sits on its own line beneath.
+  ///
+  /// This was one horizontally-scrolling row with Start beside it,
+  /// which went wrong two ways once more than a few people were
+  /// picked: everyone past the third was off-screen behind a scroll
+  /// with nothing to say they were there, and a long username made a
+  /// chip wide enough to fill the row on its own.
+  ///
+  /// Wrapping shows the whole selection at once. The height is capped
+  /// and scrolls past four rows or so, because a group of twenty should
+  /// not push the inbox off the screen — but by then you can see you
+  /// have twenty, which is the part that was missing.
   Widget _selectedPills(ThemeProvider theme) {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-        child: Row(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 132),
               child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: _selectedForGroup.map((profile) {
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Chip(
-                        avatar: CircleAvatar(
-                          backgroundImage: profile.imageUrl != null
-                              ? CachedNetworkImageProvider(profile.imageUrl!)
-                              : null,
-                          child: profile.imageUrl == null
-                              ? Text(
-                                  profile.bestName[0].toUpperCase(),
-                                  style: const TextStyle(fontSize: 11),
-                                )
-                              : null,
-                        ),
-                        label: Text(
+                    return Chip(
+                      avatar: CircleAvatar(
+                        backgroundImage: profile.imageUrl != null
+                            ? CachedNetworkImageProvider(profile.imageUrl!)
+                            : null,
+                        // Guarded, like every other initial in the
+                        // chat screens. bestName falls back to
+                        // displayName, which can be empty, and `[0]`
+                        // on an empty string is a RangeError — one
+                        // that only fires for somebody with no photo
+                        // AND no name.
+                        child: profile.imageUrl == null
+                            ? Text(
+                                profile.bestName.trim().isEmpty
+                                    ? '?'
+                                    : profile.bestName.trim()[0].toUpperCase(),
+                                style: const TextStyle(fontSize: 11),
+                              )
+                            : null,
+                      ),
+                      // Capped. An unbounded label let one long
+                      // username take the full width and push every
+                      // other chip out of sight.
+                      label: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 136),
+                        child: Text(
                           profile.username,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 12.5),
                         ),
-                        deleteIcon: const Icon(Icons.close, size: 16),
-                        onDeleted: () =>
-                            setState(() => _selectedForGroup.remove(profile)),
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
                       ),
+                      deleteIcon: const Icon(Icons.close, size: 16),
+                      onDeleted: () =>
+                          setState(() => _selectedForGroup.remove(profile)),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
                     );
                   }).toList(),
                 ),
               ),
             ),
 
-            if (_selectedForGroup.length >= 2)
-              FilledButton.icon(
-                onPressed: _startGroupChat,
-                icon: const Icon(Icons.group, size: 17),
-                label: const Text('Start'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: theme.primaryColor,
-                  visualDensity: VisualDensity.compact,
+            const SizedBox(height: 10),
+
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    // Says what is wrong while it is wrong. Start used
+                    // to simply not be there under two people, with
+                    // nothing to explain why.
+                    _selectedForGroup.length < 2
+                        ? 'Pick at least 2 people'
+                        : '${_selectedForGroup.length} selected',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: theme.subtextColor,
+                    ),
+                  ),
                 ),
-              ),
+                FilledButton.icon(
+                  // Disabled rather than absent. A button that appears
+                  // on the second tap is a button you did not know you
+                  // were working towards.
+                  onPressed:
+                      _selectedForGroup.length >= 2 ? _startGroupChat : null,
+                  icon: const Icon(Icons.group, size: 17),
+                  label: const Text('Start'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: theme.primaryColor,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -559,6 +686,10 @@ class InboxScreenState extends State<InboxScreen>
 
     if (shown.isEmpty) {
       return [
+        // An empty inbox is where somebody is most likely to be
+        // looking for this and least likely to find it.
+        if (_filter == InboxFilter.all)
+          SliverToBoxAdapter(child: _newGroupPrompt(theme)),
         _message(
           Icons.chat_bubble_outline,
           emptyInboxMessage(_filter),

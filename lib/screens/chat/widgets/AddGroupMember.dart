@@ -165,9 +165,17 @@ class AddMemberPageState extends State<AddMemberPage> {
               itemBuilder: (context, i) {
                 final user = _results[i];
                 final profileImage = user['image'] as String?;
-                final name = user['name'] as String? ?? 'Unknown';
+                // `name` from this endpoint is user_login — the
+                // handle, not what anybody is called. It was being
+                // drawn as the title with '@' and an empty `username`
+                // underneath, because no such key is sent.
+                final handle = user['name'] as String? ?? '';
+                final displayName =
+                    (user['display_name'] as String? ?? '').trim();
+                final name = displayName.isNotEmpty
+                    ? displayName
+                    : (handle.isNotEmpty ? handle : 'Unknown');
                 final userId = user['entity_id'].toString();
-                final username = user['username'] as String? ?? '';
 
                 return ListTile(
                   contentPadding: const EdgeInsets.symmetric(
@@ -193,10 +201,17 @@ class AddMemberPageState extends State<AddMemberPage> {
                     name,
                     style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
-                  subtitle: Text(
-                    '@$username',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                  ),
+                  // Only when there is one, and never when it would
+                  // just repeat the line above it.
+                  subtitle: handle.isEmpty || handle == name
+                      ? null
+                      : Text(
+                          '@$handle',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
                   trailing: _addedIds.contains(userId)
                       ? FilledButton.icon(
                           onPressed: null, // disabled
@@ -220,7 +235,7 @@ class AddMemberPageState extends State<AddMemberPage> {
                             widget.onAdd(
                               UserProfile(
                                 id: userId,
-                                username: username,
+                                username: handle,
                                 displayName: name,
                                 firstName: '',
                                 lastName: '',

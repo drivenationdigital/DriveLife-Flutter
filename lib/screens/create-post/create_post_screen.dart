@@ -68,12 +68,24 @@ class CreatePostScreen extends StatefulWidget {
   final String? associationType;
   final String? associationLabel;
 
+  /// Picture for the "POSTING TO" banner, when the caller has one.
+  ///
+  /// Without it a named destination falls back to the ⫽ glyph, which is
+  /// the right placeholder for a club with no logo but reads as missing
+  /// next to a vehicle that plainly has photographs.
+  ///
+  /// This is the only thing that populates the banner's picture — group
+  /// posts never passed one and have always shown the glyph, so leaving
+  /// it null is exactly the behaviour they had before.
+  final String? associationImage;
+
   const CreatePostScreen({
     this.startAsSpot = false,
     super.key,
     this.associationId,
     this.associationType,
     this.associationLabel,
+    this.associationImage,
   });
 
   @override
@@ -156,6 +168,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         'id': widget.associationId,
         'type': widget.associationType,
         'label': widget.associationLabel,
+        'logo': widget.associationImage,
       };
     }
 
@@ -1368,23 +1381,36 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         top: false,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          // Equal COLUMNS, not equal gaps.
+          //
+          // spaceEvenly spreads the space between the buttons evenly,
+          // which only looks even if the buttons are the same width —
+          // and they are not: "Location" is half as wide again as
+          // "Link". The result was four items that drifted left.
+          //
+          // An Expanded each gives every button the same slice of the
+          // row and centres its label in it, so the icons line up on a
+          // regular pitch whatever the words are.
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               // Photo and Video have gone. The Add tile in the media
               // grid above does both now, so these were a second route
               // to the same picker — and two of them implied a choice
               // that does not exist, since a post can hold a mix.
-              _ToolButton(
-                icon: Icons.location_on_outlined,
-                label: 'Location',
-                onTap: _openLocationSheet,
+              Expanded(
+                child: _ToolButton(
+                  icon: Icons.location_on_outlined,
+                  label: 'Location',
+                  onTap: _openLocationSheet,
+                ),
               ),
               // if (!_isEntityPost) ...[
-              _ToolButton(
-                icon: Icons.calendar_today_outlined,
-                label: 'Event',
-                onTap: () => _handleTagEntity('events'),
+              Expanded(
+                child: _ToolButton(
+                  icon: Icons.calendar_today_outlined,
+                  label: 'Event',
+                  onTap: () => _handleTagEntity('events'),
+                ),
               ),
               // Car and People moved to step 2, after posting: a plate can
               // only be read once the images are uploaded, so tagging them
@@ -1396,18 +1422,25 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               // two buttons back.
 
               // ],
-              FeatureTipTarget(
-                tip: FeatureTips.poll,
-                child: _ToolButton(
-                  icon: Icons.poll_outlined,
-                  label: 'Poll',
-                  onTap: _openPollSheet,
+              Expanded(
+                // Expanded OUTSIDE the tip target, so the highlight it
+                // draws covers the whole slot rather than just the
+                // button's own width.
+                child: FeatureTipTarget(
+                  tip: FeatureTips.poll,
+                  child: _ToolButton(
+                    icon: Icons.poll_outlined,
+                    label: 'Poll',
+                    onTap: _openPollSheet,
+                  ),
                 ),
               ),
-              _ToolButton(
-                icon: Icons.link,
-                label: 'Link',
-                onTap: _openLinkSheet,
+              Expanded(
+                child: _ToolButton(
+                  icon: Icons.link,
+                  label: 'Link',
+                  onTap: _openLinkSheet,
+                ),
               ),
             ],
           ),

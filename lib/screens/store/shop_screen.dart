@@ -290,6 +290,15 @@ class _ShopScreenState extends State<ShopScreen>
                       width: 80,
                       height: 80,
                       fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Container(
+                        color: const Color(0xFFF0F0F0),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.grey.shade400,
+                          size: 20,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -806,6 +815,15 @@ class _ShopScreenState extends State<ShopScreen>
                                 child: Image.network(
                                   item.image,
                                   fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => Container(
+                                    color: const Color(0xFFF0F0F0),
+                                    alignment: Alignment.center,
+                                    child: Icon(
+                                      Icons.broken_image_outlined,
+                                      color: Colors.grey.shade400,
+                                      size: 20,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
@@ -1620,6 +1638,15 @@ class _ShopScreenState extends State<ShopScreen>
                       product.image,
                       fit: BoxFit.cover,
                       width: double.infinity,
+                      errorBuilder: (_, _, _) => Container(
+                        color: const Color(0xFFF0F0F0),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.grey.shade400,
+                          size: 20,
+                        ),
+                      ),
                     ),
                   ),
                 ),

@@ -144,7 +144,19 @@ class _CommentItemState extends State<CommentItem> {
               children: [
                 Center(
                   child: InteractiveViewer(
-                    child: Image.network(url, fit: BoxFit.contain),
+                    child: Image.network(
+                      url,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) => Container(
+                        color: const Color(0xFFF0F0F0),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.grey.shade400,
+                          size: 20,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 Positioned(
@@ -207,6 +219,13 @@ class _CommentItemState extends State<CommentItem> {
                         (c['profile_image'] != null &&
                             c['profile_image'].toString().isNotEmpty)
                         ? NetworkImage(c['profile_image'])
+                        : null,
+                    // Conditional, like the image it guards — see the
+                    // note in ChatProfileCache.
+                    onBackgroundImageError:
+                        (c['profile_image'] != null &&
+                            c['profile_image'].toString().isNotEmpty)
+                        ? (_, _) {}
                         : null,
                     child:
                         (c['profile_image'] == null ||

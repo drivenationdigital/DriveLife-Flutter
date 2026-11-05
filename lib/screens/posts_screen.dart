@@ -2,6 +2,7 @@ import 'package:drivelife/main.dart' show BottomNavProvider;
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/api/activity_feed_api.dart';
 import 'package:drivelife/theme/dl_type.dart';
+import 'package:drivelife/widgets/feed/feed_divider.dart';
 import 'package:drivelife/widgets/home/home_activity_card.dart';
 import 'package:drivelife/widgets/nav/dl_bottom_nav.dart';
 import 'package:drivelife/widgets/home/your_week.dart';
@@ -850,33 +851,7 @@ class _PostsTabState extends State<_PostsTab> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       card,
-                      // A hairline, not a band. 8px of grey separated
-                      // the cards and also cut the feed into strips;
-                      // one pixel is enough to say "this ended, that
-                      // began" and disappears once you are reading.
-                      //
-                      // The cards already carry their own bottom
-                      // padding, so the line has air around it without
-                      // needing to be thick itself.
-                      const SizedBox(
-                        height: 1,
-                        width: double.infinity,
-                        child: ColoredBox(color: Color(0xFFECECEC)),
-                      ),
-
-                      // Air UNDER the line, because the cards do not
-                      // provide it evenly. What sits above the line is
-                      // the end of a card — a PostCard's likes and
-                      // comments block, with its own generous bottom
-                      // padding. What sits below is the start of the
-                      // next one, and PostCard's header is a ListTile
-                      // that begins almost immediately.
-                      //
-                      // So the line looked tucked under the card
-                      // beneath it. This is added by the list rather
-                      // than by either card, so the gap is the same
-                      // whichever kinds happen to meet here.
-                      const SizedBox(height: 10),
+                      const FeedDivider(),
                     ],
                   );
                 }
