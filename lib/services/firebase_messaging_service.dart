@@ -8,6 +8,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:drivelife/services/notification_target.dart';
+import 'package:drivelife/api/notifications_api.dart';
+import 'package:drivelife/screens/garage/view_reminders.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 
@@ -247,6 +249,21 @@ class FirebaseMessagingService {
       return;
     }
 
+    // Counted before the account check, not after.
+    //
+    // _ensureAccount returns false for a notification belonging to an
+    // account signed out on this device, and that tap still happened —
+    // somebody saw the notification and chose it. Counting only the
+    // ones that opened successfully would quietly flatter every
+    // notification's click-through rate.
+    //
+    // Not awaited: the tap should not wait on a statistics call. See
+    // reportNotificationClick, which swallows its own failures.
+    final notifyId = target.notifyId;
+    if (notifyId != null) {
+      NotificationsAPI.reportNotificationClick(notifyId);
+    }
+
     final ready = await _ensureAccount(target);
     if (!ready) return;
 
@@ -304,6 +321,48 @@ class FirebaseMessagingService {
         nav.pushNamed(
           AppRoutes.guess,
           arguments: {'tab': id == 'leaderboard' ? 1 : 0},
+        );
+        break;
+      case 'vehicle-view':
+        nav.pushNamed(AppRoutes.vehicleDetail, arguments: {'garageId': id});
+        break;
+      case 'vehicle-reminders':
+        // Pushed directly rather than by name, like gallery-tag above:
+        // RemindersScreen has no entry in AppRoutes, and adding one for
+        // a single deep link is more indirection than it removes.
+        //
+        // This is where the MOT / insurance / service reminders open,
+        // and until now nothing could reach it from outside the app —
+        // the reminders bell on the vehicle page was the only warning
+        // anybody got that one was due, and only if they went looking.
+        if (id != null) {
+          nav.push(
+            MaterialPageRoute(builder: (_) => RemindersScreen(garageId: id)),
+          );
+        }
+        break;
+      case 'event-view':
+        // AppRoutes.eventDetail takes the event rather than an id,
+        // because every in-app caller already has the object from the
+        // list it was drawn in. A notification does not — but it does
+        // not need to fetch one either: EventDetailScreen hydrates
+        // itself from event['id'] and event['site'] ?? ['country'], so
+        // a stub with those two is enough and the screen keeps its own
+        // loading and not-found states.
+        //
+        // ?country= matters. An event id only means something inside
+        // its own region's blog and the same id exists in both, so
+        // without the region this opens whichever event shares the
+        // number. The server puts it in the url for that reason; see
+        // dl_notify_event_url().
+        nav.pushNamed(
+          AppRoutes.eventDetail,
+          arguments: {
+            'event': {
+              'id': id,
+              'country': uri.queryParameters['country'] ?? 'GB',
+            },
+          },
         );
         break;
       default:

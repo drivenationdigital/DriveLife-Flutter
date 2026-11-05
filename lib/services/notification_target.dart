@@ -26,7 +26,28 @@ class NotificationTarget {
   /// notification.
   final String? accountName;
 
-  const NotificationTarget({this.url, this.accountId, this.accountName});
+  /// The `ce_notify_sent` row this notification came from, if it was a
+  /// scheduled one.
+  ///
+  /// Sent back when the notification is tapped, which is the only way
+  /// the server learns a scheduled push was worth sending — see
+  /// dl_notify_clicked() in php-api/endpoints/notify.php.
+  ///
+  /// Null for everything else. Ordinary notifications — a like, a
+  /// comment, a follow — carry no id and are not counted this way.
+  final String? notifyId;
+
+  /// Which scheduled notification it was, e.g. `guess_open`. Carried for
+  /// the log line only; the server reads the kind off the row itself.
+  final String? notifyKind;
+
+  const NotificationTarget({
+    this.url,
+    this.accountId,
+    this.accountName,
+    this.notifyId,
+    this.notifyKind,
+  });
 
   bool get isEmpty => (url ?? '').isEmpty;
 
@@ -43,6 +64,8 @@ class NotificationTarget {
       url: read('url'),
       accountId: read('account_id'),
       accountName: read('account_name'),
+      notifyId: read('notify_id'),
+      notifyKind: read('notify_kind'),
     );
   }
 
@@ -76,11 +99,17 @@ class NotificationTarget {
     if (url != null) 'url': url,
     if (accountId != null) 'account_id': accountId,
     if (accountName != null) 'account_name': accountName,
+    // Carried through the local-notification payload too, or a
+    // foreground notification — which is shown locally rather than by
+    // the system — would lose the id and never report its tap.
+    if (notifyId != null) 'notify_id': notifyId,
+    if (notifyKind != null) 'notify_kind': notifyKind,
   });
 
   @override
   String toString() =>
-      'NotificationTarget(url: $url, account: $accountName/$accountId)';
+      'NotificationTarget(url: $url, account: $accountName/$accountId'
+      '${notifyId != null ? ', notify: $notifyKind#$notifyId' : ''})';
 }
 
 /// What to do about the account a notification belongs to.
