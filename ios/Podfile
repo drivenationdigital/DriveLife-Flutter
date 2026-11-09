@@ -43,6 +43,31 @@ target 'Runner' do
 end
 
 post_install do |installer|
+  # PiwikPROSDK 1.1.2's podspec carries
+  #   user_target_xcconfig => USER_HEADER_SEARCH_PATHS = $(PODS_ROOT)/**
+  # and user_target_xcconfig is copied into the CONSUMER's xcconfig, so every
+  # Pods-Runner.*.xcconfig inherits a recursive search path over the whole Pods
+  # tree. That puts each pod's RAW headers on Runner's quoted-include path while
+  # use_frameworks! already exposes the same headers as framework modules, so a
+  # header reachable both ways is parsed twice in one translation unit.
+  #
+  # Harmless until google_sign_in arrived: it pulls GTMSessionFetcher (the root
+  # spec, so Core + Full), whose GTMSessionFetcher.h then resolved both ways and
+  # produced "Duplicate interface definition for class 'GTMSessionFetcher'".
+  #
+  # Nothing here imports pod headers by quoted path — every pod is a module — so
+  # the setting buys nothing and is stripped from the aggregate targets. The
+  # PiwikPROSDK pod target keeps its own copy, which is how it builds itself.
+  installer.aggregate_targets.each do |aggregate_target|
+    aggregate_target.user_build_configurations.each_key do |config_name|
+      path = aggregate_target.xcconfig_path(config_name)
+      next unless File.exist?(path)
+      text = File.read(path)
+      next unless text.include?('USER_HEADER_SEARCH_PATHS')
+      File.write(path, text.gsub(/^USER_HEADER_SEARCH_PATHS = .*\n/, ''))
+    end
+  end
+
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
     target.build_configurations.each do |config|
