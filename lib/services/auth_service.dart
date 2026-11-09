@@ -159,11 +159,20 @@ class AuthService {
   /// Everything after the token is the password login's path exactly —
   /// profile fetch, AccountManager, the lot — so a social account and a
   /// password account are indistinguishable from here on.
+  /// [authorizationCode] is Apple-only, and is NOT a credential we use
+  /// to sign anybody in — the id_token does that.
+  ///
+  /// It is sent so the server can exchange it, once, for a long-lived
+  /// refresh token while it is still valid (about five minutes). That
+  /// stored token is what lets a later disconnect hand the Apple grant
+  /// back WITHOUT re-opening Apple's sheet for something the person
+  /// never asked to do. See dl_social_apple_refresh_token().
   Future<LoginResult> loginWithProvider({
     required String provider,
     required String idToken,
     String? firstName,
     String? lastName,
+    String? authorizationCode,
   }) async {
     try {
       final response = await http.post(
@@ -174,6 +183,8 @@ class AuthService {
           'id_token': idToken,
           if (firstName != null && firstName.isNotEmpty) 'first_name': firstName,
           if (lastName != null && lastName.isNotEmpty) 'last_name': lastName,
+          if (authorizationCode != null && authorizationCode.isNotEmpty)
+            'authorization_code': authorizationCode,
         }),
       );
 

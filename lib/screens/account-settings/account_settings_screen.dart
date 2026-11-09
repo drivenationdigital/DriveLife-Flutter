@@ -461,11 +461,17 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     setState(() => _unlinking = null);
 
     if (result.success) {
-      // The grant goes back too, now the link on our side is gone.
-      // Google can be done on the device; Apple needs a signed request
-      // the server makes only when it has a fresh authorization code,
-      // which an unlink does not collect — so Apple users are told
-      // where to finish it.
+      // Hands the grant back where that is possible without another
+      // prompt: Google on the device. Apple needs a signed server
+      // request with a fresh authorization code, which an unlink does
+      // not collect, so for Apple this is a no-op.
+      //
+      // NOT mentioned to the person, deliberately. The disconnect IS
+      // complete — our link is gone and the leftover authorisation
+      // grants us nothing. An earlier version told Apple users to go
+      // and "finish" it in their iPhone settings, which turned a
+      // cosmetic leftover into a chore and made a successful
+      // disconnect read as half-done.
       await SocialIdentity.revokeGrant(provider);
 
       if (!mounted) return;
@@ -474,16 +480,13 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
 
       if (!mounted) return;
 
+      // The server's own wording, so this copy lives in one place
+      // rather than being written twice and drifting.
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            provider == 'apple'
-                ? '$label disconnected. To finish, remove DriveLife under '
-                      'Settings → Apple ID → Sign in with Apple.'
-                : '$label disconnected.',
-          ),
+          content: Text(result.message),
           backgroundColor: Colors.green,
-          duration: const Duration(seconds: 5),
+          duration: const Duration(seconds: 4),
         ),
       );
       return;

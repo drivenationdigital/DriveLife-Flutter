@@ -112,6 +112,11 @@ class _SocialSignInButtonsState extends State<SocialSignInButtons> {
       idToken: token.idToken,
       firstName: token.firstName,
       lastName: token.lastName,
+      // Apple only, and the ONLY moment it can be used: the code is
+      // single-use and expires in minutes. The server trades it for a
+      // refresh token so a later disconnect can hand the grant back
+      // without re-opening Apple's sheet.
+      authorizationCode: token.authorizationCode,
     );
   }
 
