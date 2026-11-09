@@ -1,8 +1,11 @@
 import 'package:drivelife/api/profile_api.dart';
+import 'package:drivelife/api/social_api.dart';
+import 'package:drivelife/models/user_model.dart';
 import 'package:drivelife/services/social_identity.dart';
 import 'package:drivelife/widgets/auth/privacy_modal.dart';
 import 'package:drivelife/widgets/auth/terms_modal.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 
@@ -13,6 +16,22 @@ import '../../providers/user_provider.dart';
 /// password" into "no".
 enum _DeleteProof { password, provider }
 
+/// What somebody chose in the "choose a password" dialog.
+///
+/// Two values rather than one, because the address they will be signing
+/// in with is part of the same decision — see the Hide My Email note in
+/// [_AccountSettingsScreenState._setPasswordThenUnlink].
+class _PasswordSetup {
+  final String password;
+
+  /// The login email, or null if they left it alone. Null rather than
+  /// the unchanged value so "they did not touch it" stays
+  /// distinguishable from "they retyped the same thing".
+  final String? email;
+
+  const _PasswordSetup(this.password, this.email);
+}
+
 class AccountSettingsScreen extends StatefulWidget {
   const AccountSettingsScreen({super.key});
 
@@ -22,11 +41,35 @@ class AccountSettingsScreen extends StatefulWidget {
 
 class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   bool _isDeleting = false;
+
+  /// Which provider is mid-unlink, so only its row spins and a second
+  /// tap cannot fire a second request.
+  String? _unlinking;
+
   final _passwordController = TextEditingController();
+
+  /// Separate from [_passwordController] on purpose. Sharing one would
+  /// let a password typed to disconnect Google survive into the delete
+  /// dialog, which is exactly the sort of thing that goes wrong once
+  /// and is then impossible to reproduce.
+  final _unlinkPasswordController = TextEditingController();
+
+  /// The confirmation box, used only when choosing a NEW password.
+  ///
+  /// A mistyped password somebody cannot see would lock them out of the
+  /// account this whole flow exists to keep, so it is typed twice.
+  final _confirmPasswordController = TextEditingController();
+
+  /// The login email, shown and optionally corrected while choosing a
+  /// password. Prefilled from the account each time the dialog opens.
+  final _emailController = TextEditingController();
 
   @override
   void dispose() {
     _passwordController.dispose();
+    _unlinkPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
@@ -389,6 +432,615 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     }
   }
 
+  // ── CONNECTED ACCOUNTS ─────────────────────────────────────────────
+
+  /// Disconnects a provider, or explains why it cannot be.
+  ///
+  /// The "created with this provider" case is settled on the SERVER,
+  /// not here — the app only uses [User.socialCreatedWith] to word
+  /// the row up front. If a stale profile says otherwise, the server
+  /// still refuses and the app offers deletion from the refusal, so the
+  /// two cannot disagree about what actually happens.
+  Future<void> _disconnect(String provider) async {
+    final label = SocialIdentity.label(provider);
+
+    final password = await _showUnlinkDialog(label);
+
+    if (password == null || password.isEmpty || !mounted) return;
+
+    setState(() => _unlinking = provider);
+
+    final result = await SocialApi.unlink(
+      provider: provider,
+      password: password,
+    );
+
+    if (!mounted) return;
+
+    setState(() => _unlinking = null);
+
+    if (result.success) {
+      // The grant goes back too, now the link on our side is gone.
+      // Google can be done on the device; Apple needs a signed request
+      // the server makes only when it has a fresh authorization code,
+      // which an unlink does not collect — so Apple users are told
+      // where to finish it.
+      await SocialIdentity.revokeGrant(provider);
+
+      if (!mounted) return;
+
+      await Provider.of<UserProvider>(context, listen: false).refreshUser();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            provider == 'apple'
+                ? '$label disconnected. To finish, remove DriveLife under '
+                      'Settings → Apple ID → Sign in with Apple.'
+                : '$label disconnected.',
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
+
+    // Not an error — this provider is simply the only way in, so a
+    // password has to exist before it can go. The ACCOUNT IS KEPT;
+    // this is not a route to deletion.
+    if (result.needsPasswordFirst) {
+      await _setPasswordThenUnlink(provider, result.message);
+      return;
+    }
+
+    _showError(result.message);
+  }
+
+  /// Gives the account a password of its own, then drops the provider.
+  ///
+  /// ── WHY THE PROVIDER SHEET OPENS AGAIN ─────────────────────────────
+  ///
+  /// There is no old password to confirm against, so without a fresh
+  /// provider token the app's own session would be enough to set one —
+  /// and anybody with an unlocked phone could set a password, unlink,
+  /// and own the account outright, because the real owner's Google
+  /// would no longer open it.
+  ///
+  /// The server sets the password BEFORE removing the link, so a
+  /// failure part-way leaves both ways in rather than none.
+  Future<void> _setPasswordThenUnlink(String provider, String why) async {
+    final label = SocialIdentity.label(provider);
+    final currentEmail =
+        Provider.of<UserProvider>(context, listen: false).user?.email ?? '';
+
+    final chosen = await _showSetPasswordDialog(label, why, currentEmail);
+
+    if (chosen == null || !mounted) return;
+
+    setState(() => _unlinking = provider);
+
+    SocialToken? token;
+
+    try {
+      token = await SocialIdentity.forProvider(provider);
+    } catch (e) {
+      debugPrint('❌ [Unlink] $provider re-auth threw: $e');
+
+      if (!mounted) return;
+
+      setState(() => _unlinking = null);
+
+      if (SocialIdentity.isCancellation(e)) return;
+
+      _showError('Could not confirm with $label. Please try again.');
+      return;
+    }
+
+    if (!mounted) return;
+
+    if (token == null) {
+      setState(() => _unlinking = null);
+      return;
+    }
+
+    final result = await SocialApi.unlink(
+      provider: provider,
+      newPassword: chosen.password,
+      newEmail: chosen.email,
+      idToken: token.idToken,
+    );
+
+    if (!mounted) return;
+
+    setState(() => _unlinking = null);
+
+    if (!result.success) {
+      _showError(result.message);
+      return;
+    }
+
+    // Nothing to revoke on the device here: the account now signs in
+    // with a password, and handing the grant back is still the honest
+    // end state for a link they have just removed.
+    await SocialIdentity.revokeGrant(provider);
+
+    if (!mounted) return;
+
+    await Provider.of<UserProvider>(context, listen: false).refreshUser();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 6),
+      ),
+    );
+  }
+
+  /// Password and confirmation, with the reason stated above them.
+  ///
+  /// Deliberately says the account is kept — somebody told their only
+  /// login is about to be removed will assume the worst otherwise.
+  /// Password, confirmation, and the address they will sign in with.
+  ///
+  /// ── WHY THE EMAIL IS HERE AT ALL ───────────────────────────────────
+  ///
+  /// Because for a Hide My Email account it is the thing most likely to
+  /// go wrong, and it is invisible until it does. Those accounts have
+  /// an @privaterelay.appleid.com address as their login — one its
+  /// owner has probably never seen, and which Apple stops forwarding
+  /// unless our sending domain is registered with them. Unlink without
+  /// showing it and the first they learn of it is a password reset that
+  /// never arrives.
+  ///
+  /// So it is shown to everybody, pointed out for relay addresses, and
+  /// editable by anyone who wants to.
+  Future<_PasswordSetup?> _showSetPasswordDialog(
+    String label,
+    String why,
+    String currentEmail,
+  ) async {
+    _unlinkPasswordController.clear();
+    _confirmPasswordController.clear();
+    _emailController.text = currentEmail;
+
+    bool obscureText = true;
+    String? error;
+
+    // Apple's relay. Opened for editing from the start for these,
+    // because leaving it is the choice that needs thinking about —
+    // the opposite of everybody else.
+    final isRelay = currentEmail.toLowerCase().contains(
+      '@privaterelay.appleid.com',
+    );
+    bool editingEmail = isRelay;
+
+    return showDialog<_PasswordSetup>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.white,
+          scrollable: true,
+          title: const Text(
+            'Choose a password',
+            style: TextStyle(color: Colors.black),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                why,
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Your account and everything in it stays exactly as it is.',
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                  fontSize: 13.5,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+
+              const SizedBox(height: 18),
+              const Text(
+                'You will sign in with',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 6),
+
+              if (editingEmail)
+                TextField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  style: const TextStyle(color: Colors.black),
+                  decoration: _passwordField('Email address', null, null),
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        currentEmail.isEmpty ? '—' : currentEmail,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          setDialogState(() => editingEmail = true),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        minimumSize: const Size(0, 32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('Change'),
+                    ),
+                  ],
+                ),
+
+              if (isRelay)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF4E5),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'This is a private Apple address. Once Apple is '
+                      'disconnected, emails we send — including password '
+                      'resets — may stop reaching you. We strongly '
+                      'recommend using your own email address.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.4,
+                        color: Colors.brown.shade800,
+                      ),
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 18),
+              TextField(
+                controller: _unlinkPasswordController,
+                obscureText: obscureText,
+                autofocus: !isRelay,
+                style: const TextStyle(color: Colors.black),
+                decoration: _passwordField(
+                  'New password',
+                  obscureText,
+                  () => setDialogState(() => obscureText = !obscureText),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _confirmPasswordController,
+                obscureText: obscureText,
+                style: const TextStyle(color: Colors.black),
+                decoration: _passwordField('Confirm password', null, null),
+              ),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    error!,
+                    style: const TextStyle(color: Colors.red, fontSize: 13),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Text(
+                'Next, we will ask you to confirm with $label one last '
+                'time so we know it is really you.',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final value = _unlinkPasswordController.text;
+                final confirm = _confirmPasswordController.text;
+                final typedEmail = _emailController.text.trim();
+
+                // Checked here as well as on the server so somebody is
+                // not sent through a provider sheet only to be told
+                // their password was too short.
+                if (value.length < 8) {
+                  setDialogState(() => error = 'Use at least 8 characters.');
+                  return;
+                }
+
+                if (value != confirm) {
+                  setDialogState(
+                    () => error = 'Those passwords do not match.',
+                  );
+                  return;
+                }
+
+                // Shape only. Whether it is already taken is the
+                // server's call, and it checks before writing anything.
+                if (editingEmail) {
+                  if (typedEmail.isEmpty ||
+                      !typedEmail.contains('@') ||
+                      !typedEmail.contains('.') ||
+                      typedEmail.endsWith('@') ||
+                      typedEmail.contains(' ')) {
+                    setDialogState(
+                      () => error = 'Enter a valid email address.',
+                    );
+                    return;
+                  }
+                }
+
+                Navigator.pop(
+                  context,
+                  _PasswordSetup(
+                    value,
+                    // Null when untouched, so the server can tell
+                    // "unchanged" from "retyped the same".
+                    (editingEmail && typedEmail != currentEmail)
+                        ? typedEmail
+                        : null,
+                  ),
+                );
+              },
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _passwordField(
+    String hint,
+    bool? obscured,
+    VoidCallback? onToggle,
+  ) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: Colors.grey.shade400),
+      filled: true,
+      fillColor: Colors.grey.shade100,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide.none,
+      ),
+      suffixIcon: (obscured != null && onToggle != null)
+          ? IconButton(
+              icon: Icon(
+                obscured ? Icons.visibility_off : Icons.visibility,
+                color: Colors.grey.shade600,
+              ),
+              onPressed: onToggle,
+            )
+          : null,
+    );
+  }
+
+  /// Asks for the password, and says plainly why it is wanted.
+  Future<String?> _showUnlinkDialog(String label) async {
+    _unlinkPasswordController.clear();
+    bool obscureText = true;
+
+    return showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.white,
+          scrollable: true,
+          title: Text(
+            'Disconnect $label',
+            style: const TextStyle(color: Colors.black),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'You will still be able to sign in with your email and '
+                'password. Enter your password to confirm.',
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _unlinkPasswordController,
+                obscureText: obscureText,
+                autofocus: true,
+                style: const TextStyle(color: Colors.black),
+                decoration: InputDecoration(
+                  hintText: 'Password',
+                  hintStyle: TextStyle(color: Colors.grey.shade400),
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscureText ? Icons.visibility_off : Icons.visibility,
+                      color: Colors.grey.shade600,
+                    ),
+                    onPressed: () =>
+                        setDialogState(() => obscureText = !obscureText),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final value = _unlinkPasswordController.text.trim();
+                if (value.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter your password'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(context, value);
+              },
+              child: const Text('Disconnect'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// For an account that exists only because of this provider.
+  ///
+  /// Disconnecting is genuinely impossible — there is no password to
+  /// fall back on — so the only honest offer is deletion, and it hands
+  /// straight over to the flow that already does it properly.
+  // REMOVED: a "cannot disconnect, delete instead?" dialog.
+  //
+  // Offering deletion as the answer to "I want rid of Google" was
+  // wrong. Unlinking is not a deletion, and the right answer is to give
+  // the account a password so it has a second way in — which is what
+  // _setPasswordThenUnlink() does. Deleting stays where it belongs: the
+  // delete section below, chosen deliberately.
+
+  Widget _connectedAccounts(User? user) {
+    final linked = user?.socialProviders ?? const <String>[];
+
+    // Nothing connected: the whole section would be a heading over an
+    // empty space, so it is not drawn at all.
+    if (linked.isEmpty) return const SizedBox.shrink();
+
+    final createdWith = user?.socialCreatedWith;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Connected accounts',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Sign-in services connected to your DriveLife account.',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey.shade700,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 14),
+        for (final provider in linked) ...[
+          _providerRow(provider, isOnlyWayIn: createdWith == provider),
+          const SizedBox(height: 8),
+        ],
+        const SizedBox(height: 24),
+        Divider(color: Colors.grey.shade200, height: 1),
+        const SizedBox(height: 32),
+      ],
+    );
+  }
+
+  Widget _providerRow(String provider, {required bool isOnlyWayIn}) {
+    final label = SocialIdentity.label(provider);
+    final busy = _unlinking == provider;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          provider == 'apple'
+              ? const Icon(Icons.apple, size: 22, color: Colors.black)
+              : SvgPicture.asset('assets/google-g.svg', width: 20, height: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(fontSize: 16, color: Colors.black),
+                ),
+                // Said here rather than only in a dialog, so the reason
+                // is visible before anything is tapped — and phrased as
+                // the extra step it is, not as a refusal. Disconnecting
+                // is available to these accounts too; it just collects
+                // a password on the way.
+                if (isOnlyWayIn)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Your only sign-in — you will set a password first',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (busy)
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            TextButton(
+              // Still tappable when it is the only way in: it opens the
+              // explanation and the offer to delete, which is more use
+              // than a dead grey button somebody cannot ask about.
+              onPressed: _unlinking != null || _isDeleting
+                  ? null
+                  : () => _disconnect(provider),
+              style: TextButton.styleFrom(
+                foregroundColor: isOnlyWayIn
+                    ? Colors.grey.shade600
+                    : Colors.red,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Disconnect'),
+            ),
+        ],
+      ),
+    );
+  }
+
   /// Both policies open the same way they do at sign-up — the same
   /// widgets, in the same sheet — so there is one copy of each document
   /// rather than a second that drifts out of step with it.
@@ -453,6 +1105,13 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // First, because it is the only section somebody arrives
+              // here to CHANGE rather than read. Draws nothing when no
+              // provider is connected.
+              _connectedAccounts(
+                context.watch<UserProvider>().user,
+              ),
+
               // Above the delete section, not below it: somebody who has come
               // here to read a policy should not have to scroll past a red
               // button to find it, and somebody who has come to delete their

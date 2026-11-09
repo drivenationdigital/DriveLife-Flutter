@@ -60,6 +60,19 @@ class User {
   /// filled in. See account_settings_screen.dart.
   final List<String> socialProviders;
 
+  /// The provider this account was CREATED with, or null.
+  ///
+  /// NOT derivable from [socialProviders]. An account linked to Google
+  /// and an account created with Google both list 'google', but only
+  /// the second has no password its owner has ever seen — so only the
+  /// second cannot be disconnected without losing the account.
+  ///
+  /// Decides whether Connected Accounts offers "Disconnect" or points
+  /// at deletion instead. Null for accounts made before the server
+  /// recorded this, which is the safe direction: they fall through to
+  /// the password check, which a passwordless account cannot pass.
+  final String? socialCreatedWith;
+
   /// Which of step_four.dart's profile types they picked, or null.
   final int? profileType;
 
@@ -87,6 +100,7 @@ class User {
     this.brands = const [],
     this.brandsAnswered = true,
     this.socialProviders = const [],
+    this.socialCreatedWith,
     this.profileType,
   });
 
@@ -141,6 +155,11 @@ class User {
                 .where((v) => v >= 0)
                 .toList()
           : const [],
+      socialCreatedWith:
+          (json['social_created_with'] is String &&
+              (json['social_created_with'] as String).isNotEmpty)
+          ? json['social_created_with'] as String
+          : null,
       socialProviders: json['social_providers'] is List
           ? (json['social_providers'] as List)
                 .map((e) => e.toString())
@@ -190,6 +209,7 @@ class User {
       'brands': brands,
       'brands_answered': brandsAnswered,
       'social_providers': socialProviders,
+      'social_created_with': socialCreatedWith,
       'profile_type': profileType,
     };
   }
@@ -226,6 +246,7 @@ class User {
     List<int>? brands,
     bool? brandsAnswered,
     List<String>? socialProviders,
+    String? socialCreatedWith,
     int? profileType,
   }) {
     return User(
@@ -252,6 +273,7 @@ class User {
       brands: brands ?? this.brands,
       brandsAnswered: brandsAnswered ?? this.brandsAnswered,
       socialProviders: socialProviders ?? this.socialProviders,
+      socialCreatedWith: socialCreatedWith ?? this.socialCreatedWith,
       profileType: profileType ?? this.profileType,
     );
   }
