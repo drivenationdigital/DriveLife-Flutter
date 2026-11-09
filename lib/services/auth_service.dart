@@ -29,7 +29,27 @@ class LoginResult {
   final LoginOutcome outcome;
   final String? detail;
 
-  const LoginResult(this.outcome, [this.detail]);
+  /// True when a social sign-in CREATED the account rather than
+  /// matching an existing one.
+  ///
+  /// Only ever set by [AuthService.loginWithProvider]. A password login
+  /// cannot create anything, so it leaves this false.
+  ///
+  /// The login screen uses it to send a brand-new account into the
+  /// signup questions instead of straight to a home feed it has been
+  /// told nothing about.
+  final bool created;
+
+  /// The WordPress id, for the same reason: the signup steps write
+  /// against it and have nowhere else to get it from.
+  final int? userId;
+
+  const LoginResult(
+    this.outcome, [
+    this.detail,
+    this.created = false,
+    this.userId,
+  ]);
 
   bool get isSuccess => outcome == LoginOutcome.success;
 }
@@ -120,6 +140,120 @@ class AuthService {
       return const LoginResult(LoginOutcome.success);
     } catch (e) {
       print('Login error: $e');
+      return LoginResult(LoginOutcome.networkError, e.toString());
+    }
+  }
+
+  /// Sign in with an Apple or Google identity token.
+  ///
+  /// [provider] is 'apple' or 'google'. [idToken] is the JWT the
+  /// provider's own sheet returned, which the server verifies against
+  /// Apple's or Google's published keys — this app never decides who
+  /// anybody is.
+  ///
+  /// [firstName] and [lastName] are only ever sent for Apple, and only
+  /// matter the first time: Apple gives a name once, outside the token,
+  /// on the very first authorisation and never again. They are ignored
+  /// by the server for an account that already exists.
+  ///
+  /// Everything after the token is the password login's path exactly —
+  /// profile fetch, AccountManager, the lot — so a social account and a
+  /// password account are indistinguishable from here on.
+  Future<LoginResult> loginWithProvider({
+    required String provider,
+    required String idToken,
+    String? firstName,
+    String? lastName,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v2/auth/social'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'provider': provider,
+          'id_token': idToken,
+          if (firstName != null && firstName.isNotEmpty) 'first_name': firstName,
+          if (lastName != null && lastName.isNotEmpty) 'last_name': lastName,
+        }),
+      );
+
+      // Decoded defensively: a 404 from a web server, or a PHP fatal,
+      // comes back as HTML and jsonDecode throws on it. Catching that
+      // here turns "FormatException" into something that names the
+      // problem.
+      dynamic data;
+
+      try {
+        data = jsonDecode(response.body);
+      } catch (_) {
+        data = null;
+      }
+
+      if (response.statusCode != 200 || data is! Map || data['token'] == null) {
+        // ── SAY WHAT ACTUALLY CAME BACK ──────────────────────────────
+        //
+        // This used to read only `data['error']`, which is the key OUR
+        // endpoint uses, and fall back to "Could not sign in with
+        // google" for everything else. The commonest failure while
+        // setting this up is the endpoint not being deployed — and
+        // WordPress answers an unknown route with `code` and `message`,
+        // never `error`. So the one message you were most likely to see
+        // was the one that told you least.
+        //
+        // Checked in order of specificity, with the status code
+        // appended when nothing named the problem.
+        final detail = (data is Map)
+            ? (data['error'] ?? data['message'] ?? data['code'])?.toString()
+            : null;
+
+        if (detail != null && detail.isNotEmpty) {
+          // rest_no_route is WordPress saying the route does not exist,
+          // which is always the same cause and worth naming outright.
+          final missing = detail.contains('rest_no_route') ||
+              detail.contains('No route was found');
+
+          return LoginResult(
+            LoginOutcome.invalidCredentials,
+            missing
+                ? 'Sign-in endpoint not found on the server '
+                      '(auth-social.php not deployed).'
+                : detail,
+          );
+        }
+
+        return LoginResult(
+          LoginOutcome.invalidCredentials,
+          'Could not sign in with $provider '
+              '(HTTP ${response.statusCode}).',
+        );
+      }
+
+      final token = data['token'].toString();
+
+      final userProfile = await _getUserProfileWithToken(token);
+
+      if (userProfile == null) {
+        return const LoginResult(
+          LoginOutcome.profileUnavailable,
+          'Signed in, but your profile could not be loaded from this site.',
+        );
+      }
+
+      if (_accountManager != null) {
+        await _accountManager!.addAccount(token, User.fromJson(userProfile));
+      } else {
+        await _storage.write(key: _tokenKey, value: token);
+        await _storage.write(key: _userKey, value: jsonEncode(userProfile));
+      }
+
+      return LoginResult(
+        LoginOutcome.success,
+        null,
+        data['created'] == true,
+        int.tryParse('${data['user_id']}'),
+      );
+    } catch (e) {
+      print('Social login error: $e');
       return LoginResult(LoginOutcome.networkError, e.toString());
     }
   }

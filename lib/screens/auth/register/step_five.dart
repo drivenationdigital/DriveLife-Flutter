@@ -146,26 +146,41 @@ class _RegisterStepFiveScreenState extends State<RegisterStepFiveScreen> {
         }
       }
 
-      // Login the user
-      print('🔐 Logging in user...');
-      final authService = AuthService();
+      // ── LOGGING IN, UNLESS ALREADY SIGNED IN ────────────────────
+      //
+      // The email signup ends here because creating the account does
+      // not sign anybody in -- so this is where it happens, with the
+      // credentials collected in step one.
+      //
+      // An Apple or Google signup has neither. The provider vouched for
+      // them, AuthService.loginWithProvider stored the session before
+      // routing into these steps, and there is no password to present.
+      // Calling login() with two empty strings is what produced
+      // "Login failed after registration: no email or password
+      // provided" at the end of an otherwise successful signup.
+      if (!registrationProvider.isSocial) {
+        print('🔐 Logging in user...');
+        final authService = AuthService();
 
-      final result = await authService
-          .login(registrationProvider.email, registrationProvider.password)
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () {
-              throw Exception('Login request timed out');
-            },
+        final result = await authService
+            .login(registrationProvider.email, registrationProvider.password)
+            .timeout(
+              const Duration(seconds: 10),
+              onTimeout: () {
+                throw Exception('Login request timed out');
+              },
+            );
+
+        print('✅ Login process completed with outcome: ${result.outcome}');
+        if (!mounted) return;
+
+        if (!result.isSuccess) {
+          throw Exception(
+            'Login failed after registration: ${result.detail ?? result.outcome}',
           );
-
-      print('✅ Login process completed with outcome: ${result.outcome}');
-      if (!mounted) return;
-
-      if (!result.isSuccess) {
-        throw Exception(
-          'Login failed after registration: ${result.detail ?? result.outcome}',
-        );
+        }
+      } else {
+        print('🔐 Social signup — already signed in, skipping login');
       }
 
       print('✅ Login successful, loading user...');

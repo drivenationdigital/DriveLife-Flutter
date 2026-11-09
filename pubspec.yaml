@@ -16,7 +16,8 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 4.7.8+108
+version: 4.7.7+2
+# version: 4.7.8+108
 
 environment:
   sdk: ^3.9.2
@@ -77,6 +78,15 @@ dependencies:
   package_info_plus: ^8.0.0
   flutter_volume_controller: ^1.0.0
   supabase_flutter: ^2.5.0
+
+  # Sign in with Apple and Google.
+  #
+  # Both are gated behind kSocialSignIn in config/feature_flags.dart,
+  # which is false until the console work in docs/social-sign-in.md is
+  # done -- google_sign_in throws on iOS without the REVERSED_CLIENT_ID
+  # URL scheme, and Apple's sheet needs the capability on the App ID.
+  sign_in_with_apple: ^6.1.4
+  google_sign_in: ^6.2.2
   device_info_plus: ^10.0.0
   flutter_piwikpro: ^0.0.3
   flutter_image_compress: ^2.5.1
@@ -163,6 +173,9 @@ flutter:
     - assets/logo-large.png
     - assets/logo-flag-black.svg
     - assets/intro-logo.svg
+    # Google's own sign-in mark. Required unaltered on the
+    # "Continue with Google" button -- see the note in the file.
+    - assets/google-g.svg
     - assets/bg-points.jpg
     - assets/nav-icons/
     - assets/video01.mp4

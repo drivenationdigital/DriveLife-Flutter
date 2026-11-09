@@ -105,6 +105,28 @@
 					<string>drivelife</string>
 				</array>
 			</dict>
+			<!--
+			  Google Sign-In.
+
+			  The REVERSED_CLIENT_ID from GoogleService-Info.plist,
+			  verbatim. google_sign_in reads it back off the running app
+			  and THROWS at launch of the sign-in sheet if it is absent
+			  or does not match, so it is not optional on iOS.
+
+			  Keep it in step with GoogleService-Info.plist: replacing
+			  that file without changing this one is the failure that
+			  looks like the SDK is broken.
+			-->
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLName</key>
+				<string>google-sign-in</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>com.googleusercontent.apps.602725811426-be5kvg7mlr0163bvt9qev4bspi3hn8rd</string>
+				</array>
+			</dict>
 		</array>
 		<!-- Universal Links -->
 		<key>com.apple.developer.associated-domains</key>

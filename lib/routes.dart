@@ -29,6 +29,7 @@ import 'package:drivelife/screens/store/checkout/order_success_screen.dart';
 import 'package:drivelife/utils/deeplinks_helper.dart';
 import 'package:drivelife/widgets/auth/email_verification.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
+import 'package:drivelife/screens/auth/register/step_brands.dart';
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/splash_screen.dart';
@@ -54,6 +55,11 @@ class AppRoutes {
   static const String registerStepOne = '/register-step-1';
   static const String registerStepTwo = '/register-step-2';
   static const String registerStepThree = '/register-step-3';
+  /// Brands, between step three and step four.
+  ///
+  /// Named rather than numbered so the steps after it keep their
+  /// numbers -- see the note in step_brands.dart.
+  static const String registerBrands = '/register-brands';
   static const String registerStepFour = '/register-step-4';
   static const String registerStepFive = '/register-step-5';
   static const String resetPassword = '/reset-password';
@@ -191,6 +197,8 @@ class AppRoutes {
         return _slide(const RegisterStepTwoScreen());
       case registerStepThree:
         return _slide(const RegisterStepThreeScreen());
+      case registerBrands:
+        return _slide(const RegisterBrandsScreen());
       case registerStepFour:
         return _slide(const RegisterStepFourScreen());
       case registerStepFive:

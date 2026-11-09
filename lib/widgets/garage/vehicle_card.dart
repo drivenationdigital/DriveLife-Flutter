@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:drivelife/widgets/garage/owned_dates.dart';
 import 'package:provider/provider.dart';
 
 /// How wide the card's photograph is against its height.
@@ -58,17 +59,17 @@ class VehicleCard extends StatelessWidget {
     return [model, variant].where((p) => p.isNotEmpty).join(' ');
   }
 
-  /// "Owned since 2019", or nothing when the date is missing or unreadable.
-  String? get _owned {
-    final raw = (vehicle['owned_since'] ?? '').toString().trim();
-    if (raw.isEmpty) return null;
-
-    final year =
-        DateTime.tryParse(raw)?.year ??
-        int.tryParse(RegExp(r'\b(\d{4})\b').firstMatch(raw)?.group(1) ?? '');
-
-    return year == null ? null : 'Owned since $year';
-  }
+  /// "Owned since Mar 2019", or "Owned Mar 2019 - Sept 2023" for a car
+  /// they no longer have. Nothing when the date is missing.
+  ///
+  /// Shared with the vehicle page through OwnedDates -- this used to be
+  /// a second copy of the same regex, and a second place to forget that
+  /// a sold car is not owned "since" anything.
+  String? get _owned => OwnedDates.label(
+    ownedSince: vehicle['owned_since'],
+    ownedUntil: vehicle['owned_until'],
+    primaryCar: vehicle['primary_car'],
+  );
 
   /// How many people have liked this vehicle, or null when nobody has.
   ///

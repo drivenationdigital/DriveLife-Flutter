@@ -35,6 +35,31 @@ class User {
   /// skipped it — which is what the prompt keys off.
   final List<int> interests;
 
+  /// Marque group ids they follow. See BrandsAPI.
+  final List<int> brands;
+
+  /// Whether they have ever been ASKED about brands.
+  ///
+  /// Not the same as [brands] being empty: somebody who looked and
+  /// picked none has answered and must not be prompted again. Only this
+  /// tells the two apart, and it is what BrandsPrompt keys off.
+  ///
+  /// Defaults TRUE so a server that does not send it yet prompts
+  /// nobody — a field appearing in a later deploy must not make every
+  /// user see a popup.
+  final bool brandsAnswered;
+
+  /// Which providers this account can sign in with: 'google', 'apple',
+  /// or neither.
+  ///
+  /// Empty for an ordinary password account. Non-empty means the
+  /// account was created or linked through a provider and may have NO
+  /// password anybody has ever seen — so a screen that has to prove
+  /// identity, which is the delete-account screen, asks for the
+  /// provider's sheet rather than a password field that cannot be
+  /// filled in. See account_settings_screen.dart.
+  final List<String> socialProviders;
+
   /// Which of step_four.dart's profile types they picked, or null.
   final int? profileType;
 
@@ -59,6 +84,9 @@ class User {
     this.isAdmin = false,
     this.activityAccess,
     this.interests = const [],
+    this.brands = const [],
+    this.brandsAnswered = true,
+    this.socialProviders = const [],
     this.profileType,
   });
 
@@ -107,6 +135,21 @@ class User {
           ? BillingInfo.fromJson(json['billing_info'])
           : null,
       isAdmin: json['is_admin'] ?? false,
+      brands: json['brands'] is List
+          ? (json['brands'] as List)
+                .map((v) => int.tryParse('$v') ?? -1)
+                .where((v) => v >= 0)
+                .toList()
+          : const [],
+      socialProviders: json['social_providers'] is List
+          ? (json['social_providers'] as List)
+                .map((e) => e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList()
+          : const [],
+      brandsAnswered: json['brands_answered'] is bool
+          ? json['brands_answered'] as bool
+          : true,
       interests: json['interests'] is List
           ? (json['interests'] as List)
                 .map((v) => int.tryParse('$v'))
@@ -144,6 +187,9 @@ class User {
       'is_admin': isAdmin,
       'activity_access': activityAccess,
       'interests': interests,
+      'brands': brands,
+      'brands_answered': brandsAnswered,
+      'social_providers': socialProviders,
       'profile_type': profileType,
     };
   }
@@ -177,6 +223,9 @@ class User {
     bool? isAdmin,
     bool? activityAccess,
     List<int>? interests,
+    List<int>? brands,
+    bool? brandsAnswered,
+    List<String>? socialProviders,
     int? profileType,
   }) {
     return User(
@@ -200,6 +249,9 @@ class User {
       isAdmin: isAdmin ?? this.isAdmin,
       activityAccess: activityAccess ?? this.activityAccess,
       interests: interests ?? this.interests,
+      brands: brands ?? this.brands,
+      brandsAnswered: brandsAnswered ?? this.brandsAnswered,
+      socialProviders: socialProviders ?? this.socialProviders,
       profileType: profileType ?? this.profileType,
     );
   }

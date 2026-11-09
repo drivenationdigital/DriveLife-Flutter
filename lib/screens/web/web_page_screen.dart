@@ -173,6 +173,25 @@ class _WebPageScreenState extends State<WebPageScreen> {
     await _controller.reload();
   }
 
+  /// Back: the page's own history first, then out of the screen.
+  ///
+  /// Shared by the system back button and the edge swipe, so the two
+  /// cannot behave differently — which they would if the gesture simply
+  /// popped the route and lost somebody's place in a multi-step form.
+  Future<void> _goBack() async {
+    // Captured before the await: the analyzer is right that `context` is
+    // not safe across one, and a Navigator taken afterwards could belong
+    // to a tree this screen has already left.
+    final navigator = Navigator.of(context);
+
+    if (await _controller.canGoBack()) {
+      await _controller.goBack();
+      return;
+    }
+
+    if (mounted) navigator.pop(_closedWith);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -185,17 +204,7 @@ class _WebPageScreenState extends State<WebPageScreen> {
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
 
-        // Captured before the await: the analyzer is right that `context` is
-        // not safe across one, and a Navigator taken afterwards could belong
-        // to a tree this screen has already left.
-        final navigator = Navigator.of(context);
-
-        if (await _controller.canGoBack()) {
-          await _controller.goBack();
-          return;
-        }
-
-        if (mounted) navigator.pop(_closedWith);
+        await _goBack();
       },
       child: Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
@@ -276,6 +285,36 @@ class _WebPageScreenState extends State<WebPageScreen> {
                   ),
                 ),
               ),
+            // ── SWIPE BACK ────────────────────────────────────────
+            //
+            // canPop: false above is what makes the system back button
+            // walk the page's history — and it also switches OFF iOS's
+            // own edge-swipe, because a route that says it cannot pop
+            // gets no interactive pop gesture. So on iOS, swiping did
+            // nothing at all.
+            //
+            // A strip down the left edge rather than a detector over
+            // the whole page: a WebView is full of things that want
+            // horizontal drags — carousels, wide tables, the editor's
+            // own controls — and taking those would break the page to
+            // fix the gesture.
+            //
+            // 24 logical pixels, which is roughly what iOS itself
+            // claims for the same gesture.
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 24,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                // Rightward only. A leftward drag from the left edge is
+                // somebody scrolling the page, not going back.
+                onHorizontalDragEnd: (details) {
+                  if ((details.primaryVelocity ?? 0) > 120) _goBack();
+                },
+              ),
+            ),
           ],
         ),
       ),

@@ -1,3 +1,5 @@
+import 'package:drivelife/providers/registration_provider.dart';
+import 'package:drivelife/widgets/auth/social_sign_in_buttons.dart';
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../routes.dart';
@@ -358,6 +360,68 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                         ),
+                      ),
+
+                      const SizedBox(height: 28),
+
+                      // Apple and Google.
+                      //
+                      // Below the password form rather than above it:
+                      // most people here already have an account and
+                      // came to type into the boxes, and a provider
+                      // button at the top is the one that gets tapped
+                      // by mistake and creates a second account.
+                      //
+                      // The widget draws nothing at all while
+                      // FeatureFlags.socialSignIn is false, so the
+                      // divider above it does not strand itself.
+                      SocialSignInButtons(
+                        onSignedIn: (result) {
+                          if (!mounted) return;
+
+                          // ── A NEW ACCOUNT HAS ANSWERED NOTHING ──
+                          //
+                          // Apple and Google give us an email and
+                          // maybe a name. They do not give us what
+                          // somebody is into, what they drive or which
+                          // marques they follow -- and the feed, the
+                          // recommendations and the notifications are
+                          // all built on those answers.
+                          //
+                          // So a first sign-in goes into the signup
+                          // questions, from step three: steps one and
+                          // two collect the account itself, which the
+                          // provider has just done for us.
+                          //
+                          // An existing account goes straight home,
+                          // exactly as a password login does.
+                          if (result.created && result.userId != null) {
+                            // The steps write against this id and have
+                            // nowhere else to get it.
+                            context.read<RegistrationProvider>()
+                              ..setUserId(result.userId)
+                              // No password exists for this account, so
+                              // the last step must not try to log in
+                              // with one. See step_five.dart.
+                              ..setSocial(true)
+                              ..setStep(3);
+
+                            Navigator.pushNamedAndRemoveUntil(
+                              context,
+                              AppRoutes.registerStepThree,
+                              (route) => false,
+                            );
+                            return;
+                          }
+
+                          // AccountManager has already stored the
+                          // account by the time this runs.
+                          Navigator.pushNamedAndRemoveUntil(
+                            context,
+                            AppRoutes.home,
+                            (route) => false,
+                          );
+                        },
                       ),
 
                       const SizedBox(height: 24),

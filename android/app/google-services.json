@@ -12,7 +12,20 @@
           "package_name": "com.app.carcalendar"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "602725811426-5g4gd2al4ol092999dgfg316btr6ch00.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.app.carcalendar",
+            "certificate_hash": "b717b53529bb323b32b94a249e13fcd058751da8"
+          }
+        },
+        {
+          "client_id": "602725811426-7s7m3vm5da463tbtcotfjdrvil4o0k39.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB6HnKuLi1S8nEm2syx6-qKTpsM1jsfm30"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "602725811426-7s7m3vm5da463tbtcotfjdrvil4o0k39.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "602725811426-be5kvg7mlr0163bvt9qev4bspi3hn8rd.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.app.carcalendar"
+              }
+            }
+          ]
         }
       }
     }

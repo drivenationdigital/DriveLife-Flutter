@@ -18,6 +18,11 @@ import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/chat/widgets/GroupInfo.dart';
 import 'package:drivelife/screens/chat/message_actions.dart';
+import 'package:drivelife/services/media_compressor.dart';
+import 'package:drivelife/widgets/gif/gif_picker.dart';
+import 'package:drivelife/services/upload_quality_prefs.dart';
+import 'package:drivelife/widgets/share/shared_post_card.dart';
+import 'package:drivelife/widgets/share/shared_post_link.dart';
 import 'package:drivelife/screens/chat/message_grouping.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -257,6 +262,37 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  /// Parsed shared-post links, keyed by the message content.
+  ///
+  /// The bubble asks four times while it builds — once to decide whether
+  /// to draw a card, once for the card, once for the spacer and once for
+  /// the text — and every bubble rebuilds on every scroll frame. A
+  /// regex four times per message per frame is work nobody needs.
+  ///
+  /// Keyed on the content rather than the message id because the content
+  /// is what determines the answer, and an edited or deleted message
+  /// changes it.
+  final Map<String, SharedPostLink?> _sharedPostCache = {};
+
+  /// The DriveLife post this message is sharing, or null.
+  SharedPostLink? _sharedPost(String content) {
+    return _sharedPostCache.putIfAbsent(
+      content,
+      () => SharedPostLink.parse(content),
+    );
+  }
+
+  /// What the bubble should print under the card.
+  ///
+  /// For a shared post that is the sender's note with the link removed,
+  /// so the URL is not repeated underneath a card that already shows
+  /// where it goes. For everything else it is the message as sent.
+  String _bubbleText(ChatMessage msg) {
+    final shared = _sharedPost(msg.content);
+
+    return (shared != null ? shared.note : msg.content).trim();
+  }
+
   ChatNotifier? _notifier;
   List<ChatMessage> _cachedMessages = [];
   final _inputController = TextEditingController();
@@ -438,16 +474,80 @@ class _ChatScreenState extends State<ChatScreen> {
     // One, and a photograph. pickImage rather than pickMultiImage
     // because a thread is a sequence of messages, and a batch would
     // have to decide whether five pictures are five messages or one.
-    final picked = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 2048,
-      maxHeight: 2048,
-      imageQuality: 88,
-    );
+    //
+    // ── NO maxWidth / maxHeight / imageQuality ───────────────────────
+    //
+    // They used to be 2048/2048/88, and that is what stopped GIFs
+    // working: any of the three makes image_picker DECODE the file and
+    // re-encode it as a still JPEG. An animated GIF came out as a
+    // single frame, and nothing downstream could tell it had ever been
+    // one.
+    //
+    // The compression is done in _send() instead, by MediaCompressor,
+    // which already knows that 'gif' is a format Cloudflare takes as it
+    // is and passes it through untouched. The rest of the app picks
+    // this way for the same reason; chat was the odd one out.
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
 
     if (picked == null || !mounted) return;
 
     setState(() => _pendingImage = File(picked.path));
+  }
+
+  /// Pick a GIF and send it, in one step.
+  ///
+  /// ── NOTHING IS UPLOADED ──────────────────────────────────────────
+  ///
+  /// A pick is a URL on the provider's own CDN, so it goes straight
+  /// into the message's image_url. There is no Cloudflare round trip,
+  /// no compression, and no question of animation surviving a
+  /// re-encode, because nothing re-encodes it — which is why this is a
+  /// completely different path from _pickImage().
+  ///
+  /// It also sends IMMEDIATELY rather than sitting in the composer like
+  /// a chosen photograph. Picking a GIF is already a two-step choice
+  /// with a search in the middle; making somebody then press send is a
+  /// third, and every other messenger sends on pick.
+  ///
+  /// Any text already typed goes with it as the caption, so a GIF is
+  /// not a way to silently lose a half-written message.
+  Future<void> _pickGif() async {
+    final picked = await showModalBottomSheet<GifPick>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const GifPicker(),
+    );
+
+    if (picked == null || !mounted) return;
+
+    final text = _inputController.text;
+    _inputController.clear();
+
+    await _notifier?.sendMessage(text, imageUrl: picked.url);
+  }
+
+  /// The file extension, lower-cased and without the dot.
+  ///
+  /// Cloudflare works out what it has been sent from the filename on
+  /// the multipart part, so this has to be the REAL extension. It was
+  /// hardcoded to 'jpg', which is the other half of why a GIF could not
+  /// survive the trip: even an untouched one arrived announcing itself
+  /// as a JPEG.
+  String _extensionOf(File file) {
+    final name = file.path.split(RegExp(r'[\\/]')).last;
+    final dot = name.lastIndexOf('.');
+
+    if (dot < 0 || dot == name.length - 1) return 'jpg';
+
+    final ext = name.substring(dot + 1).toLowerCase();
+
+    // A closed list, matching MediaCompressor's pass-through set plus
+    // the one it transcodes. Anything else is named jpg because that is
+    // what the compressor will have turned it into.
+    return const {'jpg', 'jpeg', 'png', 'webp', 'gif'}.contains(ext)
+        ? ext
+        : 'jpg';
   }
 
   Future<void> _send() async {
@@ -474,9 +574,43 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       _inputController.clear();
 
+      // Prepared the way every other upload in the app is prepared.
+      //
+      // MediaCompressor keeps 'gif' in its pass-through set, so an
+      // animated one is handed on byte for byte; a large photograph is
+      // re-encoded down to something Cloudflare will accept. Chat used
+      // to do neither — image_picker re-encoded everything to JPEG on
+      // the way in, which was quietly flattening GIFs.
+      final prepared = await MediaCompressor.compressImage(
+        image,
+        quality: await UploadQualityPrefs.current(),
+      );
+
+      if (!mounted) return;
+
+      final ext = _extensionOf(prepared.file);
+
+      // A GIF big enough to miss MediaCompressor's pass-through limit
+      // goes down the re-encode ladder, and that ladder writes JPEG —
+      // so it arrives as a single frame.
+      //
+      // Said out loud. Silently turning somebody's animation into a
+      // still is exactly the kind of quiet substitution that leaves
+      // them wondering whether the app is broken.
+      if (_extensionOf(image) == 'gif' && ext != 'gif') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('That GIF was too large to animate — sent as a still image.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+
       url = await CloudflareImages.uploadAndGetUrl(
-        bytes: await image.readAsBytes(),
-        fileName: 'chat_${DateTime.now().microsecondsSinceEpoch}.jpg',
+        bytes: await prepared.file.readAsBytes(),
+        // The real extension, because Cloudflare reads the type off
+        // this name. Hardcoding .jpg told it a GIF was a JPEG.
+        fileName: 'chat_${DateTime.now().microsecondsSinceEpoch}.$ext',
         // Not the default. That one is square, and a photograph of a
         // car is almost never square.
         variant: CloudflareImages.photo,
@@ -999,6 +1133,36 @@ class _ChatScreenState extends State<ChatScreen> {
         !_revealed.contains(msg.id) &&
         (msg.isFlagged || ContentFilter.shouldVeil(msg.content));
 
+    /// The shared post this message is, for LAYOUT purposes.
+    ///
+    /// Null for a deleted or concealed message even when the link is
+    /// still in the content: both of those have their own bubble
+    /// treatment — a tombstone outline and the veil — and a shared post
+    /// must not take it away from them. The flagged one matters: a post
+    /// shared with an abusive note should still be veiled.
+    final sharedLayout = (msg.isDeleted || concealed)
+        ? null
+        : _sharedPost(msg.content);
+
+    /// Does this message carry its own surface?
+    ///
+    /// A photograph and a shared post are both things with edges of
+    /// their own — rounded corners, their own background — and a bubble
+    /// around either of them is a frame, not a container. On the
+    /// sender's side that frame is gold, which tinted the photo's
+    /// surround and made the picture look like part of the chrome.
+    ///
+    /// So both drop the bubble. The caption, where there is one, then
+    /// sits under the image as text on the thread's own background,
+    /// which is how every other messenger draws it.
+    ///
+    /// Deleted and concealed are excluded for the same reason as above:
+    /// the tombstone outline and the veil are their bubble, and a photo
+    /// must not take it away from them.
+    final bareBubble =
+        sharedLayout != null ||
+        (msg.hasImage && !msg.isDeleted && !concealed);
+
     const round = Radius.circular(20);
     const tail = Radius.circular(5);
 
@@ -1064,14 +1228,29 @@ class _ChatScreenState extends State<ChatScreen> {
                           ? () => _showMessageActions(msg)
                           : null,
                       child: Container(
-                        padding: const EdgeInsets.fromLTRB(14, 9, 14, 10),
+                        // No padding around a shared post. The card is
+                        // the message, and 14px of gold around it framed
+                        // it rather than containing it.
+                        padding: bareBubble
+                            ? EdgeInsets.zero
+                            : const EdgeInsets.fromLTRB(14, 9, 14, 10),
                         decoration: BoxDecoration(
                           // A concealed message borrows the tombstone's
                           // look — outline, no fill. It is the existing
                           // visual language for "there is something here
                           // you are not being shown", and inventing a
                           // second one would say less.
-                          color: msg.isDeleted || concealed
+                          //
+                          // A SHARED POST HAS NO BUBBLE EITHER, for a
+                          // different reason: it already is a card, with
+                          // its own surface, border and corners. Sitting
+                          // that inside the gold sender bubble gave it a
+                          // thick gold frame and tinted the card to
+                          // match — so the thing being shared looked
+                          // like part of the chrome rather than content.
+                          // This is how Instagram draws one, and it is
+                          // why.
+                          color: msg.isDeleted || concealed || bareBubble
                               ? Colors.transparent
                               : isMe
                               ? theme.primaryColor
@@ -1157,23 +1336,69 @@ class _ChatScreenState extends State<ChatScreen> {
                                       const SizedBox(height: 8),
                                   ],
 
+                                  // ── A SHARED POST ────────────────
+                                  //
+                                  // Recognised from the link in the
+                                  // message rather than from a column:
+                                  // see SharedPostLink for why it is
+                                  // done that way round.
+                                  //
+                                  // NOT for a deleted message. The
+                                  // content is blanked on delete, so
+                                  // there is no link left to find — but
+                                  // being explicit stops a future change
+                                  // to how deletes are stored from
+                                  // resurrecting the card.
+                                  if (sharedLayout != null) ...[
+                                    // onDarkBubble is false now whoever
+                                    // sent it: there is no bubble behind
+                                    // the card any more, so its own
+                                    // light surface and dark text are
+                                    // right on both sides.
+                                    SharedPostCard(
+                                      link: sharedLayout,
+                                      onDarkBubble: false,
+                                    ),
+
+                                    // Only when they wrote something as
+                                    // well. A post sent on its own is
+                                    // the card and nothing else.
+                                    if (sharedLayout.note.isNotEmpty)
+                                      const SizedBox(height: 7),
+                                  ],
+
                                   if (msg.isDeleted ||
-                                      msg.content.trim().isNotEmpty)
-                                    Text(
-                                      msg.isDeleted
-                                          ? 'This message was deleted'
-                                          : msg.content,
-                                      style: TextStyle(
-                                        fontSize: 14.5,
-                                        height: 1.35,
-                                        fontStyle: msg.isDeleted
-                                            ? FontStyle.italic
-                                            : FontStyle.normal,
-                                        color: msg.isDeleted
-                                            ? const Color(0xFF9A9A9A)
-                                            : isMe
-                                            ? Colors.white
-                                            : const Color(0xFF111111),
+                                      _bubbleText(msg).isNotEmpty)
+                                    Padding(
+                                      // The note needs the inset the
+                                      // bubble used to give it. Without
+                                      // a bubble it would otherwise sit
+                                      // hard against the card's left
+                                      // edge and under the thread's own
+                                      // margin.
+                                      padding: bareBubble
+                                          ? const EdgeInsets.fromLTRB(2, 0, 2, 2)
+                                          : EdgeInsets.zero,
+                                      child: Text(
+                                        msg.isDeleted
+                                            ? 'This message was deleted'
+                                            : _bubbleText(msg),
+                                        style: TextStyle(
+                                          fontSize: 14.5,
+                                          height: 1.35,
+                                          fontStyle: msg.isDeleted
+                                              ? FontStyle.italic
+                                              : FontStyle.normal,
+                                          // Dark on a shared post
+                                          // whoever sent it — white was
+                                          // for the gold bubble, which
+                                          // is no longer behind it.
+                                          color: msg.isDeleted
+                                              ? const Color(0xFF9A9A9A)
+                                              : (isMe && !bareBubble)
+                                              ? Colors.white
+                                              : const Color(0xFF111111),
+                                        ),
                                       ),
                                     ),
                                 ],
@@ -1834,10 +2059,19 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             Flexible(
               child: Container(
-                padding: const EdgeInsets.fromLTRB(14, 9, 14, 10),
-                decoration: BoxDecoration(
-                  color: theme.primaryColor,
-                  borderRadius: const BorderRadius.only(
+                // No gold, and no padding, matching what a sent photo
+                // now looks like -- see bareBubble in _bubble().
+                //
+                // This is a SECOND bubble, drawn only while the upload
+                // is in flight, and it was left behind when the real
+                // one lost its background. The result was a photo that
+                // sat in a gold frame until Cloudflare answered and
+                // then jumped out of it, which is precisely the jump
+                // this widget exists to prevent.
+                padding: EdgeInsets.zero,
+                decoration: const BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
                     bottomLeft: Radius.circular(20),
@@ -1876,13 +2110,18 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                     if (_uploadingCaption.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        _uploadingCaption,
-                        style: const TextStyle(
-                          fontSize: 14.5,
-                          height: 1.35,
-                          color: Colors.white,
+                      const SizedBox(height: 7),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(2, 0, 2, 2),
+                        child: Text(
+                          _uploadingCaption,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            height: 1.35,
+                            // Dark, like the sent caption. White was for
+                            // the gold behind it.
+                            color: Color(0xFF111111),
+                          ),
                         ),
                       ),
                     ],
@@ -2044,9 +2283,17 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             _pendingImageStrip(),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              // Tighter than it was (12,8,12,8). Two icon buttons at
+              // Material's default 48x48 plus this padding pushed the
+              // field a quarter of the way across a 360dp screen before
+              // it started -- see the compact constraints below.
+              padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                // centre, not end. The icons and a single-line field are
+                // the same height, so `end` only mattered once the field
+                // grew -- and then it pinned the icons to the bottom of a
+                // five-line box, which is where the row looked unbalanced.
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   // Only one photograph travels with a message, so the
                   // button goes away once there is one waiting rather than
@@ -2054,15 +2301,56 @@ class _ChatScreenState extends State<ChatScreen> {
                   if (_pendingImage == null)
                     IconButton(
                       onPressed: enabled && !_uploading ? _pickImage : null,
+                      // 44 square: Apple's minimum touch target, and the
+                      // smallest this can be without being hard to hit.
+                      // The default is 48 plus 8 of padding each side.
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
+                      visualDensity: VisualDensity.compact,
                       icon: Icon(
                         Icons.photo_outlined,
-                        size: 22,
+                        size: 23,
                         color: enabled
                             ? const Color(0xFF666666)
                             : Colors.grey.shade300,
                       ),
                       tooltip: 'Send a photo',
                     ),
+
+                  // The same picker comments use, from
+                  // widgets/gif/gif_picker.dart.
+                  //
+                  // Hidden while a photograph is waiting, like the
+                  // button above and for the same reason: one piece of
+                  // media per message, so offering a second way to
+                  // attach one would only raise the question of which
+                  // wins.
+                  if (_pendingImage == null)
+                    IconButton(
+                      onPressed: enabled && !_uploading ? _pickGif : null,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(
+                        Icons.gif_box_outlined,
+                        size: 25,
+                        color: enabled
+                            ? const Color(0xFF666666)
+                            : Colors.grey.shade300,
+                      ),
+                      tooltip: 'Send a GIF',
+                    ),
+
+                  // One gap, here, rather than relying on each button's
+                  // own padding to make it. Four invisible paddings
+                  // adding up is why the spacing read as arbitrary.
+                  const SizedBox(width: 4),
 
                   Expanded(
                     child: TextField(
@@ -2099,8 +2387,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 11,
+                          horizontal: 14,
+                          vertical: 10,
                         ),
                       ),
                       onSubmitted: (_) => enabled ? _send() : null,

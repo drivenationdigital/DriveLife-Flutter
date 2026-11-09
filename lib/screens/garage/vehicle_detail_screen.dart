@@ -13,6 +13,7 @@ import 'package:drivelife/api/cloudflare_images.dart';
 import 'package:drivelife/screens/garage/vehicle_gallery.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:drivelife/screens/garage/view_reminders.dart';
+import 'package:drivelife/widgets/garage/owned_dates.dart';
 import 'package:drivelife/widgets/image_viewer_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/api/events_api.dart';
@@ -941,17 +942,17 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     return value == value.roundToDouble() ? '${value.round()}' : '$value';
   }
 
-  /// "Owned since 2014", or null when there is no usable date.
-  String? get _ownedSince {
-    final raw = '${_vehicle?['owned_since'] ?? ''}'.trim();
-    if (raw.isEmpty) return null;
-
-    final year =
-        DateTime.tryParse(raw)?.year ??
-        int.tryParse(RegExp(r'\b(\d{4})\b').firstMatch(raw)?.group(1) ?? '');
-
-    return year == null ? null : 'Owned since $year';
-  }
+  /// "Owned since Mar 2019", or "Owned Mar 2019 - Sept 2023" once the
+  /// car is a past one. Null when there is no usable date.
+  ///
+  /// Through OwnedDates so the card and this page cannot disagree; they
+  /// each had their own copy, and both said "since" for a car that had
+  /// been sold.
+  String? get _ownedSince => OwnedDates.label(
+    ownedSince: _vehicle?['owned_since'],
+    ownedUntil: _vehicle?['owned_until'],
+    primaryCar: _vehicle?['primary_car'],
+  );
 
   /// Edit, Upgrades, Reminders — the owner's row.
   ///

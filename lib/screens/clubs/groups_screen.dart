@@ -745,6 +745,9 @@ class _GroupsScreenState extends State<GroupsScreen>
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               _chrome(),
+              // After the chrome, so it comes to rest against the top
+              // of the viewport once the search box has scrolled away.
+              _stickyTabs(),
               if (_tab == _Tab.clubs)
                 ..._clubSlivers(theme)
               else
@@ -873,7 +876,13 @@ class _GroupsScreenState extends State<GroupsScreen>
         ),
       ],
 
-      _sliver(const SizedBox(height: 26)),
+      // Smaller when "Your clubs" is absent, for the same reason as the
+      // Communities tab: nothing above means nothing to separate from.
+      _sliver(
+        SizedBox(
+          height: _gapBefore(!_loadingMine && _myClubs.isEmpty),
+        ),
+      ),
       _sliver(_sectionHeader(theme, 'All clubs')),
 
       _sliver(
@@ -1016,24 +1025,47 @@ class _GroupsScreenState extends State<GroupsScreen>
     );
   }
 
+  /// The header and the search box, which travel away as you scroll.
+  ///
+  /// The TAB ROW used to be in here with them, on the reasoning that
+  /// all three are chrome for the list. That was wrong in practice:
+  /// scrolling into Scene groups took Communities and Local Clubs off
+  /// the screen, so switching halves meant scrolling all the way back
+  /// up first. The tabs are navigation, not decoration -- see
+  /// _stickyTabs().
   Widget _chrome() {
     return SliverPersistentHeader(
       floating: true,
       delegate: FloatingChromeHeader(
-        // The tab row travels with the search box. Both are chrome for
-        // the list below, and leaving the tabs behind when the header
-        // floats away would strand somebody on a page with no way back
-        // to the other half of it.
-        height: widget.headerHeight + _searchBarHeight + _tabBarHeight,
+        height: widget.headerHeight + _searchBarHeight,
         vsync: this,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (widget.header != null) widget.header!,
             _searchField(),
-            _tabBar(Provider.of<ThemeProvider>(context, listen: false)),
           ],
         ),
+      ),
+    );
+  }
+
+  /// The tab row, pinned to the top of the list.
+  ///
+  /// Its own sliver so it can be `pinned` while the chrome above stays
+  /// `floating`: one header cannot be both, and the two want different
+  /// behaviour.
+  ///
+  /// FloatingChromeHeader works unchanged here -- its minExtent and
+  /// maxExtent are the same number, which is exactly what a fixed
+  /// pinned bar needs.
+  Widget _stickyTabs() {
+    return SliverPersistentHeader(
+      pinned: true,
+      delegate: FloatingChromeHeader(
+        height: _tabBarHeight,
+        vsync: this,
+        child: _tabBar(Provider.of<ThemeProvider>(context, listen: false)),
       ),
     );
   }
@@ -1080,7 +1112,22 @@ class _GroupsScreenState extends State<GroupsScreen>
   // ─── Browsing ──────────────────────────────────────────────────────
 
   List<Widget> _browseSlivers(ThemeProvider theme) {
-    return [
+    // ── THE 26px IS A SEPARATOR, NOT A PREFIX ────────────────────────
+    //
+    // Every section below used to open with `SizedBox(height: 26)`,
+    // which is right when something is above it and wrong when nothing
+    // is. Somebody who has joined no groups has no "Your groups"
+    // section, so the first thing on the page was a 26px gap separating
+    // it from the tab bar it was already clear of.
+    //
+    // gap() returns a SMALLER spacer for whatever comes first, so the
+    // top of the list clears the tab rule without the 40 it used to
+    // have, and the sections after it stay properly separated.
+    final out = <Widget>[];
+
+    List<Widget> gap() => [_sliver(SizedBox(height: _gapBefore(out.isEmpty)))];
+
+    out.addAll([
       if (_loadingMine || _mine.isNotEmpty) ...[
         _sliver(
           _sectionHeader(
@@ -1100,21 +1147,21 @@ class _GroupsScreenState extends State<GroupsScreen>
         ),
         _sliver(_loadingMine ? _yourGroupsSkeleton() : _yourGroupsRail(theme)),
       ],
+    ]);
 
-      // Space held while they load, so nothing below jumps when they
-      // land. Dropped entirely once we know there are none.
-      if (_loadingMatches && _garageMatchList.isEmpty) ...[
-        _sliver(const SizedBox(height: 26)),
-        _sliver(_garageMatchesSkeleton()),
-      ],
+    // Space held while they load, so nothing below jumps when they
+    // land. Dropped entirely once we know there are none.
+    if (_loadingMatches && _garageMatchList.isEmpty) {
+      out.addAll([...gap(), _sliver(_garageMatchesSkeleton())]);
+    }
 
-      if (_garageMatchList.isNotEmpty) ...[
-        _sliver(const SizedBox(height: 26)),
-        _sliver(_garageMatches(theme)),
-      ],
+    if (_garageMatchList.isNotEmpty) {
+      out.addAll([...gap(), _sliver(_garageMatches(theme))]);
+    }
 
+    out.addAll([
       if (_loadingSections || _scenes.isNotEmpty) ...[
-        _sliver(const SizedBox(height: 26)),
+        ...gap(),
         _sliver(
           _sectionHeader(
             theme,
@@ -1142,7 +1189,7 @@ class _GroupsScreenState extends State<GroupsScreen>
       ],
 
       if (_loadingSections || _marques.isNotEmpty) ...[
-        _sliver(const SizedBox(height: 26)),
+        ...gap(),
         _sliver(
           _sectionHeader(
             theme,
@@ -1169,22 +1216,28 @@ class _GroupsScreenState extends State<GroupsScreen>
         ),
       ],
 
-      // ── Everything else ──────────────────────────────────────────
-      //
-      // Last, and plainly presented. The sections above are the ones
-      // with an argument for why you in particular should look; this
-      // is the rest, in the order the server ranks them.
-      _sliver(const SizedBox(height: 26)),
       // The clubs list used to end this tab, under a "Local Clubs"
       // heading. It lives on the Local Clubs tab now, which is the
       // whole point of there being one.
 
       // Clears the floating bottom bar.
       _sliver(const SizedBox(height: 120)),
-    ];
+    ]);
+
+    return out;
   }
 
   SliverToBoxAdapter _sliver(Widget child) => SliverToBoxAdapter(child: child);
+
+  /// How much space goes above a section.
+  ///
+  /// 14 for whatever comes first -- enough to clear the rule under the
+  /// tabs, not enough to look like a gap -- and 26 between sections.
+  ///
+  /// One place, because both tabs ask and they were answering
+  /// differently: Communities emitted nothing at the top and 26
+  /// elsewhere, Local Clubs emitted 26 everywhere including the top.
+  static double _gapBefore(bool isFirst) => isFirst ? 14 : 26;
 
   static final ButtonStyle _linkStyle = TextButton.styleFrom(
     padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1194,12 +1247,13 @@ class _GroupsScreenState extends State<GroupsScreen>
 
   Widget _sectionHeader(ThemeProvider theme, String title, {Widget? trailing}) {
     return Padding(
-      // 14 above, where there was nothing. The first heading on each
-      // tab sat directly under the rule beneath the tabs, so the tab
-      // row and the section below it read as one block — and the
-      // sections further down already have their own spacers, which
-      // is why only the top one looked cramped.
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      // No top padding. The space above a heading belongs to the
+      // SPACER before it -- _gapBefore() -- so there is one number
+      // deciding it rather than two being added together.
+      //
+      // It used to carry 14 of its own on top of a 26 spacer, which is
+      // why the run from a card to the next heading was 40.
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [

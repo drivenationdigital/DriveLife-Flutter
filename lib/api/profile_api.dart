@@ -767,15 +767,47 @@ class ProfileAPI {
   }
 
   /// Delete user account
+  /// Deletes the account for good.
+  ///
+  /// ── ONE OF TWO PROOFS IS REQUIRED ────────────────────────────────
+  ///
+  /// Either [password], or [provider] plus [idToken] from a fresh
+  /// Apple/Google sheet. The server accepts exactly one of those and
+  /// rejects the call with no proof at all — the app's own token is
+  /// deliberately not enough, because this is irreversible and takes
+  /// the posts, garage and messages with it.
+  ///
+  /// The provider path exists because an account created with Apple or
+  /// Google has a random password that has never been shown to anybody,
+  /// so there is nothing for its owner to type.
   static Future<Map<String, dynamic>?> deleteUserAccount({
     required int userId,
-    required String password,
+    String? password,
+    String? provider,
+    String? idToken,
+    String? authorizationCode,
   }) async {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/wp-json/app/v1/delete_account'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({'user_id': userId, 'password': password}),
+        body: json.encode({
+          'user_id': userId,
+          // Only the proof actually being used is sent. An empty
+          // password alongside a provider token would look to the
+          // server like a failed password attempt.
+          if (password != null && password.isNotEmpty) 'password': password,
+          if (provider != null && idToken != null && idToken.isNotEmpty) ...{
+            'provider': provider,
+            'id_token': idToken,
+          },
+          // Apple only, and only so the server can hand the grant back
+          // after the account is gone — guideline 5.1.1(v). It is not a
+          // credential for anything else: single-use, minutes-long, and
+          // never accepted as proof of identity.
+          if (authorizationCode != null && authorizationCode.isNotEmpty)
+            'authorization_code': authorizationCode,
+        }),
       );
 
       final data = json.decode(response.body);

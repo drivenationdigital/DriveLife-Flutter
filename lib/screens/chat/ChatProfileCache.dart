@@ -10,6 +10,7 @@
 
 import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/widgets/share/shared_post_link.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatList.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
@@ -458,13 +459,31 @@ class _CachedConversationTileState extends State<CachedConversationTile> {
       );
     }
 
+    // A shared post is a URL in the message body, so without this the
+    // inbox showed the raw https://app.mydrivelife.com/post/123?ref=share
+    // as the last line of the conversation.
+    //
+    // Named rather than rendered: the thread draws a card for it, but
+    // an inbox row is one line of text and a 200px preview has nowhere
+    // to go. The sender's note is used when there is one, because what
+    // they wrote is more use than what they sent.
+    final shared = SharedPostLink.parse(lastMsg.content);
+
     // A photograph sent without a caption has no content, and the row
     // would have shown an empty line where the last message goes —
     // which reads as a conversation that has gone quiet rather than one
     // with a new picture in it.
-    final body = lastMsg.content.trim().isEmpty && lastMsg.hasImage
-        ? '📷 Photo'
-        : lastMsg.content;
+    final String body;
+
+    if (shared != null) {
+      final what = shared.isEvent ? 'event' : 'post';
+
+      body = shared.note.isNotEmpty ? shared.note : '🔗 Shared a $what';
+    } else if (lastMsg.content.trim().isEmpty && lastMsg.hasImage) {
+      body = '📷 Photo';
+    } else {
+      body = lastMsg.content;
+    }
 
     return Text(
       mine ? 'You: $body' : body,

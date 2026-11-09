@@ -198,7 +198,7 @@ class RegisterStepThreeScreen extends StatelessWidget {
                                   registrationProvider.nextStep();
                                   Navigator.pushNamed(
                                     context,
-                                    '/register-step-4',
+                                    '/register-brands',
                                   );
                                 } else {
                                   ScaffoldMessenger.of(context).showSnackBar(

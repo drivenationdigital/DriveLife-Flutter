@@ -16,6 +16,53 @@ class FeatureFlags {
   /// derived rather than hard-coded.
   static const bool mediaTab = true;
 
+  /// "Continue with Apple" and "Continue with Google" on the login screen.
+  ///
+  /// ── WHY IT SHIPS OFF ─────────────────────────────────────────────
+  ///
+  /// The code is complete on both sides, but neither provider works
+  /// until console configuration exists that cannot live in this
+  /// repository:
+  ///
+  ///   * google_sign_in THROWS on iOS without the REVERSED_CLIENT_ID
+  ///     URL scheme in Info.plist, and returns a silent failure on
+  ///     Android without the SHA-1 and SHA-256 fingerprints registered.
+  ///   * Sign in with Apple needs the capability on the App ID, the
+  ///     entitlement in Xcode, and a Services ID + key for the server
+  ///     to verify against.
+  ///   * The server needs DL_GOOGLE_CLIENT_IDS and DL_APPLE_BUNDLE_IDS
+  ///     in endpoints/app-secrets.php, or every token is rejected --
+  ///     deliberately, because a token with an unchecked audience is a
+  ///     token minted for somebody else's app.
+  ///
+  /// A button that opens a sheet and then fails is worse than no
+  /// button, so this stays false until that work is done. Turning it on
+  /// is this one line.
+  ///
+  /// APPLE REQUIRE THE PAIR. An app offering Google without Apple is
+  /// rejected under App Store guideline 4.8, so these are one flag
+  /// rather than two.
+  static const bool socialSignIn = true;
+
+  /// The Apple button specifically.
+  ///
+  /// Separate from [socialSignIn] ONLY so Google can be tested before
+  /// the Apple Developer work is done — the capability on the App ID
+  /// and the entitlement in Xcode. Without those, the Apple sheet
+  /// fails the moment it opens.
+  ///
+  /// ⚠️ THIS MUST BE TRUE BEFORE ANY iOS APP STORE SUBMISSION.
+  ///
+  /// App Store guideline 4.8: an app offering a third-party sign-in has
+  /// to offer Sign in with Apple as well. Shipping iOS with
+  /// socialSignIn on and this off is a rejection, not a warning — so
+  /// this flag is a testing convenience with a deadline, not a
+  /// long-term option.
+  ///
+  /// Android is unaffected either way: the Apple button never renders
+  /// there, where it would be a web redirect for no benefit.
+  static const bool appleSignIn = false;
+
   // NOTE: the event editor's Discounts / Show cars / Car clubs / Traders work
   // is parked, not flagged. add_event_screen.dart has been reverted to its
   // committed state, so it neither shows those tabs nor reads a flag for them.

@@ -6,6 +6,15 @@ class RegistrationProvider extends ChangeNotifier {
   String _lastName = '';
   String _email = '';
   String _password = '';
+
+  /// True when this signup began with Apple or Google rather than the
+  /// email form.
+  ///
+  /// Such an account has NO PASSWORD -- the provider vouched for them
+  /// and AuthService.loginWithProvider already signed them in. The last
+  /// step must therefore not try to log them in again, which is what it
+  /// does for a password signup. See step_five.dart.
+  bool _social = false;
   String _confirmPassword = '';
   String _country = '';
   bool _agreeTerms = false;
@@ -39,6 +48,13 @@ class RegistrationProvider extends ChangeNotifier {
   String get lastName => _lastName;
   String get email => _email;
   String get password => _password;
+  bool get isSocial => _social;
+
+  /// Marked by the login screen when a provider created the account.
+  void setSocial(bool value) {
+    _social = value;
+    notifyListeners();
+  }
   String get confirmPassword => _confirmPassword;
   String get country => _country;
   bool get agreeTerms => _agreeTerms;
@@ -293,6 +309,7 @@ class RegistrationProvider extends ChangeNotifier {
     _email = '';
     _password = '';
     _confirmPassword = '';
+    _social = false;
     _country = '';
     _agreeTerms = false;
     _agreePrivacy = false;

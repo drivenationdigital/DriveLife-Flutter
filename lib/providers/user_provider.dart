@@ -311,6 +311,18 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Held locally after the brands prompt or the account screen saves,
+  /// so nothing asks again before the next profile fetch.
+  ///
+  /// brandsAnswered goes true whatever was picked — including nothing,
+  /// which is a real answer.
+  void setBrands(List<int> brands) {
+    if (_user == null) return;
+
+    _user = _user!.copyWith(brands: brands, brandsAnswered: true);
+    notifyListeners();
+  }
+
   Future<void> updateUserBillingDetails({
     required BillingInfo billingDetails,
   }) async {

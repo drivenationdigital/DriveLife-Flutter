@@ -11,6 +11,7 @@ import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/create-post/edit_post_screen.dart';
 import 'package:drivelife/screens/hashtag_posts_screen.dart';
 import 'package:drivelife/widgets/feed/likes_modal.dart';
+import 'package:drivelife/widgets/share/share_post_sheet.dart';
 import 'package:drivelife/widgets/formatted_text.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -19,7 +20,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pinch_zoom_release_unzoom/pinch_zoom_release_unzoom.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../api/interactions_api.dart';
 import '../screens/comments_bottom_sheet.dart';
@@ -378,6 +378,30 @@ class _PostCardState extends State<PostCard>
     final shareText =
         'Check out this post on DriveLife by @$postUser.\n\n$postDescription\n\n$postUrl';
 
+    // ── THE SHEET, NOT THE OS SHARE DIALOG ──────────────────────────
+    //
+    // This used to open the operating system's share sheet directly.
+    // Now it opens ours, which offers recent chats and a people search
+    // first and carries "Share to other apps" at the foot — so nothing
+    // that worked before has been taken away, it has been moved one tap
+    // down and given somewhere to go inside the app.
+    //
+    // markPostShared is called from onSent rather than here, because
+    // "shared" should mean a share happened: the old code marked it the
+    // moment the OS sheet was dismissed, cancelled or not.
+    //
+    // ── AND IT IS PARSED TO AN INT, WHICH IT NEVER WAS ───────────────
+    //
+    // markPostShared takes an int and widget.post['id'] is a String out
+    // of JSON, so the call threw a TypeError every single time. Nobody
+    // saw it because the old code made the call INSIDE a
+    // `catch (e) { debugPrint(...) }` that was there to catch a failing
+    // share — so the share worked, the exception was swallowed, and no
+    // post share has ever actually been recorded.
+    //
+    // Moving the call into onSent took it out of that catch and turned
+    // a silent four-year no-op into a crash, which is how it was found.
+    final sharedPostId = int.tryParse('${widget.post['id']}');
     if (widget.post['is_event'] == true) {
       final eventId = widget.post['id'];
       final eventUrl = 'https://app.mydrivelife.com/event/$eventId?ref=share';
@@ -385,17 +409,32 @@ class _PostCardState extends State<PostCard>
       final eventText =
           'Check out this event on DriveLife by @$postUser.\n\n$postDescription\n\n$eventUrl';
 
-      try {
-        await Share.share(eventText, subject: postDescription);
-      } catch (e) {
-        debugPrint('Error sharing event: $e');
-      }
+      if (!mounted) return;
+
+      await SharePostSheet.show(
+        context,
+        url: eventUrl,
+        shareText: eventText,
+        subject: postDescription,
+      );
       return;
     }
 
+    if (!mounted) return;
+
     try {
-      await Share.share(shareText, subject: postDescription);
-      await InteractionsAPI.markPostShared(postId);
+      await SharePostSheet.show(
+        context,
+        url: postUrl,
+        shareText: shareText,
+        subject: postDescription,
+        // Skipped entirely when the id will not parse, rather than
+        // sent as 0 — a share recorded against post 0 is worse than
+        // one not recorded at all.
+        onSent: sharedPostId == null
+            ? null
+            : () => InteractionsAPI.markPostShared(sharedPostId),
+      );
     } catch (e) {
       debugPrint('Error sharing post: $e');
     }

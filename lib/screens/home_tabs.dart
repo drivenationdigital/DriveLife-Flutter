@@ -34,6 +34,7 @@ import 'package:drivelife/screens/clubs/groups_screen.dart';
 // ignore: unused_import
 import 'package:drivelife/screens/clubs/my_clubs_screen.dart';
 import 'package:drivelife/widgets/interests_prompt.dart';
+import 'package:drivelife/widgets/interests/brands_prompt.dart';
 import 'package:drivelife/screens/clubs/open_club_creator.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/screens/events/events_screen.dart';
@@ -296,6 +297,21 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     // so this is a call rather than a condition — one definition of
     // "has not answered", in the widget that acts on it.
     await InterestsPrompt.maybeShow(context);
+
+    if (!mounted) return;
+
+    // Then brands, if they still need asking.
+    //
+    // After the interests one and never beside it, for the reason
+    // above: two sheets racing for the same screen leaves one behind
+    // the other. In practice almost nobody sees both — the interests
+    // prompt is for accounts older than that question, the brands one
+    // for accounts older than this one — but the order has to be
+    // defined for the few who are old enough for both.
+    //
+    // It decides for itself whether anybody needs asking, keyed on
+    // brandsAnswered rather than an empty list; see BrandsPrompt.
+    await BrandsPrompt.maybeShow(context);
   }
 
   @override
