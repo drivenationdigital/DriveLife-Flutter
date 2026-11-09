@@ -3,6 +3,7 @@ import 'package:drivelife/api/social_api.dart';
 import 'package:drivelife/models/user_model.dart';
 import 'package:drivelife/services/social_identity.dart';
 import 'package:drivelife/widgets/auth/privacy_modal.dart';
+import 'package:drivelife/widgets/auth/set_password_sheet.dart';
 import 'package:drivelife/widgets/auth/terms_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -15,22 +16,6 @@ import '../../providers/user_provider.dart';
 /// to be able to say it — a bool would collapse "I'd rather type my
 /// password" into "no".
 enum _DeleteProof { password, provider }
-
-/// What somebody chose in the "choose a password" dialog.
-///
-/// Two values rather than one, because the address they will be signing
-/// in with is part of the same decision — see the Hide My Email note in
-/// [_AccountSettingsScreenState._setPasswordThenUnlink].
-class _PasswordSetup {
-  final String password;
-
-  /// The login email, or null if they left it alone. Null rather than
-  /// the unchanged value so "they did not touch it" stays
-  /// distinguishable from "they retyped the same thing".
-  final String? email;
-
-  const _PasswordSetup(this.password, this.email);
-}
 
 class AccountSettingsScreen extends StatefulWidget {
   const AccountSettingsScreen({super.key});
@@ -54,22 +39,14 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   /// and is then impossible to reproduce.
   final _unlinkPasswordController = TextEditingController();
 
-  /// The confirmation box, used only when choosing a NEW password.
-  ///
-  /// A mistyped password somebody cannot see would lock them out of the
-  /// account this whole flow exists to keep, so it is typed twice.
-  final _confirmPasswordController = TextEditingController();
-
-  /// The login email, shown and optionally corrected while choosing a
-  /// password. Prefilled from the account each time the dialog opens.
-  final _emailController = TextEditingController();
+  // The new-password, confirmation and email fields live in
+  // SetPasswordSheet with their own controllers, so there is nothing
+  // here to keep in step with them.
 
   @override
   void dispose() {
     _passwordController.dispose();
     _unlinkPasswordController.dispose();
-    _confirmPasswordController.dispose();
-    _emailController.dispose();
     super.dispose();
   }
 
@@ -441,8 +418,32 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   /// the row up front. If a stale profile says otherwise, the server
   /// still refuses and the app offers deletion from the refusal, so the
   /// two cannot disagree about what actually happens.
-  Future<void> _disconnect(String provider) async {
+  Future<void> _disconnect(
+    String provider, {
+    required bool isOnlyWayIn,
+  }) async {
     final label = SocialIdentity.label(provider);
+
+    // ── ASK FOR A PASSWORD ONLY IF ONE CAN EXIST ─────────────────────
+    //
+    // An earlier version asked unconditionally and let the server
+    // correct it, which meant an account with no password was shown a
+    // password box, told nothing was wrong with what it typed, and THEN
+    // asked to choose a password. Two prompts for one decision, the
+    // first of them unanswerable.
+    //
+    // The screen already knows — socialCreatedWith comes back on the
+    // profile — so it branches here instead. The server still decides
+    // the outcome, and the stale-profile path below still works.
+    if (isOnlyWayIn) {
+      await _setPasswordThenUnlink(
+        provider,
+        '$label is currently your only way to sign in. Choose a password '
+        'and we will keep your account, so you can sign in with your '
+        'email address instead.',
+      );
+      return;
+    }
 
     final password = await _showUnlinkDialog(label);
 
@@ -516,7 +517,12 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     final currentEmail =
         Provider.of<UserProvider>(context, listen: false).user?.email ?? '';
 
-    final chosen = await _showSetPasswordDialog(label, why, currentEmail);
+    final chosen = await SetPasswordSheet.show(
+      context,
+      providerLabel: label,
+      reason: why,
+      currentEmail: currentEmail,
+    );
 
     if (chosen == null || !mounted) return;
 
@@ -586,256 +592,15 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   ///
   /// Deliberately says the account is kept — somebody told their only
   /// login is about to be removed will assume the worst otherwise.
-  /// Password, confirmation, and the address they will sign in with.
-  ///
-  /// ── WHY THE EMAIL IS HERE AT ALL ───────────────────────────────────
-  ///
-  /// Because for a Hide My Email account it is the thing most likely to
-  /// go wrong, and it is invisible until it does. Those accounts have
-  /// an @privaterelay.appleid.com address as their login — one its
-  /// owner has probably never seen, and which Apple stops forwarding
-  /// unless our sending domain is registered with them. Unlink without
-  /// showing it and the first they learn of it is a password reset that
-  /// never arrives.
-  ///
-  /// So it is shown to everybody, pointed out for relay addresses, and
-  /// editable by anyone who wants to.
-  Future<_PasswordSetup?> _showSetPasswordDialog(
-    String label,
-    String why,
-    String currentEmail,
-  ) async {
-    _unlinkPasswordController.clear();
-    _confirmPasswordController.clear();
-    _emailController.text = currentEmail;
+  // REMOVED: _showSetPasswordDialog + _passwordField.
+  //
+  // Replaced by SetPasswordSheet. There was too much in it for an
+  // AlertDialog -- a reason, the login address with an edit
+  // affordance, a warning that applies to some people, two password
+  // fields and a note about what happens next -- so it read as
+  // clutter and the keyboard covered half of it. See
+  // widgets/auth/set_password_sheet.dart.
 
-    bool obscureText = true;
-    String? error;
-
-    // Apple's relay. Opened for editing from the start for these,
-    // because leaving it is the choice that needs thinking about —
-    // the opposite of everybody else.
-    final isRelay = currentEmail.toLowerCase().contains(
-      '@privaterelay.appleid.com',
-    );
-    bool editingEmail = isRelay;
-
-    return showDialog<_PasswordSetup>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: Colors.white,
-          scrollable: true,
-          title: const Text(
-            'Choose a password',
-            style: TextStyle(color: Colors.black),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                why,
-                style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Your account and everything in it stays exactly as it is.',
-                style: TextStyle(
-                  color: Colors.grey.shade700,
-                  fontSize: 13.5,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-
-              const SizedBox(height: 18),
-              const Text(
-                'You will sign in with',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 6),
-
-              if (editingEmail)
-                TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                  style: const TextStyle(color: Colors.black),
-                  decoration: _passwordField('Email address', null, null),
-                )
-              else
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        currentEmail.isEmpty ? '—' : currentEmail,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () =>
-                          setDialogState(() => editingEmail = true),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        minimumSize: const Size(0, 32),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: const Text('Change'),
-                    ),
-                  ],
-                ),
-
-              if (isRelay)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF4E5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'This is a private Apple address. Once Apple is '
-                      'disconnected, emails we send — including password '
-                      'resets — may stop reaching you. We strongly '
-                      'recommend using your own email address.',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        height: 1.4,
-                        color: Colors.brown.shade800,
-                      ),
-                    ),
-                  ),
-                ),
-
-              const SizedBox(height: 18),
-              TextField(
-                controller: _unlinkPasswordController,
-                obscureText: obscureText,
-                autofocus: !isRelay,
-                style: const TextStyle(color: Colors.black),
-                decoration: _passwordField(
-                  'New password',
-                  obscureText,
-                  () => setDialogState(() => obscureText = !obscureText),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _confirmPasswordController,
-                obscureText: obscureText,
-                style: const TextStyle(color: Colors.black),
-                decoration: _passwordField('Confirm password', null, null),
-              ),
-              if (error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Text(
-                    error!,
-                    style: const TextStyle(color: Colors.red, fontSize: 13),
-                  ),
-                ),
-              const SizedBox(height: 12),
-              Text(
-                'Next, we will ask you to confirm with $label one last '
-                'time so we know it is really you.',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, null),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                final value = _unlinkPasswordController.text;
-                final confirm = _confirmPasswordController.text;
-                final typedEmail = _emailController.text.trim();
-
-                // Checked here as well as on the server so somebody is
-                // not sent through a provider sheet only to be told
-                // their password was too short.
-                if (value.length < 8) {
-                  setDialogState(() => error = 'Use at least 8 characters.');
-                  return;
-                }
-
-                if (value != confirm) {
-                  setDialogState(
-                    () => error = 'Those passwords do not match.',
-                  );
-                  return;
-                }
-
-                // Shape only. Whether it is already taken is the
-                // server's call, and it checks before writing anything.
-                if (editingEmail) {
-                  if (typedEmail.isEmpty ||
-                      !typedEmail.contains('@') ||
-                      !typedEmail.contains('.') ||
-                      typedEmail.endsWith('@') ||
-                      typedEmail.contains(' ')) {
-                    setDialogState(
-                      () => error = 'Enter a valid email address.',
-                    );
-                    return;
-                  }
-                }
-
-                Navigator.pop(
-                  context,
-                  _PasswordSetup(
-                    value,
-                    // Null when untouched, so the server can tell
-                    // "unchanged" from "retyped the same".
-                    (editingEmail && typedEmail != currentEmail)
-                        ? typedEmail
-                        : null,
-                  ),
-                );
-              },
-              child: const Text('Continue'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  InputDecoration _passwordField(
-    String hint,
-    bool? obscured,
-    VoidCallback? onToggle,
-  ) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: TextStyle(color: Colors.grey.shade400),
-      filled: true,
-      fillColor: Colors.grey.shade100,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide.none,
-      ),
-      suffixIcon: (obscured != null && onToggle != null)
-          ? IconButton(
-              icon: Icon(
-                obscured ? Icons.visibility_off : Icons.visibility,
-                color: Colors.grey.shade600,
-              ),
-              onPressed: onToggle,
-            )
-          : null,
-    );
-  }
 
   /// Asks for the password, and says plainly why it is wanted.
   Future<String?> _showUnlinkDialog(String label) async {
@@ -1025,7 +790,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
               // than a dead grey button somebody cannot ask about.
               onPressed: _unlinking != null || _isDeleting
                   ? null
-                  : () => _disconnect(provider),
+                  : () => _disconnect(provider, isOnlyWayIn: isOnlyWayIn),
               style: TextButton.styleFrom(
                 foregroundColor: isOnlyWayIn
                     ? Colors.grey.shade600
