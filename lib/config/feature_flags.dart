@@ -46,22 +46,32 @@ class FeatureFlags {
 
   /// The Apple button specifically.
   ///
-  /// Separate from [socialSignIn] ONLY so Google can be tested before
-  /// the Apple Developer work is done — the capability on the App ID
-  /// and the entitlement in Xcode. Without those, the Apple sheet
-  /// fails the moment it opens.
+  /// Separate from [socialSignIn] ONLY so Google could be tested before
+  /// the Apple Developer work was done. That work is now complete:
   ///
-  /// ⚠️ THIS MUST BE TRUE BEFORE ANY iOS APP STORE SUBMISSION.
+  ///   * Sign In with Apple is enabled on App ID com.app.carcalendar
+  ///   * com.apple.developer.applesignin is in Runner.entitlements,
+  ///     which all three build configs point at
+  ///   * the server verifies Apple's tokens against
+  ///     DL_APPLE_BUNDLE_IDS — see endpoints/auth-social.php
+  ///
+  /// ── STILL OUTSTANDING, AND NOT GATED BY THIS FLAG ─────────────────
+  ///
+  /// Revoking the Apple token on account deletion, which App Store
+  /// guideline 5.1.1(v) requires. dl_social_apple_revoke() is written
+  /// but returns 'not_configured' until DL_APPLE_KEY_ID and
+  /// DL_APPLE_PRIVATE_KEY are set in app-secrets.php. Sign-in works
+  /// without them; only the revoke is dormant, and a deletion still
+  /// completes. That is a review finding waiting to happen, not a
+  /// broken feature — so it does not hold this flag off.
   ///
   /// App Store guideline 4.8: an app offering a third-party sign-in has
-  /// to offer Sign in with Apple as well. Shipping iOS with
-  /// socialSignIn on and this off is a rejection, not a warning — so
-  /// this flag is a testing convenience with a deadline, not a
-  /// long-term option.
+  /// to offer Sign in with Apple as well, so shipping iOS with
+  /// socialSignIn on and this off would be a rejection.
   ///
   /// Android is unaffected either way: the Apple button never renders
   /// there, where it would be a web redirect for no benefit.
-  static const bool appleSignIn = false;
+  static const bool appleSignIn = true;
 
   // NOTE: the event editor's Discounts / Show cars / Car clubs / Traders work
   // is parked, not flagged. add_event_screen.dart has been reverted to its
