@@ -5,6 +5,7 @@ import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -241,14 +242,58 @@ class FirebaseMessagingService {
     // Check if app was opened from a notification
     RemoteMessage? initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
-      _handleNotificationTap(initialMessage);
+      // Separated from a background tap: this is the app starting from
+      // nothing, which is the path most likely to break on its own.
+      _handleNotificationTap(initialMessage, path: 'cold_start');
     }
+  }
+
+  // ── PUSH REPORTING ───────────────────────────────────────────────
+  //
+  // Logged by hand, because Firebase will not do it for us here.
+  //
+  // FCM auto-logs notification_receive / _open ONLY for messages that
+  // carry a `notification` block, which it renders itself. Ours are
+  // DATA-ONLY on purpose — the title and body travel in `data` and the
+  // app renders them, which is what lets a notification carry
+  // account_id and open on the right signed-in account. So the Firebase
+  // console's own funnel will always read zero for us, however many go
+  // out, and the only honest numbers are the ones logged here.
+  //
+  // Event names and parameters have to be registered as custom
+  // dimensions in GA4 before they appear in reports; they are visible
+  // in DebugView immediately either way.
+
+  /// A notification was opened.
+  ///
+  /// [path] separates the ways that can happen, because they are
+  /// different code paths and any of them can break alone:
+  ///   fcm_tap    — tapped while the app sat in the background
+  ///   local_tap  — tapped on a notification the app drew itself
+  ///   cold_start — tapped while the app was not running
+  static void _logPushOpened(NotificationTarget target, String path) {
+    _logPush('dl_push_opened', {
+      'notify_kind': target.notifyKind ?? 'unknown',
+      'open_path': path,
+    });
+  }
+
+  static void _logPush(String name, Map<String, String> params) {
+    // Fire and forget, and never allowed to matter: an analytics
+    // failure must not stop a notification opening what it points at.
+    FirebaseAnalytics.instance
+        .logEvent(name: name, parameters: params)
+        .catchError((Object e) {
+          debugPrint('[Push] analytics $name failed: $e');
+        });
   }
 
   // Handle notification tap (both tap and action buttons)
   static void _onNotificationResponse(NotificationResponse response) {
     print('Local notification tapped: ${response.payload}');
-    openTarget(NotificationTarget.fromPayload(response.payload));
+    final target = NotificationTarget.fromPayload(response.payload);
+    _logPushOpened(target, 'local_tap');
+    openTarget(target);
   }
 
   /// Opens what a notification points at, on the account it belongs to.
@@ -502,6 +547,16 @@ class FirebaseMessagingService {
   static Future<void> _handleForegroundMessage(RemoteMessage message) async {
     print('📩 Foreground message received: ${message.data}');
     final data = message.data;
+
+    // FOREGROUND ONLY, and named so. The background handler runs in its
+    // own isolate with no Firebase initialised, so a delivery to a
+    // backgrounded app is not counted here — which means this is a
+    // floor on receives, not a total. Use the FCM delivery data for the
+    // real denominator.
+    _logPush('dl_push_received', {
+      'notify_kind': data['notify_kind']?.toString() ?? 'unknown',
+      'app_state': 'foreground',
+    });
     final isGroup = data['is_group'] == 'true';
     final senderId = data['sender_id'] ?? '';
     final convId = data['conversation_id'] ?? '';
@@ -622,9 +677,14 @@ class FirebaseMessagingService {
     return '@$name';
   }
 
-  static void _handleNotificationTap(RemoteMessage message) {
+  static void _handleNotificationTap(
+    RemoteMessage message, {
+    String path = 'fcm_tap',
+  }) {
     print('FCM notification tapped: ${message.data}');
-    openTarget(NotificationTarget.fromData(message.data));
+    final target = NotificationTarget.fromData(message.data);
+    _logPushOpened(target, path);
+    openTarget(target);
   }
 
   // Subscribe to topic

@@ -16,6 +16,7 @@ import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:drivelife/utils/analytics_route_observer.dart';
 import 'package:drivelife/utils/deeplinks_helper.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -231,6 +232,22 @@ void main() async {
 
   try {
     await Firebase.initializeApp();
+
+    // ── HERE FOR PUSH REPORTING, NOT PRODUCT ANALYTICS ─────────────
+    //
+    // Product analytics is Piwik PRO, initialised below. This is what
+    // makes the Firebase Messaging "Reports" tab work at all: Cloud
+    // Messaging logs notification_receive / _open / _dismiss itself,
+    // but only when the Analytics SDK is on the classpath. Without it
+    // the dashboard stays empty however many notifications go out,
+    // because those counts come from the DEVICE, not the server.
+    //
+    // Turned on explicitly rather than left to the default, so the
+    // dependency reads as load-bearing and does not get tidied away as
+    // unused. There is no way to keep the notification events while
+    // switching the rest of Analytics collection off.
+    await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(true);
+
     FirebaseMessagingService.navigatorKey = navigatorKey;
     print('✅ Assigned navigatorKey: ${FirebaseMessagingService.navigatorKey}');
     await FirebaseMessagingService.initialize();
