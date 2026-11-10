@@ -6,9 +6,24 @@ import 'package:drivelife/api/cloudflare_images.dart';
 import 'package:drivelife/api/garage_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/screens/media_picker/media_picker_screen.dart';
+import 'package:drivelife/services/media_compressor.dart';
+import 'package:drivelife/services/upload_quality_prefs.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+
+/// The most photographs one vehicle can carry.
+///
+/// A real limit rather than a round number: on the add screen every
+/// pick is held in memory as well as on disk until Save, and a phone
+/// picking twenty 12-megapixel photographs is killed before it finishes
+/// uploading them.
+///
+/// Top level, and public, because the detail screen enforces the same
+/// ceiling when photographs are added AFTER a vehicle exists. It had no
+/// cap at all before, so a vehicle could be taken past the limit from
+/// there while the add screen was still saying twelve was the maximum.
+const int kMaxVehicleGalleryPhotos = 12;
 
 class AddVehicleScreen extends StatefulWidget {
   final Map<String, dynamic>? vehicle;
@@ -52,6 +67,14 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   bool _orderChanged = false;
 
   bool _savingGallery = false;
+
+  /// True while picked photographs are being shrunk.
+  ///
+  /// The picker closes as soon as they are chosen, and the compression
+  /// that used to happen inside ImagePicker now runs after it — so
+  /// without this there is a silent pause where nothing appears to have
+  /// happened, which reads as the pick having failed.
+  bool _preparingPhotos = false;
   String? _base64Image;
   bool _lookingUp = false;
 
@@ -888,7 +911,46 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   /// picked file is held in memory as well as on disk until Save, and a
   /// phone picking twenty 12-megapixel photographs will be killed before
   /// it finishes uploading them.
-  static const int _maxGallery = 12;
+  static const int _maxGallery = kMaxVehicleGalleryPhotos;
+
+  /// Shrinks picked photographs before they are held or uploaded.
+  ///
+  /// ── WHY THIS IS NOT OPTIONAL ───────────────────────────────────
+  ///
+  /// ImagePicker used to do it on the way out, via maxWidth/maxHeight
+  /// and imageQuality. MediaPickerScreen deliberately does not: it
+  /// hands back the ORIGINAL file so nothing is re-encoded for someone
+  /// who only wanted to look at it. Twelve untouched 12-megapixel
+  /// photographs is the better part of a hundred megabytes, held in
+  /// memory until Save and then pushed up a phone uplink.
+  ///
+  /// So the resize moves here, to the compressor the rest of the app
+  /// already uses — which also respects the user's upload quality
+  /// setting rather than hard-coding 88.
+  ///
+  /// A failure keeps the original: a photograph that is too large is a
+  /// slow upload, but one that is dropped is gone.
+  Future<List<File>> _prepareForUpload(List<File> files) async {
+    if (files.isEmpty) return const [];
+
+    final quality = await UploadQualityPrefs.current();
+    final out = <File>[];
+
+    for (final file in files) {
+      try {
+        final prepared = await MediaCompressor.compressImage(
+          file,
+          quality: quality,
+        );
+        out.add(prepared.file);
+      } catch (e) {
+        debugPrint('[AddVehicle] compress failed for ${file.path}: $e');
+        out.add(file);
+      }
+    }
+
+    return out;
+  }
 
   Future<void> _pickGalleryImages() async {
     final room = _maxGallery - _galleryCount;
@@ -898,15 +960,39 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       return;
     }
 
-    final picked = await ImagePicker().pickMultiImage(
-      maxWidth: 2048,
-      maxHeight: 2048,
-      imageQuality: 88,
+    final picked = await MediaPickerScreen.open(
+      context,
+      // ── THE TOTAL, AND WHAT IS ALREADY HELD ────────────────────
+      //
+      // Not `room`. Handed the remainder, the picker reports it as
+      // the limit — "you can choose up to 3" on a vehicle that takes
+      // twelve — because it cannot tell a cap from a remainder. It
+      // enforces the first and displays the second.
+      maxSelection: _maxGallery,
+      alreadySelected: _galleryCount,
+      confirmLabel: 'Add',
+      title: 'Vehicle photos',
+      // A vehicle gallery is photographs. There is nowhere for a clip
+      // to play, and the upload path writes Cloudflare Images.
+      allowVideo: false,
     );
 
-    if (picked.isEmpty || !mounted) return;
+    if (picked == null || picked.isEmpty || !mounted) return;
 
-    final files = picked.take(room).map((x) => File(x.path)).toList();
+    setState(() => _preparingPhotos = true);
+
+    final List<File> files;
+    try {
+      files = await _prepareForUpload(
+        picked.take(room).map((item) => item.file).toList(),
+      );
+    } finally {
+      // Cleared in a finally so a throw cannot strand the screen
+      // showing "Preparing…" with no way back.
+      if (mounted) setState(() => _preparingPhotos = false);
+    }
+
+    if (files.isEmpty || !mounted) return;
 
     setState(() => _galleryPicks.addAll(files));
 
@@ -1015,14 +1101,41 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  '$_galleryCount / $_maxGallery',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade500,
+                // Shrinking a dozen photographs takes seconds, and the
+                // picker has already closed by then. Without this the
+                // screen sits there looking like the pick was ignored.
+                if (_preparingPhotos)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFFAE9159),
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        'Preparing…',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    '$_galleryCount / $_maxGallery',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade500,
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 12),

@@ -11,7 +11,9 @@ import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/api/cloudflare_images.dart';
 import 'package:drivelife/screens/garage/vehicle_gallery.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:drivelife/screens/media_picker/media_picker_screen.dart';
+import 'package:drivelife/services/media_compressor.dart';
+import 'package:drivelife/services/upload_quality_prefs.dart';
 import 'package:drivelife/screens/garage/view_reminders.dart';
 import 'package:drivelife/widgets/garage/owned_dates.dart';
 import 'package:drivelife/widgets/image_viewer_screen.dart';
@@ -518,22 +520,49 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   /// along it is — and if one fails midway, the ones that landed are
   /// still recorded by the POST below.
   Future<void> _addGalleryPhotos() async {
-    final picked = await ImagePicker().pickMultiImage(
-      // Larger than the group avatars because these are drawn full
-      // width. Cloudflare downscales to the variant either way; this is
-      // about what goes up the phone's uplink.
-      maxWidth: 2048,
-      maxHeight: 2048,
-      imageQuality: 88,
+    final picked = await MediaPickerScreen.open(
+      context,
+      // The same ceiling the add screen enforces, whose message calls
+      // it "the most photos a vehicle can have". This screen used to
+      // have no cap at all, so a vehicle could be taken past the limit
+      // by adding photographs after it was created.
+      maxSelection: kMaxVehicleGalleryPhotos,
+      alreadySelected: _photos.length,
+      confirmLabel: 'Add',
+      title: 'Vehicle photos',
+      allowVideo: false,
     );
 
-    if (picked.isEmpty || !mounted) return;
+    if (picked == null || picked.isEmpty || !mounted) return;
 
     setState(() => _uploadingGallery = true);
 
     final ids = <String>[];
+    final quality = await UploadQualityPrefs.current();
 
-    for (final file in picked) {
+    for (final item in picked) {
+      // ── THE RESIZE IMAGEPICKER USED TO DO ────────────────────────
+      //
+      // It shrank on the way out via maxWidth/imageQuality.
+      // MediaPickerScreen hands back the ORIGINAL on purpose, so that
+      // has to happen here instead, or a 12-megapixel photograph goes
+      // up the phone's uplink whole. Cloudflare downscales to the
+      // variant either way; this is about the upload.
+      //
+      // A compressor failure keeps the original rather than dropping
+      // the photograph: slow beats lost.
+      var file = item.file;
+
+      try {
+        final prepared = await MediaCompressor.compressImage(
+          file,
+          quality: quality,
+        );
+        file = prepared.file;
+      } catch (e) {
+        debugPrint('[VehicleDetail] compress failed for ${file.path}: $e');
+      }
+
       final id = await CloudflareImages.uploadAndGetId(
         bytes: await file.readAsBytes(),
         fileName:
