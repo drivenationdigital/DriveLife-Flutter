@@ -225,8 +225,21 @@ class FirebaseMessagingService {
       final payload = launchDetails?.notificationResponse?.payload;
       if (payload != null && payload.isNotEmpty) {
         // Queue it — navigator won't be ready yet at this point
-        _pendingTarget = NotificationTarget.fromPayload(payload);
+        final target = NotificationTarget.fromPayload(payload);
+        _pendingTarget = target;
         print('🚀 Cold-start from local notification, queued: $payload');
+
+        // ── THE COLD START THAT ACTUALLY HAPPENS ──────────────────
+        //
+        // Logged HERE, not where the target is finally opened: the
+        // queue is flushed by flushPendingDeepLink() once a navigator
+        // exists, and an open that never found one is still an open.
+        //
+        // This is the real killed-app path for us. The FCM equivalents
+        // (onMessageOpenedApp, getInitialMessage) only fire for
+        // notifications FCM RENDERED, and ours are data-only — FCM
+        // draws nothing, so it knows nothing was tapped.
+        _logPushOpened(target, 'cold_start');
       }
     }
 
@@ -242,9 +255,12 @@ class FirebaseMessagingService {
     // Check if app was opened from a notification
     RemoteMessage? initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
-      // Separated from a background tap: this is the app starting from
-      // nothing, which is the path most likely to break on its own.
-      _handleNotificationTap(initialMessage, path: 'cold_start');
+      // NOT expected to fire while every send is data-only: FCM only
+      // reports a tap on a notification it drew itself. Logged under
+      // its own name so that if it ever DOES appear, it is a signal
+      // that something started sending notification-payload messages
+      // rather than a cold start being double counted.
+      _handleNotificationTap(initialMessage, path: 'cold_start_fcm');
     }
   }
 
