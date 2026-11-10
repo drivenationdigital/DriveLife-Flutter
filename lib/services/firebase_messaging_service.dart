@@ -1,6 +1,7 @@
 import 'package:drivelife/screens/media/gallery_tag_requests_screen.dart';
 import 'dart:io';
 
+import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
@@ -14,6 +15,23 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 
 @pragma('vm:entry-point')
+/// `@username` for a notification built in the BACKGROUND isolate.
+///
+/// Separate from FirebaseMessagingService._accountLabel because this
+/// isolate has no providers and so cannot ask how many accounts are
+/// signed in. It can only honour the flag.
+///
+/// Returns null rather than an empty string, so it drops straight into
+/// a nullable subText or subtitle.
+String? _backgroundAccountLabel(NotificationTarget target) {
+  if (!FeatureFlags.notificationAccountLabel) return null;
+
+  final name = target.accountName;
+  if (name == null || name.isEmpty) return null;
+
+  return '@$name';
+}
+
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final data = message.data;
   print('📩 Background message received: $data');
@@ -91,14 +109,15 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         largeIcon: largeIcon,
         styleInformation: style,
         playSound: true,
-        // The account, when the server named one. This isolate has no
-        // providers, so unlike the foreground path it cannot tell whether a
-        // second account is signed in -- it shows the label either way,
-        // which is the right way round: better a redundant @name on a
-        // single-account device than no name on a two-account one.
-        subText: target.accountName != null
-            ? '@${target.accountName}'
-            : (isChatMessage && isGroup ? groupName : null),
+        // The account label, when it is switched on at all.
+        //
+        // This isolate has no providers, so unlike the foreground path
+        // it cannot tell whether a second account is signed in -- it
+        // would show the label either way. With
+        // FeatureFlags.notificationAccountLabel off it shows none, and
+        // the group name takes the slot on a group chat as before.
+        subText: _backgroundAccountLabel(target) ??
+            (isChatMessage && isGroup ? groupName : null),
         showWhen: true,
         // Per account as well as per conversation, so two accounts in the
         // same conversation do not collapse into one thread.
@@ -111,7 +130,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         presentAlert: true,
         presentBadge: true,
         presentSound: true,
-        subtitle: target.accountName != null ? '@${target.accountName}' : null,
+        subtitle: _backgroundAccountLabel(target),
       ),
     ),
     // Carries the account, so the tap switches to it. This is the path a
@@ -585,6 +604,8 @@ class FirebaseMessagingService {
   /// Returns null rather than an empty string so it can be handed straight
   /// to a nullable subText/subtitle.
   static String? _accountLabel(NotificationTarget target) {
+    if (!FeatureFlags.notificationAccountLabel) return null;
+
     final name = target.accountName;
     if (name == null || name.isEmpty) return null;
 

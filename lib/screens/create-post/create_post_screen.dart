@@ -792,6 +792,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         width: controller.value.size.width,
         duration: controller.value.duration,
         videoController: controller,
+        // ── THE PICKER'S PATH, NOT THE COMPRESSED ONE ───────────────
+        //
+        // `file` above may have been replaced by a re-encoded copy, so
+        // letting sourcePath default to it loses the only id the picker
+        // and the grid share. A video then failed to reconcile: it
+        // would not come back preselected on reopening, and re-picking
+        // the same clip added it a second time.
+        sourcePath: video.path,
       );
 
       if (mounted) {

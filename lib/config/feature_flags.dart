@@ -191,6 +191,24 @@ class FeatureFlags {
     defaultValue: true,
   );
 
+  /// Show `@username` on a push notification.
+  ///
+  /// OFF. It is the label naming WHICH signed-in account a notification
+  /// is for, shown as the Android subText and the iOS subtitle — not
+  /// the sender's name. On the only device most people have, with one
+  /// account signed in, it answers a question nobody asked and reads
+  /// like the notification is addressed from them.
+  ///
+  /// Hidden rather than deleted: it earns its place the moment multi-
+  /// account is common, and "which account was that for?" becomes a
+  /// real question. Turning it back on is this one line.
+  ///
+  /// Note the background isolate cannot see the account list, so it
+  /// cannot show the label only when two accounts exist — it is all or
+  /// nothing there, which is part of why this is a flag rather than a
+  /// smarter rule.
+  static const bool notificationAccountLabel = false;
+
   /// Community gallery on events: the tab on the event detail screen and the
   /// "Share photos" buttons on the events list.
   ///
