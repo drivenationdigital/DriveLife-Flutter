@@ -19,6 +19,7 @@ import 'package:fluttertagger/fluttertagger.dart';
 import 'package:video_compress/video_compress.dart';
 import 'package:google_places_flutter/google_places_flutter.dart';
 import 'package:drivelife/providers/feature_tips_provider.dart';
+import 'package:drivelife/screens/media_picker/media_picker_screen.dart';
 import 'package:drivelife/widgets/feature_tip_target.dart';
 
 class MediaItem {
@@ -79,6 +80,17 @@ class CreatePostScreen extends StatefulWidget {
   /// it null is exactly the behaviour they had before.
   final String? associationImage;
 
+  /// Open straight onto the photo picker, before the composer.
+  ///
+  /// On by default: the photo is the post, so choosing and checking it
+  /// comes first and the caption is written about what you picked.
+  ///
+  /// Off for any caller that needs the composer immediately — and
+  /// always off on the Spotted tab, which is a different kind of post.
+  /// Turning it off is also the one-line way back to the old behaviour
+  /// if this turns out to be wrong.
+  final bool openPickerOnStart;
+
   const CreatePostScreen({
     this.startAsSpot = false,
     super.key,
@@ -86,6 +98,7 @@ class CreatePostScreen extends StatefulWidget {
     this.associationType,
     this.associationLabel,
     this.associationImage,
+    this.openPickerOnStart = true,
   });
 
   @override
@@ -93,6 +106,17 @@ class CreatePostScreen extends StatefulWidget {
 }
 
 class _CreatePostScreenState extends State<CreatePostScreen> {
+  /// Keeps feature tips off screen while the picker is covering this
+  /// route. See the note where it is set, in initState.
+  bool _tipsHeld = false;
+
+  /// What the picker last handed back.
+  ///
+  /// Held so reopening it restores the same selection, order and crops.
+  /// Without this the picker reopens blank, having kept only the count
+  /// — which reads as having lost the photos.
+  List<PickedMedia> _lastPick = const [];
+
   final TextEditingController _linkUrlController = TextEditingController();
 
   /// What was spotted, when the Spotted tab is showing.
@@ -170,6 +194,45 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         'label': widget.associationLabel,
         'logo': widget.associationImage,
       };
+    }
+
+    // ── PHOTOS FIRST, THEN THE WORDS ─────────────────────────────────
+    //
+    // Opening straight onto the picker, so the shape of making a post
+    // is: choose and check the photos, confirm, then write about them.
+    // Landing on an empty composer and hunting for an add button gets
+    // it backwards — the photo IS the post here.
+    //
+    // After the first frame, because the picker is pushed onto this
+    // route and there is no Navigator to push onto during initState.
+    //
+    // Backing out of the picker with nothing chosen closes this screen
+    // too, which is what "back" means when the picker is the first
+    // thing you saw.
+    if (widget.openPickerOnStart && !widget.startAsSpot) {
+      // Tips are held back until the composer is actually on screen.
+      // The picker covers this route, so a feature tip fired on first
+      // build pops up over the photo grid pointing at a Poll button
+      // nobody can see.
+      _tipsHeld = true;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+
+        await _pickImagesWithPicker();
+
+        if (!mounted) return;
+
+        if (_selectedMedia.isEmpty && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+          return;
+        }
+
+        // Released once the composer is the thing being looked at.
+        // FeatureTipTarget re-reads autoShow on every build, so this
+        // setState is what lets the tip schedule itself.
+        setState(() => _tipsHeld = false);
+      });
     }
 
     // Update this section 👇
@@ -437,95 +500,208 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   ///
   /// Built on _addImages and _addVideo, which the mixed picker below
   /// also uses — the choice is the only thing that differs.
+  /// Opens the picker. One grid, photos and videos together.
+  ///
+  /// ── THE "IMAGES OR VIDEOS?" SHEET IS GONE ────────────────────────
+  ///
+  /// It asked people to commit to a kind of media before they had seen
+  /// any of it, and a post mixing a clip with photos meant going round
+  /// twice. The picker lists both, badges the videos with their
+  /// length, and returns whatever was chosen.
   Future<void> _pickMedia() async {
     if (_selectedMedia.length >= 10) {
       _showMessage('Maximum 10 items allowed');
       return;
     }
 
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Select Media Type',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 24),
-            _MediaTypeCard(
-              icon: Icons.photo_library_rounded,
-              title: 'Images',
-              subtitle: 'Select from gallery',
-              onTap: () => Navigator.pop(sheetContext, 'images'),
-            ),
-            const SizedBox(height: 12),
-            _MediaTypeCard(
-              icon: Icons.videocam_rounded,
-              title: 'Videos',
-              subtitle:
-                  'Select from gallery (max '
-                  '${_maxVideoDuration.inMinutes} mins)',
-              onTap: () => Navigator.pop(sheetContext, 'videos'),
-            ),
-            const SizedBox(height: 12),
-          ],
-        ),
-      ),
-    );
-
-    if (choice == null || !mounted) return;
-
     try {
-      if (choice == 'images') {
-        final remainingSlots = 10 - _selectedMedia.length;
-
-        setState(() => _picking = true);
-
-        // Picked at full fidelity on purpose. image_picker's own
-        // imageQuality and maxWidth re-encode every image on the
-        // platform encoder, which costs a generation even when nothing
-        // needed resizing — MediaCompressor decides what to touch.
-        //
-        // The platform interface throws on a limit below 2, so the last
-        // free slot goes through uncapped and is trimmed on return.
-        final images = await _picker.pickMultiImage(
-          limit: remainingSlots >= 2 ? remainingSlots : null,
-        );
-
-        if (!mounted) return;
-        setState(() => _picking = false);
-
-        await _addImages(images);
-      } else {
-        final video = await _picker.pickVideo(
-          source: ImageSource.gallery,
-          maxDuration: _maxVideoDuration,
-        );
-
-        if (video == null || !mounted) return;
-        await _addVideo(video);
-      }
+      await _pickImagesWithPicker();
     } catch (e) {
       if (mounted) {
         setState(() => _picking = false);
         _showMessage('Could not open the picker: $e', isError: true);
       }
     }
+  }
+
+  /// Opens the app's own picker and takes what comes back.
+  ///
+  /// ── WHY NOT image_picker ANY MORE ────────────────────────────────
+  ///
+  /// The system picker returns a list of files with no confirmation
+  /// step, so a stray tap on a crowded grid was indistinguishable from
+  /// a deliberate choice — which is how posts kept acquiring photos
+  /// their authors had not meant to add. MediaPickerScreen shows every
+  /// selection at size, in order, and lets it be removed before
+  /// anything leaves the screen.
+  ///
+  /// Still picked at full fidelity: an untouched photo comes back as
+  /// its own original file, so MediaCompressor still decides what to
+  /// re-encode and nothing loses a generation on the way in.
+  Future<void> _pickImagesWithPicker() async {
+    // ── WHAT THE PICKER SHOULD ALREADY HAVE SELECTED ─────────────────
+    //
+    // Derived from what the composer is holding RIGHT NOW, not from
+    // the last pick alone. Anything removed from the grid in between
+    // drops out here on its own, so the picker cannot resurrect a
+    // photo somebody just deleted.
+    final held = _selectedMedia.map((m) => m.sourcePath).toList();
+    final byPath = {for (final item in _lastPick) item.file.path: item};
+
+    final initial = <PickedMedia>[
+      for (final path in held)
+        if (byPath[path] != null) byPath[path]!,
+    ];
+
+    // Held but not representable in the picker — nothing produces this
+    // today, but it would still count against the ten.
+    final opaque = held.length - initial.length;
+
+    if (held.length >= 10 && initial.isEmpty) {
+      _showMessage('Maximum 10 items allowed');
+      return;
+    }
+
+    final picked = await MediaPickerScreen.open(
+      context,
+      // ── THE TOTAL, NOT WHAT IS LEFT ──────────────────────────────
+      //
+      // Passing the remainder is what made the picker say "you can
+      // choose up to 9" on a ten-item post: with one already held it
+      // was told its cap was 9, and reported that number as if it
+      // were the limit. It now gets the real limit and the running
+      // count, so it can enforce the first and say the second.
+      maxSelection: 10,
+      alreadySelected: opaque,
+      confirmLabel: 'Next',
+      title: 'New post',
+      // One grid for both, rather than asking people to decide
+      // between photos and videos before they have seen either.
+      allowVideo: true,
+      maxVideoDuration: _maxVideoDuration,
+      initialSelection: initial,
+    );
+
+    if (picked == null || !mounted) return;
+
+    _lastPick = picked;
+
+    // ── REPLACE, NOT APPEND ──────────────────────────────────────────
+    //
+    // The picker was handed the current selection, so what comes back
+    // IS the whole selection — appending it would duplicate every
+    // photo already on the post.
+    //
+    // Reconciled by sourcePath, which survives compression, so an item
+    // that was already prepared keeps its compressed file instead of
+    // being put through it a second time. Only genuinely new items are
+    // prepared.
+    if (initial.isNotEmpty) {
+      await _replaceSelection(picked, byPath);
+      return;
+    }
+
+    // First pick on an empty composer: nothing to reconcile against.
+    await _appendPicked(picked);
+  }
+
+  /// Rebuilds the grid to match what the picker returned.
+  Future<void> _replaceSelection(
+    List<PickedMedia> picked,
+    Map<String, PickedMedia> previouslyShown,
+  ) async {
+    final existing = {for (final m in _selectedMedia) m.sourcePath: m};
+
+    // Anything the picker never knew about stays, and stays first.
+    final kept = _selectedMedia
+        .where((m) => !previouslyShown.containsKey(m.sourcePath))
+        .toList();
+
+    final rebuilt = <MediaItem>[...kept];
+    final fresh = <String>[];
+
+    for (final item in picked) {
+      final reused = existing[item.file.path];
+
+      if (reused != null) {
+        rebuilt.add(reused);
+        continue;
+      }
+
+      if (item.isVideo) {
+        // Videos need measuring and possibly re-encoding, which
+        // _addVideo already does properly. Added after the rebuild so
+        // it lands on the real list.
+        continue;
+      }
+
+      rebuilt.add(
+        MediaItem(
+          file: item.file,
+          isVideo: false,
+          preparing: true,
+          sourcePath: item.file.path,
+          height: 0,
+          width: 0,
+        ),
+      );
+      fresh.add(item.file.path);
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _selectedMedia
+        ..clear()
+        ..addAll(rebuilt);
+    });
+
+    for (final item in picked) {
+      if (!mounted) return;
+      if (!item.isVideo) continue;
+      if (existing.containsKey(item.file.path)) continue;
+
+      await _addVideo(XFile(item.file.path));
+    }
+
+    if (fresh.isNotEmpty) await _prepareImages(fresh);
+  }
+
+  /// First pick: straight in, in the order they were chosen.
+  ///
+  /// ── ORDER IS THE CONTENT ─────────────────────────────────────────
+  ///
+  /// An earlier version took all the images and then all the videos,
+  /// which quietly rewrote the running order and sent every clip to
+  /// the end. It is what the carousel plays, so it has to survive.
+  ///
+  /// Consecutive images still go in one batch, because _addImages
+  /// prepares a run together; a video just closes the current run.
+  Future<void> _appendPicked(List<PickedMedia> picked) async {
+    final run = <XFile>[];
+
+    Future<void> flush() async {
+      if (run.isEmpty) return;
+      final batch = List<XFile>.from(run);
+      run.clear();
+      await _addImages(batch);
+    }
+
+    for (final item in picked) {
+      if (!mounted) return;
+
+      if (item.isVideo) {
+        await flush();
+        // One at a time: _addVideo measures, may re-encode and spins
+        // up a controller to do it, and three at once is how a
+        // mid-range phone runs out of memory.
+        await _addVideo(XFile(item.file.path));
+      } else {
+        run.add(XFile(item.file.path));
+      }
+    }
+
+    await flush();
   }
 
   /// Put picked images in the grid and start preparing them.
@@ -1428,6 +1604,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 // button's own width.
                 child: FeatureTipTarget(
                   tip: FeatureTips.poll,
+                  // Held while the picker is up: a tip pointing at a
+                  // button hidden behind the photo grid is just a
+                  // popup with no referent.
+                  autoShow: !_tipsHeld,
                   child: _ToolButton(
                     icon: Icons.poll_outlined,
                     label: 'Poll',
@@ -1543,6 +1723,35 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
 
+    // ── BACK GOES TO THE PHOTOS, NOT OUT ─────────────────────────────
+    //
+    // The picker is step one and this is step two, so "back" means
+    // "let me change the photos" — add, remove, re-order, re-crop. The
+    // selection is handed straight back to it, so nothing is lost
+    // going either way.
+    //
+    // Leaving the post entirely is Cancel, top left, which is already
+    // there and unchanged. That split is deliberate: a swipe is easy
+    // to do by accident and must not throw away a written caption,
+    // whereas Cancel is deliberate.
+    //
+    // Only when the picker opened this screen in the first place. A
+    // caller that jumped straight to the composer has no picker behind
+    // it, and back must still mean back.
+    final reopenPickerOnBack =
+        widget.openPickerOnStart && !widget.startAsSpot;
+
+    return PopScope(
+      canPop: !reopenPickerOnBack,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop || !reopenPickerOnBack || !mounted) return;
+        await _pickImagesWithPicker();
+      },
+      child: _scaffold(theme),
+    );
+  }
+
+  Widget _scaffold(ThemeProvider theme) {
     return Scaffold(
       backgroundColor: theme.backgroundColor,
       appBar: PreferredSize(
@@ -3393,67 +3602,3 @@ class _PollSheetState extends State<_PollSheet> {
   }
 }
 
-class _MediaTypeCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _MediaTypeCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                // withValues, not the deprecated withOpacity this was
-                // written with — same colour, current API.
-                color: const Color(0xFFAE9159).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: const Color(0xFFAE9159)),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded),
-          ],
-        ),
-      ),
-    );
-  }
-}

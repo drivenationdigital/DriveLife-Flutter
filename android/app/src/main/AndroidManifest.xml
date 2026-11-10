@@ -17,9 +17,34 @@
     <!-- Photo Manager Permissions -->
     <uses-permission
         android:name="android.permission.CAMERA"/>
-    <!-- <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/> -->
-    <!-- <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/> -->
+    <!--
+      READING THE GALLERY OURSELVES NEEDS THESE.
+
+      They were commented out because image_picker does not need them:
+      it hands off to the system picker, which returns per-file URI
+      grants and so works with no permission at all.
+
+      The in-app picker (lib/screens/media_picker/) is different. It
+      lists the photo library itself through photo_manager to show a
+      grid, which is a read of the whole library and requires asking.
+
+      Android 13+ (API 33) split the old storage permission per media
+      type; READ_EXTERNAL_STORAGE is capped at 32 so it is not
+      requested on versions that would ignore it anyway.
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+
+    <!--
+      Android 14+ "Select photos": partial access, where somebody
+      grants a few photos rather than the library. Without this the
+      system shows only all-or-nothing, and anyone choosing "Select
+      photos" lands on an empty grid.
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
+
+    <!-- Still not wanted: we never write to the shared store. -->
     <!-- <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/> -->
     <!-- Saving a downloaded gallery photo to the camera roll. Only Android 9
          and below need asking: from API 29 the MediaStore write is scoped and
