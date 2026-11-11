@@ -1,8 +1,66 @@
 import 'package:drivelife/config/feature_flags.dart';
+import 'package:drivelife/providers/registration_provider.dart';
+import 'package:drivelife/routes.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/social_identity.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:provider/provider.dart';
+
+/// How the pair is drawn.
+enum SocialButtonsLayout {
+  /// Full width, one above the other, on a light background. The login
+  /// screen, where there is room and the buttons are the fallback.
+  stacked,
+
+  /// Side by side and short-labelled, on the dark welcome artwork.
+  ///
+  /// Compact because it sits under SIGN UP and LOG IN, which are the
+  /// primary actions there: three stacked full-width buttons would read
+  /// as four equal choices.
+  compact,
+}
+
+/// Where a social sign-in goes next.
+///
+/// ── WHY THIS IS NOT WRITTEN TWICE ────────────────────────────────────
+///
+/// Both the welcome screen and the login screen offer these buttons, and
+/// "which screen did you tap it on" must not change what happens. The
+/// decision is the same one in both places, so it lives in one.
+///
+/// ── A NEW ACCOUNT HAS ANSWERED NOTHING ───────────────────────────────
+///
+/// Apple and Google give us an email and maybe a name. They do not give
+/// us what somebody is into, what they drive or which marques they
+/// follow -- and the feed, the recommendations and the notifications are
+/// all built on those answers.
+///
+/// So a first sign-in goes into the signup questions, from step three:
+/// steps one and two collect the account itself, which the provider has
+/// just done for us. An existing account goes straight home, exactly as
+/// a password login does.
+void continueAfterSocialSignIn(BuildContext context, LoginResult result) {
+  if (result.created && result.userId != null) {
+    context.read<RegistrationProvider>()
+      // The steps write against this id and have nowhere else to get it.
+      ..setUserId(result.userId)
+      // No password exists for this account, so the last step must not
+      // try to log in with one. See step_five.dart.
+      ..setSocial(true)
+      ..setStep(3);
+
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      AppRoutes.registerStepThree,
+      (route) => false,
+    );
+    return;
+  }
+
+  // AccountManager has already stored the account by the time this runs.
+  Navigator.pushNamedAndRemoveUntil(context, AppRoutes.home, (route) => false);
+}
 
 /// "Continue with Apple" and "Continue with Google".
 ///
@@ -31,7 +89,22 @@ class SocialSignInButtons extends StatefulWidget {
   /// signup questions and belongs in those, not on the home feed.
   final ValueChanged<LoginResult> onSignedIn;
 
-  const SocialSignInButtons({super.key, required this.onSignedIn});
+  /// How to draw the pair. See [SocialButtonsLayout].
+  final SocialButtonsLayout layout;
+
+  /// The word in the divider above them.
+  ///
+  /// 'or' reads right under a password form, where the buttons are
+  /// another way to do the thing you were already doing. On the welcome
+  /// screen there is no form above them, so they need naming.
+  final String dividerLabel;
+
+  const SocialSignInButtons({
+    super.key,
+    required this.onSignedIn,
+    this.layout = SocialButtonsLayout.stacked,
+    this.dividerLabel = 'or',
+  });
 
   @override
   State<SocialSignInButtons> createState() => _SocialSignInButtonsState();
@@ -124,48 +197,111 @@ class _SocialSignInButtonsState extends State<SocialSignInButtons> {
   Widget build(BuildContext context) {
     if (!FeatureFlags.socialSignIn) return const SizedBox.shrink();
 
+    final onDark = widget.layout == SocialButtonsLayout.compact;
+
     return Column(
       children: [
         Row(
           children: [
-            const Expanded(child: Divider(color: Color(0xFFE0E0E0))),
+            Expanded(
+              child: Divider(
+                color: onDark ? Colors.white24 : const Color(0xFFE0E0E0),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Text(
-                'or',
-                style: TextStyle(fontSize: 13.5, color: Colors.grey.shade600),
+                widget.dividerLabel,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: onDark ? Colors.white70 : Colors.grey.shade600,
+                ),
               ),
             ),
-            const Expanded(child: Divider(color: Color(0xFFE0E0E0))),
+            Expanded(
+              child: Divider(
+                color: onDark ? Colors.white24 : const Color(0xFFE0E0E0),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 18),
 
-        if (_showApple) ...[
-          _button(
-            label: 'Continue with Apple',
-            // Apple's guidelines: their mark, their wording, black on
-            // white or white on black. A custom icon fails review.
-            icon: const Icon(Icons.apple, size: 22, color: Colors.white),
-            background: Colors.black,
-            foreground: Colors.white,
-            busy: _busy == 'apple',
-            onTap: () => _run('apple', () => _signIn('apple')),
-          ),
-          const SizedBox(height: 10),
-        ],
+        if (onDark) _compactRow() else ..._stacked(),
+      ],
+    );
+  }
 
-        _button(
-          label: 'Continue with Google',
-          icon: _googleMark(),
-          background: Colors.white,
-          foreground: const Color(0xFF1F1F1F),
-          border: const Color(0xFFDADCE0),
-          busy: _busy == 'google',
-          onTap: () => _run('google', () => _signIn('google')),
+  /// Side by side, on the dark artwork.
+  ///
+  /// Expanded rather than a fixed width, so Android — where the Apple
+  /// button is hidden — gets one full-width Google button instead of a
+  /// half-width one marooned on the left.
+  Widget _compactRow() {
+    // Google's dark-theme button: their four-colour mark on near-black
+    // with white text. Recolouring the mark to suit a background is
+    // exactly what their guidelines forbid, so the background moves
+    // instead.
+    const background = Color(0xFF1F1F1F);
+    const border = Color(0xFF3C3C3C);
+
+    return Row(
+      children: [
+        if (_showApple) ...[
+          Expanded(
+            child: _button(
+              label: 'Apple',
+              icon: const Icon(Icons.apple, size: 20, color: Colors.white),
+              background: background,
+              foreground: Colors.white,
+              border: border,
+              busy: _busy == 'apple',
+              onTap: () => _run('apple', () => _signIn('apple')),
+            ),
+          ),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          child: _button(
+            label: 'Google',
+            icon: _googleMark(),
+            background: background,
+            foreground: Colors.white,
+            border: border,
+            busy: _busy == 'google',
+            onTap: () => _run('google', () => _signIn('google')),
+          ),
         ),
       ],
     );
+  }
+
+  List<Widget> _stacked() {
+    return [
+      if (_showApple) ...[
+        _button(
+          label: 'Continue with Apple',
+          // Apple's guidelines: their mark, their wording, black on
+          // white or white on black. A custom icon fails review.
+          icon: const Icon(Icons.apple, size: 22, color: Colors.white),
+          background: Colors.black,
+          foreground: Colors.white,
+          busy: _busy == 'apple',
+          onTap: () => _run('apple', () => _signIn('apple')),
+        ),
+        const SizedBox(height: 10),
+      ],
+
+      _button(
+        label: 'Continue with Google',
+        icon: _googleMark(),
+        background: Colors.white,
+        foreground: const Color(0xFF1F1F1F),
+        border: const Color(0xFFDADCE0),
+        busy: _busy == 'google',
+        onTap: () => _run('google', () => _signIn('google')),
+      ),
+    ];
   }
 
   /// Google's own four-colour mark.
@@ -209,16 +345,17 @@ class _SocialSignInButtonsState extends State<SocialSignInButtons> {
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: border != null
-                ? BorderSide(color: border)
-                : BorderSide.none,
+            side: border != null ? BorderSide(color: border) : BorderSide.none,
           ),
         ),
         child: busy
             ? SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: foreground),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: foreground,
+                ),
               )
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,

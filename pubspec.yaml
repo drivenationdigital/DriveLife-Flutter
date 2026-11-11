@@ -178,6 +178,7 @@ flutter:
     - assets/spot1.jpg
     - assets/profile-placeholder.jpg
     - assets/logo-large.png
+    - assets/landing-logo.png
     - assets/logo-flag-black.svg
     - assets/intro-logo.svg
     # Google's own sign-in mark. Required unaltered on the
