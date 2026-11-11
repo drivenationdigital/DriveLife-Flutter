@@ -209,6 +209,64 @@ class FeatureFlags {
   /// smarter rule.
   static const bool notificationAccountLabel = false;
 
+  /// WRITE chat messages encrypted.
+  ///
+  /// ── ON, AND GATED PER CONVERSATION ───────────────────────────────
+  ///
+  /// Reading encrypted messages is NOT behind this flag and is always
+  /// on: a client has to be able to open an envelope before any client
+  /// is allowed to create one. This flag only controls whether THIS
+  /// app seals what it sends.
+  ///
+  /// Messaging is two-sided — a sealed message sent to somebody on
+  /// 4.7.9 renders as base64 on their screen, because their app reads
+  /// `content` straight out of Supabase and knows nothing about
+  /// envelopes. There is no client-side fix for a client that has
+  /// already shipped.
+  ///
+  /// ── THIS FLAG IS NOT THE SAFETY MECHANISM ────────────────────────
+  ///
+  /// ChatReadiness is. Turning this on does not seal anything on its
+  /// own: every send still asks whether EVERY participant has recorded
+  /// that they can open an envelope, and sends plaintext unless they
+  /// all have. So this is "start converting threads as people update",
+  /// not "encrypt everything now".
+  ///
+  /// That is why it no longer needs a minimum-version gate, and why a
+  /// user who never updates keeps working chat instead of a thread full
+  /// of base64.
+  ///
+  /// The order:
+  ///
+  ///   1. Ship a version that READS envelopes. Writes stay plaintext.
+  ///      Nothing changes for anybody. ← done
+  ///   2. Create the readiness table, ship a version that announces
+  ///      itself and checks before sealing.
+  ///   3. Turn this on. Threads convert themselves, oldest adopters
+  ///      first. Nobody is forced to update.
+  ///   4. Backfill the historical messages last, and only behind a
+  ///      version floor — re-encrypting history is the step that DOES
+  ///      take it away from anyone on an older build.
+  ///
+  /// Step 3 is what this is. It is not reversible for messages already
+  /// sent — a sealed message stays sealed — so what makes it safe to
+  /// turn on this early is not caution about timing, it is that
+  /// ChatReadiness refuses to seal to anybody who has not announced
+  /// themselves. Early adopters simply find each other.
+  ///
+  /// ── WHAT TO WATCH AFTER SHIPPING ─────────────────────────────────
+  ///
+  /// Nothing seals until two people on this build message each other,
+  /// so the first days look exactly like today. The query at the foot
+  /// of supabase/sql/chat-crypto-readiness.sql says how far it has got.
+  ///
+  /// If something is wrong, setting this back to false stops any NEW
+  /// message being sealed — but it does not unseal what already was,
+  /// and an app already on a shelf keeps the old value. That is the
+  /// whole reason the readiness check exists rather than a flag day.
+  static const bool encryptChatMessages = true;
+
+
   /// Community gallery on events: the tab on the event detail screen and the
   /// "Share photos" buttons on the events list.
   ///

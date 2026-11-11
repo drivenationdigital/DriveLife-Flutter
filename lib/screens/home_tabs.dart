@@ -20,6 +20,7 @@ import 'package:drivelife/providers/pending_tags_provider.dart';
 import 'package:drivelife/api/announcement_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/widgets/announcement_dialog.dart';
+import 'package:drivelife/services/chat_readiness.dart';
 import 'package:drivelife/services/supabase_session.dart';
 import 'package:drivelife/services/unread_messages_watcher.dart';
 import 'package:drivelife/providers/user_provider.dart';
@@ -689,8 +690,27 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     // blocks on the new one's threads.
     ModerationAPI.forgetBlocked();
 
+    // Readiness is cached per conversation and the announcement is made
+    // once per user, so both have to be dropped when the user changes.
+    ChatReadiness.forget();
+
     SupabaseSession.ensure(accounts).then((ready) {
-      if (!mounted || _unreadFor != id || !ready) return;
+      if (!ready) return;
+
+      // Tells everybody else that this user's app can open an envelope,
+      // which is what lets their clients start sealing to this one.
+      //
+      // Here rather than on the chat screen because it is a property of
+      // the BUILD, not of having opened chat — somebody who never looks
+      // at their inbox can still read a sealed message perfectly well,
+      // and leaving them unannounced would keep their threads in
+      // plaintext for no reason.
+      //
+      // Deliberately not awaited: nothing on this screen depends on it,
+      // and a failure only means other people keep sending plaintext.
+      ChatReadiness.announce('$id');
+
+      if (!mounted || _unreadFor != id) return;
 
       final watcher = UnreadMessagesWatcher(
         myUserId: '$id',

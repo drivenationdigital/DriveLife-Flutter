@@ -16,6 +16,9 @@ import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:drivelife/utils/analytics_route_observer.dart';
 import 'package:drivelife/utils/deeplinks_helper.dart';
+import 'dart:async' show unawaited;
+
+import 'package:drivelife/api/chat_key_api.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -270,6 +273,16 @@ void main() async {
   } catch (e) {
     print('Error initializing Supabase: $e');
   }
+
+  // The key that opens encrypted message bodies.
+  //
+  // NOT awaited, and not allowed to hold up the launch: it reads a
+  // cached key first and only then talks to the network. A thread
+  // opened in the moment before it lands shows its encrypted messages
+  // as unreadable and resolves on the next read -- whereas blocking
+  // startup on a network call would delay the whole app for everybody,
+  // including the great majority whose messages are still plaintext.
+  unawaited(ChatKeyAPI.load());
 
   runApp(
     MultiProvider(

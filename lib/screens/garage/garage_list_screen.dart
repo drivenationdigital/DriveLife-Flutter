@@ -162,6 +162,17 @@ class _GarageListScreenState extends State<GarageListScreen>
       sorted[_shelfFor(vehicle)]!.add(vehicle);
     }
 
+    // ── PAST READS NEWEST FIRST ──────────────────────────────────────
+    //
+    // Only this shelf. Current and Dream are left in the order the API
+    // sent them, which is the order they were added.
+    //
+    // Sorted here rather than in SQL because the three shelves want
+    // different orders and the query returns all of them together --
+    // one ORDER BY cannot serve all three. The endpoint has none at
+    // all today, so this was whatever MySQL felt like returning.
+    sortPastVehiclesNewestFirst(sorted[_Shelf.past]!);
+
     setState(() {
       _shelves
         ..[_Shelf.current] = sorted[_Shelf.current]!
@@ -559,6 +570,94 @@ class _GarageListScreenState extends State<GarageListScreen>
 
     if (result != null) _loadGarage(true);
   }
+}
+
+/// Most recently parted with first, undated vehicles last.
+///
+/// Keyed on when ownership ENDED, not when it began: this is the Past
+/// shelf, so the question it answers is "what did I have most
+/// recently", and that is the car sold last. The two usually agree,
+/// and where they do not — a car bought later but sold first — the
+/// end date is the one that matches how the shelf reads.
+///
+/// Every vehicle on this shelf has an end date by definition, since
+/// that is what puts it here. The fall back to the start date is for
+/// one whose end date is present but unparseable, so a half-filled
+/// record still lands somewhere sensible rather than at the bottom.
+void sortPastVehiclesNewestFirst(List<dynamic> vehicles) {
+  if (vehicles.length < 2) return;
+
+  DateTime? keyFor(dynamic vehicle) =>
+      garageOwnershipDate(vehicle['owned_until']) ??
+      garageOwnershipDate(vehicle['owned_since']);
+
+  vehicles.sort((a, b) {
+    final left = keyFor(a);
+    final right = keyFor(b);
+
+    // Undated to the bottom, and stable among themselves rather than
+    // shuffling on every refresh.
+    if (left == null && right == null) return 0;
+    if (left == null) return 1;
+    if (right == null) return -1;
+
+    return right.compareTo(left);
+  });
+}
+
+/// Parses the date formats the garage table actually holds.
+///
+/// Rows written by the app are ISO-8601, but older ones are
+/// dd/MM/yyyy, and 'present' is a sentinel rather than a date. Any of
+/// those failing to parse means "no date", never a crash — a garage
+/// that will not load is far worse than one ordered oddly.
+DateTime? garageOwnershipDate(dynamic value) {
+  if (value == null) return null;
+
+  final text = value.toString().trim();
+
+  if (text.isEmpty || text.toLowerCase() == 'present') return null;
+
+  try {
+    if (text.contains('T') || text.contains('-')) {
+      return DateTime.parse(text);
+    }
+
+    if (text.contains('/')) {
+      final parts = text.split('/');
+
+      if (parts.length == 3) {
+        // dd/MM/yyyy, matching _parseDate in AddVehicleScreen. Day
+        // first, because that is what the rest of the app writes.
+        final day = int.parse(parts[0]);
+        final month = int.parse(parts[1]);
+        final year = int.parse(parts[2]);
+
+        // ── RANGE CHECKED, BECAUSE DateTime ROLLS OVER ─────────────
+        //
+        // DateTime(9999, 99, 99) does not throw: it quietly returns a
+        // date in the year 10007, which would sort that vehicle above
+        // every real one forever. The same rollover turns 31/02 into
+        // 3 March, so the result is compared back against what went in
+        // rather than merely bounds checked.
+        if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+        final parsed = DateTime(year, month, day);
+
+        if (parsed.year != year ||
+            parsed.month != month ||
+            parsed.day != day) {
+          return null;
+        }
+
+        return parsed;
+      }
+    }
+  } catch (_) {
+    // Falls through to null.
+  }
+
+  return null;
 }
 
 /// An icon and a label, side by side, for a tab.

@@ -3,8 +3,13 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 
+import 'package:drivelife/api/chat_key_api.dart';
 import 'package:drivelife/api/cloudflare_images.dart';
 import 'package:drivelife/api/moderation_api.dart';
+import 'package:drivelife/config/feature_flags.dart';
+import 'package:drivelife/services/chat_readiness.dart';
+import 'package:drivelife/services/message_crypto.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/widgets/image_viewer_screen.dart';
 import 'package:drivelife/widgets/moderation/report_sheet.dart';
@@ -321,7 +326,20 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+
+    // The key is fetched without blocking this screen, so it can land
+    // after the thread has been drawn. decrypt() is synchronous and
+    // nothing else would rebuild the list — a realtime event only fires
+    // if somebody happens to send something — so without this a thread
+    // opened during the very first key fetch would sit there showing
+    // base64 until it was closed and reopened.
+    MessageCrypto.revision.addListener(_onKeyChanged);
+
     _init();
+  }
+
+  void _onKeyChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _init() async {
@@ -339,6 +357,22 @@ class _ChatScreenState extends State<ChatScreen> {
         Provider.of<AccountManager>(context, listen: false),
       );
     }
+
+    // Same shape of bug as the token above: the message key was fetched
+    // once, at app start, and only if somebody was already signed in.
+    // Sign in during a session and there was no key until the next cold
+    // start — so a sealed message would have been unreadable on screen
+    // for the rest of that run.
+    //
+    // NOT awaited. This was, on the grounds that decrypt is
+    // synchronous and a key arriving late leaves unreadable bubbles —
+    // but awaiting it put a network request in front of the thread on
+    // the first run after an install, so the messages did not appear
+    // until the screen was closed and opened again.
+    //
+    // MessageCrypto.revision covers the late arrival instead: the
+    // listener in initState rebuilds once the key lands.
+    unawaited(ChatKeyAPI.load());
 
     if (!mounted) return;
 
@@ -370,6 +404,33 @@ class _ChatScreenState extends State<ChatScreen> {
         otherUserId: widget.otherUserId!,
       );
       convId = conv.id;
+    }
+
+    // ── FOR TESTING ENCRYPTION ──────────────────────────────────────
+    //
+    // Says whether this thread will be sealed, which is otherwise
+    // invisible: a sealed message looks completely normal to the person
+    // who sent it, so without this the only way to tell is to go and
+    // look at the row in Supabase.
+    if (convId.isNotEmpty && FeatureFlags.encryptChatMessages) {
+      // Started here so the first send does not wait on the two queries
+      // behind it, and NEVER awaited — nothing on screen depends on the
+      // answer, and awaiting it was what stopped a thread loading until
+      // it had been closed and reopened. The send path shares the same
+      // in-flight future if it gets there first.
+      final pending = ChatReadiness.everyoneCanRead(convId);
+
+      if (kDebugMode) {
+        unawaited(
+          pending.then((bool sealing) {
+            debugPrint(
+              '[ChatCrypto] conversation $convId — new messages will be '
+              '${sealing ? 'SEALED' : 'plaintext'}'
+              '${MessageCrypto.ready ? '' : ' (no key loaded)'}',
+            );
+          }),
+        );
+      }
     }
 
     // Resolve profiles
@@ -728,6 +789,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    MessageCrypto.revision.removeListener(_onKeyChanged);
     _notifier?.dispose();
     _inputController.dispose();
     _scrollController.dispose();

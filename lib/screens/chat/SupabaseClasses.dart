@@ -1,8 +1,11 @@
 import 'dart:convert';
+import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/screens/chat/ChatList.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
 import 'package:drivelife/screens/chat/message_actions.dart';
 import 'package:drivelife/screens/chat/models.dart';
+import 'package:drivelife/services/chat_readiness.dart';
+import 'package:drivelife/services/message_crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -270,7 +273,18 @@ class ChatMessage {
       id: map['id'] as String,
       conversationId: map['conversation_id'] as String,
       senderId: map['sender_id'] as String,
-      content: map['content'] as String,
+      // ── THE ONE PLACE EVERY MESSAGE IS READ ────────────────────
+      //
+      // getMessages, getMessagesSince and the realtime stream all
+      // build through here, so decrypting here covers the lot.
+      //
+      // Anything that is not an envelope comes back untouched, which
+      // is what keeps every message written before encryption — and
+      // every message from a client that does not encrypt — readable.
+      content: MessageCrypto.decryptText(
+        map['content'] as String?,
+        conversationId: map['conversation_id'] as String,
+      ),
       createdAt: DateTime.parse(map['created_at'] as String),
       isRead: map['read_at'] != null,
       // Tolerated as missing: the column is newer than some of the rows
@@ -588,12 +602,41 @@ class ChatRepository {
     required String content,
     String? imageUrl,
   }) async {
+    // ── WHAT ACTUALLY GOES INTO THE COLUMN ─────────────────────────
+    //
+    // Sealed only when the flag is on AND a key is loaded. Either
+    // missing means plaintext, which is what every client has always
+    // written — a message that cannot be encrypted must still send.
+    //
+    // Sealed only when the flag is on, EVERY participant has recorded
+    // that they can open an envelope, and a key is loaded. Any of those
+    // missing means plaintext — which is what every client has always
+    // written, so a message that cannot be encrypted still sends.
+    //
+    // The readiness check is what makes this safe to turn on while
+    // older versions are still live: a sealed message is unreadable to
+    // anybody who has not updated, and there is no fixing that from
+    // here afterwards. See ChatReadiness.
+    //
+    // There is deliberately no way to skip that check. A build with the
+    // flag on can only seal to people whose apps have said they can
+    // open an envelope, which is what keeps a test build — or a flag
+    // flipped too early — from reaching anybody on an older version.
+    final sealing =
+        FeatureFlags.encryptChatMessages &&
+        await ChatReadiness.everyoneCanRead(conversationId);
+
+    final stored = sealing
+        ? (MessageCrypto.encrypt(content, conversationId: conversationId) ??
+              content)
+        : content;
+
     final row = await _db
         .from('messages')
         .insert({
           'conversation_id': conversationId,
           'sender_id': senderId,
-          'content': content,
+          'content': stored,
           if (imageUrl != null && imageUrl.isNotEmpty) 'image_url': imageUrl,
         })
         .select()
@@ -750,7 +793,7 @@ class ChatNotifier extends ChangeNotifier {
   void clearError() {
     if (_error == null) return;
     _error = null;
-    notifyListeners();
+    _notify();
   }
 
   Future<void> initialize() async {
@@ -761,11 +804,11 @@ class ChatNotifier extends ChangeNotifier {
         // ── Cached path: show instantly, fetch new in background ──
         _messages = cached;
         _loading = false;
-        notifyListeners();
+        _notify();
 
         // Silently fetch anything newer than last cached message
         _refreshing = true;
-        notifyListeners();
+        _notify();
 
         await Future.delayed(
           const Duration(milliseconds: 300),
@@ -783,17 +826,17 @@ class ChatNotifier extends ChangeNotifier {
         }
 
         _refreshing = false;
-        notifyListeners();
+        _notify();
       } else {
         // ── Cold load: fetch everything ──
         _loading = true;
-        notifyListeners();
+        _notify();
 
         final msgs = await _repo.getMessagesSince(conversationId);
         MessageCache.instance.set(conversationId, msgs);
         _messages = msgs;
         _loading = false;
-        notifyListeners();
+        _notify();
       }
 
       await _repo.markAsRead(conversationId, myUserId);
@@ -804,7 +847,7 @@ class ChatNotifier extends ChangeNotifier {
       // Reactions are a separate table, so they need their own
       // subscription — the messages channel will never fire for one.
       _reactions = await _repo.getReactions(conversationId);
-      notifyListeners();
+      _notify();
 
       _reactionSub = _repo
           .reactionStream(conversationId)
@@ -812,7 +855,7 @@ class ChatNotifier extends ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       _loading = false;
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -861,7 +904,7 @@ class ChatNotifier extends ChangeNotifier {
         ),
       ];
     }
-    notifyListeners();
+    _notify();
 
     try {
       await _repo.toggleReaction(
@@ -873,7 +916,7 @@ class ChatNotifier extends ChangeNotifier {
     } catch (e) {
       debugPrint('[Thread] reaction failed: $e');
       _reactions = before;
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -893,19 +936,19 @@ class ChatNotifier extends ChangeNotifier {
           (m) => m.id == message.id ? m.copyWith(deletedAt: DateTime.now()) : m,
         )
         .toList();
-    notifyListeners();
+    _notify();
 
     try {
       final done = await _repo.deleteMessage(message.id);
       if (!done) {
         _messages = before;
-        notifyListeners();
+        _notify();
       }
       return done;
     } catch (e) {
       debugPrint('[Thread] delete failed: $e');
       _messages = before;
-      notifyListeners();
+      _notify();
       return false;
     }
   }
@@ -913,7 +956,7 @@ class ChatNotifier extends ChangeNotifier {
   /// Replace the reaction set wholesale, the way the message stream does.
   void applyReactions(List<MessageReaction> reactions) {
     _reactions = reactions;
-    notifyListeners();
+    _notify();
   }
 
   /// Take a fresh server list, keeping anything of ours that is still
@@ -926,7 +969,7 @@ class ChatNotifier extends ChangeNotifier {
   void applyServerMessages(List<ChatMessage> messages) {
     MessageCache.instance.set(conversationId, messages);
     _messages = messages;
-    notifyListeners();
+    _notify();
   }
 
   /// Show the message immediately, then try to send it.
@@ -964,7 +1007,7 @@ class ChatNotifier extends ChangeNotifier {
 
     _outbox.add(local);
     _sending = true;
-    notifyListeners();
+    _notify();
 
     await _deliver(local);
   }
@@ -989,13 +1032,13 @@ class ChatNotifier extends ChangeNotifier {
 
     if (already) {
       _outbox.removeAt(i);
-      notifyListeners();
+      _notify();
       return;
     }
 
     _outbox[i] = _outbox[i].copyWith(status: MessageStatus.pending);
     _sending = true;
-    notifyListeners();
+    _notify();
 
     await _deliver(_outbox[i]);
   }
@@ -1031,12 +1074,30 @@ class ChatNotifier extends ChangeNotifier {
       }
     } finally {
       _sending = _outbox.any((m) => m.status == MessageStatus.pending);
-      notifyListeners();
+      _notify();
     }
   }
 
+  /// Whether [dispose] has run.
+  ///
+  /// Same hazard as InboxNotifier: almost everything here notifies
+  /// after an await, and notifyListeners() throws once the notifier is
+  /// disposed. Leave a thread while a load, a send or a reaction fetch
+  /// is in flight and the await resumes against a dead object.
+  ///
+  /// dispose() cancels both subscriptions, but a call already past its
+  /// first await cannot be cancelled -- its tail just has to do nothing.
+  bool _disposed = false;
+
+  /// notifyListeners(), unless this has been disposed.
+  void _notify() {
+    if (_disposed) return;
+
+    notifyListeners();
+  }
   @override
   void dispose() {
+    _disposed = true;
     _sub?.cancel();
     _reactionSub?.cancel();
     super.dispose();
@@ -1104,7 +1165,14 @@ class InboxRepository {
                 id: '',
                 conversationId: conv.id,
                 senderId: row['last_message_sender'] as String,
-                content: row['last_message_content'] as String,
+                // The inbox preview reads the raw column too, through
+                // get_inbox, so it needs opening just like a thread.
+                // Without this every conversation's one-line preview
+                // would read as base64.
+                content: MessageCrypto.decryptText(
+                  row['last_message_content'] as String?,
+                  conversationId: conv.id,
+                ),
                 createdAt: DateTime.parse(row['last_message_at']),
                 isRead: true,
                 // Real when the function returns it. The sentinel is
@@ -1248,10 +1316,29 @@ class InboxNotifier extends ChangeNotifier {
   String? get error => _error;
   Timer? _debounceTimer;
 
+  /// Whether [dispose] has run.
+  ///
+  /// ── WHY THIS IS NEEDED ───────────────────────────────────────────
+  ///
+  /// notifyListeners() throws once a ChangeNotifier is disposed, and
+  /// _loadInbox is async: leave the inbox while getInbox() is in flight
+  /// and the await resumes against a dead notifier, which surfaces as
+  /// "A InboxNotifier was used after being disposed."
+  ///
+  /// dispose() cancels the subscription and the debounce timer, but a
+  /// call that is already past its first await cannot be cancelled —
+  /// the only thing to do is make its tail a no-op.
+  bool _disposed = false;
+
   InboxNotifier({required this.myUserId, this.unreadCountProvider});
 
   Future<void> initialize() async {
     await _loadInbox();
+
+    // Disposed while the first load was in flight: dispose() has
+    // already run and cancelled a _sub that did not exist yet, so
+    // subscribing now would leak a realtime channel nothing closes.
+    if (_disposed) return;
 
     _sub = _repo.conversationUpdates(myUserId).listen((_) {
       // Debounce — ignore events fired within 1 second of each other
@@ -1265,7 +1352,12 @@ class InboxNotifier extends ChangeNotifier {
 
   Future<void> _loadInbox() async {
     try {
-      _previews = await _repo.getInbox(myUserId);
+      final previews = await _repo.getInbox(myUserId);
+
+      if (_disposed) return;
+
+      _previews = previews;
+
       // whereType drops the nulls, which is every group. Before
       // otherUserId was nullable they arrived as '' and were asked for by
       // name, one failed lookup per group in the list.
@@ -1277,6 +1369,8 @@ class InboxNotifier extends ChangeNotifier {
 
       if (ids.isNotEmpty) {
         await UserProfileCache.instance.refresh(ids);
+
+        if (_disposed) return;
       }
 
       // Push total unread count up to provider
@@ -1286,9 +1380,19 @@ class InboxNotifier extends ChangeNotifier {
       _loading = false;
       _error = null;
     } catch (e) {
+      if (_disposed) return;
+
       _error = e.toString();
       _loading = false;
     }
+
+    _notify();
+  }
+
+  /// notifyListeners(), unless this has been disposed.
+  void _notify() {
+    if (_disposed) return;
+
     notifyListeners();
   }
 
@@ -1298,11 +1402,12 @@ class InboxNotifier extends ChangeNotifier {
     _previews = _previews
         .where((p) => p.conversation.id != conversationId)
         .toList();
-    notifyListeners();
+    _notify();
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _debounceTimer?.cancel();
     _sub?.cancel();
     super.dispose();

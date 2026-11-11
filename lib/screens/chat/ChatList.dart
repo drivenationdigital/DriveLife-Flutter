@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:drivelife/api/chat_key_api.dart';
+import 'package:drivelife/services/message_crypto.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
@@ -121,7 +123,19 @@ class InboxScreenState extends State<InboxScreen>
   @override
   void initState() {
     super.initState();
+
+    // The key is fetched without blocking this screen, so it can land
+    // after the previews are drawn. decrypt() is synchronous and
+    // nothing else is guaranteed to rebuild them, so without this an
+    // inbox opened during the very first key fetch would show base64
+    // one-liners until something else happened to refresh it.
+    MessageCrypto.revision.addListener(_onKeyChanged);
+
     _connect();
+  }
+
+  void _onKeyChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _connect() async {
@@ -172,6 +186,13 @@ class InboxScreenState extends State<InboxScreen>
     // this the notifier is built against a dead State and never released.
     if (!mounted) return;
 
+    // NOT awaited, for the same reason as ChatScreen: on the first run
+    // after an install there is no cached key, so awaiting this put an
+    // HTTP request in front of the inbox loading at all. The previews
+    // are decrypted too, and MessageCrypto.revision rebuilds them if
+    // the key lands after they are drawn.
+    unawaited(ChatKeyAPI.load());
+
     final notifier =
         InboxNotifier(
           myUserId: widget.myUserId,
@@ -201,6 +222,7 @@ class InboxScreenState extends State<InboxScreen>
 
   @override
   void dispose() {
+    MessageCrypto.revision.removeListener(_onKeyChanged);
     _notifier?.dispose();
     _searchController.dispose();
     _searchFocus.dispose();
