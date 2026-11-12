@@ -1,4 +1,5 @@
 import 'package:drivelife/screens/guess/guess_screen.dart';
+import 'package:drivelife/screens/create-post/post_tag_screen.dart';
 import 'package:drivelife/screens/points/points_screen.dart';
 import 'package:drivelife/main.dart';
 import 'package:drivelife/screens/auth/forgot_password_screen.dart';
@@ -73,6 +74,13 @@ class AppRoutes {
   static const String profile = '/profile';
   static const String viewProfile = '/view-profile';
   static const String postDetail = '/post-detail';
+
+  /// Reviewing the tags on a post that has already been published.
+  ///
+  /// Reached from the "your post is ready" notification, and from Edit
+  /// tags on the post itself. Named rather than pushed directly so the
+  /// notification router does not have to import a screen.
+  static const String postTags = '/post-tags';
   static const String vehicleDetail = '/vehicle-detail';
   static const String points = '/points';
   static const String guess = '/guess';
@@ -372,6 +380,16 @@ class AppRoutes {
           ViewProfileScreen(
             userId: userId,
             username: args?['username']?.toString() ?? '',
+          ),
+        );
+      case postTags:
+        final tagArgs = settings.arguments as Map<String, dynamic>;
+        return _slide(
+          PostTagScreen(
+            postId: int.tryParse('${tagArgs['postId']}') ?? 0,
+            // Always editing: the post exists by the time anything can
+            // link to it.
+            editing: true,
           ),
         );
       case postDetail:

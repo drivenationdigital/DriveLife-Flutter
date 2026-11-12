@@ -103,6 +103,14 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
   bool _taggingEnabled = false;
 
+  /// Whether this car's content reaches the make/model/category groups.
+  ///
+  /// Defaults to TRUE, unlike the tagging switch above it. Every vehicle
+  /// already in the database is in its matching groups, so the default
+  /// has to be the behaviour that already exists -- and a car added on a
+  /// build that predates the server column must not read as opted out.
+  bool _interestGroupsEnabled = true;
+
   bool _saving = false;
 
   // ADD: Upload progress tracking
@@ -433,6 +441,10 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
       _taggingEnabled = (v['allow_tagging']?.toString() == '1');
 
+      // Absent means the server has not been migrated yet, which is the
+      // same thing as "in the groups" -- so only an explicit 0 is off.
+      _interestGroupsEnabled = v['include_in_groups']?.toString() != '0';
+
       _ownedFrom = _parseDate(v['owned_since']);
       _ownedTo = _parseDate(v['owned_until']);
 
@@ -546,6 +558,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       'ownedTo': _ownedTo?.toIso8601String() ?? '',
       'primary_car': _ownership,
       'allow_tagging': _taggingEnabled ? 1 : 0,
+      'include_in_groups': _interestGroupsEnabled ? 1 : 0,
       'vehicle_period': _ownership,
       'description': _descCtrl.text.trim(),
       'vehicle_bhp': int.tryParse(_bhpCtrl.text.trim()) ?? 0,
@@ -864,12 +877,10 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   /// GB covers Ireland too: dl_country_from_coords() puts IE in the GB
   /// region, and Irish plates are in the same database.
   bool get _canLookUpReg {
-    final country = Provider.of<UserProvider>(context, listen: false)
-        .user
-        ?.lastLocation
-        ?.country
-        .trim()
-        .toUpperCase();
+    final country = Provider.of<UserProvider>(
+      context,
+      listen: false,
+    ).user?.lastLocation?.country.trim().toUpperCase();
 
     return country == null || country.isEmpty || country == 'GB';
   }
@@ -2137,6 +2148,54 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                                             'registration will not be found in '
                                             'anyone\'s photos — including '
                                             'photos of it that already exist.',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    height: 1.4,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const Divider(height: 1),
+
+                        SwitchListTile(
+                          title: const Text(
+                            'Include my car in interest groups',
+                          ),
+                          value: _interestGroupsEnabled,
+                          activeThumbColor: theme.primaryColor,
+                          onChanged: (v) =>
+                              setState(() => _interestGroupsEnabled = v),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                _interestGroupsEnabled
+                                    ? Icons.groups_outlined
+                                    : Icons.lock_outline,
+                                size: 16,
+                                color: Colors.grey.shade600,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _interestGroupsEnabled
+                                      ? 'Content posted of this vehicle will '
+                                            'display in relevant make, model '
+                                            'and category groups. You can '
+                                            'follow or unfollow any group — '
+                                            'your content is included either '
+                                            'way.'
+                                      : 'This vehicle and its content stay out '
+                                            'of the make, model and category '
+                                            'groups. Groups you have joined '
+                                            'yourself are unaffected.',
                                   style: TextStyle(
                                     fontSize: 12.5,
                                     height: 1.4,

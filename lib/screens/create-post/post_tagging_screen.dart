@@ -4,13 +4,14 @@ import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/gallery_tag.dart';
 import 'package:drivelife/models/tagged_entity.dart';
 import 'package:drivelife/screens/create-post/post_photo_tagging_screen.dart';
+import 'package:drivelife/screens/create-post/post_tag_screen.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/widgets/media/detected_vehicle_row.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-/// Step 2 of posting — who and what is in the post.
+/// Step 2 of posting — the upload, and a way out of it.
 ///
 /// The same shape as the gallery flow, and for the same reason: a tag needs the
 /// post to exist and its media to be registered, and neither is true until the
@@ -101,7 +102,25 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
 
     _scanStarted = true;
     setState(() => _postId = postId);
-    _runScan(postId);
+
+    // ── THE UPLOAD IS DONE, SO THIS SCREEN'S JOB IS DONE ────────────
+    //
+    // This screen exists to wait: it shows the upload progressing and
+    // lets somebody leave while it does. Once the post exists, tagging
+    // takes over, and that is PostTagScreen.
+    //
+    // pushReplacement because there is nothing to come back to here —
+    // the upload it was reporting on has finished.
+    //
+    // The vehicle scan deliberately does NOT start here any more. It is
+    // run from the tag screen, inside the Garage Vehicles card, so the
+    // location and event tags can appear immediately rather than behind
+    // several seconds of model round trips.
+    if (!mounted) return;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => PostTagScreen(postId: postId)),
+    );
   }
 
   Future<void> _runScan(int postId) async {
@@ -366,7 +385,7 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
             ),
             SizedBox(height: 2),
             Text(
-              'Step 2 of 2',
+              'Step 2 of 3',
               style: TextStyle(color: _muted, fontSize: 13.5),
             ),
           ],

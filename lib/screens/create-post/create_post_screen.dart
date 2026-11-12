@@ -11,6 +11,8 @@ import 'package:drivelife/screens/create-post/tag_entities_screen.dart';
 import 'package:drivelife/services/media_compressor.dart';
 import 'package:drivelife/services/upload_quality_prefs.dart';
 import 'package:drivelife/screens/create-post/post_tagging_screen.dart';
+import 'package:drivelife/config/feature_flags.dart';
+import 'package:drivelife/services/media_location.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -41,6 +43,13 @@ class MediaItem {
   /// True until compression has finished with it.
   final bool preparing;
 
+  /// What the photo remembered: {lat, lng, taken_at}.
+  ///
+  /// Travels WITH the item rather than in a list beside it. An upload
+  /// that fails is dropped rather than sent, so a parallel array would
+  /// slip by one and put this photo's coordinates on the next one's row.
+  final Map<String, dynamic>? meta;
+
   MediaItem({
     required this.file,
     required this.isVideo,
@@ -50,6 +59,7 @@ class MediaItem {
     this.videoController,
     String? sourcePath,
     this.preparing = false,
+    this.meta,
   }) : sourcePath = sourcePath ?? file.path;
 
   void dispose() {
@@ -159,6 +169,30 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   String? _activeHashtagQuery;
   bool _processingTag = false;
+
+  /// Where each picked photo was taken, keyed on the path the picker
+  /// handed over — [MediaItem.sourcePath], the one identifier that
+  /// survives compression, so a photo still finds its reading after the
+  /// file underneath it has been replaced by a compressed copy.
+  ///
+  /// A key whose reading has no location means that photo was checked
+  /// and has none, AND says why. That is a different statement from an
+  /// absent key, which means never checked.
+  final Map<String, MediaLocationReading> _mediaLocations = {};
+
+  /// When each picked photo was taken, keyed the same way.
+  ///
+  /// Separate from the reading because a photo can have a date and no
+  /// location, or the reverse — and the date alone is still worth
+  /// having: it is half of "what event was on here".
+  final Map<String, DateTime> _takenAt = {};
+
+  /// Whether the OS agreed to hand over location tags at all.
+  ///
+  /// Kept apart from the readings so a blanket refusal is not reported
+  /// as "none of your photos have a location", which is the wrong
+  /// conclusion to draw and the one that wasted a day last time.
+  MediaLocationAccess _mediaLocationAccess = MediaLocationAccess.granted;
 
   // Tagged location
   String? _taggedLocationName;
@@ -586,6 +620,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     _lastPick = picked;
 
+    _recordLocations(picked);
+
     // ── REPLACE, NOT APPEND ──────────────────────────────────────────
     //
     // The picker was handed the current selection, so what comes back
@@ -603,6 +639,78 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     // First pick on an empty composer: nothing to reconcile against.
     await _appendPicked(picked);
+  }
+
+  /// Files where the picker says each photo was taken.
+  ///
+  /// Read here because this is the last moment it is knowable: the
+  /// asset is only in scope during the pick, and the compressor and
+  /// Cloudflare both strip metadata further down. See PickedMedia.
+  void _recordLocations(List<PickedMedia> picked) {
+    _mediaLocationAccess = MediaLocationService.lastAccess;
+
+    for (final item in picked) {
+      _mediaLocations[item.file.path] =
+          item.locationReading ??
+          const MediaLocationReading(miss: MediaLocationMiss.notProbed);
+
+      final taken = item.takenAt;
+      if (taken != null) _takenAt[item.file.path] = taken;
+    }
+
+    // ── SECOND PASS: NAME THE PLACES ────────────────────────────────
+    //
+    // Deliberately not awaited above. The coordinates arrive with the
+    // pick and the grid should not wait; reverse geocoding is a
+    // per-photo round trip to the platform, so the labels fill in as
+    // they land.
+    //
+    // Only the panel uses these names. The tagging itself goes off the
+    // coordinates, which are already on their way to the server — so a
+    // failed lookup here costs a line of text and nothing else.
+    for (final item in picked) {
+      final location = item.location;
+
+      if (location == null || location.labelLoaded) continue;
+
+      MediaLocationService.describe(location).then((label) {
+        if (!mounted) return;
+
+        // Re-read rather than captured: the tile may have been removed
+        // while the lookup was out, and resurrecting its row would be
+        // worse than losing a label.
+        final held = _mediaLocations[item.file.path];
+        final current = held?.location;
+
+        if (held == null || current == null) return;
+
+        setState(() {
+          // Recorded even when the label is null, so a lookup that
+          // legitimately finds nothing stops reading as still running.
+          _mediaLocations[item.file.path] = held.withLocation(
+            current.withLabel(label),
+          );
+        });
+      });
+    }
+  }
+
+  /// One photo's metadata for the server, or null when it has none.
+  ///
+  /// Most photos have none, which is normal rather than a failure — see
+  /// MediaLocationMiss for the reasons.
+  Map<String, dynamic>? _metaFor(MediaItem media) {
+    final reading = _mediaLocations[media.sourcePath];
+    final location = reading?.location;
+    final taken = _takenAt[media.sourcePath];
+
+    if (location == null && taken == null) return null;
+
+    return {
+      if (location != null) 'lat': location.latitude,
+      if (location != null) 'lng': location.longitude,
+      if (taken != null) 'taken_at': taken.toIso8601String(),
+    };
   }
 
   /// Rebuilds the grid to match what the picker returned.
@@ -1231,6 +1339,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       taggedUsers: _taggedUsers,
       taggedVehicles: _taggedVehicles,
       taggedEvents: _taggedEvents,
+      // Read off the photos at pick time, which is the only moment it is
+      // readable — the crop, the compressor and the CDN all strip EXIF.
+      // It goes to the server with the post because the review may happen
+      // later, from a notification, in a process that no longer exists.
+      mediaMeta: _selectedMedia.map(_metaFor).toList(),
       userId: userId,
       mentionedHashtags: mentionedHashtags,
       mentionedUsers: mentionedUsers,
@@ -1249,11 +1362,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       ).startUpload(uploadData, userProvider);
     }
 
-    // On to tagging. pushReplacement, not push: going back from step 2 should
-    // return to the feed, not to a composer whose post is already uploading.
+    // On to the upload step. pushReplacement, not push: going back from
+    // there should return to the feed, not to a composer whose post is
+    // already uploading.
     //
-    // The upload runs in the provider either way, so leaving step 2 — or never
-    // reaching it — still publishes the post.
+    // The upload runs in the provider either way, so leaving that screen
+    // — or never reaching it — still publishes the post. What it costs is
+    // the tag review, which is why it offers to tell them later.
     if (mounted) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
@@ -1381,9 +1496,176 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               ],
             ),
           ),
+
+          if (FeatureFlags.mediaLocationDebug) _buildMediaLocationsDebug(),
         ],
       ),
     );
+  }
+
+  /// TEMPORARY, behind [FeatureFlags.mediaLocationDebug]. What each
+  /// picked photo's GPS tag turned out to be.
+  ///
+  /// Shows the MISSES as prominently as the hits, because the misses
+  /// are the finding: the question this is here to answer is what share
+  /// of real photos carry a usable tag, and a panel that listed only
+  /// the successes would make any camera roll look fully tagged.
+  Widget _buildMediaLocationsDebug() {
+    if (_selectedMedia.isEmpty) return const SizedBox.shrink();
+
+    // Only the items that actually came through the picker can have a
+    // reading. Anything else has not been checked, and saying so beats
+    // implying it has no location.
+    final rows =
+        <({int number, MediaLocationReading? reading, DateTime? takenAt})>[];
+
+    for (var i = 0; i < _selectedMedia.length; i++) {
+      final path = _selectedMedia[i].sourcePath;
+
+      rows.add((
+        number: i + 1,
+        reading: _mediaLocations[path],
+        takenAt: _takenAt[path],
+      ));
+    }
+
+    final checked = rows.where((r) => r.reading != null).length;
+    final tagged = rows.where((r) => r.reading?.hasLocation ?? false).length;
+
+    final blocked =
+        _mediaLocationAccess != MediaLocationAccess.granted &&
+        _mediaLocationAccess != MediaLocationAccess.unavailable;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F5F0),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE3DED2)),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.science_outlined,
+                  size: 14,
+                  color: Color(0xFFAE9159),
+                ),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Text(
+                    'LOCATION TEST',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF8A7A52),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                Text(
+                  '$tagged of $checked tagged',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF8A8A8A),
+                  ),
+                ),
+              ],
+            ),
+
+            if (blocked) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 14,
+                    color: Color(0xFFB4541E),
+                  ),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Location permission is not granted, so the system is '
+                      'hiding every tag. Nothing below means these photos '
+                      'are untagged.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFB4541E),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: _fixMediaLocationAccess,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 0,
+                    ),
+                    minimumSize: const Size(0, 30),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    backgroundColor: const Color(0xFFB4541E),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(
+                    _mediaLocationAccess ==
+                            MediaLocationAccess.permanentlyDenied
+                        ? 'Open settings'
+                        : 'Allow location access',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 4),
+
+            for (final row in rows)
+              _MediaLocationRow(
+                number: row.number,
+                reading: row.reading,
+                takenAt: row.takenAt,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// TEMPORARY, behind [FeatureFlags.mediaLocationDebug]. Asks again
+  /// for location access, or sends them to settings if it is too late
+  /// to ask.
+  Future<void> _fixMediaLocationAccess() async {
+    if (_mediaLocationAccess == MediaLocationAccess.permanentlyDenied) {
+      await MediaLocationService.openSettings();
+      // No result to wait for: Android gives nothing back from the
+      // settings screen, so the state is re-read on the next pick.
+      return;
+    }
+
+    final access = await MediaLocationService.ensureAccess();
+    if (!mounted) return;
+
+    setState(() => _mediaLocationAccess = access);
+
+    if (access == MediaLocationAccess.granted) {
+      _showMessage('Granted. Re-pick the photos to read their locations.');
+    }
   }
 
   Widget _buildPeopleTagsRow() {
@@ -1746,8 +2028,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     // Only when the picker opened this screen in the first place. A
     // caller that jumped straight to the composer has no picker behind
     // it, and back must still mean back.
-    final reopenPickerOnBack =
-        widget.openPickerOnStart && !widget.startAsSpot;
+    final reopenPickerOnBack = widget.openPickerOnStart && !widget.startAsSpot;
 
     return PopScope(
       canPop: !reopenPickerOnBack,
@@ -3610,3 +3891,153 @@ class _PollSheetState extends State<_PollSheet> {
   }
 }
 
+class _MediaLocationRow extends StatelessWidget {
+  final int number;
+  final MediaLocationReading? reading;
+
+  /// The camera's capture date, which goes up with the coordinates.
+  ///
+  /// Shown because it is half the answer: the event lookup matches on a
+  /// day as well as a place, so a photo with coordinates and no date
+  /// can produce a venue and never an event — and that looks like a
+  /// broken event search rather than a missing timestamp.
+  final DateTime? takenAt;
+
+  const _MediaLocationRow({
+    required this.number,
+    required this.reading,
+    this.takenAt,
+  });
+
+  /// "14 Jun 2026, 15:04", or why there is nothing to show.
+  String get _taken {
+    final at = takenAt;
+
+    if (at == null) return 'No capture date — events cannot be matched';
+
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    final two = (int n) => n.toString().padLeft(2, '0');
+
+    return 'Taken ${at.day} ${months[at.month - 1]} ${at.year}, '
+        '${two(at.hour)}:${two(at.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final location = reading?.location;
+    final has = location != null;
+
+    // The headline is the answer; the second line is why. For a hit the
+    // place name leads and the coordinates back it up; for a miss the
+    // reason leads, since that is the entire finding.
+    final String headline;
+    final String detail;
+
+    if (reading == null) {
+      headline = 'Not checked';
+      detail = 'Added without going through the picker';
+    } else if (has) {
+      headline = location.labelLoaded
+          ? (location.label ?? 'No address for this point')
+          : 'Finding place…';
+      detail = '${location.coordinates}  ·  ${reading!.explanation}';
+    } else {
+      headline = 'No location';
+      detail = reading!.explanation;
+    }
+
+    final pending = has && !location.labelLoaded;
+    final taken = _taken;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 18,
+            height: 18,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: has ? const Color(0xFFAE9159) : const Color(0xFFD8D4CA),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              '$number',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: has ? Colors.white : const Color(0xFF6E6E6E),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  headline,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    fontStyle: pending ? FontStyle.italic : FontStyle.normal,
+                    color: has
+                        ? const Color(0xFF0B0B0B)
+                        : const Color(0xFF9A9A9A),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Text(
+                    detail,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      height: 1.3,
+                      // Monospaced for a hit, so a column of
+                      // coordinates lines up and can be read down
+                      // rather than across.
+                      fontFamily: has ? 'monospace' : null,
+                      fontWeight: FontWeight.w500,
+                      color: has
+                          ? const Color(0xFF8A8A8A)
+                          : const Color(0xFFA8A8A8),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Text(
+                    taken,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      height: 1.3,
+                      fontWeight: FontWeight.w500,
+                      color: takenAt != null
+                          ? const Color(0xFF8A8A8A)
+                          : const Color(0xFFC08A8A),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

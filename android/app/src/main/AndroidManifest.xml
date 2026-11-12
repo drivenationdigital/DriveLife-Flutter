@@ -44,6 +44,20 @@
     -->
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
 
+    <!--
+      Reading the GPS tag a camera wrote into a photo.
+
+      From Android 10 MediaStore REDACTS location out of media it hands
+      back unless this is held, and it is a runtime permission, so it
+      has to be asked for as well as declared. Without it a photo that
+      genuinely carries coordinates reads back as having none, which is
+      indistinguishable from a screenshot.
+
+      Only used to suggest a venue the photographer confirms. Nothing
+      is attached to a post, or stored, without that tap.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION"/>
+
     <!-- Still not wanted: we never write to the shared store. -->
     <!-- <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/> -->
     <!-- Saving a downloaded gallery photo to the camera roll. Only Android 9

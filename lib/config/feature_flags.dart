@@ -209,6 +209,23 @@ class FeatureFlags {
   /// smarter rule.
   static const bool notificationAccountLabel = false;
 
+  /// Shows what each picked photo's EXIF actually contained, under the
+  /// media grid in the composer.
+  ///
+  /// ── A DEBUG PANEL, NOT A FEATURE ─────────────────────────────────
+  ///
+  /// The question it answers is what share of real photos carry a usable
+  /// GPS tag, and WHY the rest do not — a redacted tag, a screenshot, a
+  /// photo saved from a message and a denied permission all look
+  /// identical from the outside, and only one of them is fixable.
+  ///
+  /// It shows the misses as prominently as the hits for that reason. A
+  /// panel listing only successes would make any camera roll look fully
+  /// tagged and send us hunting the wrong bug.
+  ///
+  /// Off before release. It exposes coordinates on screen.
+  static const bool mediaLocationDebug = false;
+
   /// WRITE chat messages encrypted.
   ///
   /// ── ON, AND GATED PER CONVERSATION ───────────────────────────────

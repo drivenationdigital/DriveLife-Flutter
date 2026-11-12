@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:drivelife/services/media_location.dart';
 import 'package:drivelife/utils/image_crop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -67,6 +68,35 @@ class PickedMedia {
   /// limit without re-reading the file.
   final int durationSeconds;
 
+  /// Where this was taken, and the story behind it.
+  ///
+  /// ── WHY IT IS READ HERE AND NOT LATER ───────────────────────────
+  ///
+  /// This is the LAST point at which it can be read. [file] may already
+  /// be a crop, which is a freshly rendered bitmap carrying no EXIF at
+  /// all, and the compressor and Cloudflare both strip metadata further
+  /// down. The asset is the only thing that still knows, and it is only
+  /// in scope right here.
+  ///
+  /// Carries the MISS as well as the hit, because most photos have no
+  /// location and the reason matters — see [MediaLocationMiss].
+  final MediaLocationReading? locationReading;
+
+  /// Where this was taken, if anywhere. Null for most items, which is
+  /// normal rather than a failure.
+  MediaLocation? get location => locationReading?.location;
+
+  /// When the camera says this was taken.
+  ///
+  /// From the asset's own creation date rather than the file's mtime:
+  /// copying, compressing or cropping all rewrite the file's timestamp
+  /// to now, which would date every photo to the moment it was posted.
+  ///
+  /// Needed because "what event was on here" is a question about a day
+  /// as much as a place -- the same circuit is a different answer in
+  /// July and in February.
+  final DateTime? takenAt;
+
   const PickedMedia({
     required this.file,
     required this.cropped,
@@ -74,6 +104,8 @@ class PickedMedia {
     this.durationSeconds = 0,
     this.assetId,
     this.framing,
+    this.locationReading,
+    this.takenAt,
   });
 }
 
@@ -513,6 +545,11 @@ class _MediaPickerScreenState extends State<MediaPickerScreen> {
     final out = <PickedMedia>[];
     var failed = 0;
 
+    // Asked once for the batch rather than once per photo. Not a gate:
+    // a refusal is reported per item instead, so it cannot be mistaken
+    // for a library of untagged photos.
+    await MediaLocationService.ensureAccess();
+
     for (final asset in _selected) {
       final file = await _fileFor(asset);
 
@@ -520,6 +557,13 @@ class _MediaPickerScreenState extends State<MediaPickerScreen> {
         failed++;
         continue;
       }
+
+      // Read while the asset is still in hand, and BEFORE the crop
+      // below: a crop is a freshly rendered bitmap with no EXIF, so
+      // probing it would report a camera photo as a screenshot. The
+      // compressor and the CDN strip what survives, so there is no
+      // reading it back later either.
+      final location = await MediaLocationService.read(asset, file: file);
 
       if (asset.type == AssetType.video) {
         out.add(
@@ -529,6 +573,8 @@ class _MediaPickerScreenState extends State<MediaPickerScreen> {
             isVideo: true,
             durationSeconds: asset.duration,
             assetId: asset.id,
+            locationReading: location,
+            takenAt: asset.createDateTime,
           ),
         );
         continue;
@@ -537,7 +583,15 @@ class _MediaPickerScreenState extends State<MediaPickerScreen> {
       final framing = _framing[asset.id];
 
       if (framing == null || isUncropped(framing.scale, framing.translation)) {
-        out.add(PickedMedia(file: file, cropped: false, assetId: asset.id));
+        out.add(
+          PickedMedia(
+            file: file,
+            cropped: false,
+            assetId: asset.id,
+            locationReading: location,
+            takenAt: asset.createDateTime,
+          ),
+        );
         continue;
       }
 
@@ -564,6 +618,10 @@ class _MediaPickerScreenState extends State<MediaPickerScreen> {
           file: cropped ?? file,
           cropped: cropped != null,
           assetId: asset.id,
+          // Survives the crop precisely BECAUSE it was read off the
+          // asset: the cropped file itself carries no EXIF.
+          locationReading: location,
+          takenAt: asset.createDateTime,
           // Handed back so reopening the picker can restore this
           // exact framing rather than resetting it to untouched.
           framing: MediaFraming(

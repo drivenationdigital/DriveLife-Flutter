@@ -25,6 +25,14 @@ class UploadPostData {
   final List<TaggedEntity> taggedVehicles;
   final List<TaggedEntity> taggedEvents;
   final int userId;
+  /// What each picked photo remembered, parallel to [mediaFiles].
+  ///
+  /// Safe as a parallel list only because the two are built together in
+  /// the composer and never filtered apart. It stops being parallel the
+  /// moment uploading starts, which is why it is attached to each
+  /// MediaItem before then.
+  final List<Map<String, dynamic>?> mediaMeta;
+
   final List<Map<String, dynamic>> mentionedUsers;
   final List<Map<String, dynamic>> mentionedHashtags;
   final Map<String, dynamic>? location;
@@ -46,6 +54,7 @@ class UploadPostData {
     required this.taggedVehicles,
     required this.taggedEvents,
     required this.userId,
+    this.mediaMeta = const [],
     this.mentionedUsers = const [],
     this.mentionedHashtags = const [],
     this.location,
@@ -309,6 +318,10 @@ class UploadPostProvider with ChangeNotifier {
               isVideo: isVideo,
               height: dimensions['height'] ?? 0,
               width: dimensions['width'] ?? 0,
+              // From here on it travels with the item, so a failed
+              // upload takes its metadata with it rather than shifting
+              // everything after it by one.
+              meta: i < data.mediaMeta.length ? data.mediaMeta[i] : null,
             ),
           );
         }

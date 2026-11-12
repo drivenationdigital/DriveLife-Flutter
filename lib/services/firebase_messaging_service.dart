@@ -358,6 +358,16 @@ class FirebaseMessagingService {
     print('Navigating: type=$type, id=$id');
 
     switch (type) {
+      // Straight into reviewing what was found, rather than to the
+      // post — the notification's whole point is "come and check
+      // these", and landing on the post leaves somebody hunting for
+      // Edit tags in a menu.
+      case 'post-tags':
+        nav.pushNamed(
+          AppRoutes.postTags,
+          arguments: {'postId': int.tryParse(id ?? '')},
+        );
+        break;
       case 'post-view':
         nav.pushNamed(
           AppRoutes.postDetail,

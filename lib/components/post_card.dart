@@ -1,4 +1,4 @@
-import 'package:drivelife/screens/create-post/edit_post_tags_screen.dart';
+import 'package:drivelife/screens/create-post/post_tag_screen.dart';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -647,9 +647,13 @@ class _PostCardState extends State<PostCard>
                 final changed = await Navigator.push(
                   scaffoldContext,
                   MaterialPageRoute(
-                    builder: (_) => EditPostTagsScreen(
+                    // The same screen the posting flow ends on, so
+                    // locations and events are editable here too — and
+                    // so there is a way back INTO tagging at all for a
+                    // post whose author left before it appeared.
+                    builder: (_) => PostTagScreen(
                       postId: int.tryParse('${widget.post['id']}') ?? 0,
-                      authorId: int.tryParse('${widget.post['user_id']}') ?? 0,
+                      editing: true,
                     ),
                   ),
                 );

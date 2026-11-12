@@ -310,11 +310,17 @@ class PostsScreenState extends State<PostsScreen>
             //
             //   const SliverToBoxAdapter(child: HotRightNow()),
 
-            // Pins. This one IS navigation — losing it mid-feed would mean
-            // scrolling back to the top to change feed.
+            // Scrolls away with the feed. It was pinned, on the reasoning
+            // that changing feed mid-scroll should not mean a trip back to
+            // the top — but two rows of chrome stuck to the header took a
+            // fixed bite out of every screen of posts, and the feed is what
+            // people came for.
+            //
+            // minExtent and maxExtent are equal, so unpinning needs nothing
+            // else: there is no collapsed state for it to fall back to.
             SliverPersistentHeader(
-              pinned: true,
-              delegate: _PinnedSelector(
+              pinned: false,
+              delegate: _SelectorHeader(
                 child: _CustomTabBar(
                   controller: _tabController,
                   theme: theme,
@@ -1106,7 +1112,7 @@ class _CustomTabBar extends StatelessWidget {
 /// A fixed height, declared up front: a persistent header must know its
 /// extent before it is laid out, and the selector is a fixed-height row of
 /// pills, so there is nothing to measure at run time.
-class _PinnedSelector extends SliverPersistentHeaderDelegate {
+class _SelectorHeader extends SliverPersistentHeaderDelegate {
   final Widget child;
 
   /// 44 for the pills, plus the 15/9 padding the selector carries.
@@ -1121,7 +1127,7 @@ class _PinnedSelector extends SliverPersistentHeaderDelegate {
   /// hand. Change one and change the other.
   static const double _height = 68;
 
-  const _PinnedSelector({required this.child});
+  const _SelectorHeader({required this.child});
 
   @override
   double get minExtent => _height;
@@ -1135,11 +1141,12 @@ class _PinnedSelector extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    // Opaque, always. Pinned over a scrolling feed, any transparency means
-    // posts sliding visibly underneath the pills.
+    // Opaque, always. It no longer sits over the feed, but a persistent
+    // header still paints above its neighbours while the scroll settles,
+    // and any transparency shows posts through the pills as it goes.
     return Material(color: Colors.white, child: child);
   }
 
   @override
-  bool shouldRebuild(_PinnedSelector old) => old.child != child;
+  bool shouldRebuild(_SelectorHeader old) => old.child != child;
 }

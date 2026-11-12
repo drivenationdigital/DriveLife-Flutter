@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:drivelife/models/post_poll.dart';
+import 'package:drivelife/models/tag_suggestion.dart';
 import 'package:drivelife/models/tagged_entity.dart';
 import 'package:drivelife/screens/create-post/create_post_screen.dart';
 import 'package:drivelife/services/app_error_logger.dart';
@@ -737,6 +738,10 @@ class PostsAPI {
             'height': media.height,
             'width': media.width,
             'server': 'cloudflare',
+            // On the entry, not in a parallel array: a failed upload is
+            // skipped, so the lists would drift apart and the server
+            // would file one photo's coordinates against another.
+            if (media.meta != null) 'meta': media.meta,
           });
         }
       } catch (e) {
@@ -899,6 +904,130 @@ class PostsAPI {
         },
       );
       rethrow;
+    }
+  }
+
+  /// Sets the place on an already-published post.
+  ///
+  /// An empty [name] clears it, which is what removing the chip and
+  /// tapping Share has to mean.
+  static Future<void> setPostLocation({
+    required int postId,
+    required String name,
+    double? latitude,
+    double? longitude,
+    /// 'venue' or 'track', so the post joins to the place rather than
+    /// only naming it. Anything else is stored as a plain location.
+    String kind = '',
+    String placeId = '',
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Not signed in');
+
+    final response = await http
+        .post(
+          Uri.parse('$_baseUrl/wp-json/app/v2/posts/$postId/location'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({
+            'name': name,
+            if (latitude != null) 'lat': latitude,
+            if (longitude != null) 'lng': longitude,
+            if (kind.isNotEmpty) 'kind': kind,
+            if (placeId.isNotEmpty) 'place_id': placeId,
+          }),
+        )
+        .timeout(const Duration(seconds: 12));
+
+    if (response.statusCode != 200) {
+      throw Exception('Could not save the location (${response.statusCode})');
+    }
+  }
+
+  /// What this post's photos were near, from the metadata sent with it.
+  ///
+  /// The first call turns the stored coordinates into place and event
+  /// ids and erases the coordinates; later calls read what was kept.
+  ///
+  /// Never throws. No suggestions is the same thing the user sees when
+  /// the photos genuinely had no location, and is not worth interrupting
+  /// an already-published post for.
+  static Future<TagSuggestions> postTagSuggestions(int postId) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return TagSuggestions.empty;
+
+      final response = await http
+          .get(
+            Uri.parse('$_baseUrl/wp-json/app/v2/posts/$postId/tag-suggestions'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 12));
+
+      if (response.statusCode != 200) {
+        debugPrint('[TagSuggestions] post $postId: ${response.statusCode}');
+        return TagSuggestions.empty;
+      }
+
+      final body = jsonDecode(response.body);
+
+      if (body is! Map || body['success'] != true) return TagSuggestions.empty;
+
+      return TagSuggestions.fromMap(Map<String, dynamic>.from(body));
+    } catch (e) {
+      debugPrint('[TagSuggestions] post lookup failed: $e');
+      return TagSuggestions.empty;
+    }
+  }
+
+  /// What was near a photo when it was taken.
+  ///
+  /// [takenOn] is the photo's own capture date, and without it the
+  /// server returns no events at all rather than guessing at today — a
+  /// photo from last summer has nothing to do with this afternoon.
+  ///
+  /// Never throws. A failed lookup means no suggestions, which is the
+  /// same thing the user sees when a photo genuinely has no location,
+  /// and is not worth interrupting a published post for.
+  static Future<TagSuggestions> tagSuggestions({
+    required double latitude,
+    required double longitude,
+    DateTime? takenOn,
+  }) async {
+    try {
+      final query = <String, String>{
+        'lat': latitude.toStringAsFixed(6),
+        'lng': longitude.toStringAsFixed(6),
+        if (takenOn != null)
+          'taken_on':
+              '${takenOn.year.toString().padLeft(4, '0')}-'
+              '${takenOn.month.toString().padLeft(2, '0')}-'
+              '${takenOn.day.toString().padLeft(2, '0')}',
+      };
+
+      final uri = Uri.parse(
+        '$_baseUrl/wp-json/app/v2/post/tag-suggestions',
+      ).replace(queryParameters: query);
+
+      final response = await http
+          .get(uri)
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode != 200) {
+        debugPrint('[TagSuggestions] server said ${response.statusCode}');
+        return TagSuggestions.empty;
+      }
+
+      final body = jsonDecode(response.body);
+
+      if (body is! Map || body['success'] != true) return TagSuggestions.empty;
+
+      return TagSuggestions.fromMap(Map<String, dynamic>.from(body));
+    } catch (e) {
+      debugPrint('[TagSuggestions] lookup failed: $e');
+      return TagSuggestions.empty;
     }
   }
 
