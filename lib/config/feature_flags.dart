@@ -224,7 +224,7 @@ class FeatureFlags {
   /// tagged and send us hunting the wrong bug.
   ///
   /// Off before release. It exposes coordinates on screen.
-  static const bool mediaLocationDebug = true;
+  static const bool mediaLocationDebug = false;
 
   /// WRITE chat messages encrypted.
   ///
