@@ -844,6 +844,11 @@ class _GroupsScreenState extends State<GroupsScreen>
   List<Widget> _clubSlivers(ThemeProvider theme) {
     return [
       if (_loadingMine || _myClubs.isNotEmpty) ...[
+        // The same leading spacer the Communities tab needs, and for
+        // the same reason: _sectionHeader has no top padding of its
+        // own, so a first section without one sits flush against the
+        // tab rule. 14 is what _gapBefore gives a first section.
+        _sliver(SizedBox(height: _gapBefore(true))),
         _sliver(
           _sectionHeader(
             theme,
@@ -878,11 +883,7 @@ class _GroupsScreenState extends State<GroupsScreen>
 
       // Smaller when "Your clubs" is absent, for the same reason as the
       // Communities tab: nothing above means nothing to separate from.
-      _sliver(
-        SizedBox(
-          height: _gapBefore(!_loadingMine && _myClubs.isEmpty),
-        ),
-      ),
+      _sliver(SizedBox(height: _gapBefore(!_loadingMine && _myClubs.isEmpty))),
       _sliver(_sectionHeader(theme, 'All clubs')),
 
       _sliver(
@@ -1041,10 +1042,7 @@ class _GroupsScreenState extends State<GroupsScreen>
         vsync: this,
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.header != null) widget.header!,
-            _searchField(),
-          ],
+          children: [if (widget.header != null) widget.header!, _searchField()],
         ),
       ),
     );
@@ -1129,6 +1127,19 @@ class _GroupsScreenState extends State<GroupsScreen>
 
     out.addAll([
       if (_loadingMine || _mine.isNotEmpty) ...[
+        // Through gap() like every other section, rather than butting
+        // straight up against the tab rule.
+        //
+        // _sectionHeader carries no top padding of its own — the space
+        // above a heading belongs to the spacer before it — so a
+        // section added without one gets ZERO. This was the only
+        // section that skipped it, which is why the page sat tight to
+        // the tabs when somebody had joined groups and correctly clear
+        // of them when they had not.
+        //
+        // out is still empty here, so this is the 14 a first section
+        // gets, matching the no-groups case exactly.
+        ...gap(),
         _sliver(
           _sectionHeader(
             theme,
@@ -1763,10 +1774,7 @@ class _GroupsScreenState extends State<GroupsScreen>
                   _allError
                       ? 'Could not load clubs.'
                       : 'No clubs match those filters.',
-                  style: TextStyle(
-                    fontSize: 15.5,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 15.5, color: Colors.grey.shade600),
                 ),
                 if (_allError) ...[
                   const SizedBox(height: 8),
