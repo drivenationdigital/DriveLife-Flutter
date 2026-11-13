@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:drivelife/utils/exif_probe.dart';
+import 'package:drivelife/utils/mp4_probe.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -154,7 +155,7 @@ class MediaLocationReading {
       case MediaLocationMiss.unreadableGps:
         return 'Location tags present but unusable';
       case MediaLocationMiss.video:
-        return 'Video, no location recorded';
+        return 'Video, and no position in the file either';
       case MediaLocationMiss.notProbed:
         return 'Could not be checked';
     }
@@ -253,6 +254,40 @@ class MediaLocationService {
     }
 
     if (asset.type == AssetType.video) {
+      // ── THE VIDEO FALLBACK ────────────────────────────────────────
+      //
+      // latlngAsync() reads MediaStore's LATITUDE and LONGITUDE, which
+      // Android 10 removed — so it answers 0,0 for every video on a
+      // modern phone, whatever the file holds. A photo survives that
+      // through its EXIF; without this a video did not, and one shot at
+      // an event reported no location while the phone's own gallery put
+      // it on a map.
+      //
+      // Reads the file's own moov/udta/©xyz atom. See Mp4Probe.
+      if (file != null) {
+        final fromFile = await Mp4Probe.locationOf(file);
+
+        if (fromFile != null) {
+          return MediaLocationReading(
+            location: MediaLocation(
+              latitude: fromFile.latitude,
+              longitude: fromFile.longitude,
+            ),
+            fromExif: true,
+          );
+        }
+
+        // Nothing found, and every phone writes this somewhere slightly
+        // different — so say what the file actually contains rather
+        // than leaving it at "no location". Debug builds only.
+        if (kDebugMode) {
+          debugPrint(
+            '[Mp4Probe] no position in ${file.path}. Atom tree:\n'
+            '${await Mp4Probe.describe(file)}',
+          );
+        }
+      }
+
       return const MediaLocationReading(miss: MediaLocationMiss.video);
     }
 

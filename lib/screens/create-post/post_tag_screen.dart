@@ -2,7 +2,10 @@ import 'package:drivelife/api/garage_api.dart';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/tag_suggestion.dart';
 import 'package:drivelife/models/tagged_entity.dart';
+import 'package:drivelife/theme/dl_type.dart';
 import 'package:drivelife/screens/create-post/post_photo_tagging_screen.dart';
+import 'package:drivelife/screens/create-post/post_tag_plan.dart';
+import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -116,6 +119,26 @@ class _PostTagScreenState extends State<PostTagScreen> {
   /// Which ids this screen applied on its own, for the auto mark.
   final Set<String> _guessedIds = {};
 
+  /// Ids the user has taken off during this visit.
+  ///
+  /// The scan reports everything it has found so far on EVERY poll, and
+  /// the location lookup re-suggests on every rebuild — so without this
+  /// a chip removed while either was still running came straight back,
+  /// which is indistinguishable from the remove not working.
+  final Set<String> _dismissed = {};
+
+  /// Whether the post had a place when this screen opened.
+  bool _hadLocation = false;
+
+  /// Whether the user took it off.
+  ///
+  /// A place is columns on the post, not a tag row, so there is no id to
+  /// delete — clearing it means sending an empty name. Without knowing
+  /// it was deliberately removed, Save could not tell "they took it
+  /// off" from "there was never one", and sending a clear in the second
+  /// case would wipe a location the composer had set.
+  bool _locationRemoved = false;
+
   List<_GarageVehicle> _garage = const [];
   bool _garageLoaded = false;
 
@@ -144,7 +167,13 @@ class _PostTagScreenState extends State<PostTagScreen> {
   /// That call is also what erases the stored coordinates, which is why
   /// it happens whether or not anything is found.
   Future<void> _check() async {
-    if (widget.editing) await _loadExisting();
+    // Both flows, not only editing.
+    //
+    // By the time the posting flow reaches this screen the sweep may
+    // already have applied a venue and an event. Without loading them
+    // the screen showed those as fresh suggestions, and taking one off
+    // removed a suggestion while the real row stayed on the post.
+    await _loadExisting();
 
     final found = await PostsAPI.postTagSuggestions(widget.postId);
 
@@ -162,8 +191,23 @@ class _PostTagScreenState extends State<PostTagScreen> {
       _checking = false;
 
       // The guesses: nearest of each.
-      if (_location == null && found.locations.isNotEmpty) {
-        _location = found.locations.first.asGuess();
+      // What the post already says wins over any suggestion — it is
+      // the thing a remove has to be able to act on.
+      final saved = found.current;
+
+      if (saved != null && _location == null && !_locationRemoved) {
+        _location = saved;
+        _hadLocation = true;
+      }
+
+      if (_location == null &&
+          !_locationRemoved &&
+          found.locations.isNotEmpty) {
+        final guess = found.locations.first;
+
+        if (!_dismissed.contains('location:${guess.id}')) {
+          _location = guess.asGuess();
+        }
       }
 
       // ── ONLY A CLOSE EVENT IS APPLIED WITHOUT ASKING ──────────────
@@ -180,7 +224,9 @@ class _PostTagScreenState extends State<PostTagScreen> {
         final guess = found.events.first;
         final miles = guess.distanceMiles;
 
-        if (miles != null && miles <= _autoApplyMiles) {
+        if (miles != null &&
+            miles <= _autoApplyMiles &&
+            !_dismissed.contains('event:${guess.id}')) {
           _events.add(_asTag(guess, 'event'));
           _guessedIds.add(guess.id);
         }
@@ -225,35 +271,68 @@ class _PostTagScreenState extends State<PostTagScreen> {
           final registration = '${map['registration'] ?? ''}'.trim();
           final name = '${map['name'] ?? ''}'.trim();
 
+          // The owner's handle, which the server sends alongside the
+          // vehicle rather than inside its name.
+          final owner = map['owner'];
+          final handle = owner is Map ? '${owner['name'] ?? ''}'.trim() : '';
+
           final held = TaggedEntity(
             index: 0,
             id: '${raw['entity_id'] ?? ''}',
             type: type.contains('car') ? 'car' : type,
             // A plate reads better than a make and model for a car,
             // and is all there is for one nobody has claimed.
+            // "DR12 LFE (@drivelife)" — the plate is what identifies
+            // the car and the handle is whose it is. A make and model
+            // only appears for a vehicle with no plate on record.
             label: type.contains('car')
-                ? (registration.isNotEmpty ? registration : name)
+                ? _vehicleLabel(
+                    registration.isNotEmpty ? registration : name,
+                    handle,
+                  )
                 : name,
             imageUrl: '${map['image'] ?? ''}',
             registration: registration,
           );
 
-          if (held.label.isEmpty && held.registration.isEmpty) continue;
+          // NEVER skipped for want of a label.
+          //
+          // Dropping it here was a silent trap: the tag stayed on the
+          // post but was not in _tagIds, so Save could not remove it —
+          // and with the list looking empty, the suggestion below added
+          // an identical-looking chip backed by nothing. Taking that
+          // off deleted nothing and the real row survived, which is
+          // exactly what "removing a tag does not work" looked like.
+          //
+          // A tag the server cannot name is the one most worth being
+          // able to remove.
+          final labelled = held.label.isNotEmpty
+              ? held
+              : TaggedEntity(
+                  index: held.index,
+                  id: held.id,
+                  type: held.type,
+                  label: registration.isNotEmpty
+                      ? registration
+                      : 'Tagged ${held.type}',
+                  imageUrl: held.imageUrl,
+                  registration: held.registration,
+                );
 
           if (type == 'event') {
-            _events.add(held);
+            _events.add(labelled);
             _tagIds['event:${held.id}'] = tagId;
             continue;
           }
 
           if (type == 'user') {
-            _people.add(held);
+            _people.add(labelled);
             _tagIds['user:${held.id}'] = tagId;
             continue;
           }
 
           if (type.contains('car')) {
-            _vehicles.add(held);
+            _vehicles.add(labelled);
             _tagIds['car:${held.id}'] = tagId;
           }
         }
@@ -262,6 +341,13 @@ class _PostTagScreenState extends State<PostTagScreen> {
       debugPrint('[PostTag] could not load existing tags: $e');
     }
   }
+
+  /// "DR12 LFE (@drivelife)", or just the plate when nobody owns it.
+  ///
+  /// A registration the scan read that matches no garage has no handle
+  /// to show, and "(@)" would be worse than nothing.
+  static String _vehicleLabel(String plate, String handle) =>
+      handle.isEmpty ? plate : '$plate (@$handle)';
 
   /// Row ids for tags that were already on the post, so Share can remove
   /// the ones taken off. Keyed 'type:entityId'.
@@ -303,10 +389,19 @@ class _PostTagScreenState extends State<PostTagScreen> {
             final id = '${suggestion['entity_id'] ?? ''}';
             final plate = '${suggestion['registration'] ?? ''}';
 
+            // The scan already sends the owner alongside a plate it
+            // could put a name to. Not reading it was why a SUGGESTED
+            // vehicle showed a bare plate while the same car showed
+            // "(@handle)" after a save — the loaded tag carried it and
+            // the suggestion did not.
+            final owner = suggestion['owner'];
+            final handle = owner is Map ? '${owner['label'] ?? ''}'.trim() : '';
+
             if (id.isEmpty && plate.isEmpty) continue;
 
             // The scan returns everything found so far on every pass,
             // so without this each pass would add the same cars again.
+            if (_dismissed.contains('car:$id')) continue;
             if (_vehicles.any((v) => v.id == id && id.isNotEmpty)) continue;
             if (_vehicles.any(
               (v) => v.registration == plate && plate.isNotEmpty,
@@ -320,7 +415,7 @@ class _PostTagScreenState extends State<PostTagScreen> {
                 id: id,
                 type: 'car',
                 label: plate.isNotEmpty
-                    ? plate
+                    ? _vehicleLabel(plate, handle)
                     : '${suggestion['subtitle'] ?? ''}',
                 imageUrl: '${suggestion['image'] ?? ''}',
                 registration: plate,
@@ -352,8 +447,37 @@ class _PostTagScreenState extends State<PostTagScreen> {
   int _userId(BuildContext context) =>
       int.tryParse('${context.read<UserProvider>().user?.id}') ?? 0;
 
+  /// The signed-in user's handle, for their own cars.
+  ///
+  /// ── WHY IT ASKS TWICE ────────────────────────────────────────────
+  ///
+  /// The garage endpoint does not repeat the owner on every row, so the
+  /// handle has to come from whoever is signed in. UserProvider is the
+  /// obvious source and is NOT reliably populated yet when this screen
+  /// opens — it loads on its own schedule — which is why a plate read
+  /// "DR12 LFE" on the first visit and "DR12 LFE (@drivelife)" on the
+  /// second, once the provider had caught up.
+  ///
+  /// AccountManager holds the same name and is populated at sign-in, so
+  /// it answers when the other cannot.
+  String _myHandle() {
+    final fromProvider = context.read<UserProvider>().user?.username ?? '';
+
+    if (fromProvider.isNotEmpty) return fromProvider;
+
+    try {
+      return context.read<AccountManager>().activeAccount?.user.username ?? '';
+    } catch (_) {
+      // No AccountManager above this screen. Nothing to fall back on,
+      // and a plate with no handle beats no plate.
+      return '';
+    }
+  }
+
   Future<void> _loadGarage() async {
     if (!mounted) return;
+
+    final handle = _myHandle();
 
     try {
       final rows = await GarageAPI.getUserGarage(_userId(context));
@@ -363,7 +487,10 @@ class _PostTagScreenState extends State<PostTagScreen> {
       setState(() {
         _garage = (rows ?? const [])
             .whereType<Map>()
-            .map((r) => _GarageVehicle.fromMap(Map<String, dynamic>.from(r)))
+            .map(
+              (r) =>
+                  _GarageVehicle.fromMap(Map<String, dynamic>.from(r), handle),
+            )
             .where((v) => v.id.isNotEmpty)
             .toList();
         _garageLoaded = true;
@@ -371,6 +498,36 @@ class _PostTagScreenState extends State<PostTagScreen> {
     } catch (_) {
       if (mounted) setState(() => _garageLoaded = true);
     }
+  }
+
+  /// Whether this is only being offered rather than actually tagged.
+  ///
+  /// One definition, used by both saving and drawing. A chip drawn as
+  /// an offer and then saved anyway is the worst of both, and that was
+  /// exactly the bug this replaced.
+  ///
+  /// On the way out of posting a guess IS applied, so nothing is an
+  /// offer there. Afterwards a guess is something the user removed or
+  /// never took.
+  bool _isOffer(TaggedEntity t) => widget.editing && _guessedIds.contains(t.id);
+
+  /// "1 tagged", or "1 found" for something only being offered.
+  ///
+  /// Worth the words: a sparkle on a chip says where it came from, not
+  /// whether it will be saved, and those are different questions once
+  /// the post exists.
+  String _countLabel(List<TaggedEntity> held, String empty) {
+    if (held.isEmpty) return empty;
+
+    final offers = held.where(_isOffer).length;
+
+    if (offers == held.length) {
+      return '$offers found — tap + to add';
+    }
+
+    final tagged = held.length - offers;
+
+    return offers == 0 ? '$tagged tagged' : '$tagged tagged, $offers found';
   }
 
   /// A suggestion as a tag. index 0 because a suggestion is about the
@@ -546,15 +703,11 @@ class _PostTagScreenState extends State<PostTagScreen> {
             ),
           ),
           const SizedBox(height: 34),
-          const Text(
-            'CHECKING FOR TAGS',
-            style: TextStyle(
-              color: _ink,
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.4,
-            ),
-          ),
+          // DlHeading, not a bare Text: headings are Barlow Condensed
+          // and capitalised, and an inline w800 style is DM Sans — which
+          // looks deliberate rather than broken, so a screen that has not
+          // been migrated reads as a different design rather than a bug.
+          const DlHeading('Checking for tags', fontSize: 30, color: _ink),
           const SizedBox(height: 10),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 48),
@@ -574,15 +727,11 @@ class _PostTagScreenState extends State<PostTagScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
       children: [
-        const Text(
-          'TAG YOUR POST',
+        const DlHeading(
+          'Tag your post',
+          fontSize: 30,
+          color: _ink,
           textAlign: TextAlign.center,
-          style: TextStyle(
-            color: _ink,
-            fontSize: 26,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.4,
-          ),
         ),
         const SizedBox(height: 8),
         const Padding(
@@ -598,14 +747,26 @@ class _PostTagScreenState extends State<PostTagScreen> {
         _card(
           icon: Icons.location_on_outlined,
           title: 'Locations',
-          count: _location == null ? 'Add a location' : '1 tagged',
+          count: _location == null
+              ? 'Add a location'
+              : (widget.editing && _location!.guessed
+                    ? 'Found nearby — tap + to add'
+                    : '1 tagged'),
           onAdd: _pickLocation,
           chips: [
             if (_location != null)
               _chip(
                 label: _location!.title,
                 guessed: _location!.guessed,
-                onRemove: () => setState(() => _location = null),
+                offer: widget.editing && _location!.guessed,
+                onRemove: () => setState(() {
+                  _dismissed.add('location:${_location!.id}');
+                  _location = null;
+                  // Separate from _dismissed: that stops a SUGGESTION
+                  // coming back, this is what tells Save to clear the
+                  // column on the post.
+                  _locationRemoved = true;
+                }),
               ),
           ],
         ),
@@ -615,15 +776,19 @@ class _PostTagScreenState extends State<PostTagScreen> {
         _card(
           icon: Icons.calendar_today_outlined,
           title: 'Events',
-          count: _events.isEmpty ? 'Link an event' : '${_events.length} tagged',
+          count: _countLabel(_events, 'Link an event'),
           onAdd: _pickEvents,
           chips: _events
               .map(
                 (e) => _chip(
                   label: e.label,
                   guessed: _guessedIds.contains(e.id),
+                  offer: _isOffer(e),
                   imageUrl: e.imageUrl,
-                  onRemove: () => setState(() => _events.remove(e)),
+                  onRemove: () => setState(() {
+                    _events.remove(e);
+                    _dismissed.add('event:${e.id}');
+                  }),
                 ),
               )
               .toList(),
@@ -636,9 +801,7 @@ class _PostTagScreenState extends State<PostTagScreen> {
           title: 'Garage Vehicles',
           count: _scanning
               ? 'Checking your photos for vehicles…'
-              : _vehicles.isEmpty
-              ? 'Add a vehicle'
-              : '${_vehicles.length} tagged',
+              : _countLabel(_vehicles, 'Add a vehicle'),
           // Only while the scan is actually running. A finished scan that
           // found nothing is a result, not a reason to keep spinning.
           busy: _scanning,
@@ -648,8 +811,12 @@ class _PostTagScreenState extends State<PostTagScreen> {
                 (v) => _chip(
                   label: v.label,
                   guessed: _guessedIds.contains(v.id),
+                  offer: _isOffer(v),
                   imageUrl: v.imageUrl,
-                  onRemove: () => setState(() => _vehicles.remove(v)),
+                  onRemove: () => setState(() {
+                    _vehicles.remove(v);
+                    _dismissed.add('car:${v.id}');
+                  }),
                 ),
               )
               .toList(),
@@ -678,7 +845,10 @@ class _PostTagScreenState extends State<PostTagScreen> {
                 (u) => _chip(
                   label: u.label,
                   imageUrl: u.imageUrl,
-                  onRemove: () => setState(() => _people.remove(u)),
+                  onRemove: () => setState(() {
+                    _people.remove(u);
+                    _dismissed.add('user:${u.id}');
+                  }),
                 ),
               )
               .toList(),
@@ -690,52 +860,54 @@ class _PostTagScreenState extends State<PostTagScreen> {
   /// Writes the tags and the place. Shared by Save and by the per-photo
   /// tagger, which has to flush what is held here before it opens.
   Future<void> _persist(int userId) async {
-    final tags = <TaggedEntity>[..._events, ..._vehicles, ..._people];
+    // What to do is decided in planPostTags, a pure function with tests
+    // over every case this has got wrong — see
+    // test/post_tag_plan_test.dart. This only carries it out.
+    final plan = planPostTags(
+      editing: widget.editing,
+      events: _events,
+      vehicles: _vehicles,
+      people: _people,
+      tagIds: _tagIds,
+      guessedIds: _guessedIds,
+      place: _location,
+      hadPlace: _hadLocation,
+      placeRemoved: _locationRemoved,
+    );
 
-    // Anything that was on the post and is not in the lists now was
-    // taken off, and has to be deleted by row id — adding the survivors
-    // back would leave the removed ones exactly where they were.
-    final kept = {
-      for (final t in _events) 'event:${t.id}',
-      for (final t in _vehicles) 'car:${t.id}',
-      for (final t in _people) 'user:${t.id}',
-    };
-
-    final gone = _tagIds.entries.where((e) => !kept.contains(e.key)).toList();
-
-    for (final entry in gone) {
-      await PostsAPI.removePostTag(tagId: entry.value);
-      _tagIds.remove(entry.key);
+    for (final tagId in plan.remove) {
+      await PostsAPI.removePostTag(tagId: tagId);
+      _tagIds.removeWhere((_, id) => id == tagId);
     }
 
-    // Only the ones that are not already rows. Re-sending a tag the
-    // post already has is harmless, but re-sending a PERSON tag would
-    // move it to the first photo — _tagIds holds the ones loaded from
-    // the post, which are the ones already positioned.
-    final fresh = tags
-        .where((t) => !_tagIds.containsKey('${t.type}:${t.id}'))
-        .toList();
-
-    if (fresh.isNotEmpty) {
+    if (plan.add.isNotEmpty) {
       await PostsAPI.addTagsForPost(
         userId: userId,
         postId: widget.postId,
-        tags: fresh,
+        tags: plan.add,
       );
     }
 
-    final location = _location;
+    switch (plan.location) {
+      case PostLocationAction.set:
+        final place = plan.place!;
 
-    if (location != null) {
-      await PostsAPI.setPostLocation(
-        postId: widget.postId,
-        name: location.title,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        // So the post joins to the venue rather than only naming it.
-        kind: location.kind,
-        placeId: location.id,
-      );
+        await PostsAPI.setPostLocation(
+          postId: widget.postId,
+          name: place.title,
+          latitude: place.latitude,
+          longitude: place.longitude,
+          // So the post joins to the venue rather than only naming it.
+          kind: place.kind,
+          placeId: place.id,
+        );
+
+      case PostLocationAction.clear:
+        // An empty name clears the column, venue_id and track_id with it.
+        await PostsAPI.setPostLocation(postId: widget.postId, name: '');
+
+      case PostLocationAction.leave:
+        break;
     }
   }
 
@@ -868,6 +1040,10 @@ class _PostTagScreenState extends State<PostTagScreen> {
     required VoidCallback onRemove,
     String? imageUrl,
     bool guessed = false,
+
+    /// Drawn in italics, because it is NOT on the post. The sparkle says
+    /// where a chip came from; this says whether it counts yet.
+    bool offer = false,
   }) {
     return Container(
       padding: const EdgeInsets.fromLTRB(6, 5, 6, 5),
@@ -904,10 +1080,11 @@ class _PostTagScreenState extends State<PostTagScreen> {
             child: Text(
               label,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _ink,
+              style: TextStyle(
+                color: offer ? const Color(0xFF6E6E6E) : _ink,
                 fontSize: 14.5,
                 fontWeight: FontWeight.w600,
+                fontStyle: offer ? FontStyle.italic : FontStyle.normal,
               ),
             ),
           ),
@@ -953,6 +1130,13 @@ class _PostTagScreenState extends State<PostTagScreen> {
     setState(() {
       // Chosen by hand, so no longer a guess.
       _location = chosen.isEmpty ? null : chosen.first.copyWith(guessed: false);
+
+      if (_location != null) {
+        _dismissed.remove('location:${_location!.id}');
+        // Picking one undoes an earlier removal, so Save must not then
+        // clear the column.
+        _locationRemoved = false;
+      }
     });
   }
 
@@ -982,8 +1166,10 @@ class _PostTagScreenState extends State<PostTagScreen> {
     if (chosen == null || !mounted) return;
 
     setState(() {
-      // Chosen by hand, so no longer guesses.
+      // Chosen by hand, so no longer guesses, and plainly no longer
+      // dismissed either.
       _guessedIds.removeAll(chosen.map((e) => e.id));
+      _dismissed.removeAll(chosen.map((e) => 'event:${e.id}'));
 
       _events
         ..clear()
@@ -1025,6 +1211,16 @@ class _PostTagScreenState extends State<PostTagScreen> {
     if (chosen == null || !mounted) return;
 
     setState(() {
+      // Chosen by hand, so no longer guesses — without this a picked
+      // vehicle stayed in _guessedIds, which meant it kept drawing in
+      // italics and was filtered straight back out of the save. Events
+      // and locations already did this; vehicles did not, which is why
+      // those two worked and this one did not.
+      _guessedIds.removeAll(chosen.map((v) => v.id));
+
+      // And it is plainly not dismissed any more.
+      _dismissed.removeAll(chosen.map((v) => 'car:${v.id}'));
+
       _vehicles
         ..clear()
         ..addAll(
@@ -1131,7 +1327,7 @@ class _GarageVehicle {
     this.imageUrl,
   });
 
-  factory _GarageVehicle.fromMap(Map<String, dynamic> map) {
+  factory _GarageVehicle.fromMap(Map<String, dynamic> map, String handle) {
     final make = '${map['make'] ?? ''}'.trim();
     final model = '${map['model'] ?? ''}'.trim();
     final plate = '${map['registration'] ?? ''}'.trim();
@@ -1140,9 +1336,11 @@ class _GarageVehicle {
 
     return _GarageVehicle(
       id: '${map['id'] ?? ''}',
-      // The plate is what the chip shows in the design, falling back to
-      // the car's name for one that has never had a registration.
-      label: plate.isNotEmpty ? plate : name,
+      // "DR12 LFE (@drivelife)", falling back to make and model for a
+      // car that has never had a registration recorded.
+      label: plate.isNotEmpty
+          ? (handle.isEmpty ? plate : '$plate (@$handle)')
+          : name,
       detail: plate.isNotEmpty ? name : '${map['year'] ?? ''}'.trim(),
       registration: plate,
       imageUrl: (map['cover_photo'] == null || '${map['cover_photo']}'.isEmpty)

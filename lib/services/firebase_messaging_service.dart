@@ -117,7 +117,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         // would show the label either way. With
         // FeatureFlags.notificationAccountLabel off it shows none, and
         // the group name takes the slot on a group chat as before.
-        subText: _backgroundAccountLabel(target) ??
+        subText:
+            _backgroundAccountLabel(target) ??
             (isChatMessage && isGroup ? groupName : null),
         showWhen: true,
         // Per account as well as per conversation, so two accounts in the
@@ -623,46 +624,77 @@ class FirebaseMessagingService {
     final target = NotificationTarget.fromData(data);
     final accountLabel = _accountLabel(target);
 
-    // ── Build messaging style ──
-    final person = Person(
-      name: senderName,
-      icon: largeIcon != null ? ByteArrayAndroidIcon(largeIcon.data) : null,
-      key: senderId,
-    );
+    // ── Chat, or everything else ────────────────────────────────────
+    //
+    // This used to build a MessagingStyle notification for EVERYTHING,
+    // which is why a post-tags notification showed a blue "Y" avatar:
+    // MessagingStyle draws the recipient, and the recipient is
+    // Person(name: 'You'), from which Android generates a letter.
+    //
+    // It also used convId.hashCode as the id — the same number for
+    // every notification without a conversation, so any two of them
+    // replaced each other in the shade.
+    //
+    // The background handler has always branched here. This now agrees
+    // with it.
+    final isChatMessage = convId.isNotEmpty;
 
-    final style = MessagingStyleInformation(
-      // "you" — the recipient
-      Person(name: 'You'),
-      conversationTitle: isGroup ? groupName : null,
-      groupConversation: isGroup,
-      messages: [Message(body, DateTime.now(), person)],
-    );
+    final StyleInformation style;
+
+    if (isChatMessage) {
+      final person = Person(
+        name: senderName,
+        icon: largeIcon != null ? ByteArrayAndroidIcon(largeIcon.data) : null,
+        key: senderId,
+      );
+
+      style = MessagingStyleInformation(
+        // "you" — the recipient
+        Person(name: 'You'),
+        conversationTitle: isGroup ? groupName : null,
+        groupConversation: isGroup,
+        messages: [Message(body, DateTime.now(), person)],
+      );
+    } else {
+      // The title is the app's own words, not a person's name, so it
+      // belongs in the title and the body expands underneath it.
+      style = BigTextStyleInformation(body);
+    }
 
     await _localNotifications.show(
-      // Use convId as notification ID so messages in same chat stack
-      convId.hashCode,
-      isGroup ? groupName : senderName,
+      // Per conversation for a chat, so messages in one thread stack.
+      // Anything else gets its own id from the notification's identity,
+      // or it would overwrite the last one.
+      isChatMessage
+          ? convId.hashCode
+          : (target.notifyId ?? '${data['notify_kind']}$body').hashCode,
+      isChatMessage ? (isGroup ? groupName : senderName) : senderName,
       body,
       NotificationDetails(
         android: AndroidNotificationDetails(
           'high_importance_channel',
           'High Importance Notifications',
-          channelDescription: 'Chat messages',
+          channelDescription: 'Messages and updates',
           importance: Importance.high,
           priority: Priority.high,
           icon: '@mipmap/ic_launcher', // small icon in status bar
           largeIcon: largeIcon, // profile pic in notification
-          styleInformation: style, // WhatsApp-style grouping
+          styleInformation: style,
           playSound: true,
           // Beside the app name in the shade. The account wins over the
           // group name here: the group is already the notification's title,
           // and which account it came to is the thing you cannot otherwise
           // tell.
-          subText: accountLabel ?? (isGroup ? groupName : null),
+          subText:
+              accountLabel ?? (isChatMessage && isGroup ? groupName : null),
           showWhen: true,
           // Grouped per conversation AND per account, so two accounts in
           // the same conversation do not collapse into one thread.
-          groupKey: 'chat_${target.accountId ?? 'self'}_$convId',
+          // Chat only. Grouping everything else under one key would
+          // collapse unrelated notifications into a single thread.
+          groupKey: isChatMessage
+              ? 'chat_${target.accountId ?? 'self'}_$convId'
+              : null,
           setAsGroupSummary: false,
         ),
         iOS: DarwinNotificationDetails(
@@ -670,7 +702,11 @@ class FirebaseMessagingService {
           presentBadge: true,
           presentSound: true,
           subtitle: accountLabel,
-          threadIdentifier: 'chat_${target.accountId ?? 'self'}_$convId',
+          // Same reasoning as groupKey on Android: a shared thread for
+          // everything non-chat would stack unrelated notifications.
+          threadIdentifier: isChatMessage
+              ? 'chat_${target.accountId ?? 'self'}_$convId'
+              : 'dl_${data['notify_kind'] ?? 'update'}',
         ),
       ),
       // Carries the account as well as the url, so the tap can switch to

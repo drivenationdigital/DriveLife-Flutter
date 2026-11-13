@@ -1517,15 +1517,30 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     // reading. Anything else has not been checked, and saying so beats
     // implying it has no location.
     final rows =
-        <({int number, MediaLocationReading? reading, DateTime? takenAt})>[];
+        <
+          ({
+            int number,
+            MediaLocationReading? reading,
+            DateTime? takenAt,
+            bool isVideo,
+            Duration? duration,
+          })
+        >[];
 
     for (var i = 0; i < _selectedMedia.length; i++) {
-      final path = _selectedMedia[i].sourcePath;
+      final media = _selectedMedia[i];
+      final path = media.sourcePath;
 
       rows.add((
         number: i + 1,
         reading: _mediaLocations[path],
         takenAt: _takenAt[path],
+        // Marked, because a video reaching this panel with no location
+        // is a different finding from a photo doing the same. A photo
+        // has EXIF left to try; a video has nothing after the gallery
+        // record, so "no location" there is final rather than a step.
+        isVideo: media.isVideo,
+        duration: media.duration,
       ));
     }
 
@@ -1640,6 +1655,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 number: row.number,
                 reading: row.reading,
                 takenAt: row.takenAt,
+                isVideo: row.isVideo,
+                duration: row.duration,
               ),
           ],
         ),
@@ -3903,11 +3920,33 @@ class _MediaLocationRow extends StatelessWidget {
   /// broken event search rather than a missing timestamp.
   final DateTime? takenAt;
 
+  /// Whether this item is a video, and how long it runs.
+  ///
+  /// Both only matter for reading the panel: a video that reports no
+  /// location has exhausted everything we do, where a photo saying the
+  /// same has only exhausted the gallery record.
+  final bool isVideo;
+  final Duration? duration;
+
   const _MediaLocationRow({
     required this.number,
     required this.reading,
     this.takenAt,
+    this.isVideo = false,
+    this.duration,
   });
+
+  /// "Video · 0:14", or just "Photo".
+  String get _kind {
+    if (!isVideo) return 'Photo';
+
+    final d = duration;
+    if (d == null) return 'Video';
+
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+
+    return 'Video · ${d.inMinutes}:$seconds';
+  }
 
   /// "14 Jun 2026, 15:04", or why there is nothing to show.
   String get _taken {
@@ -4022,7 +4061,7 @@ class _MediaLocationRow extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 1),
                   child: Text(
-                    taken,
+                    '$_kind  ·  $taken',
                     style: TextStyle(
                       fontSize: 10.5,
                       height: 1.3,

@@ -43,6 +43,31 @@ class MediaFraming {
 }
 
 /// One chosen item, and how its owner framed it.
+/// What a tile shows when the OS cannot produce a thumbnail.
+///
+/// ── WHY THIS IS NEEDED ──────────────────────────────────────────────
+///
+/// Thumbnailing is the platform's job, and it fails on some videos —
+/// high bitrate, HDR, or a codec the device will play but not decode a
+/// still from quickly. The Image widget's default for that is Flutter's
+/// broken-image glyph: a red cross on white, which looks like a corrupt
+/// file rather than a missing preview.
+///
+/// The clip itself is fine, and picks and uploads normally. So this
+/// says "video" quietly instead of shouting damage.
+Widget _thumbnailFallback({bool isVideo = true}) {
+  return ColoredBox(
+    color: const Color(0xFF1C1C1C),
+    child: Center(
+      child: Icon(
+        isVideo ? Icons.videocam_outlined : Icons.image_outlined,
+        color: Colors.white38,
+        size: 28,
+      ),
+    ),
+  );
+}
+
 class PickedMedia {
   /// The gallery's own id for this item.
   ///
@@ -854,7 +879,27 @@ class _MediaPickerScreenState extends State<MediaPickerScreen> {
                 },
                 child: Image(
                   key: ValueKey(asset.id),
-                  image: AssetEntityImageProvider(asset, isOriginal: true),
+                  // ── NEVER THE ORIGINAL FOR A VIDEO ────────────────
+                  //
+                  // isOriginal gives the file itself, and for a video
+                  // that is the MP4. Handing those bytes to the image
+                  // decoder fails, and _ImageState rethrows a load
+                  // error in debug whenever there is no errorBuilder —
+                  // which is the crash you get by tapping a clip in the
+                  // strip.
+                  //
+                  // A thumbnail is a decoded frame, which is what this
+                  // pane wanted from a video in the first place.
+                  image: AssetEntityImageProvider(
+                    asset,
+                    isOriginal: asset.type != AssetType.video,
+                    thumbnailSize: asset.type == AssetType.video
+                        ? const ThumbnailSize.square(1200)
+                        : null,
+                  ),
+                  errorBuilder: (_, _, _) => _thumbnailFallback(
+                    isVideo: asset.type == AssetType.video,
+                  ),
                   // Safe only because the viewport is built to the
                   // image's own aspect, so fill and contain agree. With
                   // gapless playback on, though, the PREVIOUS image
@@ -904,6 +949,9 @@ class _MediaPickerScreenState extends State<MediaPickerScreen> {
                   ),
                   fit: BoxFit.cover,
                   gaplessPlayback: true,
+                  errorBuilder: (_, _, _) => _thumbnailFallback(
+                    isVideo: asset.type == AssetType.video,
+                  ),
                 ),
               ),
             ),
@@ -1177,6 +1225,9 @@ class _MediaPickerScreenState extends State<MediaPickerScreen> {
             ),
             fit: BoxFit.cover,
             gaplessPlayback: true,
+            errorBuilder: (_, _, _) => _thumbnailFallback(
+              isVideo: asset.type == AssetType.video,
+            ),
           ),
 
           // Greyed when it cannot be chosen, so the limit is visible
@@ -1502,6 +1553,12 @@ class _VideoPreviewState extends State<_VideoPreview> {
               thumbnailSize: const ThumbnailSize.square(1000),
             ),
             fit: BoxFit.contain,
+            // Without one of these, _ImageState rethrows any load
+            // failure rather than drawing a placeholder — so a single
+            // unthumbnailable clip takes the screen down in debug.
+            errorBuilder: (_, _, _) => _thumbnailFallback(
+              isVideo: widget.asset.type == AssetType.video,
+            ),
           ),
           const SizedBox(
             width: 26,
@@ -1539,6 +1596,9 @@ class _VideoPreviewState extends State<_VideoPreview> {
                         ),
                         fit: BoxFit.cover,
                         gaplessPlayback: true,
+                        errorBuilder: (_, _, _) => _thumbnailFallback(
+                          isVideo: widget.asset.type == AssetType.video,
+                        ),
                       ),
                     ),
                   ),
@@ -1676,6 +1736,9 @@ class _StripTileState extends State<_StripTile>
                   thumbnailSize: const ThumbnailSize.square(200),
                 ),
                 fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => _thumbnailFallback(
+                  isVideo: widget.asset.type == AssetType.video,
+                ),
               ),
             ),
             if (widget.asset.type == AssetType.video)

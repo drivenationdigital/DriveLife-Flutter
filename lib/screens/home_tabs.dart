@@ -238,6 +238,22 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
 
       context.read<UploadPostProvider>().points = points;
       context.read<GalleryUploadProvider>().points = points;
+
+      // ── A TAP THAT ARRIVED BEFORE THERE WAS ANYWHERE TO GO ────────
+      //
+      // openTarget() queues the target when navigatorKey has no state
+      // yet, which is every tap that launches the app from cold or
+      // wakes it from the background — the handler runs before this
+      // shell is built.
+      //
+      // Nothing was calling this, so those taps were queued and never
+      // replayed: the notification appeared to do nothing, and only a
+      // hot restart opened it, because that re-runs the cold-start read
+      // and finds it again.
+      //
+      // Here because this is the first point at which a navigator
+      // exists, and harmless when there is nothing queued.
+      FirebaseMessagingService.flushPendingDeepLink();
     });
 
     // After the first frame. A provider read in initState works, but

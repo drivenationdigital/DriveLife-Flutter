@@ -168,6 +168,13 @@ class TagSuggestions {
   final List<TagSuggestion> locations;
   final List<TagSuggestion> events;
 
+  /// The place already saved on the post, if any.
+  ///
+  /// Not a suggestion — this is what the post currently says. It lives
+  /// in columns on ce_social_posts rather than as a tag row, so nothing
+  /// in the tag list carries it.
+  final TagSuggestion? current;
+
   /// Why nothing was found, when nothing was.
   ///
   /// Four different problems produce an identical empty screen — no GPS
@@ -180,6 +187,7 @@ class TagSuggestions {
   const TagSuggestions({
     this.locations = const [],
     this.events = const [],
+    this.current,
     this.why = const [],
   });
 
@@ -195,9 +203,19 @@ class TagSuggestions {
             .where((s) => s.id.isNotEmpty && s.title.isNotEmpty)
             .toList();
 
+    final saved = map['current_location'];
+
     return TagSuggestions(
       locations: read('locations'),
       events: read('events'),
+      current: saved is Map
+          ? TagSuggestion.fromMap({
+              ...Map<String, dynamic>.from(saved),
+              // The server sends it under `title`; fromMap reads the
+              // same keys as a suggestion so one reader serves both.
+              'title': '${saved['title'] ?? ''}',
+            })
+          : null,
       why: ((map['why'] as List?) ?? const [])
           .map((e) => '$e')
           .where((s) => s.isNotEmpty)
