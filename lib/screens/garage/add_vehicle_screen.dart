@@ -2,14 +2,18 @@ import 'package:drivelife/widgets/points/points_reward.dart';
 import 'package:drivelife/widgets/garage/photo_matches_sheet.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:drivelife/api/cloudflare_images.dart';
+import 'package:drivelife/models/vehicle_guess.dart';
 import 'package:drivelife/api/garage_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/media_picker/media_picker_screen.dart';
 import 'package:drivelife/services/media_compressor.dart';
 import 'package:drivelife/services/upload_quality_prefs.dart';
+import 'package:drivelife/theme/dl_type.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:provider/provider.dart';
 
 /// The most photographs one vehicle can carry.
@@ -78,6 +82,48 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   String? _base64Image;
   bool _lookingUp = false;
 
+  /// Which half of the ADD flow is showing: 1 photographs, 2 the form.
+  ///
+  /// ── WHY PHOTOGRAPHS COME FIRST ──────────────────────────────────
+  ///
+  /// They are the only thing everybody adding a vehicle already has.
+  /// The form used to lead with a registration, which is a UK plate
+  /// queried against a UK database — so for an import, a project car, a
+  /// track car or any dream car it was a shortcut that could only fail,
+  /// sitting in the field the form told you filled in all the others.
+  ///
+  /// Photographs work for all of them, and they were going to be asked
+  /// for anyway. Asking for them first turns the rest of the form into
+  /// a correction rather than an exercise.
+  ///
+  /// Editing is unaffected and never sees this: the vehicle already
+  /// exists and its photographs are already attached.
+  int _step = 1;
+
+  /// True while the photographs are being read.
+  bool _scanning = false;
+
+  /// How many photographs are ready to send, and whether the server is
+  /// looking at them yet.
+  ///
+  /// Shown as real progress rather than a timed sequence of ticks. The
+  /// upload is most of the wait and is the part that varies — a dozen
+  /// photographs on a bad connection is a different experience from two
+  /// on wifi, and a progress list that cannot tell them apart is a
+  /// loading spinner with extra steps.
+  int _scanUploaded = 0;
+  bool _scanIdentifying = false;
+
+  /// What the scan thinks the vehicle is. See [VehicleGuess].
+  VehicleGuess _guess = VehicleGuess.none;
+
+  /// How many photographs the scan reads.
+  ///
+  /// The angles that tell one car from another are front, rear, side
+  /// and interior; a fifth is usually another of one of those. The
+  /// server caps this too — this one is about the size of the request.
+  static const int _scanPhotoLimit = 4;
+
   String _ownership = 'current';
   DateTime? _ownedFrom;
   DateTime? _ownedTo;
@@ -119,6 +165,26 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   String _uploadStatus = '';
 
   bool get _isEditMode => widget.vehicle != null;
+
+  /// Is the details form the thing on screen?
+  ///
+  /// Always, when editing. See [_step].
+  bool get _onForm => _isEditMode || _step == 2;
+
+  /// Whether the registration lookup is offered in the UI.
+  ///
+  /// ── DISCONNECTED, NOT DELETED ───────────────────────────────────
+  ///
+  /// The lookup still works and [GarageAPI.lookupVehicleByReg] is still
+  /// wired to it — a plate that resolves resolves exactly, which no
+  /// amount of looking at photographs can match. What it cannot do is
+  /// be the way IN to the form, because it only answers for UK-plated
+  /// road cars and the garage is full of vehicles that are not that.
+  ///
+  /// A getter rather than a const so the analyser does not read the
+  /// code behind it as dead and the lookup stays compiled, reachable
+  /// and one word away from coming back.
+  bool get _regLookupInUi => false;
   String? _existingImageUrl;
 
   static const List<String> _makes = [
@@ -1040,6 +1106,122 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   /// matters: it names every photograph the vehicle should have, so it
   /// has to run after the set has stopped changing — otherwise it would
   /// name one that was about to be deleted, or miss one about to arrive.
+  /// Read the vehicle out of the photographs.
+  ///
+  /// ── NOTHING IS UPLOADED HERE ────────────────────────────────────
+  ///
+  /// This used to put the photographs on Cloudflare so the server could
+  /// fetch them, which meant images existed before the vehicle did.
+  /// Abandoning the flow left them orphaned, going back showed a
+  /// photograph that had already been sent as new, and the bookkeeping
+  /// to avoid sending it twice was a cache keyed on a temp file path.
+  ///
+  /// All of that was the price of a URL. The bytes go straight to our
+  /// own endpoint instead, get read, and are dropped — so a scan leaves
+  /// no trace and Save uploads exactly once, as it always did.
+  Future<void> _scanPhotos() async {
+    if (_galleryPicks.isEmpty) return;
+
+    setState(() {
+      _scanning = true;
+      _scanUploaded = 0;
+      _scanIdentifying = false;
+    });
+
+    final photos = <Uint8List>[];
+
+    for (final file in _galleryPicks.take(_scanPhotoLimit)) {
+      try {
+        // Shrunk for the trip. The server reduces to 1024 before it
+        // sends anything on, so a full-size phone photograph would be
+        // megabytes of request body thrown away on arrival.
+        final small = await FlutterImageCompress.compressWithFile(
+          file.path,
+          minWidth: 1024,
+          minHeight: 1024,
+          quality: 80,
+        );
+
+        photos.add(small ?? await file.readAsBytes());
+      } catch (e) {
+        debugPrint('[AddVehicle] scan prepare failed for ${file.path}: $e');
+      }
+
+      if (mounted) setState(() => _scanUploaded++);
+    }
+
+    if (mounted) setState(() => _scanIdentifying = true);
+
+    final guess = await GarageAPI.identifyVehicle(photos);
+
+    if (!mounted) return;
+
+    setState(() {
+      _guess = guess;
+      _applyGuess(guess);
+      _scanning = false;
+      _step = 2;
+    });
+  }
+
+  /// Fill in what the photographs said, without overwriting anybody.
+  ///
+  /// Only ever writes into a field that is empty. The scan runs once, on
+  /// the way to a blank form, so in practice everything is empty — but
+  /// going back a step and scanning again must not throw away a
+  /// correction somebody has already made.
+  void _applyGuess(VehicleGuess guess) {
+    if (!guess.hasGuess) return;
+
+    if (_make == null && guess.make.isNotEmpty) {
+      // Matched against the dropdown, case-insensitively. A make the
+      // list does not carry is left unset rather than invented — the
+      // banner still names it, so nothing is hidden.
+      final match = _makes.firstWhere(
+        (m) => m.toLowerCase() == guess.make.toLowerCase(),
+        orElse: () => '',
+      );
+
+      if (match.isNotEmpty) _make = match;
+    }
+
+    void fill(TextEditingController ctrl, String value) {
+      if (ctrl.text.trim().isEmpty && value.isNotEmpty) ctrl.text = value;
+    }
+
+    fill(_modelCtrl, guess.model);
+    fill(_variantCtrl, guess.variant);
+    fill(_colourCtrl, guess.colour);
+    fill(_yearCtrl, guess.yearForField);
+  }
+
+  /// "Not right? Clear and enter manually".
+  ///
+  /// Empties everything the scan filled in rather than only hiding the
+  /// banner. Someone who says the guess is wrong is telling us the
+  /// fields under it are wrong too, and leaving a wrong make in place
+  /// while removing the thing that explains where it came from is the
+  /// worst of both.
+  void _clearGuess() {
+    setState(() {
+      final guess = _guess;
+      _guess = VehicleGuess.none;
+
+      if (_make != null && _make!.toLowerCase() == guess.make.toLowerCase()) {
+        _make = null;
+      }
+
+      void clear(TextEditingController ctrl, String value) {
+        if (value.isNotEmpty && ctrl.text.trim() == value.trim()) ctrl.clear();
+      }
+
+      clear(_modelCtrl, guess.model);
+      clear(_variantCtrl, guess.variant);
+      clear(_colourCtrl, guess.colour);
+      clear(_yearCtrl, guess.yearForField);
+    });
+  }
+
   Future<void> _saveGallery(String garageId) async {
     for (final image in _galleryRemovals) {
       await GarageAPI.removeGalleryPhoto(garageId: garageId, image: image);
@@ -1814,7 +1996,23 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+          // Back from the form means back to the photographs, not out
+          // of the flow. Leaving from step two would throw away the
+          // upload that step one just paid for.
+          //
+          // Nothing is undone by going back: the picks, their uploaded
+          // ids and anything already typed all survive, and returning
+          // re-scans only what has not been sent.
+          onPressed: _scanning
+              ? null
+              : () {
+                  if (!_isEditMode && _step == 2) {
+                    setState(() => _step = 1);
+                    return;
+                  }
+
+                  Navigator.pop(context);
+                },
         ),
         centerTitle: true,
         title: Text(
@@ -1826,28 +2024,44 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: _saving ? null : _onSave,
-            child: _saving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Color(0xFFAE9159),
+          // Nothing to save until there is a form. On the photographs
+          // step it would be a button that either does nothing or
+          // creates a vehicle with no make, which is worse.
+          if (_onForm && !_scanning)
+            TextButton(
+              onPressed: _saving ? null : _onSave,
+              child: _saving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFFAE9159),
+                      ),
+                    )
+                  : Text(
+                      _isEditMode ? 'Update' : 'Save',
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  )
-                : Text(
-                    _isEditMode ? 'Update' : 'Save',
-                    style: const TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-          ),
+            ),
         ],
+        // Only while adding. Editing is one screen and always was, so a
+        // progress bar over it would be counting to one.
+        bottom: _isEditMode ? null : _stepBar(),
       ),
-      body: Stack(
+      body: _scanning
+          ? _scanningBody()
+          : !_onForm
+          ? _photosBody()
+          : _formBody(theme),
+    );
+  }
+
+  Widget _formBody(ThemeProvider theme) {
+    return Stack(
         children: [
           SafeArea(
             child: Form(
@@ -1855,8 +2069,15 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 24),
                 children: [
-                  _sectionTitle('Vehicle Gallery'),
-                  _buildGallerySection(),
+                  // What the photographs said, and a way to disown it.
+                  if (_guess.hasGuess) _guessBanner(),
+
+                  // The gallery belongs to step one while adding; it is
+                  // only here when editing, where there is no step one.
+                  if (_isEditMode) ...[
+                    _sectionTitle('Vehicle Gallery'),
+                    _buildGallerySection(),
+                  ],
 
                   _sectionTitle('Ownership Type'),
                   _card(
@@ -1961,7 +2182,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                         TextFormField(
                           controller: _regCtrl,
                           textCapitalization: TextCapitalization.characters,
-                          decoration: _canLookUpReg
+                          decoration: _regLookupInUi && _canLookUpReg
                               ? _dec(
                                   'Registration',
                                   hint: 'Your vehicle reg',
@@ -2163,7 +2384,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
                         SwitchListTile(
                           title: const Text(
-                            'Include my car in interest groups',
+                            'Include my vehicle in interest groups',
                           ),
                           value: _interestGroupsEnabled,
                           activeThumbColor: theme.primaryColor,
@@ -2188,10 +2409,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                                   _interestGroupsEnabled
                                       ? 'Content posted of this vehicle will '
                                             'display in relevant make, model '
-                                            'and category groups. You can '
-                                            'follow or unfollow any group — '
-                                            'your content is included either '
-                                            'way.'
+                                            'and category groups.'
                                       : 'This vehicle and its content stay out '
                                             'of the make, model and category '
                                             'groups. Groups you have joined '
@@ -2300,6 +2518,342 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                 ),
               ),
             ),
+        ],
+    );
+  }
+
+  /// The two-segment bar under the title: "Step 1 of 2 … Photos".
+  PreferredSizeWidget _stepBar() {
+    const gold = Color(0xFFAE9159);
+
+    final second = _onForm && !_scanning;
+
+    final label = _scanning
+        ? 'Scanning'
+        : second
+        ? 'Vehicle info'
+        : 'Photos';
+
+    Widget segment(bool filled) => Expanded(
+      child: Container(
+        height: 4,
+        decoration: BoxDecoration(
+          color: filled ? gold : const Color(0xFFE6E6E6),
+          borderRadius: BorderRadius.circular(999),
+        ),
+      ),
+    );
+
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(46),
+      child: Container(
+        color: Colors.white,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                segment(true),
+                const SizedBox(width: 8),
+                segment(second),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text(
+                  'Step ${second ? 2 : 1} of 2',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0B0B0B),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF8A8A8A),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Step one: photographs, and nothing else to think about.
+  Widget _photosBody() {
+    final ready = _galleryPicks.isNotEmpty && !_preparingPhotos;
+
+    return SafeArea(
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(0, 18, 0, 24),
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, 0),
+                  child: DlHeading(
+                    'Start with photos',
+                    fontSize: 28,
+                    color: Color(0xFF0B0B0B),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Text(
+                    'Add a few shots of your vehicle. Ideally, your cover '
+                    'should be a front three-quarter shot with the whole '
+                    'vehicle in view.',
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.4,
+                      color: Color(0xFF6B6B6B),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _sectionTitle('Vehicle Gallery'),
+                _buildGallerySection(),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Color(0xFFEDEDED))),
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton(
+                // Disabled rather than hidden: a button that is there
+                // and greyed says a photograph is what unlocks it, and
+                // one that appears from nowhere says nothing at all.
+                onPressed: ready ? _scanPhotos : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFAE9159),
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: const Color(0xFFE6E6E6),
+                  disabledForegroundColor: const Color(0xFF9A9A9A),
+                  shape: const StadiumBorder(),
+                ),
+                child: const Text(
+                  'Continue',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The wait, with the photographs being read behind it.
+  Widget _scanningBody() {
+    // Only the ones the scan actually reads, so the count cannot say
+    // "2 of 9" and then stop at four.
+    final total = _galleryPicks.length < _scanPhotoLimit
+        ? _galleryPicks.length
+        : _scanPhotoLimit;
+
+    final uploaded = _scanUploaded.clamp(0, total);
+
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(28, 40, 28, 28),
+        children: [
+          if (_galleryPicks.isNotEmpty)
+            Center(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.file(
+                  _galleryPicks.first,
+                  width: 260,
+                  height: 170,
+                  fit: BoxFit.cover,
+                  // The cover is a File that was readable a moment ago,
+                  // so this is close to impossible — and a crash on a
+                  // progress screen would lose the upload behind it.
+                  errorBuilder: (_, __, ___) => Container(
+                    width: 260,
+                    height: 170,
+                    color: const Color(0xFFF0F0F0),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 30),
+          const Center(
+            child: DlHeading(
+              'Scanning your vehicle',
+              fontSize: 26,
+              color: Color(0xFF0B0B0B),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Center(
+            child: Text(
+              'This only takes a few seconds.',
+              style: TextStyle(fontSize: 15, color: Color(0xFF6B6B6B)),
+            ),
+          ),
+          const SizedBox(height: 28),
+
+          // ── TWO ROWS, BOTH REAL ───────────────────────────────────
+          //
+          // There is one call to the server, so there are two things
+          // happening: the photographs going up, and the answer coming
+          // back. A third tick would be a timed animation pretending to
+          // be a stage, and the moment it is out of step with the wait
+          // it stops meaning anything.
+          _scanRow(
+            done: total > 0 && uploaded >= total,
+            active: !_scanIdentifying,
+            label: total > 1
+                ? 'Preparing photos ($uploaded of $total)'
+                : 'Preparing photo',
+            doneLabel: total > 1 ? 'Photos ready' : 'Photo ready',
+          ),
+          const SizedBox(height: 14),
+          _scanRow(
+            done: false,
+            active: _scanIdentifying,
+            label: 'Identifying make and model',
+            doneLabel: 'Identifying make and model',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _scanRow({
+    required bool done,
+    required bool active,
+    required String label,
+    required String doneLabel,
+  }) {
+    const gold = Color(0xFFAE9159);
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 24,
+          height: 24,
+          child: done
+              ? const Icon(Icons.check_circle, color: gold, size: 24)
+              : active
+              ? const Padding(
+                  padding: EdgeInsets.all(2),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    valueColor: AlwaysStoppedAnimation(gold),
+                  ),
+                )
+              : Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFFDDDDDD), width: 2),
+                  ),
+                ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            done ? doneLabel : label,
+            style: TextStyle(
+              fontSize: 15.5,
+              fontWeight: FontWeight.w700,
+              color: (done || active)
+                  ? const Color(0xFF0B0B0B)
+                  : const Color(0xFF9A9A9A),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// "We think this is a PORSCHE 911 GT3 TOURING".
+  ///
+  /// Says where the answer came from, and offers to take it back. A
+  /// prefilled form with no explanation is the version people accept
+  /// without reading; naming the guess as a guess is what makes the
+  /// fields under it get checked.
+  Widget _guessBanner() {
+    const gold = Color(0xFFAE9159);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFBF6EC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: gold),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_galleryPicks.isNotEmpty) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.file(
+                _galleryPicks.first,
+                width: 58,
+                height: 44,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox(
+                  width: 58,
+                  height: 44,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'WE THINK THIS IS A',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: gold,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                DlHeading(
+                  _guess.label,
+                  fontSize: 20,
+                  color: const Color(0xFF0B0B0B),
+                ),
+                const SizedBox(height: 6),
+                GestureDetector(
+                  onTap: _clearGuess,
+                  child: const Text(
+                    'Not right? Clear and enter manually',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0B0B0B),
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

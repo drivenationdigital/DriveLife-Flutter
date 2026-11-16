@@ -6,6 +6,7 @@ import 'package:drivelife/utils/chunk_upload_utility.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:drivelife/config/app_environment.dart';
+import 'package:drivelife/models/vehicle_guess.dart';
 
 class GarageAPI {
   static String get _apiUrl => AppEnvironment.wordpressBase;
@@ -495,6 +496,76 @@ class GarageAPI {
     } catch (e) {
       print('Error fetching garage posts: $e');
       return null;
+    }
+  }
+
+  /// What the photographs say the vehicle is.
+  ///
+  /// ── WHY THIS REPLACED THE PLATE LOOKUP ──────────────────────────
+  ///
+  /// The registration lookup is a UK vehicle database queried off a UK
+  /// plate, which means it can only ever work for some of the garage:
+  /// imports, project cars, track cars on trade plates and every dream
+  /// car have nothing to look up. It is still here — see
+  /// [lookupVehicleByReg], still wired, just no longer the thing the
+  /// form leads with — because a plate that does resolve resolves
+  /// exactly.
+  ///
+  /// Photographs work for all of it, and people adding a car to a
+  /// garage have photographs. Nulls come back as empty strings and
+  /// everything is correctable, so a wrong guess costs a tap.
+  ///
+  /// ── THE BYTES GO UP, NOT A LINK TO THEM ─────────────────────────
+  ///
+  /// It used to take URLs, which meant the photographs had to be
+  /// somewhere fetchable first — so the screen uploaded them to
+  /// Cloudflare before there was a vehicle to attach them to. Every
+  /// abandoned add left images behind that nothing referenced and
+  /// nothing would ever delete, and a photograph that had been sent
+  /// already still showed as new.
+  ///
+  /// Scanning is a question, not a decision. A question should leave
+  /// nothing behind, so the bytes are posted, read and dropped, and the
+  /// only upload that ever happens is the one at Save.
+  ///
+  /// Never throws and never reports failure as an error: not being able
+  /// to tell what a car is, is an ordinary outcome, and the screen's
+  /// answer to it is the form somebody would have filled in anyway.
+  static Future<VehicleGuess> identifyVehicle(List<Uint8List> photos) async {
+    final usable = photos.where((b) => b.isNotEmpty).toList();
+
+    if (usable.isEmpty) return VehicleGuess.none;
+
+    try {
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v2/garage/identify'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'photos': usable.map(base64Encode).toList(),
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint('[Garage] identify HTTP ${response.statusCode}');
+        return VehicleGuess.none;
+      }
+
+      final body = jsonDecode(response.body);
+
+      if (body is! Map || body['vehicle'] is! Map) {
+        // A 200 with no vehicle is the server saying it could not tell,
+        // which is not a failure. The reasons are logged, not shown:
+        // "could not fetch image 2" is our problem, not the owner's.
+        debugPrint('[Garage] identify found nothing: ${body is Map ? body['why'] : body}');
+        return VehicleGuess.none;
+      }
+
+      return VehicleGuess.fromMap(
+        Map<String, dynamic>.from(body['vehicle'] as Map),
+      );
+    } catch (e) {
+      debugPrint('[Garage] identify threw: $e');
+      return VehicleGuess.none;
     }
   }
 

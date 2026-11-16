@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:io';
 import 'dart:convert';
+import 'package:drivelife/models/event_attendance.dart';
 import 'package:drivelife/models/event_media.dart';
+import 'package:flutter/foundation.dart';
 import 'package:drivelife/utils/event_media_uploader.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -224,6 +225,92 @@ class EventsAPI {
   }
 
   /// Fetch single event details
+  /// Who is going to this event.
+  ///
+  /// [site] is the event's blog, not the user's country — a post id
+  /// only means anything within its own blog, and two regions can both
+  /// have an event 8821.
+  ///
+  /// Returns [EventAttendance.none] rather than throwing. The row it
+  /// draws is an extra on a screen that works without it, so a failure
+  /// should leave the screen quieter, never broken.
+  static Future<EventAttendance> getAttendance({
+    required String eventId,
+    String site = 'GB',
+  }) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return EventAttendance.none;
+
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/events/$eventId/going',
+      ).replace(queryParameters: {'site': site});
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode != 200) return EventAttendance.none;
+
+      final body = jsonDecode(response.body);
+
+      if (body is! Map || body['success'] != true) return EventAttendance.none;
+
+      return EventAttendance.fromMap(Map<String, dynamic>.from(body));
+    } catch (e) {
+      debugPrint('[EventsAPI] attendance threw: $e');
+      return EventAttendance.none;
+    }
+  }
+
+  /// Say whether you are going, and get the new state back.
+  ///
+  /// Returns null on failure so the caller can put its optimistic
+  /// change back. Nothing is sent to anybody here — the endpoint writes
+  /// one row and returns; the followers are told by the notify cron on
+  /// its next run. See dl_notify_job_event_going().
+  static Future<EventAttendance?> setGoing({
+    required String eventId,
+    required bool going,
+    String site = 'GB',
+  }) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return null;
+
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/wp-json/app/v2/events/$eventId/going',
+      ).replace(queryParameters: {'site': site});
+
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'going': going}),
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint('[EventsAPI] going refused: ${response.body}');
+        return null;
+      }
+
+      final body = jsonDecode(response.body);
+
+      if (body is! Map || body['success'] != true) return null;
+
+      return EventAttendance.fromMap(Map<String, dynamic>.from(body));
+    } catch (e) {
+      debugPrint('[EventsAPI] going threw: $e');
+      return null;
+    }
+  }
+
   static Future<Map<String, dynamic>?> getEvent({
     required String eventId,
     String? country,

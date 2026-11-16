@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:drivelife/api/events_api.dart';
+import 'package:drivelife/models/event_attendance.dart';
 import 'package:drivelife/screens/media/gallery_view_screen.dart';
 import 'package:drivelife/widgets/image_viewer_screen.dart';
 import 'package:drivelife/widgets/media/entity_galleries_tab.dart';
@@ -66,6 +67,10 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   int _currentImageIndex = 0;
   bool _isFavorite = false;
   bool _isFavLoading = false;
+
+  /// Who is going, and whether that includes you. See [EventAttendance].
+  EventAttendance _attendance = EventAttendance.none;
+  bool _goingLoading = false;
 
   // Loading states
   bool _isLoadingEvent = true;
@@ -221,6 +226,10 @@ class _EventDetailScreenState extends State<EventDetailScreen>
           _syncTabController();
           // _setupMapMarker();
         });
+
+        // Separately, and not awaited with the event: it is one extra
+        // line on the page, and nothing above it should wait for it.
+        _loadAttendance();
       } else {
         setState(() {
           _errorMessage = 'Failed to load event details';
@@ -469,6 +478,84 @@ class _EventDetailScreenState extends State<EventDetailScreen>
         .trim();
   }
 
+  /// The event's own blog, not the user's country.
+  ///
+  /// A post id only means anything within its own blog, and two regions
+  /// can both have an event 8821. `site` from get-event is
+  /// authoritative; `country` is the older key some list responses use.
+  String get _eventSite =>
+      '${_fullEventData?['site'] ?? _fullEventData?['country'] ?? widget.event?['site'] ?? widget.event?['country'] ?? 'gb'}';
+
+  String? get _eventId =>
+      _fullEventData?['id']?.toString() ?? widget.event?['id']?.toString();
+
+  Future<void> _loadAttendance() async {
+    final eventId = _eventId;
+    if (eventId == null) return;
+
+    final found = await EventsAPI.getAttendance(
+      eventId: eventId,
+      site: _eventSite,
+    );
+
+    if (mounted) setState(() => _attendance = found);
+  }
+
+  /// Going, or not going.
+  ///
+  /// ── WHY THE CHANGE SHOWS BEFORE THE SERVER AGREES ───────────────
+  ///
+  /// Tapping Going is a statement about yourself, and the honest
+  /// feedback for it is immediate. The round trip also does more than
+  /// it looks — the response recounts everybody — so waiting for it
+  /// would leave the button inert for most of a second on a bad
+  /// connection, which reads as a tap that missed.
+  ///
+  /// It is put back if the write fails, and the server's count replaces
+  /// the guessed one when it arrives.
+  Future<void> _toggleGoing() async {
+    final eventId = _eventId;
+    if (eventId == null || _goingLoading) return;
+
+    // A ticket is not a toggle. The button is not offered in this
+    // state, so this is a second lock rather than the only one — see
+    // [EventAttendance.viaTicket].
+    if (!_attendance.canToggle) return;
+
+    final was = _attendance;
+    final next = !was.going;
+
+    setState(() {
+      _goingLoading = true;
+      _attendance = was.copyWith(
+        going: next,
+        count: (was.count + (next ? 1 : -1)).clamp(0, 1 << 30),
+      );
+    });
+
+    final updated = await EventsAPI.setGoing(
+      eventId: eventId,
+      going: next,
+      site: _eventSite,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _goingLoading = false;
+      _attendance = updated ?? was;
+    });
+
+    if (updated == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not update that. Please try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   Future<void> _toggleFavorite() async {
     setState(() {
       _isFavLoading = true;
@@ -511,6 +598,177 @@ class _EventDetailScreenState extends State<EventDetailScreen>
     }
 
     setState(() => _isFavLoading = false);
+  }
+
+  /// "I'm going", and who else is.
+  ///
+  /// ── WHY IT IS NOT JUST A COUNT ──────────────────────────────────
+  ///
+  /// "412 going" tells you the event exists, which you knew, because
+  /// you are reading its page. What decides whether somebody drives an
+  /// hour to a meet is whether they will know anyone there — so the
+  /// line under the button names the people you follow and leaves the
+  /// total as the footnote. See [EventAttendance.summary].
+  Widget _goingButton(ThemeProvider theme) {
+    final going = _attendance.going;
+    final summary = _attendance.summary;
+
+    final locked = going && !_attendance.canToggle;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: locked
+              // ── NOT A BUTTON ────────────────────────────────────
+              //
+              // Drawn as a statement, because that is what it is.
+              // Rendering it as a disabled button would still read as
+              // something that ought to be tappable and is refusing,
+              // which is the confusion this is here to avoid — and a
+              // greyed-out "You're going" looks like it did not save.
+              ? Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                    horizontal: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: theme.primaryColor.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.confirmation_number_outlined,
+                        size: 20,
+                        color: theme.primaryColor,
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          "You're going — you have a ticket",
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: theme.primaryColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : going
+              ? OutlinedButton.icon(
+                  onPressed: _goingLoading ? null : _toggleGoing,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: theme.primaryColor,
+                    side: BorderSide(color: theme.primaryColor, width: 1.5),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.check_circle, size: 20),
+                  label: const Text(
+                    "You're going",
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                )
+              : ElevatedButton.icon(
+                  onPressed: _goingLoading ? null : _toggleGoing,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.event_available_outlined, size: 20),
+                  label: const Text(
+                    "I'm going",
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+        ),
+        // Left out entirely when nobody is going, rather than shown as
+        // "0 going" — an empty number is worse than no line.
+        if (summary.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              if (_attendance.friends.isNotEmpty) ...[
+                _attendeeFaces(),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Text(
+                  summary,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: theme.subtextColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Overlapping avatars of the people you follow who are going.
+  Widget _attendeeFaces() {
+    final faces = _attendance.friends.take(3).toList();
+
+    const size = 26.0;
+    const overlap = 8.0;
+
+    return SizedBox(
+      width: size + (faces.length - 1) * (size - overlap),
+      height: size,
+      child: Stack(
+        children: [
+          for (var i = 0; i < faces.length; i++)
+            Positioned(
+              left: i * (size - overlap),
+              child: Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFE6E6E6),
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: faces[i].image.isEmpty
+                    ? const Icon(
+                        Icons.person,
+                        size: 15,
+                        color: Color(0xFF9A9A9A),
+                      )
+                    : Image.network(
+                        faces[i].image,
+                        fit: BoxFit.cover,
+                        // An avatar that will not load is a grey circle,
+                        // never a broken page.
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.person,
+                          size: 15,
+                          color: Color(0xFF9A9A9A),
+                        ),
+                      ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _buildSkeleton() {
@@ -1312,6 +1570,9 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                           ),
 
                         if (hasTickets) const SizedBox(height: 12),
+
+                        _goingButton(theme),
+                        const SizedBox(height: 12),
 
                         // Favorite and Share Buttons
                         Row(
