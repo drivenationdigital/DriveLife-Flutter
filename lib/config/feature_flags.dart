@@ -224,6 +224,12 @@ class FeatureFlags {
   /// tagged and send us hunting the wrong bug.
   ///
   /// Off before release. It exposes coordinates on screen.
+  ///
+  /// When on, it also puts each suggested place and event's OWN
+  /// coordinates and post id beside it in the pickers, so a photo's
+  /// reading and the thing it matched can be compared without going
+  /// near the database. That is what showed an event recorded a mile
+  /// from where it was held.
   static const bool mediaLocationDebug = false;
 
   /// WRITE chat messages encrypted.

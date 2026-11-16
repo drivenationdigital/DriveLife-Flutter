@@ -1,4 +1,5 @@
 import 'package:drivelife/api/garage_api.dart';
+import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/api/posts_api.dart';
 import 'package:drivelife/models/tag_suggestion.dart';
 import 'package:drivelife/models/tagged_entity.dart';
@@ -190,7 +191,8 @@ class _PostTagScreenState extends State<PostTagScreen> {
       _suggestions = found;
       _checking = false;
 
-      // The guesses: nearest of each.
+      // The guesses: the best of each — the one the most photos
+      // agreed on, nearest first among equals.
       // What the post already says wins over any suggestion — it is
       // the thing a remove has to be able to act on.
       final saved = found.current;
@@ -661,11 +663,24 @@ class _PostTagScreenState extends State<PostTagScreen> {
             ),
           ],
         ),
-        body: _checking ? _checkingBody() : _tagsBody(),
+        // ── NO WAITING SCREEN ───────────────────────────────────
+        //
+        // There used to be a full-screen "checking for tags" before
+        // this. It is gone: the cards can say what they are waiting on
+        // individually, and a whole screen that says "wait" hides the
+        // two sections — people and vehicles — that need no waiting at
+        // all.
+        body: _tagsBody(),
       ),
     );
   }
 
+  /// Kept for reference only — nothing calls it.
+  ///
+  /// The full-screen wait was replaced by per-card busy states: it hid
+  /// the sections that were already usable, and a post with no GPS in
+  /// its photos sat on it for a round trip to be told nothing.
+  // ignore: unused_element
   Widget _checkingBody() {
     return Center(
       child: Column(
@@ -747,7 +762,10 @@ class _PostTagScreenState extends State<PostTagScreen> {
         _card(
           icon: Icons.location_on_outlined,
           title: 'Locations',
-          count: _location == null
+          busy: _checking,
+          count: _checking
+              ? 'Looking for places nearby…'
+              : _location == null
               ? 'Add a location'
               : (widget.editing && _location!.guessed
                     ? 'Found nearby — tap + to add'
@@ -776,7 +794,10 @@ class _PostTagScreenState extends State<PostTagScreen> {
         _card(
           icon: Icons.calendar_today_outlined,
           title: 'Events',
-          count: _countLabel(_events, 'Link an event'),
+          busy: _checking,
+          count: _checking
+              ? 'Looking for events on the day…'
+              : _countLabel(_events, 'Link an event'),
           onAdd: _pickEvents,
           chips: _events
               .map(
@@ -1119,7 +1140,7 @@ class _PostTagScreenState extends State<PostTagScreen> {
       selected: {if (_location != null) _location!.id},
       single: true,
       labelOf: (s) => s.title,
-      detailOf: (s) => s.detail,
+      detailOf: (s) => _detailOf(s),
       idOf: (s) => s.id,
       leadingOf: (s) =>
           const Icon(Icons.location_on_outlined, color: _gold, size: 20),
@@ -1140,6 +1161,11 @@ class _PostTagScreenState extends State<PostTagScreen> {
     });
   }
 
+  /// The line under a suggestion's name, with coordinates while the
+  /// location debug is on. See [FeatureFlags.mediaLocationDebug].
+  String _detailOf(TagSuggestion s) =>
+      FeatureFlags.mediaLocationDebug ? s.debugDetail : s.detail;
+
   Future<void> _pickEvents() async {
     final chosen = await _openPicker<TagSuggestion>(
       title: 'Tag events',
@@ -1157,7 +1183,7 @@ class _PostTagScreenState extends State<PostTagScreen> {
       selected: _events.map((e) => e.id).toSet(),
       single: false,
       labelOf: (s) => s.title,
-      detailOf: (s) => s.detail,
+      detailOf: (s) => _detailOf(s),
       idOf: (s) => s.id,
       leadingOf: (s) =>
           const Icon(Icons.calendar_today_outlined, color: _gold, size: 18),

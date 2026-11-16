@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// Somewhere a photo might have been taken, or something that was on
 /// there that day.
 ///
@@ -42,6 +44,21 @@ class TagSuggestion {
   /// Set when the app applied this on its own rather than being told to.
   final bool guessed;
 
+  /// How many of the post's photos matched this one.
+  ///
+  /// ── WHY THIS IS THE RANKING, NOT DISTANCE ─────────────────────────
+  ///
+  /// Distance answers "what was closest to a photo". The question is
+  /// "what is this post about". Those differ: a set of pictures from a
+  /// show gets tagged with a different event half a mile nearer that
+  /// one frame caught the edge of, which is what happened to a batch
+  /// of Leicester Airport photos.
+  ///
+  /// How many of the photos agree is the stronger signal, and distance
+  /// decides between equals. A single-photo post has one of everything,
+  /// so there it changes nothing.
+  final int photos;
+
   const TagSuggestion({
     required this.id,
     required this.title,
@@ -54,6 +71,7 @@ class TagSuggestion {
     this.startsOn,
     this.endsOn,
     this.guessed = false,
+    this.photos = 1,
   });
 
   factory TagSuggestion.fromMap(Map<String, dynamic> map) {
@@ -74,6 +92,9 @@ class TagSuggestion {
       kind: '${map['kind'] ?? ''}',
       startsOn: _date(map['starts_on']),
       endsOn: _date(map['ends_on']),
+      // The server merges across photos too, for tags applied by the
+      // sweep rather than on the phone, and sends its count.
+      photos: int.tryParse('${map['photos'] ?? 1}') ?? 1,
     );
   }
 
@@ -89,7 +110,7 @@ class TagSuggestion {
 
   TagSuggestion asGuess() => copyWith(guessed: true);
 
-  TagSuggestion copyWith({bool? guessed}) => TagSuggestion(
+  TagSuggestion copyWith({bool? guessed, int? photos}) => TagSuggestion(
     id: id,
     title: title,
     subtitle: subtitle,
@@ -101,6 +122,7 @@ class TagSuggestion {
     startsOn: startsOn,
     endsOn: endsOn,
     guessed: guessed ?? this.guessed,
+    photos: photos ?? this.photos,
   );
 
   /// "1 Aug 2026 · Ettington · 0.1 mi", or whichever parts exist.
@@ -126,6 +148,30 @@ class TagSuggestion {
     }
 
     return bits.join(' · ');
+  }
+
+  /// [detail] plus this place's OWN coordinates, for the debug panel.
+  ///
+  /// ── WHY THE PLACE'S, NOT THE PHOTO'S ────────────────────────────
+  ///
+  /// A distance is a claim about two points, and the panel on the
+  /// composer already shows one of them. Showing the other turns "0.1
+  /// mi looks wrong" into something checkable: either the photo's
+  /// reading is off, or this event is not where it says it is, and
+  /// those have completely different fixes.
+  String get debugDetail {
+    final lat = latitude;
+    final lng = longitude;
+
+    final where = (lat == null || lng == null)
+        ? 'no coords'
+        : '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
+
+    // One line: the picker's ListTile is not set up for a tall
+    // subtitle, and a title that already wraps would push it out.
+    final bits = detail;
+
+    return bits.isEmpty ? '$where · #$id' : '$bits · $where · #$id';
   }
 
   /// "1 Aug 2026", or "1–3 Aug 2026" for a run of days.
@@ -223,12 +269,13 @@ class TagSuggestions {
     );
   }
 
-  /// Merges another photo's answers in, nearest first and no repeats.
+  /// Merges another photo's answers in, best first and no repeats.
   ///
   /// A post is usually several photos of the same afternoon, so the
   /// lists overlap heavily. Keeping the nearest copy of each place
-  /// means the top of the list is the one the user was most likely
-  /// actually at, whichever photo saw it best.
+  /// means its distance is the best any photo saw it at — and counting
+  /// how many photos saw it at all is what decides the order. See
+  /// [TagSuggestion.photos].
   TagSuggestions mergedWith(TagSuggestions other) => TagSuggestions(
     locations: _merge(locations, other.locations),
     events: _merge(events, other.events),
@@ -249,19 +296,123 @@ class TagSuggestions {
         continue;
       }
 
+      // Both lists can already be merged results, so the counts add
+      // rather than stepping by one.
+      final seen = held.photos + s.photos;
+
       final mine = s.distanceMiles;
       final theirs = held.distanceMiles;
 
-      if (mine != null && (theirs == null || mine < theirs)) byId[s.id] = s;
+      final best = (mine != null && (theirs == null || mine < theirs))
+          ? s
+          : held;
+
+      byId[s.id] = best.copyWith(photos: seen);
     }
 
     final out = byId.values.toList()
       ..sort((x, y) {
+        if (x.photos != y.photos) return y.photos.compareTo(x.photos);
+
         final a0 = x.distanceMiles ?? double.infinity;
         final b0 = y.distanceMiles ?? double.infinity;
         return a0.compareTo(b0);
       });
 
+    return _collapseDuplicates(out);
+  }
+
+  /// Drops records of the same thing entered into WordPress twice.
+  ///
+  /// Only an exact title match counts — see [_slug]. Two events with
+  /// similar names on one site are a real thing and must both survive.
+  ///
+  /// ── WHY IT IS DONE AGAIN HERE ───────────────────────────────────
+  ///
+  /// The server collapses each photo's answers before sending them, and
+  /// that is not enough. The copies have different ids, so when one
+  /// photo keeps the copy nearest to IT and another photo keeps the
+  /// other, merging the two lists brings both back — keyed separately,
+  /// looking for all the world like two events.
+  ///
+  /// The list is already in the order we want, so the first of each
+  /// group survives.
+  static List<TagSuggestion> _collapseDuplicates(List<TagSuggestion> items) {
+    final out = <TagSuggestion>[];
+
+    for (final item in items) {
+      if (!out.any((held) => _sameThing(held, item))) out.add(item);
+    }
+
     return out;
+  }
+
+  /// Same name, same days, same place — so, one thing.
+  static bool _sameThing(TagSuggestion a, TagSuggestion b) {
+    final name = _slug(a.title);
+
+    // Nothing but punctuation. Two of those prove nothing.
+    if (name.isEmpty || name != _slug(b.title)) return false;
+
+    final aFrom = a.startsOn;
+    final bFrom = b.startsOn;
+
+    // One dated and one not is a venue beside an event, never a pair.
+    if ((aFrom == null) != (bFrom == null)) return false;
+
+    if (aFrom != null && bFrom != null) {
+      final aTo = a.endsOn ?? aFrom;
+      final bTo = b.endsOn ?? bFrom;
+
+      // Any shared day. Two runs of one show that overlap on none are
+      // two different runs.
+      if (aTo.isBefore(bFrom) || bTo.isBefore(aFrom)) return false;
+    }
+
+    final apart = _milesApart(a, b);
+
+    // Generous, because two hand-entered copies are pinned separately
+    // and never agree exactly. The NAME is what identifies them; this
+    // only keeps two identically named regional rounds apart.
+    return apart != null && apart <= 1.0;
+  }
+
+  /// A title reduced to what it is actually called.
+  ///
+  /// ── WHY THIS IS DELIBERATELY STRICT ─────────────────────────────
+  ///
+  /// Case and spacing, and nothing else. An earlier version also
+  /// stripped punctuation and read "&" as "and", which is right for one
+  /// name typed twice and wrong here: a venue ran two separate events
+  /// on one site called "Motorshow and Family Fun day" and "Motor Show
+  /// & Family Fun Day", and that rule collapsed them, deleting a real
+  /// event from the list.
+  ///
+  /// A duplicate is normally one record entered twice, so its titles
+  /// agree exactly. Two titles that differ are two titles.
+  static String _slug(String title) =>
+      title.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
+
+  /// Miles between two places, or null if either has no coordinates.
+  static double? _milesApart(TagSuggestion a, TagSuggestion b) {
+    final aLat = a.latitude, aLng = a.longitude;
+    final bLat = b.latitude, bLng = b.longitude;
+
+    if (aLat == null || aLng == null || bLat == null || bLng == null) {
+      return null;
+    }
+
+    const toRad = math.pi / 180;
+
+    final lat1 = aLat * toRad;
+    final lat2 = bLat * toRad;
+    final dLat = lat2 - lat1;
+    final dLng = (bLng - aLng) * toRad;
+
+    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1) * math.cos(lat2) * math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+
+    return 2 * 3959 * math.asin(math.min(1.0, math.sqrt(h)));
   }
 }

@@ -216,7 +216,7 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
       const DlHeading('Uploading post', fontSize: 30, color: _ink),
       const SizedBox(height: 10),
       const Text(
-        'Keep the app open while we upload your photos.',
+        'Please keep the app open.',
         textAlign: TextAlign.center,
         style: TextStyle(color: _muted, fontSize: 15.5, height: 1.4),
       ),
@@ -241,8 +241,11 @@ class _PostTaggingScreenState extends State<PostTaggingScreen> {
             // The provider counts past the last photo while the post row
             // is created, and "Photo 5 of 4" is a worse lie than a bar
             // that sits near the end for a second.
+            // "Uploading", not "Photo": a post is as often a video or a
+            // mix, and counting them all as photos is wrong on screen
+            // for exactly the posts that take longest.
             total > 0
-                ? 'Photo ${current > total ? total : current} of $total'
+                ? 'Uploading ${current > total ? total : current} of $total'
                 : 'Preparing…',
             style: const TextStyle(
               color: _ink,

@@ -4,8 +4,6 @@ import 'package:drivelife/api/stripe_api_service.dart';
 import 'package:drivelife/models/user_model.dart';
 import 'package:drivelife/providers/cart_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
-import 'package:drivelife/routes.dart';
-import 'package:drivelife/widgets/shared_header_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
@@ -306,31 +304,22 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-        leadingWidth: 96,
-        leading: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ],
+        // ── WHY THERE IS NOTHING BUT BACK ───────────────────────────
+        //
+        // This carried the app's usual header icons — search, and
+        // notifications. Both leave the checkout, one of them for a
+        // screen designed to pull you somewhere else, and neither has
+        // anything to do with paying for what is in the basket. The
+        // way out is Back, deliberately the only one.
+        //
+        // The leading was also a Row holding a single button with
+        // leadingWidth: 96, left over from a QR icon that used to sit
+        // beside it.
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
         ),
         title: Image.asset('assets/logo-dark.png', height: 18),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search, color: Colors.black),
-            onPressed: () {
-              Navigator.pushNamed(context, AppRoutes.search);
-            },
-          ),
-          // ✅ Using the actionIcons helper for multiple icons at once
-          ...SharedHeaderIcons.actionIcons(
-            iconColor: Colors.black,
-            showQr: false, // Already shown in leading
-            showNotifications: true,
-          ),
-        ],
       ),
       body: Consumer<CartProvider>(
         builder: (context, cartProvider, child) {
@@ -759,6 +748,14 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
 
                         // Cart Items
                         ...cartProvider.cart.map((item) {
+                          // Nullable, and null for anything without
+                          // sizes. Reading them through `!` here threw,
+                          // and an exception in a builder takes out the
+                          // whole subtree — which is why this page was
+                          // a grey box rather than a checkout. See
+                          // CartItem.variantLabel.
+                          final variant = item.variantLabel;
+
                           return Container(
                             margin: const EdgeInsets.only(bottom: 16),
                             child: Row(
@@ -810,17 +807,9 @@ class _HybridCheckoutScreenState extends State<HybridCheckoutScreen> {
                                         ),
                                         maxLines: 2,
                                       ),
-                                      if (item.selectedColorName!.isNotEmpty ||
-                                          item.selectedSize!.isNotEmpty)
+                                      if (variant.isNotEmpty)
                                         Text(
-                                          [
-                                            if (item
-                                                .selectedColorName!
-                                                .isNotEmpty)
-                                              item.selectedColorName,
-                                            if (item.selectedSize!.isNotEmpty)
-                                              item.selectedSize,
-                                          ].join(' · '),
+                                          variant,
                                           style: TextStyle(
                                             fontSize: 12,
                                             color: Colors.grey.shade600,

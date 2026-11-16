@@ -56,6 +56,9 @@ class _GuessScreenState extends State<GuessScreen>
 
   List<GuessRank> _board = const [];
   int _myCorrect = 0;
+
+  /// Games in a row. See [GuessStreak] for why it counts playing.
+  GuessStreak _streak = GuessStreak.none;
   int? _myRank;
   String _scope = 'worldwide';
 
@@ -107,7 +110,13 @@ class _GuessScreenState extends State<GuessScreen>
     if (!mounted) return;
 
     final board =
-        results[2] as ({List<GuessRank> entries, int correct, int? rank});
+        results[2]
+            as ({
+              List<GuessRank> entries,
+              int correct,
+              int? rank,
+              GuessStreak streak,
+            });
 
     setState(() {
       _today = results[0] as GuessGame?;
@@ -115,6 +124,7 @@ class _GuessScreenState extends State<GuessScreen>
       _board = board.entries;
       _myCorrect = board.correct;
       _myRank = board.rank;
+      _streak = board.streak;
       _loading = false;
     });
   }
@@ -127,6 +137,7 @@ class _GuessScreenState extends State<GuessScreen>
       _board = board.entries;
       _myCorrect = board.correct;
       _myRank = board.rank;
+      _streak = board.streak;
     });
   }
 
@@ -136,12 +147,17 @@ class _GuessScreenState extends State<GuessScreen>
 
     setState(() => _sending = true);
 
-    final updated = await GuessAPI.play(gameId: game.id, choice: choice);
+    final played = await GuessAPI.play(gameId: game.id, choice: choice);
     if (!mounted) return;
+
+    final updated = played.game;
 
     setState(() {
       _sending = false;
-      if (updated != null) _today = updated;
+      if (updated != null) {
+        _today = updated;
+        _streak = played.streak;
+      }
     });
 
     if (updated == null) {
@@ -156,9 +172,20 @@ class _GuessScreenState extends State<GuessScreen>
 
     // No reward here, win or lose. The answer is not known until 7pm —
     // showing anything celebratory now would either be a lie or a tell.
+    //
+    // The streak is the exception, and the only honest thing a guess
+    // can be congratulated for immediately: it counts turning up, which
+    // is not a secret being kept until the reveal.
+    final run = played.streak.current;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Locked in. The answer is revealed at 7pm.'),
+        content: Text(
+          run >= 2
+              ? 'Locked in — day $run of your streak. The answer is '
+                    'revealed at 7pm.'
+              : 'Locked in. The answer is revealed at 7pm.',
+        ),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -414,6 +441,12 @@ class _GuessScreenState extends State<GuessScreen>
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
         children: [
           if (_viewingDate != null) _pastDayBar(theme),
+          // Only above TODAY's game. On a past day it would be a
+          // statement about now, sitting over a card about then.
+          if (_viewingDate == null && _streak.worthShowing) ...[
+            _streakBanner(theme),
+            const SizedBox(height: 12),
+          ],
           if (_today == null) _noGame(theme) else _gameCard(theme, _today!),
           if (_history.isNotEmpty) ...[
             const SizedBox(height: 28),
@@ -421,6 +454,98 @@ class _GuessScreenState extends State<GuessScreen>
             const SizedBox(height: 8),
             for (final game in _history) _historyRow(theme, game),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// "Day 12 streak", and what is riding on it.
+  ///
+  /// ── THREE STATES, THREE DIFFERENT THINGS TO SAY ─────────────────
+  ///
+  /// A run that is still going and unplayed today is the only one with
+  /// anything at stake, and it is the one the 07:00 notification is
+  /// written for — so arriving here from that notification has to show
+  /// the same thing the notification said.
+  ///
+  /// A run already played today is just a number to be pleased with. A
+  /// broken one is not mentioned at all, except as a best to beat —
+  /// there is nothing to be gained by opening the app to be told you
+  /// lost something.
+  Widget _streakBanner(ThemeProvider theme) {
+    const gold = Color(0xFFAE9159);
+
+    final run = _streak.current;
+    final atRisk = _streak.atRisk;
+
+    final String headline;
+    final String note;
+
+    if (run >= 2 && atRisk) {
+      headline = 'Day $run streak';
+      note = 'Play today to keep it going.';
+    } else if (run >= 2) {
+      headline = 'Day $run streak';
+      note = _streak.best > run
+          ? 'Your best is ${_streak.best}.'
+          : 'Your best yet — keep going.';
+    } else {
+      // Nothing current. The best is the only thing worth a line, and
+      // it reads as a target rather than a loss.
+      headline = 'Best streak: ${_streak.best}';
+      note = 'Play today to start a new one.';
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        // Marked out when something is riding on it, quiet otherwise.
+        color: atRisk ? const Color(0xFFFBF6EC) : theme.cardColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: atRisk ? gold : theme.dividerColor,
+          width: atRisk ? 1.4 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: run >= 2 ? gold : theme.dividerColor,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.local_fire_department_rounded,
+              size: 21,
+              color: run >= 2 ? Colors.white : theme.subtextColor,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  headline,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: theme.textColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  note,
+                  style: TextStyle(fontSize: 13.5, color: theme.subtextColor),
+                ),
+              ],
+            ),
+          ),
+          if (_streak.playedToday)
+            const Icon(Icons.check_circle_rounded, color: gold, size: 22),
         ],
       ),
     );

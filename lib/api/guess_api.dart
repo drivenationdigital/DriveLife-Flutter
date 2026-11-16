@@ -119,6 +119,52 @@ class GuessGame {
   );
 }
 
+/// How many games in a row you have played.
+///
+/// ── WHY PLAYING, NOT WINNING ────────────────────────────────────────
+///
+/// It is a multiple choice, so being right is substantially luck, and a
+/// streak that broke on a wrong answer would punish the thing it exists
+/// to reward — opening the app. Correct guesses are what the
+/// leaderboard ranks; this is a different number on purpose.
+class GuessStreak {
+  /// Games in a row, as it stands right now. Zero once it is broken.
+  final int current;
+
+  /// The longest run ever had. Never reset, so a broken streak still
+  /// leaves a target.
+  final int best;
+
+  /// Today's game is open, unplayed, and a run is riding on it.
+  ///
+  /// The state the whole feature turns on: it has to be distinguishable
+  /// from "done for today" and from "already lost", because what you
+  /// would say to those three people could not be more different.
+  final bool atRisk;
+
+  final bool playedToday;
+
+  const GuessStreak({
+    this.current = 0,
+    this.best = 0,
+    this.atRisk = false,
+    this.playedToday = false,
+  });
+
+  static const GuessStreak none = GuessStreak();
+
+  /// Two is not a streak worth naming, and telling somebody they are on
+  /// a run of one reads as sarcasm.
+  bool get worthShowing => current >= 2 || best >= 2;
+
+  factory GuessStreak.fromMap(Map<String, dynamic> map) => GuessStreak(
+    current: GuessGame._int(map['current']),
+    best: GuessGame._int(map['best']),
+    atRisk: map['at_risk'] == true,
+    playedToday: map['played_today'] == true,
+  );
+}
+
 /// A row of the guess leaderboard.
 class GuessRank {
   final int rank;
@@ -219,13 +265,21 @@ class GuessAPI {
   /// refused — closed, or already played. The server does NOT say
   /// whether the guess was right; that arrives at close with everyone
   /// else's.
-  static Future<GuessGame?> play({
+  /// Returns the game as it now stands, and the streak this guess just
+  /// extended.
+  ///
+  /// The streak is the one piece of feedback a guess can honestly give
+  /// straight away: the answer is held back until close for everybody
+  /// at once, but turning up is not a secret.
+  static Future<({GuessGame? game, GuessStreak streak})> play({
     required int gameId,
     required int choice,
   }) async {
+    const fallback = (game: null, streak: GuessStreak.none);
+
     try {
       final headers = await _headers();
-      if (headers == null) return null;
+      if (headers == null) return fallback;
 
       final response = await http.post(
         Uri.parse('$_base/wp-json/app/v2/guess/play'),
@@ -239,13 +293,22 @@ class GuessAPI {
           body is! Map ||
           body['success'] != true) {
         debugPrint('[Guess] play refused: ${response.body}');
-        return null;
+        return fallback;
       }
 
-      return GuessGame.fromMap(Map<String, dynamic>.from(body['game'] as Map));
+      return (
+        game: GuessGame.fromMap(Map<String, dynamic>.from(body['game'] as Map)),
+        // Absent from a server that has not been updated, which is a
+        // missing streak rather than a broken play.
+        streak: body['streak'] is Map
+            ? GuessStreak.fromMap(
+                Map<String, dynamic>.from(body['streak'] as Map),
+              )
+            : GuessStreak.none,
+      );
     } catch (e) {
       debugPrint('[Guess] play threw: $e');
-      return null;
+      return fallback;
     }
   }
 
@@ -276,9 +339,16 @@ class GuessAPI {
   }
 
   /// The board, and where the caller sits on it.
-  static Future<({List<GuessRank> entries, int correct, int? rank})>
+  static Future<
+    ({List<GuessRank> entries, int correct, int? rank, GuessStreak streak})
+  >
   leaderboard({String scope = 'worldwide'}) async {
-    const fallback = (entries: <GuessRank>[], correct: 0, rank: null);
+    const fallback = (
+      entries: <GuessRank>[],
+      correct: 0,
+      rank: null,
+      streak: GuessStreak.none,
+    );
 
     try {
       final headers = await _headers();
@@ -307,6 +377,11 @@ class GuessAPI {
         entries: entries,
         correct: GuessGame._int(me['correct']),
         rank: me['rank'] == null ? null : GuessGame._int(me['rank']),
+        streak: me['streak'] is Map
+            ? GuessStreak.fromMap(
+                Map<String, dynamic>.from(me['streak'] as Map),
+              )
+            : GuessStreak.none,
       );
     } catch (e) {
       debugPrint('[Guess] leaderboard threw: $e');

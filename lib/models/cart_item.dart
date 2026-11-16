@@ -33,6 +33,22 @@ class CartItem {
     this.quantity = 1,
   });
 
+  /// "Black · Large", or whichever of the two the product has.
+  ///
+  /// ── WHY THIS IS NOT READ FIELD BY FIELD ─────────────────────────
+  ///
+  /// Both are nullable, and plenty of products have neither — the
+  /// DriveTag has a colour and no size. The checkout read them through
+  /// `!`, which threw on exactly those products and took the whole page
+  /// down with it, leaving a grey box where the form should be.
+  ///
+  /// Absent and empty mean the same thing here, so they are handled in
+  /// one place rather than at every point that wants to show them.
+  String get variantLabel => [
+    selectedColorName,
+    selectedSize,
+  ].whereType<String>().where((s) => s.trim().isNotEmpty).join(' · ');
+
   Map<String, dynamic> toJson() {
     return {
       'variantId': variantId,
