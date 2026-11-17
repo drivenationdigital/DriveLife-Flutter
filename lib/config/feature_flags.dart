@@ -290,6 +290,33 @@ class FeatureFlags {
   static const bool encryptChatMessages = true;
 
 
+  /// Driving roads — the roads list, the map and the submission flow.
+  ///
+  /// ── OFF, AND OFF ON THE SERVER TOO ───────────────────────────────
+  ///
+  /// This flag only hides the UI. It is NOT what keeps roads off the
+  /// live API, and it must not be mistaken for it:
+  ///
+  ///   * endpoints/roads.php registers no route at all unless
+  ///     DL_ROADS_ENABLED is defined in endpoints/app-secrets.php
+  ///   * every handler answers 503 until wp_dl_roads exists
+  ///     (php-api/sql/roads.sql)
+  ///   * app-endpoints.php only includes the file if it is there
+  ///
+  /// So the server is inert in three independent ways, and this is the
+  /// fourth. php-api is not in git, which is why the feature branch
+  /// isolates the app and the constant isolates the API.
+  ///
+  /// Turn it on for a single build without committing anything:
+  ///   flutter run --dart-define=DL_ROADS=true
+  ///
+  /// Nothing is stranded when it is off: RoadsAPI never gets called, so
+  /// the app makes no request a server without roads would 404.
+  static const bool drivingRoads = bool.fromEnvironment(
+    'DL_ROADS',
+    defaultValue: false,
+  );
+
   /// Community gallery on events: the tab on the event detail screen and the
   /// "Share photos" buttons on the events list.
   ///
