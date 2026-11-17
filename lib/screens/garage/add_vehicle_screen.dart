@@ -103,6 +103,26 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   /// True while the photographs are being read.
   bool _scanning = false;
 
+  /// Whether somebody got tired of waiting and pressed Skip.
+  ///
+  /// ── WHY THE ANSWER IS STILL USED ────────────────────────────────
+  ///
+  /// Skip is about the WAITING, not about the scan. The request is
+  /// already in flight and already paid for, so throwing its answer
+  /// away would make the button cost something — and the scan is
+  /// usually right, which is the whole reason it is here.
+  ///
+  /// So a late answer still fills in whatever is still blank, under
+  /// the banner that says where it came from. What it may not do is
+  /// move the screen: somebody who skipped is already typing, and a
+  /// form that rearranges itself under a cursor is worse than a slow
+  /// one.
+  ///
+  /// Nothing is overwritten either way — [_applyGuess] only ever
+  /// writes into an empty field, and only picks a make if none is
+  /// chosen.
+  bool _scanSkipped = false;
+
   /// How many photographs are ready to send, and whether the server is
   /// looking at them yet.
   ///
@@ -1126,6 +1146,10 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       _scanning = true;
       _scanUploaded = 0;
       _scanIdentifying = false;
+
+      // Per scan, not per screen. Going back a step and scanning again
+      // is a fresh wait, and it deserves a Skip button that works.
+      _scanSkipped = false;
     });
 
     final photos = <Uint8List>[];
@@ -1159,6 +1183,22 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     setState(() {
       _guess = guess;
       _applyGuess(guess);
+      _scanning = false;
+
+      // The one thing a skipped scan does not get to do. See
+      // [_scanSkipped]: the form is already open and being typed into.
+      if (!_scanSkipped) _step = 2;
+    });
+  }
+
+  /// "Skip" — stop waiting, start typing.
+  ///
+  /// Goes to the form immediately and leaves the scan running. It is an
+  /// escape from the wait rather than a cancellation: the answer, if it
+  /// arrives, still fills in anything left blank.
+  void _skipScan() {
+    setState(() {
+      _scanSkipped = true;
       _scanning = false;
       _step = 2;
     });
@@ -1194,6 +1234,20 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     fill(_variantCtrl, guess.variant);
     fill(_colourCtrl, guess.colour);
     fill(_yearCtrl, guess.yearForField);
+
+    // ── THE PLATE, WHICH IS NOT JUST ANOTHER FIELD ────────────────
+    //
+    // Arrives uppercased with the spaces out, which is what the
+    // registration lookup leaves behind when somebody types one, so a
+    // plate read off a photograph and a plate typed by hand are the
+    // same string.
+    //
+    // Worth being careful with because of what happens after Save: the
+    // plate is what finds this car in other people's photographs, so a
+    // wrong one offers somebody a gallery of a car that is not theirs.
+    // The server reads it only when every character was certain, and
+    // it sits here in a field, on screen, before any of that happens.
+    fill(_regCtrl, guess.registration);
 
     // ── RECALLED FIGURES, NOT MEASURED ONES ───────────────────────
     //
@@ -1236,6 +1290,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       clear(_variantCtrl, guess.variant);
       clear(_colourCtrl, guess.colour);
       clear(_yearCtrl, guess.yearForField);
+      clear(_regCtrl, guess.registration);
 
       // The figures came from the variant. Saying the variant is wrong
       // says these are too.
@@ -2047,6 +2102,26 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
           ),
         ),
         actions: [
+          // The way out of the wait.
+          //
+          // The scan is normally quick, and when it is not there was
+          // nothing to do but watch it — the back button is disabled
+          // here, because leaving would throw away the preparation
+          // step one just paid for. This leaves with the work intact:
+          // it opens the form now and lets the answer catch up.
+          if (_scanning)
+            TextButton(
+              onPressed: _skipScan,
+              child: const Text(
+                'Skip',
+                style: TextStyle(
+                  color: Color(0xFF6B6B6B),
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+
           // Nothing to save until there is a form. On the photographs
           // step it would be a button that either does nothing or
           // creates a vehicle with no make, which is worse.
@@ -2731,7 +2806,12 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
           const SizedBox(height: 8),
           const Center(
             child: Text(
-              'This only takes a few seconds.',
+              // It usually is a few seconds, and when it is not, the
+              // old line read as a promise being broken. This one is
+              // true either way and points at the button in the corner
+              // rather than leaving it to be found.
+              'Usually a few seconds — or skip and fill it in yourself.',
+              textAlign: TextAlign.center,
               style: TextStyle(fontSize: 15, color: Color(0xFF6B6B6B)),
             ),
           ),

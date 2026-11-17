@@ -27,6 +27,21 @@ class VehicleGuess {
   final String colour;
   final String body;
 
+  /// The number plate, uppercased with the spaces out, or empty.
+  ///
+  /// ── READ, NOT RECALLED, AND STILL THE RISKIEST FIELD ────────────
+  ///
+  /// This one really is in the photograph, which makes it the most
+  /// reliable thing here and the most consequential thing to get wrong.
+  /// A plate is how a vehicle is matched against photographs other
+  /// people have uploaded, so a single wrong character does not read as
+  /// a typo — it points at a different car.
+  ///
+  /// The server nulls it unless every character was certain and checks
+  /// the shape of what is left, so an empty string here is the normal
+  /// answer for a plate that was angled, blurred or cropped.
+  final String registration;
+
   /// "High", "Medium" or "Low", about the make and model only.
   final String confidence;
 
@@ -61,6 +76,7 @@ class VehicleGuess {
     this.colour = '',
     this.body = '',
     this.confidence = '',
+    this.registration = '',
     this.imagesUsed = 0,
     this.powerBhp = '',
     this.zeroTo62 = '',
@@ -102,6 +118,7 @@ class VehicleGuess {
       colour: read('colour'),
       body: read('body'),
       confidence: read('confidence'),
+      registration: read('registration'),
       imagesUsed: int.tryParse(read('images_used')) ?? 0,
       powerBhp: read('power_bhp'),
       zeroTo62: read('zero_to_62'),

@@ -22,7 +22,7 @@ import 'package:drivelife/api/events_api.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:drivelife/widgets/nav/dl_haptics.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:drivelife/widgets/garage/vehicle_share_card.dart';
 import 'package:provider/provider.dart';
 import '../../api/garage_api.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -293,28 +293,40 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 
   /// Shares this vehicle.
   ///
-  /// Same shape as the post, event, venue and gallery links the app already
-  /// sends — `/vehicle/:id` — which DeepLinkHandler routes back to this
-  /// screen.
+  /// ── A CARD, NOT A LINK ─────────────────────────────────────────
+  ///
+  /// This sent a title and a URL. The trouble with a URL is that it is
+  /// a promise: whoever receives it has to believe there is something
+  /// worth tapping through to, in a thread where nothing else is asking
+  /// them to leave. A photograph of the car, with its name and its
+  /// numbers on it, IS the thing — and the link still rides along
+  /// underneath it.
+  ///
+  /// The sheet shows the card before it goes anywhere, and still offers
+  /// the plain link, which is what somebody pasting into a forum
+  /// actually wants. See [VehicleShareSheet].
+  ///
+  /// The link itself is unchanged: `/vehicle/:id`, the same shape as
+  /// the post, event, venue and gallery links the app already sends,
+  /// which DeepLinkHandler routes back to this screen.
   void _shareVehicle() {
     final vehicle = _vehicle;
 
-    final registration = '${vehicle?['registration'] ?? ''}'.trim();
-    final make = '${vehicle?['make'] ?? ''}'.trim();
-    final model = '${vehicle?['model'] ?? ''}'.trim();
+    if (vehicle == null) return;
 
-    // The car, not the plate. A registration is what the vehicle is to the
-    // DVLA; the make and model is what it is to the person being sent it.
-    final name = [make, model].where((s) => s.isNotEmpty).join(' ');
-    final title = name.isNotEmpty
-        ? name
-        : (registration.isNotEmpty ? registration : 'a vehicle');
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
 
-    final url =
-        'https://app.mydrivelife.com/vehicle/${widget.garageId}?ref=share';
+    final coverPhoto = '${vehicle['cover_photo'] ?? ''}';
 
-    SharePlus.instance.share(
-      ShareParams(text: '$title on DriveLife\n$url', subject: title),
+    VehicleShareSheet.show(
+      context,
+      vehicle: Map<String, dynamic>.from(vehicle),
+      garageId: widget.garageId,
+      accent: theme.primaryColor,
+      // The photograph being looked at, which is page zero of the
+      // gallery rather than whatever the cover column happens to hold.
+      // They are usually the same and occasionally are not.
+      photo: _galleryImages(coverPhoto, coverPhoto.trim().isNotEmpty).first,
     );
   }
 

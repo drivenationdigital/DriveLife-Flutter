@@ -110,6 +110,48 @@ void main() {
     });
   });
 
+  group('the registration', () {
+    test('it comes off the payload', () {
+      final guess = VehicleGuess.fromMap(const {
+        'make': 'Ford',
+        'model': 'Mustang',
+        'registration': 'EF26RTO',
+      });
+
+      expect(guess.registration, 'EF26RTO');
+    });
+
+    test('a plate the server would not swear to', () {
+      // Angled, blurred, cropped, or another car's. The server nulls
+      // the whole plate rather than most of it, because a plate with
+      // one wrong character is a different car, not a typo — and it is
+      // what matches this vehicle against other people's photographs.
+      final guess = VehicleGuess.fromMap(const {
+        'make': 'Ford',
+        'model': 'Mustang',
+        'registration': null,
+      });
+
+      expect(guess.registration, '');
+    });
+
+    test('an older server that sends none at all', () {
+      final guess = VehicleGuess.fromMap(const {'make': 'Ford'});
+
+      expect(guess.registration, '');
+    });
+
+    test('a plate alone is not an identification', () {
+      // It would fill the registration field and leave every other one
+      // empty, under a banner naming no car. The scan says what it
+      // read; a plate on its own has nothing to say.
+      const guess = VehicleGuess(registration: 'EF26RTO');
+
+      expect(guess.hasGuess, isFalse);
+      expect(guess.label, '');
+    });
+  });
+
   group('the performance figures', () {
     test('they come off the payload', () {
       final guess = VehicleGuess.fromMap(const {
