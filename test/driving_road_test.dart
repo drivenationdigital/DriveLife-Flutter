@@ -175,6 +175,42 @@ void main() {
     });
   });
 
+  group('the cover photograph', () {
+    test('a stored id becomes a delivery URL', () {
+      // What is stored is the Cloudflare id, not a URL: the rest of
+      // the codebase builds the URL at render time so the variant
+      // stays changeable in one place.
+      final url = const DrivingRoad(
+        id: 1,
+        coverImage: 'abc123-def',
+      ).coverUrl;
+
+      expect(url, contains('abc123-def'));
+      expect(url, startsWith('https://'));
+    });
+
+    test('at a variant that keeps the shape of the photograph', () {
+      // The default variant is a 400x400 SQUARE, which crops anything
+      // that is not one already. Right for an avatar; wrong for a
+      // landscape photograph of a road.
+      expect(
+        const DrivingRoad(id: 1, coverImage: 'abc123').coverUrl,
+        endsWith('/public'),
+      );
+    });
+
+    test('a full URL is passed through untouched', () {
+      // A row filled in by hand over SQL may well hold one.
+      const url = 'https://example.com/road.jpg';
+
+      expect(const DrivingRoad(id: 1, coverImage: url).coverUrl, url);
+    });
+
+    test('no cover is no URL, not a broken one', () {
+      expect(const DrivingRoad(id: 1).coverUrl, '');
+    });
+  });
+
   group('the labels', () {
     test('a long road is a whole number', () {
       expect(

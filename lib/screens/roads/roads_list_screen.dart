@@ -375,9 +375,11 @@ class _RoadCard extends StatelessWidget {
                 child: SizedBox(
                   width: 92,
                   height: 72,
-                  child: road.coverImage.isNotEmpty
+                  // The URL, not the stored id — see
+                  // DrivingRoad.coverUrl.
+                  child: road.coverUrl.isNotEmpty
                       ? Image.network(
-                          road.coverImage,
+                          road.coverUrl,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => _Placeholder(accent),
                         )

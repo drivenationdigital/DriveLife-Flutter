@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:drivelife/api/cloudflare_images.dart';
+
 /// A stretch of road somebody thinks is worth driving.
 ///
 /// ── NOT A POST, AND NOT A VENUE ─────────────────────────────────────
@@ -123,6 +125,33 @@ class DrivingRoad {
 
   /// Whether the detail call has been made for this one.
   bool get hasShape => polyline.isNotEmpty;
+
+  /// The cover photograph, as something Image.network can take.
+  ///
+  /// ── WHY [coverImage] IS NOT ALREADY ONE ─────────────────────────
+  ///
+  /// What is stored is the Cloudflare image ID, which is what the rest
+  /// of this codebase stores: the URL is built at render time so the
+  /// variant and the account hash stay changeable in one place rather
+  /// than being baked into every row.
+  ///
+  /// Drawn with the 'public' variant, which keeps the aspect ratio.
+  /// The default is 'thumbnail', a 400x400 SQUARE that crops anything
+  /// that is not one already — right for an avatar, wrong for a
+  /// landscape photograph of a road.
+  ///
+  /// A full URL is passed through untouched, because a row filled in
+  /// by hand over SQL may well hold one.
+  String get coverUrl {
+    if (coverImage.isEmpty) return '';
+
+    if (coverImage.startsWith('http')) return coverImage;
+
+    return CloudflareImages.urlFor(
+      coverImage,
+      variant: CloudflareImages.photo,
+    );
+  }
 
   bool get isPublished => status == 'published';
   bool get isPending => status == 'pending';

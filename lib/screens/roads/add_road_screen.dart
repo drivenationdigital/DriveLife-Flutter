@@ -1,13 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:drivelife/api/cloudflare_images.dart';
 import 'package:drivelife/api/roads_api.dart';
 import 'package:drivelife/config/mapbox_config.dart';
 import 'package:drivelife/models/driving_road.dart';
 import 'package:drivelife/models/road_polyline.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/screens/media_picker/media_picker_screen.dart';
 import 'package:drivelife/screens/roads/road_map_icons.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
 import 'package:provider/provider.dart';
@@ -64,6 +68,18 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
 
   bool _saving = false;
   bool _styleReady = false;
+
+  /// The cover photograph, before it has been uploaded.
+  ///
+  /// Uploaded at Save rather than at pick, deliberately. The scan in
+  /// Add Vehicle taught this one: uploading early leaves an orphaned
+  /// image behind every time somebody changes their mind, and nothing
+  /// ever deletes it.
+  File? _cover;
+
+  /// Shown while the cover is on its way to Cloudflare, which is the
+  /// slow half of saving a road.
+  bool _uploading = false;
 
   /// One redraw at a time. The same guard the detail screen needs, for
   /// the same reason: each pass removes its layers before adding them,
@@ -372,6 +388,63 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
     ],
   });
 
+  // ── the cover photograph ──────────────────────────────────────────
+
+  Future<void> _pickCover() async {
+    final picked = await MediaPickerScreen.open(
+      context,
+      maxSelection: 1,
+      confirmLabel: 'Use photo',
+      title: 'Cover photo',
+      // A road's cover is a photograph. There is nowhere for a clip to
+      // play in a list row, and the upload path writes Cloudflare
+      // Images.
+      allowVideo: false,
+    );
+
+    if (picked == null || picked.isEmpty || !mounted) return;
+
+    setState(() => _cover = picked.first.file);
+  }
+
+  /// The cover, as a Cloudflare id, or null.
+  ///
+  /// A failure here does NOT stop the road being saved. The photograph
+  /// is the nicest part of a road and the line is the point of it, and
+  /// losing somebody's work because an upload timed out would be the
+  /// wrong trade.
+  Future<String> _uploadCover() async {
+    final file = _cover;
+
+    if (file == null) return '';
+
+    setState(() => _uploading = true);
+
+    try {
+      // Shrunk first. A road cover is shown at list-row size and as a
+      // banner, and a modern phone's original is several megabytes of
+      // upload for a picture nothing will ever draw that large.
+      final small = await FlutterImageCompress.compressWithFile(
+        file.path,
+        minWidth: 1600,
+        minHeight: 1600,
+        quality: 85,
+      );
+
+      final id = await CloudflareImages.uploadAndGetId(
+        bytes: small ?? await file.readAsBytes(),
+        fileName: 'road_${DateTime.now().microsecondsSinceEpoch}.jpg',
+      );
+
+      return id ?? '';
+    } catch (e) {
+      debugPrint('[AddRoad] cover upload failed: $e');
+      return '';
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
   // ── saving ────────────────────────────────────────────────────────
 
   Future<void> _save() async {
@@ -391,10 +464,21 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
 
     setState(() => _saving = true);
 
+    final cover = await _uploadCover();
+
+    if (!mounted) return;
+
+    // Said, and then carried on. See _uploadCover: a road without its
+    // photograph is still a road.
+    if (_cover != null && cover.isEmpty) {
+      _say('The photo could not be uploaded, so the road was saved without it.');
+    }
+
     final id = await RoadsAPI.create(
       title: title,
       points: _points,
       summary: _summaryCtrl.text.trim(),
+      coverImage: cover,
     );
 
     if (!mounted) return;
@@ -443,6 +527,22 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
     final theme = Provider.of<ThemeProvider>(context);
     final size = MediaQuery.sizeOf(context);
 
+    // ── THE MAP GETS OUT OF THE WAY WHILE TYPING ──────────────────
+    //
+    // Its height came from MediaQuery.sizeOf, which is the whole
+    // SCREEN and does not shrink when a keyboard opens — only
+    // viewInsets changes. So the Column kept asking for 44% of a
+    // screen out of what was left of one, and on a small phone with a
+    // tall keyboard there was nothing left for the fields.
+    //
+    // A strip rather than nothing: removing the MapWidget from the
+    // tree would dispose the map and take the drawn line and the
+    // camera with it, and somebody would come back from the keyboard
+    // to an empty map.
+    final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
+
+    final mapHeight = typing ? 120.0 : size.height * 0.44;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF6F6F6),
       appBar: AppBar(
@@ -462,31 +562,53 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
+          // Which half is running, not just that something is. The
+          // photograph is the slow part, and a spinner that says
+          // nothing for eight seconds reads as a hang.
+          if (_saving)
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Row(
+                children: [
+                  if (_uploading) ...[
+                    const Text(
+                      'Uploading photo',
+                      style: TextStyle(
+                        color: Color(0xFF6B6B6B),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       color: Color(0xFFAE9159),
                     ),
-                  )
-                : const Text(
-                    'Save',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.w600,
-                    ),
                   ),
-          ),
+                ],
+              ),
+            )
+          else
+            TextButton(
+              onPressed: _save,
+              child: const Text(
+                'Save',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
         ],
       ),
       body: Column(
         children: [
           SizedBox(
-            height: size.height * 0.44,
+            height: mapHeight,
             child: Stack(
               children: [
                 Positioned.fill(
@@ -504,14 +626,15 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
                       : const _NoMap(),
                 ),
 
-                Positioned(
-                  left: 12,
-                  right: 12,
-                  top: 12,
-                  child: _Hint(count: _points.length),
-                ),
+                if (!typing)
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    top: 12,
+                    child: _Hint(count: _points.length),
+                  ),
 
-                if (_points.isNotEmpty)
+                if (_points.isNotEmpty && !typing)
                   Positioned(
                     right: 12,
                     bottom: 12,
@@ -567,6 +690,22 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
                     'Optional',
                     theme,
                   ),
+                ),
+
+                const SizedBox(height: 14),
+
+                // ── THE COVER ─────────────────────────────────────
+                //
+                // Optional, and said so. A road is useful without a
+                // photograph and most people adding one are standing
+                // at a laptop rather than at the road — demanding a
+                // picture would mean either a worse photograph or no
+                // road.
+                _CoverPicker(
+                  file: _cover,
+                  accent: theme.primaryColor,
+                  onPick: _pickCover,
+                  onClear: () => setState(() => _cover = null),
                 ),
 
                 const SizedBox(height: 18),
@@ -637,6 +776,129 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
       borderSide: BorderSide(color: theme.primaryColor, width: 1.6),
     ),
   );
+}
+
+/// The cover photograph, or an invitation to add one.
+class _CoverPicker extends StatelessWidget {
+  final File? file;
+  final Color accent;
+  final VoidCallback onPick;
+  final VoidCallback onClear;
+
+  const _CoverPicker({
+    required this.file,
+    required this.accent,
+    required this.onPick,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (file == null) {
+      return InkWell(
+        onTap: onPick,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 84,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFE2E2E2)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              const SizedBox(width: 16),
+              Icon(Icons.add_photo_alternate_outlined, size: 24, color: accent),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Add a cover photo',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0B0B0B),
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Optional. It is what the road looks like in a list.',
+                      style: TextStyle(fontSize: 12.5, color: Color(0xFF8A8A8A)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Stack(
+        children: [
+          // 16:9, which is the shape a list row and a banner both
+          // crop to — so what is framed here is what gets shown.
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Image.file(
+              file!,
+              fit: BoxFit.cover,
+              // A file that was readable a moment ago, so this is
+              // close to impossible — and a crash on a form would
+              // lose the road behind it.
+              errorBuilder: (_, __, ___) =>
+                  const ColoredBox(color: Color(0xFFEDEDED)),
+            ),
+          ),
+
+          Positioned(
+            right: 8,
+            top: 8,
+            child: Row(
+              children: [
+                _CoverButton(
+                  icon: Icons.swap_horiz_rounded,
+                  onTap: onPick,
+                ),
+                const SizedBox(width: 8),
+                _CoverButton(icon: Icons.close_rounded, onTap: onClear),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoverButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _CoverButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.55),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: Icon(icon, size: 17, color: Colors.white),
+        ),
+      ),
+    );
+  }
 }
 
 /// Says what to do, and then what has been done.
