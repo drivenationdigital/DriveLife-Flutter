@@ -44,6 +44,7 @@ import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/profile/my_club_profile_view.dart';
 import 'package:drivelife/config/feature_flags.dart';
+import 'package:drivelife/screens/roads/roads_list_screen.dart';
 import 'package:drivelife/screens/media/new_gallery_screen.dart';
 import 'package:drivelife/screens/media/media_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
@@ -894,6 +895,29 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
               subtitle: 'For clubs & interests',
               svg: 'assets/app-icons/07-groups.svg',
               onTap: _createClub,
+            ),
+          // ── A TEMPORARY DOOR ──────────────────────────────────
+          //
+          // Driving roads are not a thing you CREATE, so this menu is
+          // the wrong home for them. It is here because it is the one
+          // place a new destination can be added without touching
+          // anything load-bearing: the home tab strip is asserted
+          // against BottomNavProvider.sectionCount, and a conditional
+          // tab would either break that assert or shift every section
+          // index behind it.
+          //
+          // When this ships it belongs as a Discover tab or a section
+          // of its own, which means updating that count deliberately
+          // rather than as a side effect of a feature flag.
+          if (FeatureFlags.drivingRoads)
+            _CreateAction(
+              label: 'Driving Roads',
+              subtitle: 'Roads worth driving',
+              icon: Icons.route_outlined,
+              onTap: () => NavigationHelper.navigateTo(
+                context,
+                const RoadsListScreen(),
+              ),
             ),
           _CreateAction(
             label: 'Event Manager',
