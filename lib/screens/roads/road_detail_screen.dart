@@ -9,6 +9,7 @@ import 'package:drivelife/models/driving_road.dart';
 import 'package:drivelife/models/road_navigation.dart';
 import 'package:drivelife/models/road_polyline.dart';
 import 'package:drivelife/screens/roads/road_drive_sheet.dart';
+import 'package:drivelife/screens/roads/road_map_icons.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/theme/dl_type.dart';
 import 'package:flutter/material.dart';
@@ -45,8 +46,10 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
   static const String _sourceId = 'dl-road';
   static const String _lineId = 'dl-road-line';
   static const String _casingId = 'dl-road-casing';
+  static const String _arrowsId = 'dl-road-arrows';
   static const String _endsSourceId = 'dl-road-ends';
   static const String _endsId = 'dl-road-ends-dots';
+  static const String _endLabelsId = 'dl-road-ends-labels';
 
   /// Hybrid Composition, as the Discover map uses: the mode that
   /// composites Flutter widgets correctly over a full-screen native
@@ -195,8 +198,19 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
 
     if (map == null || _points.length < 2 || !mounted) return;
 
+    // Read here, before anything is awaited, and passed down. _install
+    // is a dozen platform calls deep by the time it needs either of
+    // these, and a context read after an await is a read against a
+    // widget that may already have gone.
+    final accent = Provider.of<ThemeProvider>(
+      context,
+      listen: false,
+    ).primaryColor;
+
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+
     try {
-      await _install(map);
+      await _install(map, accent, pixelRatio);
     } catch (e) {
       // Said rather than swallowed. A half-drawn map is the symptom
       // this whole guard exists for, and silence is what made the
@@ -205,18 +219,27 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
     }
   }
 
-  Future<void> _install(mb.MapboxMap map) async {
-
-    // Read now, used later. Every line below this is an await, and a
-    // provider read after one of them is a read against a context that
-    // may no longer be in the tree.
-    final accent = Provider.of<ThemeProvider>(context, listen: false)
-        .primaryColor;
+  Future<void> _install(
+    mb.MapboxMap map,
+    Color accent,
+    double pixelRatio,
+  ) async {
+    // On every style load, not once. A style reload takes its image
+    // table with it, and a layer asking for an image that is no longer
+    // there draws nothing — which looks exactly like the layer having
+    // failed to be added.
+    await RoadMapIcons.register(map, pixelRatio);
 
     // StyleLoaded also fires for a style that is ALREADY carrying our
     // source, and adding a source that exists throws. Layers before the
     // source: a source cannot be removed while a layer references it.
-    for (final id in const [_casingId, _lineId, _endsId]) {
+    for (final id in const [
+      _casingId,
+      _lineId,
+      _arrowsId,
+      _endsId,
+      _endLabelsId,
+    ]) {
       if (await map.styleLayerExists(id)) await map.removeStyleLayer(id);
     }
 
@@ -264,15 +287,91 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
       ),
     );
 
-    // Last, so they sit on top of the line they cap.
+    // ── WHICH WAY THE ROAD RUNS ───────────────────────────────────
+    //
+    // Arrowheads along the line, and they need nothing to know about
+    // the bends: `symbolPlacement: line` rotates each icon to the
+    // direction of travel along the geometry, so they turn where the
+    // road turns.
+    //
+    // The direction itself comes from the order the coordinates are
+    // stored in, which is the order they were drawn or routed in. That
+    // is what makes "it starts at this end" a fact about the data
+    // rather than a label somebody chose.
+    await map.addLayer(
+      mb.SymbolLayer(
+        id: _arrowsId,
+        sourceId: _sourceId,
+        symbolPlacement: mb.SymbolPlacement.LINE,
+        // Far enough apart to read as punctuation rather than as a
+        // dashed line, close enough that a bend has one on it.
+        symbolSpacing: 62,
+        iconImage: RoadMapIcons.arrowId,
+        iconSize: 0.95,
+        // To the MAP, not the viewport: an arrow that stays upright
+        // while the map rotates is pointing at the screen rather than
+        // down the road.
+        iconRotationAlignment: mb.IconRotationAlignment.MAP,
+        // Allowed to thin out. Zoomed right out, arrows every sixty
+        // pixels along a winding road overlap into a smear, and fewer
+        // of them says the same thing.
+        iconAllowOverlap: false,
+      ),
+    );
+
+    // ── WHERE IT STARTS AND WHERE IT ENDS ─────────────────────────
+    //
+    // Both ends used to be the same white dot, which said "the road
+    // is between these two" and nothing about which was which.
+    //
+    // Coloured by the `type` on each feature, so the start carries the
+    // accent and the end is dark. Last of all, so they sit on top of
+    // the line they cap.
     await map.addLayer(
       mb.CircleLayer(
         id: _endsId,
         sourceId: _endsSourceId,
-        circleRadius: 6,
-        circleColorExpression: const ['rgba', 255, 255, 255, 1],
-        circleStrokeColorExpression: const ['rgba', 11, 11, 11, 1],
+        circleRadius: 7,
+        circleColorExpression: [
+          'match',
+          ['get', 'type'],
+          'start',
+          [
+            'rgba',
+            (accent.r * 255).round(),
+            (accent.g * 255).round(),
+            (accent.b * 255).round(),
+            1,
+          ],
+          // Anything else is the end.
+          const ['rgba', 11, 11, 11, 1],
+        ],
+        circleStrokeColorExpression: const ['rgba', 255, 255, 255, 1],
         circleStrokeWidth: 3,
+      ),
+    );
+
+    // And said in words as well as in colour. A legend nobody has read
+    // is not a legend, and two coloured dots are only meaningful to
+    // somebody who already knows the rule.
+    await map.addLayer(
+      mb.SymbolLayer(
+        id: _endLabelsId,
+        sourceId: _endsSourceId,
+        textFieldExpression: const ['get', 'label'],
+        textSize: 10.5,
+        textOffset: const [0, -1.7],
+        textColorExpression: const ['rgba', 11, 11, 11, 1],
+        // A halo rather than a plate behind it: the label has to be
+        // readable over a field, a town and a wood without putting a
+        // white box on the map at every road end.
+        textHaloColorExpression: const ['rgba', 255, 255, 255, 1],
+        textHaloWidth: 1.6,
+        // Never dropped. These two are the whole point of the layer,
+        // and a label that vanishes because a place name was already
+        // there is worse than a crowded corner.
+        textAllowOverlap: true,
+        textIgnorePlacement: true,
       ),
     );
 
@@ -320,16 +419,25 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
     },
   });
 
+  /// The two ends, each saying which it is.
+  ///
+  /// The properties are what the circle colours and the labels read —
+  /// see the layers above. Taken from the first and last coordinates
+  /// rather than from the start_lat/end_lat columns, so the dot is
+  /// always on the line that is actually drawn.
   String _endsGeoJson() => jsonEncode({
     'type': 'FeatureCollection',
     'features': [
-      for (final point in [_points.first, _points.last])
+      for (final end in [
+        (point: _points.first, type: 'start', label: 'START'),
+        (point: _points.last, type: 'end', label: 'END'),
+      ])
         {
           'type': 'Feature',
-          'properties': const <String, dynamic>{},
+          'properties': {'type': end.type, 'label': end.label},
           'geometry': {
             'type': 'Point',
-            'coordinates': [point.lng, point.lat],
+            'coordinates': [end.point.lng, end.point.lat],
           },
         },
     ],

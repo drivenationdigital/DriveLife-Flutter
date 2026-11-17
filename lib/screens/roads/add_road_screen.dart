@@ -6,6 +6,7 @@ import 'package:drivelife/config/mapbox_config.dart';
 import 'package:drivelife/models/driving_road.dart';
 import 'package:drivelife/models/road_polyline.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/screens/roads/road_map_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
@@ -42,6 +43,8 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   static const String _sourceId = 'dl-new-road';
   static const String _lineId = 'dl-new-road-line';
   static const String _dotsId = 'dl-new-road-dots';
+  static const String _arrowsId = 'dl-new-road-arrows';
+  static const String _labelsId = 'dl-new-road-labels';
 
   /// Hybrid Composition, as the other maps use. Hoisted so the ignore
   /// sits on the line the analyser flags.
@@ -155,6 +158,32 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
     unawaited(_draw());
   }
 
+  /// Turns the road round.
+  ///
+  /// ── WHY THIS IS WORTH A BUTTON ──────────────────────────────────
+  ///
+  /// Now that the order of the taps decides which way the road runs,
+  /// tapping the two ends in the wrong order is a real mistake with a
+  /// real consequence — and without this the only way out of it is to
+  /// clear everything and do the whole road again.
+  ///
+  /// A road also genuinely has a better direction. The Cat and Fiddle
+  /// is a different road westbound, and whoever adds it should be able
+  /// to say which one they meant in one tap.
+  void _reverse() {
+    if (_points.length < 2) return;
+
+    setState(() {
+      final flipped = _points.reversed.toList();
+
+      _points
+        ..clear()
+        ..addAll(flipped);
+    });
+
+    unawaited(_draw());
+  }
+
   void _clear() {
     if (_points.isEmpty) return;
 
@@ -187,15 +216,19 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
     if (map == null || !_styleReady || !mounted) return;
 
     // Read now, used later. Everything below is an await, and a
-    // provider read after one of them is a read against a context that
+    // context read after one of them is a read against a widget that
     // may already have left the tree.
     final accent = Provider.of<ThemeProvider>(
       context,
       listen: false,
     ).primaryColor;
 
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+
     try {
-      for (final id in const [_lineId, _dotsId]) {
+      await RoadMapIcons.register(map, pixelRatio);
+
+      for (final id in const [_lineId, _arrowsId, _dotsId, _labelsId]) {
         if (await map.styleLayerExists(id)) await map.removeStyleLayer(id);
       }
 
@@ -229,14 +262,73 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
         ),
       );
 
+      // ── WHICH WAY THIS ROAD WILL BE STORED ──────────────────
+      //
+      // The order of the taps IS the direction of the road: it is what
+      // gets routed, what gets stored, and what the arrows on the
+      // detail screen will later show.
+      //
+      // So it has to be visible while it is still being decided.
+      // Without this somebody taps the two ends in whichever order
+      // they happen to, saves, and finds the road runs the wrong way
+      // with no idea why.
+      if (_points.length >= 2) {
+        await map.addLayer(
+          mb.SymbolLayer(
+            id: _arrowsId,
+            sourceId: _sourceId,
+            // Only the line. This source carries the tapped points as
+            // well, and line placement on a point feature is not a
+            // thing Mapbox has to guess at.
+            filter: const ['==', ['geometry-type'], 'LineString'],
+            symbolPlacement: mb.SymbolPlacement.LINE,
+            symbolSpacing: 62,
+            iconImage: RoadMapIcons.arrowId,
+            iconSize: 0.95,
+            iconRotationAlignment: mb.IconRotationAlignment.MAP,
+            iconAllowOverlap: false,
+          ),
+        );
+      }
+
       await map.addLayer(
         mb.CircleLayer(
           id: _dotsId,
           sourceId: _sourceId,
-          circleRadius: 6,
-          circleColorExpression: const ['rgba', 255, 255, 255, 1],
-          circleStrokeColorExpression: const ['rgba', 11, 11, 11, 1],
+          filter: const ['==', ['geometry-type'], 'Point'],
+          circleRadius: 7,
+          // The first tap in the accent, every other one dark. Same
+          // rule as the detail screen, so the two read alike.
+          circleColorExpression: [
+            'case',
+            ['==', ['get', 'index'], 0],
+            [
+              'rgba',
+              (accent.r * 255).round(),
+              (accent.g * 255).round(),
+              (accent.b * 255).round(),
+              1,
+            ],
+            const ['rgba', 11, 11, 11, 1],
+          ],
+          circleStrokeColorExpression: const ['rgba', 255, 255, 255, 1],
           circleStrokeWidth: 3,
+        ),
+      );
+
+      await map.addLayer(
+        mb.SymbolLayer(
+          id: _labelsId,
+          sourceId: _sourceId,
+          filter: const ['==', ['geometry-type'], 'Point'],
+          textFieldExpression: const ['get', 'label'],
+          textSize: 10.5,
+          textOffset: const [0, -1.7],
+          textColorExpression: const ['rgba', 11, 11, 11, 1],
+          textHaloColorExpression: const ['rgba', 255, 255, 255, 1],
+          textHaloWidth: 1.6,
+          textAllowOverlap: true,
+          textIgnorePlacement: true,
         ),
       );
     } catch (e) {
@@ -245,17 +337,27 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   }
 
   /// The points as dots, and the line through them when there are two.
+  ///
+  /// Each point carries its own index and a label, which is what the
+  /// layers above colour and name by — so the first tap is visibly the
+  /// start and the last is visibly the end, while there is still time
+  /// to change either.
   String _geojson() => jsonEncode({
     'type': 'FeatureCollection',
     'features': [
-      for (final point in _points)
+      for (var i = 0; i < _points.length; i++)
         {
           'type': 'Feature',
-          'properties': const <String, dynamic>{},
+          'properties': {
+            'index': i,
+            'label': i == 0
+                ? 'START'
+                : (i == _points.length - 1 && _points.length > 1 ? 'END' : ''),
+          },
           'geometry': {
             'type': 'Point',
             // [lng, lat]. The opposite of everywhere else here.
-            'coordinates': [point.lng, point.lat],
+            'coordinates': [_points[i].lng, _points[i].lat],
           },
         },
       if (_points.length >= 2)
@@ -415,6 +517,15 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
                     bottom: 12,
                     child: Row(
                       children: [
+                        // Only once there is a direction to reverse.
+                        if (_points.length >= 2) ...[
+                          _MapButton(
+                            icon: Icons.swap_horiz_rounded,
+                            label: 'Reverse',
+                            onTap: _reverse,
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         _MapButton(
                           icon: Icons.undo_rounded,
                           label: 'Undo',
@@ -540,7 +651,8 @@ class _Hint extends StatelessWidget {
       0 => 'Tap where the road starts',
       1 => 'Now tap where it ends',
       _ =>
-        '$count points — add more at junctions if the route looks wrong',
+        '$count points, running START to END — '
+            'add more at junctions if the route looks wrong',
     };
 
     return Container(
