@@ -71,6 +71,19 @@ class DrivingRoad {
   /// YYYY-MM-DD, or empty.
   final String myDroveOn;
 
+  /// When the drive THIS LISTING is about happened.
+  ///
+  /// ── WHY IT IS NOT [myDroveOn] ───────────────────────────────────
+  ///
+  /// A road fetched for a vehicle is answering "when did this CAR go
+  /// down here", and the car may belong to somebody else — a vehicle
+  /// page is public. Folding that into a field called "my" would make
+  /// every such row claim the viewer had driven it.
+  ///
+  /// Empty everywhere except that listing, which is why
+  /// [droveOnLabel] falls back to the viewer's own date.
+  final String droveOn;
+
   /// The shape, as an encoded polyline — the format Mapbox returns and
   /// draws, so it is stored and sent exactly as it arrives.
   ///
@@ -103,6 +116,7 @@ class DrivingRoad {
     this.iSaved = false,
     this.myVehicleId = 0,
     this.myDroveOn = '',
+    this.droveOn = '',
     this.polyline = '',
     this.description = '',
   });
@@ -129,7 +143,11 @@ class DrivingRoad {
   /// remember, and showing "23 August 2019" back to them claims a
   /// precision the answer never had.
   String get droveOnLabel {
-    final parts = myDroveOn.split('-');
+    // The listing's own date first. On a vehicle page that is the car's
+    // drive; everywhere else it is empty and this is the viewer's.
+    final source = droveOn.isNotEmpty ? droveOn : myDroveOn;
+
+    final parts = source.split('-');
 
     if (parts.length < 2) return '';
 
@@ -165,6 +183,7 @@ class DrivingRoad {
     double? distanceMiles,
     int? myVehicleId,
     String? myDroveOn,
+    String? droveOn,
   }) => DrivingRoad(
     id: id,
     site: site,
@@ -187,6 +206,7 @@ class DrivingRoad {
     iSaved: iSaved ?? this.iSaved,
     myVehicleId: myVehicleId ?? this.myVehicleId,
     myDroveOn: myDroveOn ?? this.myDroveOn,
+    droveOn: droveOn ?? this.droveOn,
     polyline: polyline ?? this.polyline,
     description: description ?? this.description,
   );
@@ -213,6 +233,7 @@ class DrivingRoad {
     iSaved: map['i_saved'] == true,
     myVehicleId: asInt(map['my_vehicle_id']),
     myDroveOn: asText(map['my_drove_on']),
+    droveOn: asText(map['drove_on']),
     polyline: asText(map['polyline']),
     description: asText(map['description']),
   );

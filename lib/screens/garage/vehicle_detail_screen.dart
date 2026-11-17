@@ -22,6 +22,7 @@ import 'package:drivelife/api/events_api.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:drivelife/widgets/nav/dl_haptics.dart';
+import 'package:drivelife/widgets/garage/vehicle_roads_section.dart';
 import 'package:drivelife/widgets/garage/vehicle_share_card.dart';
 import 'package:provider/provider.dart';
 import '../../api/garage_api.dart';
@@ -1252,6 +1253,20 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                       ],
                     ),
                   ),
+                  // The roads this car has been down.
+                  //
+                  // A widget rather than a fourth tab: a tab would mean
+                  // the controller's length, the Tab list and the
+                  // TabBarView's children all agreeing about a feature
+                  // flag, for something most vehicles have nothing to
+                  // show in. This draws nothing at all when there is
+                  // nothing — no flag, no roads, no server, no section
+                  // — so the page cannot be broken by it.
+                  VehicleRoadsSection(
+                    garageId: int.tryParse(widget.garageId) ?? 0,
+                    accent: theme.primaryColor,
+                  ),
+
                   const SizedBox(height: 18),
                   // Tabs
                   Container(

@@ -103,6 +103,26 @@ class RoadsAPI {
     );
   }
 
+  /// Every road a vehicle has been down, most recent first.
+  ///
+  /// Lives in roads.php rather than garage.php on purpose: it is a
+  /// roads question with a vehicle in it, and keeping it here is what
+  /// lets the whole feature stay one file and two tables.
+  ///
+  /// An empty list is the normal answer for most cars, and for every
+  /// car on a server that has not run roads-drives.sql. The garage
+  /// page draws nothing either way.
+  static Future<List<DrivingRoad>> forVehicle(int vehicleId) async {
+    if (vehicleId < 1) return const [];
+
+    return _list(
+      Uri.parse('$_base/wp-json/app/v2/roads/for-vehicle').replace(
+        queryParameters: {'vehicle_id': '$vehicleId', 'limit': '20'},
+      ),
+      'for-vehicle',
+    );
+  }
+
   static Future<List<DrivingRoad>> _list(Uri url, String what) async {
     try {
       final headers = await _headers();
