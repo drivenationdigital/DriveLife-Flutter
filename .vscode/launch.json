@@ -28,6 +28,13 @@
             "type": "dart",
             "flutterMode": "debug",
             "args": ["--dart-define=DL_STAGING=true","--dart-define=DL_WEB_EVENT_OVERVIEW=true"]
+        },
+        {
+            "name": "drivelife (roads mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "debug",
+            "args": ["--dart-define=DL_ROADS=true"]
         }
     ]
 }

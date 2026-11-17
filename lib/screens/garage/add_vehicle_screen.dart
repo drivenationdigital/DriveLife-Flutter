@@ -139,10 +139,32 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
   /// How many photographs the scan reads.
   ///
-  /// The angles that tell one car from another are front, rear, side
-  /// and interior; a fifth is usually another of one of those. The
-  /// server caps this too — this one is about the size of the request.
-  static const int _scanPhotoLimit = 4;
+  /// ── TWO, AND IT USED TO BE FOUR ─────────────────────────────────
+  ///
+  /// Four was argued from evidence: front, rear, side and interior
+  /// each settle something the others do not. True, and not what
+  /// somebody is weighing while a screen says "Scanning your vehicle"
+  /// at them.
+  ///
+  /// Two is about half the upload and most of the answer. Make and
+  /// model come off the first usable photograph nearly every time;
+  /// what the other pair buys is the VARIANT, which is already allowed
+  /// to come back empty and already lands in a field somebody can
+  /// correct.
+  ///
+  /// Kept in step with DL_GARAGE_ID_MAX_IMAGES, which caps it again at
+  /// the other end. This one is what stops the extra megabytes leaving
+  /// the phone in the first place, which is where the wait actually
+  /// is.
+  static const int _scanPhotoLimit = 2;
+
+  /// The largest photograph worth sending uncompressed.
+  ///
+  /// Only reached when compression fails — see [_scanPhotos]. A modern
+  /// phone's original is several megabytes and base64 adds a third, so
+  /// two of them is a request many servers simply refuse. Better to
+  /// send one photograph than to have the whole scan rejected.
+  static const int _rawPhotoCeiling = 4 * 1024 * 1024;
 
   String _ownership = 'current';
   DateTime? _ownedFrom;
@@ -1155,23 +1177,64 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     final photos = <Uint8List>[];
 
     for (final file in _galleryPicks.take(_scanPhotoLimit)) {
+      Uint8List? bytes;
+
       try {
         // Shrunk for the trip. The server reduces to 1024 before it
         // sends anything on, so a full-size phone photograph would be
         // megabytes of request body thrown away on arrival.
-        final small = await FlutterImageCompress.compressWithFile(
+        bytes = await FlutterImageCompress.compressWithFile(
           file.path,
           minWidth: 1024,
           minHeight: 1024,
           quality: 80,
         );
-
-        photos.add(small ?? await file.readAsBytes());
       } catch (e) {
-        debugPrint('[AddVehicle] scan prepare failed for ${file.path}: $e');
+        debugPrint('[AddVehicle] compress failed for ${file.path}: $e');
       }
 
+      // ── THE FALLBACK USED TO BE INSIDE THE TRY ──────────────────
+      //
+      // `photos.add(small ?? await file.readAsBytes())` only ever ran
+      // when compression RETURNED null. When it THREW — which it does
+      // on some content:// paths, and on an image the plugin cannot
+      // decode — the add never happened at all, and the photograph was
+      // dropped without anything on screen saying so. The progress row
+      // still counted it, because the counter is outside the catch.
+      //
+      // Five photographs could therefore become zero, and the scan
+      // posted an empty list: a request that comes back in two seconds
+      // having never reached Gemini, which is exactly what it looked
+      // like.
+      if (bytes == null) {
+        try {
+          final raw = await file.readAsBytes();
+
+          if (raw.length <= _rawPhotoCeiling) {
+            bytes = raw;
+          } else {
+            debugPrint(
+              '[AddVehicle] ${file.path} is ${raw.length} bytes and would '
+              'not compress — too large to send as it is',
+            );
+          }
+        } catch (e) {
+          debugPrint('[AddVehicle] could not read ${file.path}: $e');
+        }
+      }
+
+      if (bytes != null && bytes.isNotEmpty) photos.add(bytes);
+
       if (mounted) setState(() => _scanUploaded++);
+    }
+
+    if (photos.isEmpty) {
+      // Worth one line in the log, because from here on it is
+      // indistinguishable from a car nothing recognised.
+      debugPrint(
+        '[AddVehicle] no photographs could be prepared from '
+        '${_galleryPicks.length} picked — nothing to scan',
+      );
     }
 
     if (mounted) setState(() => _scanIdentifying = true);
