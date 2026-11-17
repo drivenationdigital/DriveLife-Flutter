@@ -1174,15 +1174,16 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     if (!guess.hasGuess) return;
 
     if (_make == null && guess.make.isNotEmpty) {
-      // Matched against the dropdown, case-insensitively. A make the
-      // list does not carry is left unset rather than invented — the
-      // banner still names it, so nothing is hidden.
-      final match = _makes.firstWhere(
-        (m) => m.toLowerCase() == guess.make.toLowerCase(),
-        orElse: () => '',
-      );
-
-      if (match.isNotEmpty) _make = match;
+      // A literal comparison missed most of the common answers —
+      // "Mercedes" against "Mercedes-Benz", "Citroën" against
+      // "Citroen", "VW" against "Volkswagen". See
+      // [VehicleGuess.matchMake], which is where that lives and where
+      // it is tested.
+      //
+      // Still null rather than a wrong entry when nothing fits: the
+      // banner names what the photographs said, so an unmatched make
+      // is visible rather than silently replaced.
+      _make = VehicleGuess.matchMake(guess.make, _makes);
     }
 
     void fill(TextEditingController ctrl, String value) {
@@ -1193,6 +1194,22 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     fill(_variantCtrl, guess.variant);
     fill(_colourCtrl, guess.colour);
     fill(_yearCtrl, guess.yearForField);
+
+    // ── RECALLED FIGURES, NOT MEASURED ONES ───────────────────────
+    //
+    // Nothing in a photograph shows how fast a car is. These are the
+    // manufacturer's published numbers for whatever variant the scan
+    // read, so they carry the variant's uncertainty and add to it —
+    // and a remapped or restored car's real figures were never
+    // published at all.
+    //
+    // Which is why they go in like everything else here: only into an
+    // empty field, and always editable. The server nulls all three
+    // when it is unsure of the variant, so a base model's numbers do
+    // not end up on a performance version.
+    fill(_bhpCtrl, guess.powerBhp);
+    fill(_zero62Ctrl, guess.zeroTo62);
+    fill(_topSpeedCtrl, guess.topSpeedMph);
   }
 
   /// "Not right? Clear and enter manually".
@@ -1219,6 +1236,12 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       clear(_variantCtrl, guess.variant);
       clear(_colourCtrl, guess.colour);
       clear(_yearCtrl, guess.yearForField);
+
+      // The figures came from the variant. Saying the variant is wrong
+      // says these are too.
+      clear(_bhpCtrl, guess.powerBhp);
+      clear(_zero62Ctrl, guess.zeroTo62);
+      clear(_topSpeedCtrl, guess.topSpeedMph);
     });
   }
 
@@ -2072,12 +2095,18 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   // What the photographs said, and a way to disown it.
                   if (_guess.hasGuess) _guessBanner(),
 
-                  // The gallery belongs to step one while adding; it is
-                  // only here when editing, where there is no step one.
-                  if (_isEditMode) ...[
-                    _sectionTitle('Vehicle Gallery'),
-                    _buildGallerySection(),
-                  ],
+                  // ── ON BOTH STEPS, DELIBERATELY ───────────────
+                  //
+                  // It was step one only, on the reasoning that the
+                  // photographs had already been asked for. That is
+                  // true and it is not the point: step two is where
+                  // somebody checks what the scan made of them, and
+                  // "enter details manually" drops the banner and left
+                  // a form with no sign that any photograph existed.
+                  // Add one more, or swap the cover, and the only way
+                  // back was the Back button.
+                  _sectionTitle('Vehicle Gallery'),
+                  _buildGallerySection(),
 
                   _sectionTitle('Ownership Type'),
                   _card(

@@ -110,6 +110,57 @@ void main() {
     });
   });
 
+  group('the performance figures', () {
+    test('they come off the payload', () {
+      final guess = VehicleGuess.fromMap(const {
+        'make': 'Porsche',
+        'model': '911',
+        'variant': 'GT3 Touring',
+        'power_bhp': '503',
+        'zero_to_62': '3.9',
+        'top_speed_mph': '199',
+      });
+
+      expect(guess.powerBhp, '503');
+      expect(guess.zeroTo62, '3.9');
+      expect(guess.topSpeedMph, '199');
+    });
+
+    test('a car the server was unsure of has none', () {
+      // The server nulls all three when it cannot place the variant.
+      // Three plausible wrong numbers are worse than three blanks, and
+      // a base model's figures on a performance version is the most
+      // believable kind of wrong.
+      final guess = VehicleGuess.fromMap(const {
+        'make': 'Ford',
+        'model': 'Focus',
+        'power_bhp': null,
+        'zero_to_62': null,
+        'top_speed_mph': null,
+      });
+
+      expect(guess.powerBhp, '');
+      expect(guess.zeroTo62, '');
+      expect(guess.topSpeedMph, '');
+    });
+
+    test('an older server that sends none at all', () {
+      final guess = VehicleGuess.fromMap(const {'make': 'Ford'});
+
+      expect(guess.powerBhp, '');
+      expect(guess.hasGuess, isTrue);
+    });
+
+    test('figures alone are still not an identification', () {
+      // They are recalled from the make and model, so without one
+      // there is nothing to recall them from — and a banner reading
+      // "we think this is a 503" would be nonsense.
+      const guess = VehicleGuess(powerBhp: '503', topSpeedMph: '199');
+
+      expect(guess.hasGuess, isFalse);
+    });
+  });
+
   group('the year, for a field expecting four digits', () {
     test('a plain year passes through', () {
       expect(const VehicleGuess(year: '2022').yearForField, '2022');

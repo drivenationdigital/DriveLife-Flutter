@@ -30,6 +30,26 @@ class VehicleGuess {
   /// "High", "Medium" or "Low", about the make and model only.
   final String confidence;
 
+  /// Peak power in BHP, as a whole number. Empty when unknown.
+  ///
+  /// ── RECALLED, NOT SEEN ──────────────────────────────────────────
+  ///
+  /// Nothing in a photograph shows how fast a car is. These are the
+  /// manufacturer's published figures for whatever variant the photos
+  /// were read as, so they inherit the variant's uncertainty and add
+  /// to it: a GT3 read as a Carrera gives three plausible, wrong
+  /// numbers, and a remapped car's real figures were never published
+  /// at all.
+  ///
+  /// Which is why they only ever fill an empty field.
+  final String powerBhp;
+
+  /// 0-62mph in seconds, one decimal place. Empty when unknown.
+  final String zeroTo62;
+
+  /// Top speed in MPH, a whole number. Empty when unknown.
+  final String topSpeedMph;
+
   /// How many of the photographs the server actually managed to read.
   final int imagesUsed;
 
@@ -42,6 +62,9 @@ class VehicleGuess {
     this.body = '',
     this.confidence = '',
     this.imagesUsed = 0,
+    this.powerBhp = '',
+    this.zeroTo62 = '',
+    this.topSpeedMph = '',
   });
 
   static const VehicleGuess none = VehicleGuess();
@@ -80,7 +103,122 @@ class VehicleGuess {
       body: read('body'),
       confidence: read('confidence'),
       imagesUsed: int.tryParse(read('images_used')) ?? 0,
+      powerBhp: read('power_bhp'),
+      zeroTo62: read('zero_to_62'),
+      topSpeedMph: read('top_speed_mph'),
     );
+  }
+
+  /// Which entry of a make dropdown this guess means, or null.
+  ///
+  /// ── WHY AN EXACT MATCH IS NOT ENOUGH ────────────────────────────
+  ///
+  /// The list is how a British road registry spells these names; the
+  /// model answers with how people say them. Compared literally,
+  /// lowercased, the failures are all of the common ones:
+  ///
+  ///   Mercedes        vs  Mercedes-Benz
+  ///   Mercedes Benz   vs  Mercedes-Benz
+  ///   Citroën         vs  Citroen
+  ///   Alfa            vs  Alfa Romeo
+  ///   VW              vs  Volkswagen
+  ///   Range Rover     vs  Land Rover      (that one is a model)
+  ///
+  /// So: punctuation and accents are set aside, a short list of names
+  /// people actually use is translated, and a guess that is the start
+  /// of exactly one entry takes it.
+  ///
+  /// Returns null rather than a wrong entry. The banner still names
+  /// what the photographs said, so an unmatched make is visible rather
+  /// than silently replaced by whatever sorted first.
+  static String? matchMake(String guess, List<String> options) {
+    final wanted = _fold(guess);
+
+    if (wanted.isEmpty) return null;
+
+    String? exact(String name) {
+      for (final option in options) {
+        if (_fold(option) == name) return option;
+      }
+
+      return null;
+    }
+
+    // ── THE LIST WINS BEFORE ANY ALIAS ──────────────────────────────
+    //
+    // This list carries BOTH "Opel" and "Vauxhall", and both "Rover"
+    // and "Land Rover". Translating a name before checking whether the
+    // list already has it would answer "Opel" with Vauxhall and
+    // "Rover" with Land Rover — picking a different marque over the
+    // one the photographs actually said.
+    final straight = exact(wanted);
+
+    if (straight != null) return straight;
+
+    // Only now: what people say, against what the list calls it.
+    // Nothing here may be a list entry in its own right.
+    const aliases = <String, String>{
+      'vw': 'volkswagen',
+      'merc': 'mercedesbenz',
+      'mercedes': 'mercedesbenz',
+      'benz': 'mercedesbenz',
+      'amg': 'mercedesbenz',
+      'chevy': 'chevrolet',
+      'rangerover': 'landrover',
+      'rangeroversport': 'landrover',
+      'ds': 'dsautomobiles',
+      'beemer': 'bmw',
+      'bimmer': 'bmw',
+      'vauxhallopel': 'vauxhall',
+      'volvocars': 'volvo',
+      'skodaauto': 'skoda',
+      'seatcupra': 'cupra',
+      'astonmartinlagonda': 'astonmartin',
+      'thelandroverco': 'landrover',
+    };
+
+    final aliased = aliases[wanted];
+
+    if (aliased != null) {
+      final match = exact(aliased);
+
+      if (match != null) return match;
+    }
+
+    // A prefix, but only when it picks out exactly one. "Mercedes"
+    // starts "Mercedes-Benz" and nothing else; "A" starts a dozen
+    // makes and means none of them.
+    if (wanted.length >= 3) {
+      final starts = options.where((o) => _fold(o).startsWith(wanted)).toList();
+
+      if (starts.length == 1) return starts.first;
+
+      // And the other way round: "Volkswagen Golf" as a make, which is
+      // a make and a model run together.
+      final within = options.where((o) => wanted.startsWith(_fold(o))).toList();
+
+      if (within.length == 1) return within.first;
+    }
+
+    return null;
+  }
+
+  /// A name reduced to its letters and digits, accents folded out.
+  static String _fold(String value) {
+    var out = value.toLowerCase().trim();
+
+    const accents = <String, String>{
+      'á': 'a', 'à': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a', 'å': 'a',
+      'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+      'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+      'ó': 'o', 'ò': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o', 'ø': 'o',
+      'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
+      'ç': 'c', 'ñ': 'n', 'ß': 'ss',
+    };
+
+    accents.forEach((from, to) => out = out.replaceAll(from, to));
+
+    return out.replaceAll(RegExp('[^a-z0-9]+'), '');
   }
 
   /// The year as something a four-digit field will accept.
