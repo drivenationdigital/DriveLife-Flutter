@@ -65,6 +65,24 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
 
   List<RoadPoint> _points = const [];
 
+  /// Whether a draw is in flight, and whether another was asked for
+  /// while it was.
+  ///
+  /// ── WHY THIS IS NEEDED ──────────────────────────────────────────
+  ///
+  /// [_draw] had three callers — the map being created, the style
+  /// loading, and the shape arriving — and no guard. Two of them
+  /// overlapping is not a wasted redraw, it is a corrupted one: each
+  /// pass REMOVES every layer and source before adding them back, so
+  /// one pass's removal loop deletes what the other has just added.
+  ///
+  /// The symptom was specific and was exactly what turned up: the line
+  /// drew and the start/end dots did not. The dots are added last, so
+  /// they are the layer most likely to be removed by the other pass —
+  /// or to be added against a source that pass has already taken away.
+  bool _drawing = false;
+  bool _drawAgain = false;
+
   @override
   void initState() {
     super.initState();
@@ -92,18 +110,53 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
 
     await map.scaleBar.updateSettings(mb.ScaleBarSettings(enabled: false));
 
-    await _draw();
+    // No draw here. A map that has just been created has no style yet,
+    // so everything below would be added to nothing — and then the
+    // style load would run it all again, which is one of the two
+    // overlapping passes that lost the dots. onStyleLoadedListener
+    // always fires, so there is nothing to catch here.
   }
 
-  /// Puts the line on the style.
+  /// Puts the line on the style, one pass at a time.
   ///
-  /// Called from both the map being created and the shape arriving,
-  /// because either can happen first and neither can draw alone. Both
-  /// paths are safe to run twice — see the removals below.
+  /// Called when the style loads and when the shape arrives, in either
+  /// order. Overlapping passes are what [_drawing] exists to stop; a
+  /// request that arrives mid-pass is remembered and run afterwards, so
+  /// the last word still wins.
   Future<void> _draw() async {
+    if (_drawing) {
+      _drawAgain = true;
+      return;
+    }
+
+    _drawing = true;
+
+    try {
+      do {
+        _drawAgain = false;
+        await _drawOnce();
+      } while (_drawAgain && mounted);
+    } finally {
+      _drawing = false;
+    }
+  }
+
+  Future<void> _drawOnce() async {
     final map = _map;
 
     if (map == null || _points.length < 2 || !mounted) return;
+
+    try {
+      await _install(map);
+    } catch (e) {
+      // Said rather than swallowed. A half-drawn map is the symptom
+      // this whole guard exists for, and silence is what made the
+      // missing dots take a screenshot to find.
+      debugPrint('[Road] could not draw ${_road.id}: $e');
+    }
+  }
+
+  Future<void> _install(mb.MapboxMap map) async {
 
     // Read now, used later. Every line below this is an await, and a
     // provider read after one of them is a read against a context that
@@ -162,6 +215,7 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
       ),
     );
 
+    // Last, so they sit on top of the line they cap.
     await map.addLayer(
       mb.CircleLayer(
         id: _endsId,
