@@ -112,6 +112,69 @@ void main() {
     });
   });
 
+  group('how far away it is', () {
+    // The same haversine as dl_roads_distance() in roads.php, checked
+    // against the same kind of known pairs, because the app and the
+    // server have to agree about which road is nearest.
+    test('Leicester to Nottingham is about 22 miles', () {
+      expect(
+        const RoadPoint(52.6369, -1.1398).milesTo(
+          const RoadPoint(52.9548, -1.1581),
+        ),
+        closeTo(22, 1.5),
+      );
+    });
+
+    test('London to Edinburgh is about 332 miles', () {
+      expect(
+        const RoadPoint(51.5074, -0.1278).milesTo(
+          const RoadPoint(55.9533, -3.1883),
+        ),
+        closeTo(332, 8),
+      );
+    });
+
+    test('a point to itself is zero, not NaN', () {
+      // Floating point can hand sqrt() a hair over 1 for two identical
+      // points, and asin of that is NaN — which sorts unpredictably and
+      // serialises as null.
+      final miles = const RoadPoint(52.6, -1.1).milesTo(
+        const RoadPoint(52.6, -1.1),
+      );
+
+      expect(miles.isNaN, isFalse);
+      expect(miles, 0);
+    });
+
+    test('THE CASE THAT CAUSED THE EMPTY SCREEN', () {
+      // The first two seeded roads, measured from Leicester. Both are
+      // beyond the 50 mile radius the screen opened with, so "no roads
+      // near you yet" was true and useless — there were roads, and they
+      // were a reasonable drive away.
+      const leicester = RoadPoint(52.6369, -1.1398);
+
+      final catAndFiddle = leicester.milesTo(const RoadPoint(53.2320, -2.0074));
+      final snakePass = leicester.milesTo(const RoadPoint(53.4450, -1.7600));
+
+      expect(catAndFiddle, greaterThan(50));
+      expect(snakePass, greaterThan(50));
+
+      // And inside the radius the screen uses now.
+      expect(catAndFiddle, lessThan(100));
+      expect(snakePass, lessThan(100));
+    });
+
+    test('east-west distance shrinks with latitude', () {
+      // A degree of longitude is 69 miles at the equator and nothing at
+      // the pole. A flat comparison would call these two equal.
+      final atEquator = const RoadPoint(0, 0).milesTo(const RoadPoint(0, 1));
+      final atUk = const RoadPoint(53, 0).milesTo(const RoadPoint(53, 1));
+
+      expect(atUk, lessThan(atEquator));
+      expect(atUk, closeTo(41.5, 1.5));
+    });
+  });
+
   group('the labels', () {
     test('a long road is a whole number', () {
       expect(

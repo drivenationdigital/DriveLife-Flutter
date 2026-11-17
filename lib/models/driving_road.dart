@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// A stretch of road somebody thinks is worth driving.
 ///
 /// ── NOT A POST, AND NOT A VENUE ─────────────────────────────────────
@@ -118,6 +120,7 @@ class DrivingRoad {
     int? savedCount,
     String? polyline,
     String? description,
+    double? distanceMiles,
   }) => DrivingRoad(
     id: id,
     site: site,
@@ -128,7 +131,7 @@ class DrivingRoad {
     country: country,
     coverImage: coverImage,
     lengthMiles: lengthMiles,
-    distanceMiles: distanceMiles,
+    distanceMiles: distanceMiles ?? this.distanceMiles,
     status: status,
     droveCount: droveCount ?? this.droveCount,
     savedCount: savedCount ?? this.savedCount,
@@ -206,6 +209,40 @@ class RoadPoint {
   /// The server refuses it on the way in; this is the same rule on the
   /// way back out, for a row that predates it.
   bool get isReal => !(lat == 0 && lng == 0) && lat.abs() <= 90;
+
+  /// Statute miles from here to there.
+  ///
+  /// ── WHY THE APP CAN DO THIS AT ALL ──────────────────────────────
+  ///
+  /// Every road in a list carries its midpoint, so a list fetched
+  /// WITHOUT a location can still be ordered by distance once one is
+  /// known — which is what lets the roads screen fall back to the
+  /// national list and still put the nearest first.
+  ///
+  /// The same haversine as dl_roads_distance() in roads.php, and for
+  /// the same reason it is written out rather than approximated: at
+  /// these latitudes a flat-earth version is wrong by several miles
+  /// over a couple of counties, which is enough to reorder a list.
+  double milesTo(RoadPoint other) {
+    const earthMiles = 7917.5 / 2;
+
+    double radians(double degrees) => degrees * math.pi / 180;
+
+    final dLat = radians(other.lat - lat);
+    final dLng = radians(other.lng - lng);
+
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(radians(lat)) *
+            math.cos(radians(other.lat)) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+
+    // asin of a clamped root rather than atan2: with two identical
+    // points, floating point can hand sqrt() a hair over 1, and the
+    // result is NaN rather than the zero it should be.
+    return 2 * earthMiles * math.asin(math.min(1.0, math.sqrt(a)));
+  }
 
   factory RoadPoint.fromMap(dynamic raw) {
     if (raw is! Map) return none;

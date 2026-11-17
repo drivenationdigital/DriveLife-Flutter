@@ -33,6 +33,34 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
   /// Whether the list on screen was measured from somewhere.
   bool _nearby = false;
 
+  /// Set when the radius found nothing and the whole country was shown
+  /// instead.
+  ///
+  /// ── WHY THE FALLBACK EXISTS ─────────────────────────────────────
+  ///
+  /// The first two roads in the table were 55 and 62 miles from where
+  /// they were being looked for, and the default radius was 50. The
+  /// screen said "no roads near you yet", which was TRUE and useless:
+  /// there were roads, they were a reasonable drive away, and nothing
+  /// on screen suggested looking further.
+  ///
+  /// A feature with a handful of roads nationally cannot afford a
+  /// correct empty screen. So an empty radius now asks for everything
+  /// and says what it did.
+  bool _widened = false;
+
+  /// Where the question was asked from, kept so the national list can
+  /// still be ordered by distance. Every row carries its midpoint, so
+  /// that is arithmetic rather than another request.
+  RoadPoint? _from;
+
+  /// How far "near me" looks before widening.
+  ///
+  /// Further than the 50 it opened with. People drive two hours to a
+  /// good road — treating 50 miles as the edge of the world is a
+  /// judgement about commuting, not about driving for its own sake.
+  static const double _radiusMiles = 100;
+
   /// Whether the server has roads switched on at all.
   ///
   /// Its own state because the screen it deserves is different: an
@@ -69,18 +97,64 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
       // already handles.
     }
 
-    final roads = here != null
-        ? await RoadsAPI.nearby(lat: here.latitude, lng: here.longitude)
-        : await RoadsAPI.list();
+    final from = here == null
+        ? null
+        : RoadPoint(here.latitude, here.longitude);
+
+    var roads = from == null
+        ? await RoadsAPI.list()
+        : await RoadsAPI.nearby(
+            lat: from.lat,
+            lng: from.lng,
+            radius: _radiusMiles,
+          );
+
+    // Nothing within the radius, but there may be roads. Ask for all of
+    // them rather than leaving a true and useless empty screen.
+    var widened = false;
+
+    if (roads.isEmpty && from != null && RoadsAPI.lastReady) {
+      roads = _byDistance(await RoadsAPI.list(), from);
+      widened = roads.isNotEmpty;
+    }
 
     if (!mounted) return;
 
     setState(() {
       _roads = roads;
-      _nearby = here != null;
+      _from = from;
+      _nearby = from != null;
+      _widened = widened;
       _ready = RoadsAPI.lastReady;
       _loading = false;
     });
+  }
+
+  /// The national list, measured and sorted from here.
+  ///
+  /// The server only works distances out for a nearby query, but every
+  /// row carries its midpoint either way — so this costs one pass and
+  /// no extra request, and the widened list still reads nearest first
+  /// rather than newest first.
+  List<DrivingRoad> _byDistance(List<DrivingRoad> roads, RoadPoint from) {
+    final measured = roads
+        .map(
+          (road) => road.mid.isReal
+              ? road.copyWith(distanceMiles: from.milesTo(road.mid))
+              : road,
+        )
+        .toList();
+
+    measured.sort((a, b) {
+      // A road with no usable midpoint cannot be placed, so it goes
+      // last rather than to the top on a distance of zero.
+      final aMiles = a.distanceMiles <= 0 ? double.infinity : a.distanceMiles;
+      final bMiles = b.distanceMiles <= 0 ? double.infinity : b.distanceMiles;
+
+      return aMiles.compareTo(bMiles);
+    });
+
+    return measured;
   }
 
   Future<void> _open(DrivingRoad road) async {
@@ -143,12 +217,13 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
     }
 
     if (_roads.isEmpty) {
+      // No longer "none near you": by this point the radius has been
+      // dropped and the whole country asked for, so an empty list means
+      // the table is empty.
       return _message(
         icon: Icons.route_rounded,
-        title: _nearby ? 'No roads near you yet' : 'No roads yet',
-        body: _nearby
-            ? 'Nobody has added a road around here. Pull down to look again.'
-            : 'The first ones are on their way.',
+        title: 'No roads yet',
+        body: 'Nobody has added one. Pull down to look again.',
       );
     }
 
@@ -157,12 +232,52 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
       // refresh — which is the only way back from an empty one.
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-      itemCount: _roads.length,
+      // One extra row for the note, when there is one to make.
+      itemCount: _roads.length + (_widened ? 1 : 0),
       separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (_, i) => _RoadCard(
-        road: _roads[i],
-        accent: theme.primaryColor,
-        onTap: () => _open(_roads[i]),
+      itemBuilder: (_, i) {
+        if (_widened && i == 0) return _widenedNote();
+
+        final road = _roads[i - (_widened ? 1 : 0)];
+
+        return _RoadCard(
+          road: road,
+          accent: theme.primaryColor,
+          onTap: () => _open(road),
+        );
+      },
+    );
+  }
+
+  /// Says the radius came up empty, rather than quietly showing the
+  /// country and letting somebody think it is all local.
+  Widget _widenedNote() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDEDED),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.travel_explore_rounded,
+            size: 19,
+            color: Color(0xFF6B6B6B),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Nothing within ${_radiusMiles.round()} miles. '
+              'Showing every road, nearest first.',
+              style: const TextStyle(
+                fontSize: 13.5,
+                color: Color(0xFF4A4A4A),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
