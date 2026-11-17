@@ -1,14 +1,20 @@
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:drivelife/api/garage_api.dart';
 
 import 'package:drivelife/api/roads_api.dart';
 import 'package:drivelife/config/mapbox_config.dart';
 import 'package:drivelife/models/driving_road.dart';
+import 'package:drivelife/models/road_navigation.dart';
 import 'package:drivelife/models/road_polyline.dart';
+import 'package:drivelife/screens/roads/road_drive_sheet.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/theme/dl_type.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// One road, drawn.
 ///
@@ -65,6 +71,12 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
 
   List<RoadPoint> _points = const [];
 
+  /// The name of the vehicle they recorded, once it has been looked
+  /// up. Empty until then, and empty for a vehicle that has since been
+  /// deleted — the drive still happened, so the line just loses its
+  /// second half rather than the whole thing.
+  String _vehicleName = '';
+
   /// Whether a draw is in flight, and whether another was asked for
   /// while it was.
   ///
@@ -100,7 +112,44 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
       _loading = false;
     });
 
+    // Not awaited with the draw: a name under a line is worth a second
+    // request, and worth nobody waiting for.
+    unawaited(_loadVehicleName());
+
     await _draw();
+  }
+
+  /// Turns the stored garage id into something worth reading.
+  ///
+  /// The id is what is stored — see sql/roads-drives.sql — because a
+  /// vehicle renamed, sold or re-photographed is still the same
+  /// vehicle, and a copied string would be wrong the first time
+  /// somebody corrected their own car.
+  ///
+  /// Which means the name has to be fetched. One request, only when
+  /// there is an id, and a failure leaves the line reading "You drove
+  /// this in August 2019" rather than nothing at all.
+  Future<void> _loadVehicleName() async {
+    final id = _road.myVehicleId;
+
+    if (id <= 0) {
+      if (mounted && _vehicleName.isNotEmpty) {
+        setState(() => _vehicleName = '');
+      }
+
+      return;
+    }
+
+    final vehicle = await GarageAPI.getGarageById('$id');
+
+    if (!mounted || vehicle == null) return;
+
+    final name = [
+      '${vehicle['make'] ?? ''}'.trim(),
+      '${vehicle['model'] ?? ''}'.trim(),
+    ].where((p) => p.isNotEmpty).join(' ');
+
+    setState(() => _vehicleName = name);
   }
 
   // ── the map ───────────────────────────────────────────────────────
@@ -291,14 +340,40 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
   Future<void> _toggle(String kind) async {
     if (_busy) return;
 
-    setState(() => _busy = true);
-
     final on = kind == 'drove' ? !_road.iDrove : !_road.iSaved;
 
-    final count = await RoadsAPI.setAction(
+    // Asked on the way IN only. Un-ticking a road is not the moment to
+    // ask which car it was not driven in, and somebody correcting a
+    // mistap wants it gone, not a form.
+    var vehicleId = 0;
+    var droveOn = '';
+
+    if (kind == 'drove' && on) {
+      final answer = await RoadDriveSheet.show(
+        context,
+        roadTitle: _road.title,
+        vehicleId: _road.myVehicleId,
+        droveOn: _road.myDroveOn,
+      );
+
+      // Dismissed rather than answered. Nothing is recorded — swiping
+      // a sheet away is a change of mind, not an empty answer.
+      if (answer == null) return;
+
+      vehicleId = answer.vehicleId;
+      droveOn = answer.droveOn;
+    }
+
+    if (!mounted) return;
+
+    setState(() => _busy = true);
+
+    final result = await RoadsAPI.setAction(
       id: _road.id,
       kind: kind,
       on: on,
+      vehicleId: vehicleId,
+      droveOn: droveOn,
     );
 
     if (!mounted) return;
@@ -310,14 +385,58 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
       // incremented, so it cannot drift. A null means the call failed
       // and nothing moves — the button stays as it was rather than
       // showing a state the server does not agree with.
-      if (count == null) return;
+      if (result == null) return;
 
       _changed = true;
 
+      // The car and date are read back off the server rather than
+      // echoed from what was sent: a server without roads-drives.sql
+      // returns them empty, and showing a car it never stored would be
+      // a lie that survives until the next reload.
       _road = kind == 'drove'
-          ? _road.copyWith(iDrove: on, droveCount: count)
-          : _road.copyWith(iSaved: on, savedCount: count);
+          ? _road.copyWith(
+              iDrove: on,
+              droveCount: result.count,
+              myVehicleId: on ? result.vehicleId : 0,
+              myDroveOn: on ? result.droveOn : '',
+            )
+          : _road.copyWith(iSaved: on, savedCount: result.count);
     });
+
+    if (kind == 'drove') unawaited(_loadVehicleName());
+  }
+
+  /// Hands the road to whatever gives directions on this phone.
+  ///
+  /// See [RoadNavigation] for why this is a handoff: the driver
+  /// already has an app with their settings, their voice and their
+  /// traffic, and it is not this one.
+  Future<void> _drive() async {
+    final url = RoadNavigation.directionsUrl(_points);
+
+    if (url == null) {
+      _say('This road has no route to follow yet.');
+      return;
+    }
+
+    try {
+      final opened = await launchUrl(
+        url,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!opened && mounted) _say('Could not open a maps app.');
+    } catch (e) {
+      debugPrint('[Road] could not open directions: $e');
+
+      if (mounted) _say('Could not open a maps app.');
+    }
+  }
+
+  void _say(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -377,6 +496,23 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
     );
   }
 
+  /// "You drove this in August 2019", with as much of it as was said.
+  ///
+  /// Built from whichever halves exist rather than from a template with
+  /// gaps in it: "You drove this in" with nothing after it is worse
+  /// than saying nothing.
+  String _myDriveLine() {
+    final when = _road.droveOnLabel;
+    final car = _vehicleName;
+
+    if (car.isNotEmpty && when.isNotEmpty) return 'You drove this in $when, in your $car';
+    if (car.isNotEmpty) return 'You drove this in your $car';
+    if (when.isNotEmpty) return 'You drove this in $when';
+
+    return '';
+  }
+
+
   Widget _details(ThemeProvider theme) {
     final facts = [
       _road.lengthLabel,
@@ -429,6 +565,45 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
 
         const SizedBox(height: 22),
 
+        // First, and the full width of the screen. It is the only
+        // button here that does something in the world rather than
+        // recording something about it.
+        SizedBox(
+          width: double.infinity,
+          height: 54,
+          child: ElevatedButton.icon(
+            onPressed: _points.length < 2 ? null : _drive,
+            icon: const Icon(Icons.navigation_rounded, size: 20),
+            label: const Text(
+              'Drive this route',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0B0B0B),
+              disabledBackgroundColor: const Color(0xFFBDBDBD),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+
+        // Said once, under the button, rather than in a dialog after
+        // it. Somebody about to drive a road wants to know where it
+        // opens before they commit, not after.
+        if (_points.length >= 2) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Opens in your maps app, routed from where you are to the '
+            'start and along the road.',
+            style: TextStyle(fontSize: 12.5, color: Color(0xFF8A8A8A)),
+          ),
+        ],
+
+        const SizedBox(height: 16),
+
         Row(
           children: [
             Expanded(
@@ -456,6 +631,33 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
             ),
           ],
         ),
+
+        // Their own drive, read back. Only when they said something:
+        // a tick with no car and no date is a complete answer and does
+        // not want a line underneath saying so.
+        if (_road.iDrove && _myDriveLine().isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Icon(
+                Icons.directions_car_filled_rounded,
+                size: 17,
+                color: theme.primaryColor,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _myDriveLine(),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF4A4A4A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
 
         // The line is the road; without it this is a page about a place
         // with no idea where it is, and that is worth saying rather

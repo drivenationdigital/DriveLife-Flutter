@@ -6,6 +6,22 @@ import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+/// What a press of "I drove this" or "Save" came back with.
+class RoadActionResult {
+  /// How many people, recalculated from the rows rather than
+  /// incremented — so it cannot drift away from the truth.
+  final int count;
+
+  final int vehicleId;
+  final String droveOn;
+
+  const RoadActionResult({
+    required this.count,
+    this.vehicleId = 0,
+    this.droveOn = '',
+  });
+}
+
 /// Driving roads.
 ///
 /// ── EVERY CALL CAN COME BACK "NOT READY" ────────────────────────────
@@ -215,13 +231,25 @@ class RoadsAPI {
 
   /// "I've driven this" / "save".
   ///
-  /// Safe to press twice: the server keys on (road, person, kind), so a
-  /// second press changes nothing and the count comes back recalculated
-  /// rather than incremented. Returns the new count, or null.
-  static Future<int?> setAction({
+  /// Safe to press twice. The server keys on (road, person, kind), so a
+  /// second press is still one row — but it UPDATES rather than
+  /// ignores, because the second press is often somebody correcting
+  /// which car they were in.
+  ///
+  /// [vehicleId] and [droveOn] are optional and only mean anything for
+  /// `drove`. Leaving them out records the tick without the story,
+  /// which is what somebody ticking a road off while scrolling wants.
+  ///
+  /// Returns what the server actually recorded, read back rather than
+  /// echoed: on a server that has not run roads-drives.sql the car and
+  /// the date come back empty, which is how the screen learns not to
+  /// show something it thinks it just saved.
+  static Future<RoadActionResult?> setAction({
     required int id,
     required String kind,
     required bool on,
+    int vehicleId = 0,
+    String droveOn = '',
   }) async {
     final action = kind == 'drove'
         ? (on ? 'drove' : 'undrove')
@@ -234,7 +262,12 @@ class RoadsAPI {
       final response = await http.post(
         Uri.parse('$_base/wp-json/app/v2/road/action'),
         headers: headers,
-        body: jsonEncode({'id': id, 'action': action}),
+        body: jsonEncode({
+          'id': id,
+          'action': action,
+          if (vehicleId > 0) 'vehicle_id': vehicleId,
+          if (droveOn.isNotEmpty) 'drove_on': droveOn,
+        }),
       );
 
       lastReady = _readyFrom(response.statusCode);
@@ -244,7 +277,11 @@ class RoadsAPI {
       final body = jsonDecode(response.body);
       if (body is! Map || body['success'] != true) return null;
 
-      return DrivingRoad.asInt(body['count']);
+      return RoadActionResult(
+        count: DrivingRoad.asInt(body['count']),
+        vehicleId: DrivingRoad.asInt(body['vehicle_id']),
+        droveOn: DrivingRoad.asText(body['drove_on']),
+      );
     } catch (e) {
       debugPrint('[Roads] action threw: $e');
       return null;

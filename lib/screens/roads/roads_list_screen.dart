@@ -1,6 +1,7 @@
 import 'package:drivelife/api/roads_api.dart';
 import 'package:drivelife/models/driving_road.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/screens/roads/add_road_screen.dart';
 import 'package:drivelife/screens/roads/road_detail_screen.dart';
 import 'package:drivelife/theme/dl_type.dart';
 import 'package:flutter/material.dart';
@@ -157,6 +158,18 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
     return measured;
   }
 
+  Future<void> _add() async {
+    final added = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const AddRoadScreen()),
+    );
+
+    // A submitted road is pending, so it will not be in the published
+    // list — but it IS visible to the person who sent it, and a list
+    // that looks unchanged after a save reads as a save that failed.
+    if (added == true && mounted) _load();
+  }
+
   Future<void> _open(DrivingRoad road) async {
     final changed = await Navigator.push<bool>(
       context,
@@ -196,6 +209,21 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
         onRefresh: _load,
         child: _body(theme),
       ),
+      // Shown even while the list is empty, and especially then: the
+      // emptiest version of this screen is the one where adding a road
+      // is the most useful thing anybody could do.
+      floatingActionButton: _loading
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _add,
+              backgroundColor: theme.primaryColor,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_road_rounded),
+              label: const Text(
+                'Add a road',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
     );
   }
 

@@ -55,6 +55,22 @@ class DrivingRoad {
   final bool iDrove;
   final bool iSaved;
 
+  /// The garage id of whatever they drove it in, or 0.
+  ///
+  /// ── WHY BOTH OF THESE CAN BE EMPTY ON A DRIVE ───────────────────
+  ///
+  /// Because being asked which car and when is a question, and
+  /// somebody ticking a road off while scrolling should not be stopped
+  /// by one. A road driven in a hire car, from the passenger seat, or
+  /// in something sold years ago is still driven.
+  ///
+  /// So 0 and '' mean "they did not say" rather than "it did not
+  /// happen" — [iDrove] is the fact, and these two are the story.
+  final int myVehicleId;
+
+  /// YYYY-MM-DD, or empty.
+  final String myDroveOn;
+
   /// The shape, as an encoded polyline — the format Mapbox returns and
   /// draws, so it is stored and sent exactly as it arrives.
   ///
@@ -85,6 +101,8 @@ class DrivingRoad {
     this.mid = RoadPoint.none,
     this.iDrove = false,
     this.iSaved = false,
+    this.myVehicleId = 0,
+    this.myDroveOn = '',
     this.polyline = '',
     this.description = '',
   });
@@ -104,6 +122,30 @@ class DrivingRoad {
         : '${lengthMiles.toStringAsFixed(1)} miles';
   }
 
+  /// "August 2019", from a stored YYYY-MM-DD.
+  ///
+  /// The month, not the day. Somebody recalling a drive from years ago
+  /// picked a date off a calendar to the nearest thing they could
+  /// remember, and showing "23 August 2019" back to them claims a
+  /// precision the answer never had.
+  String get droveOnLabel {
+    final parts = myDroveOn.split('-');
+
+    if (parts.length < 2) return '';
+
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+
+    if (year == null || month == null || month < 1 || month > 12) return '';
+
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+
+    return '${months[month - 1]} $year';
+  }
+
   /// "4 miles away", or empty when this was not a nearby query.
   String get awayLabel {
     if (distanceMiles <= 0) return '';
@@ -121,6 +163,8 @@ class DrivingRoad {
     String? polyline,
     String? description,
     double? distanceMiles,
+    int? myVehicleId,
+    String? myDroveOn,
   }) => DrivingRoad(
     id: id,
     site: site,
@@ -141,6 +185,8 @@ class DrivingRoad {
     mid: mid,
     iDrove: iDrove ?? this.iDrove,
     iSaved: iSaved ?? this.iSaved,
+    myVehicleId: myVehicleId ?? this.myVehicleId,
+    myDroveOn: myDroveOn ?? this.myDroveOn,
     polyline: polyline ?? this.polyline,
     description: description ?? this.description,
   );
@@ -165,6 +211,8 @@ class DrivingRoad {
     mid: RoadPoint.fromMap(map['mid']),
     iDrove: map['i_drove'] == true,
     iSaved: map['i_saved'] == true,
+    myVehicleId: asInt(map['my_vehicle_id']),
+    myDroveOn: asText(map['my_drove_on']),
     polyline: asText(map['polyline']),
     description: asText(map['description']),
   );
