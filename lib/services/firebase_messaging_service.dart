@@ -33,9 +33,63 @@ String? _backgroundAccountLabel(NotificationTarget target) {
   return '@$name';
 }
 
+/// Draws a notification for a push that arrived while the app was not
+/// in the foreground.
+///
+/// ── WHY THE PRAGMA, AND WHY IT MATTERS SO MUCH ────────────────────
+///
+/// Nothing in Dart calls this. The Flutter engine looks it up from
+/// native code and runs it in a separate background isolate, so as far
+/// as the compiler can see it is unreachable.
+///
+/// In DEBUG that is harmless: the JIT keeps everything, so background
+/// notifications work on the phone in front of you.
+///
+/// In RELEASE the AOT compiler tree-shakes anything it cannot see
+/// reached from main(), and without this annotation that includes this
+/// function. The engine then looks for an entry point that is not in
+/// the binary, fails, and the app shows NOTHING for any push that
+/// arrives while it is backgrounded or closed. No crash, no log, no
+/// difference anywhere a developer would look.
+///
+/// The pragma was on _backgroundAccountLabel() above -- a helper this
+/// function calls -- and not on the entry point itself. An annotation
+/// on something further down the call chain does not keep the thing
+/// that calls it.
+///
+/// This is the second half of "sometimes it works, sometimes it does
+/// not". The first is that these pushes are data-only, which makes
+/// them silent on iOS; this is why the Android half behaved
+/// differently on a debug build than on the one in the store.
+@pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final data = message.data;
   print('📩 Background message received: $data');
+
+  // ── IF FIREBASE ALREADY DREW IT, DO NOT DRAW IT AGAIN ─────────────
+  //
+  // Every push this app has ever had is DATA-ONLY: the title and body
+  // travel in `data` and this handler renders them. That choice is
+  // what lets a notification carry account_id and open on the right
+  // signed-in account — and it is also why iPhones get nothing.
+  //
+  // A data-only push on iOS is a SILENT push. It displays nothing by
+  // itself, it needs the app woken to draw anything, and iOS budgets
+  // those to a handful an hour and none at all once the app has been
+  // swiped away. On Android it survives better but still dies to Doze
+  // and to the battery managers Samsung and Xiaomi ship.
+  //
+  // The fix is a `notification` block on the server, which Firebase
+  // renders itself with no app involvement. When that arrives, THIS
+  // handler must stand down or Android shows the same push twice —
+  // once from Firebase and once from here.
+  //
+  // Harmless until then: today's pushes carry no notification block,
+  // so this is false and nothing changes.
+  if (message.notification != null) {
+    debugPrint('[Push] Firebase rendered it; not drawing a second one');
+    return;
+  }
 
   final target = NotificationTarget.fromData(data);
 

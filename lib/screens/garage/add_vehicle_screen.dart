@@ -1,5 +1,6 @@
 import 'package:drivelife/widgets/points/points_reward.dart';
 import 'package:drivelife/widgets/garage/photo_matches_sheet.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -137,12 +138,49 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   /// What the scan thinks the vehicle is. See [VehicleGuess].
   VehicleGuess _guess = VehicleGuess.none;
 
+  /// True while the performance figures are being looked up.
+  ///
+  /// ── WHY THEY ARE NOT PART OF THE SCAN ───────────────────────────
+  ///
+  /// Identifying a car and recalling its figures are two different
+  /// jobs. The first needs the photographs; the second needs nothing
+  /// but the name. Asking one call to do both meant the form waited on
+  /// the slower half before it could show the faster one.
+  ///
+  /// So the form opens as soon as the car is named, three fields spin
+  /// quietly in the corner, and the figures drop in while somebody is
+  /// already typing. If they never arrive, three fields stay empty on
+  /// a form that is otherwise complete and already usable.
+  bool _statsLoading = false;
+
   /// How many photographs the scan reads.
   ///
-  /// The angles that tell one car from another are front, rear, side
-  /// and interior; a fifth is usually another of one of those. The
-  /// server caps this too — this one is about the size of the request.
-  static const int _scanPhotoLimit = 4;
+  /// ── TWO, AND IT USED TO BE FOUR ─────────────────────────────────
+  ///
+  /// Four was argued from evidence: front, rear, side and interior
+  /// each settle something the others do not. True, and not what
+  /// somebody is weighing while a screen says "Scanning your vehicle"
+  /// at them.
+  ///
+  /// Two is about half the upload and most of the answer. Make and
+  /// model come off the first usable photograph nearly every time;
+  /// what the other pair buys is the VARIANT, which is already allowed
+  /// to come back empty and already lands in a field somebody can
+  /// correct.
+  ///
+  /// Kept in step with DL_GARAGE_ID_MAX_IMAGES, which caps it again at
+  /// the other end. This one is what stops the extra megabytes leaving
+  /// the phone in the first place, which is where the wait actually
+  /// is.
+  static const int _scanPhotoLimit = 2;
+
+  /// The largest photograph worth sending uncompressed.
+  ///
+  /// Only reached when compression fails — see [_scanPhotos]. A modern
+  /// phone's original is several megabytes and base64 adds a third, so
+  /// two of them is a request many servers simply refuse. Better to
+  /// send one photograph than to have the whole scan rejected.
+  static const int _rawPhotoCeiling = 4 * 1024 * 1024;
 
   String _ownership = 'current';
   DateTime? _ownedFrom;
@@ -167,7 +205,20 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   final _zero62Ctrl = TextEditingController();
   final _topSpeedCtrl = TextEditingController();
 
-  bool _taggingEnabled = false;
+  /// Whether this vehicle can be found and tagged by its plate.
+  ///
+  /// ── ON BY DEFAULT ───────────────────────────────────────────────
+  ///
+  /// It shipped off, which made the whole photo-matching side of the
+  /// app opt-in — and the people it is FOR are the ones least likely
+  /// to go looking for a switch they have never heard of. Somebody
+  /// adding a car to a car-spotting app is not surprised to be found
+  /// in photographs of it.
+  ///
+  /// It is still a switch, on the same screen, one tap from off, and
+  /// an edit loads whatever the vehicle already has — so nothing that
+  /// exists is changed by this.
+  bool _taggingEnabled = true;
 
   /// Whether this car's content reaches the make/model/category groups.
   ///
@@ -867,6 +918,43 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     );
   }
 
+  /// One of the three performance fields, with its own spinner.
+  ///
+  /// ── WHY THE SPINNER IS IN THE FIELD ─────────────────────────────
+  ///
+  /// Because that is where the answer is going to land, and it is the
+  /// only honest way to say "this one is still coming" about three
+  /// fields out of a dozen. A banner over the form would claim the
+  /// whole thing was loading when everything else is already typed
+  /// into, and nothing at all would make three empty boxes look like
+  /// three boxes nobody is going to fill.
+  ///
+  /// It goes away the moment a field has something in it, including
+  /// something typed — somebody who has answered is not waiting.
+  InputDecoration _statsDec(String label, String hint) {
+    final base = _dec(label, hint: hint);
+
+    if (!_statsLoading) return base;
+
+    return base.copyWith(
+      suffixIcon: const Padding(
+        padding: EdgeInsets.all(14),
+        child: SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Color(0xFFAE9159),
+          ),
+        ),
+      ),
+      suffixIconConstraints: const BoxConstraints(
+        minWidth: 44,
+        minHeight: 44,
+      ),
+    );
+  }
+
   InputDecoration _dec(String label, {String? hint}) {
     return InputDecoration(
       labelText: label,
@@ -1155,23 +1243,64 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     final photos = <Uint8List>[];
 
     for (final file in _galleryPicks.take(_scanPhotoLimit)) {
+      Uint8List? bytes;
+
       try {
         // Shrunk for the trip. The server reduces to 1024 before it
         // sends anything on, so a full-size phone photograph would be
         // megabytes of request body thrown away on arrival.
-        final small = await FlutterImageCompress.compressWithFile(
+        bytes = await FlutterImageCompress.compressWithFile(
           file.path,
           minWidth: 1024,
           minHeight: 1024,
           quality: 80,
         );
-
-        photos.add(small ?? await file.readAsBytes());
       } catch (e) {
-        debugPrint('[AddVehicle] scan prepare failed for ${file.path}: $e');
+        debugPrint('[AddVehicle] compress failed for ${file.path}: $e');
       }
 
+      // ── THE FALLBACK USED TO BE INSIDE THE TRY ──────────────────
+      //
+      // `photos.add(small ?? await file.readAsBytes())` only ever ran
+      // when compression RETURNED null. When it THREW — which it does
+      // on some content:// paths, and on an image the plugin cannot
+      // decode — the add never happened at all, and the photograph was
+      // dropped without anything on screen saying so. The progress row
+      // still counted it, because the counter is outside the catch.
+      //
+      // Five photographs could therefore become zero, and the scan
+      // posted an empty list: a request that comes back in two seconds
+      // having never reached Gemini, which is exactly what it looked
+      // like.
+      if (bytes == null) {
+        try {
+          final raw = await file.readAsBytes();
+
+          if (raw.length <= _rawPhotoCeiling) {
+            bytes = raw;
+          } else {
+            debugPrint(
+              '[AddVehicle] ${file.path} is ${raw.length} bytes and would '
+              'not compress — too large to send as it is',
+            );
+          }
+        } catch (e) {
+          debugPrint('[AddVehicle] could not read ${file.path}: $e');
+        }
+      }
+
+      if (bytes != null && bytes.isNotEmpty) photos.add(bytes);
+
       if (mounted) setState(() => _scanUploaded++);
+    }
+
+    if (photos.isEmpty) {
+      // Worth one line in the log, because from here on it is
+      // indistinguishable from a car nothing recognised.
+      debugPrint(
+        '[AddVehicle] no photographs could be prepared from '
+        '${_galleryPicks.length} picked — nothing to scan',
+      );
     }
 
     if (mounted) setState(() => _scanIdentifying = true);
@@ -1188,6 +1317,69 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       // The one thing a skipped scan does not get to do. See
       // [_scanSkipped]: the form is already open and being typed into.
       if (!_scanSkipped) _step = 2;
+    });
+
+    // Deliberately after the form is on screen, and deliberately not
+    // awaited by anything the screen draws. See [_statsLoading].
+    unawaited(_loadStats(guess));
+  }
+
+  /// Fetches the three performance figures for whatever was identified.
+  ///
+  /// Text only — no photographs go up — so this is a fraction of the
+  /// scan it used to be part of.
+  Future<void> _loadStats(VehicleGuess guess) async {
+    final model = guess.model.trim();
+
+    // A make with no model is not a vehicle to look figures up for,
+    // and asking anyway invites an average of a whole range.
+    if (_make == null && guess.make.trim().isEmpty) return;
+    if (model.isEmpty) return;
+
+    // Nothing to fill. Somebody who has already typed their own
+    // numbers, or come back to a part-filled form, is not waiting for
+    // ours.
+    if (_bhpCtrl.text.trim().isNotEmpty &&
+        _zero62Ctrl.text.trim().isNotEmpty &&
+        _topSpeedCtrl.text.trim().isNotEmpty) {
+      return;
+    }
+
+    setState(() => _statsLoading = true);
+
+    final stats = await GarageAPI.vehicleStats(
+      // The matched dropdown entry where there is one, because that is
+      // the spelling a database recognises — "Mercedes-Benz" rather
+      // than "Mercedes".
+      make: _make ?? guess.make,
+      model: model,
+      variant: guess.variant,
+      year: guess.yearForField,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _statsLoading = false;
+
+      // Still only into an empty field. A minute has passed and
+      // somebody may well have typed their own by now — theirs wins.
+      void fill(TextEditingController ctrl, String value) {
+        if (ctrl.text.trim().isEmpty && value.isNotEmpty) ctrl.text = value;
+      }
+
+      fill(_bhpCtrl, stats.powerBhp);
+      fill(_zero62Ctrl, stats.zeroTo62);
+      fill(_topSpeedCtrl, stats.topSpeedMph);
+
+      // Remembered on the guess, so "Not right?" clears these too —
+      // they were recalled from the name the scan read, so disowning
+      // the car disowns its numbers.
+      _guess = _guess.copyWithStats(
+        powerBhp: stats.powerBhp,
+        zeroTo62: stats.zeroTo62,
+        topSpeedMph: stats.topSpeedMph,
+      );
     });
   }
 
@@ -2409,7 +2601,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                         TextFormField(
                           controller: _bhpCtrl,
                           keyboardType: TextInputType.number,
-                          decoration: _dec('Power (BHP)', hint: 'Enter BHP'),
+                          decoration: _statsDec('Power (BHP)', 'Enter BHP'),
                         ),
                         _divider(),
                         TextFormField(
@@ -2417,9 +2609,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          decoration: _dec(
+                          decoration: _statsDec(
                             '0 - 62mph time',
-                            hint: 'Enter 0-62 time',
+                            'Enter 0-62 time',
                           ),
                         ),
                         _divider(),
@@ -2428,9 +2620,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          decoration: _dec(
+                          decoration: _statsDec(
                             'Top Speed (MPH)',
-                            hint: 'Enter top speed',
+                            'Enter top speed',
                           ),
                         ),
                       ],
