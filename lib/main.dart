@@ -104,9 +104,16 @@ class BottomNavProvider extends ChangeNotifier {
   static const int forYou = 0;
   static const int events = 1;
   static const int places = 2;
-  static const int tracks = 3;
-  static const int businesses = 4;
-  static const int shop = 5;
+
+  // Roads sits beside Places because it is the same kind of question
+  // -- somewhere to go -- and because inserting it here rather than
+  // appending keeps the row in a sensible reading order. Everything
+  // after it moves up one, which is exactly why these are named
+  // constants and nothing addresses a section by its number.
+  static const int roads = 3;
+  static const int tracks = 4;
+  static const int businesses = 5;
+  static const int shop = 6;
 
   // No `messages` any more. The inbox left the home tab row for a screen
   // of its own shared with notifications -- see MessagesScreen -- and a

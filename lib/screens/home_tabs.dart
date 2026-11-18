@@ -44,6 +44,7 @@ import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/profile/my_club_profile_view.dart';
 import 'package:drivelife/config/feature_flags.dart';
+import 'package:drivelife/screens/roads/add_road_screen.dart';
 import 'package:drivelife/screens/roads/roads_list_screen.dart';
 import 'package:drivelife/screens/media/new_gallery_screen.dart';
 import 'package:drivelife/screens/media/media_screen.dart';
@@ -83,6 +84,10 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     DlTopTab(label: 'For You', icon: 'assets/app-icons/01-Home.svg'),
     DlTopTab(label: 'Events', icon: 'assets/app-icons/02-Events.svg'),
     DlTopTab(label: 'Places', icon: 'assets/app-icons/03-Venues.svg'),
+    // Beside Places, for the same reason the constant is: it answers
+    // the same question. A Cupertino glyph because assets/app-icons
+    // has no road.
+    DlTopTab(label: 'Roads', glyph: CupertinoIcons.arrow_turn_up_right),
     // Tracks before Businesses: one has somewhere to go, the other is still
     // a "coming soon" page.
     //
@@ -631,6 +636,16 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         headerHeight: _chromeHeight,
       ),
 
+      // The same screen the create menu pushes, handed the shell's
+      // chrome instead of drawing an app bar of its own. See
+      // RoadsListScreen: the difference between a section and a screen
+      // is entirely the header.
+      RoadsListScreen(
+        chrome: _chrome,
+        header: _buildChrome(theme),
+        headerHeight: _chromeHeight,
+      ),
+
       // Tracks have their own screen and their own endpoints. They were
       // briefly the venues screen with a post type argument, which listed
       // the user's venues under "My tracks" and could not open any of them.
@@ -896,27 +911,18 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
               svg: 'assets/app-icons/07-groups.svg',
               onTap: _createClub,
             ),
-          // ── A TEMPORARY DOOR ──────────────────────────────────
-          //
-          // Driving roads are not a thing you CREATE, so this menu is
-          // the wrong home for them. It is here because it is the one
-          // place a new destination can be added without touching
-          // anything load-bearing: the home tab strip is asserted
-          // against BottomNavProvider.sectionCount, and a conditional
-          // tab would either break that assert or shift every section
-          // index behind it.
-          //
-          // When this ships it belongs as a Discover tab or a section
-          // of its own, which means updating that count deliberately
-          // rather than as a side effect of a feature flag.
+          // Add, not browse. The list has a tab of its own now, so
+          // a menu item that opened it would be a second route to the
+          // same screen with its own scroll position — and this menu
+          // is for making things, which drawing a road is.
           if (FeatureFlags.drivingRoads)
             _CreateAction(
-              label: 'Driving Roads',
-              subtitle: 'Roads worth driving',
-              icon: Icons.route_outlined,
+              label: 'Add a Road',
+              subtitle: 'One worth driving',
+              icon: Icons.add_road_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
-                const RoadsListScreen(),
+                const AddRoadScreen(),
               ),
             ),
           _CreateAction(

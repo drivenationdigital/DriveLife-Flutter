@@ -50,18 +50,23 @@ void main() {
       expect(BottomNavProvider.forYou, 0);
       expect(BottomNavProvider.events, 1);
       expect(BottomNavProvider.places, 2);
+      // Roads beside Places, because it answers the same question:
+      // somewhere to go. INSERTED rather than appended, so everything
+      // after it moved up one — which this test caught the moment it
+      // happened, which is the entire reason it pins the numbers.
+      expect(BottomNavProvider.roads, 3);
       // Tracks before Businesses: one has somewhere to go, the other is a
       // "coming soon" page.
-      expect(BottomNavProvider.tracks, 3);
-      expect(BottomNavProvider.businesses, 4);
+      expect(BottomNavProvider.tracks, 4);
+      expect(BottomNavProvider.businesses, 5);
       // Last. Messages used to sit after this one and no longer does —
       // the inbox moved out of the row into MessagesScreen, which it
       // shares with notifications behind the header's message icon.
-      expect(BottomNavProvider.shop, 5);
+      expect(BottomNavProvider.shop, 6);
     });
 
     test('the count matches the names', () {
-      expect(BottomNavProvider.sectionCount, 6);
+      expect(BottomNavProvider.sectionCount, 7);
     });
 
     test('a section index is not a destination index', () {

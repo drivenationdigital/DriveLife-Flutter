@@ -4,6 +4,9 @@ import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/roads/add_road_screen.dart';
 import 'package:drivelife/screens/roads/road_detail_screen.dart';
 import 'package:drivelife/theme/dl_type.dart';
+import 'package:drivelife/widgets/nav/chrome_visibility.dart';
+import 'package:drivelife/widgets/nav/floating_chrome_header.dart';
+import 'package:drivelife/widgets/nav/pinned_sliver_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
@@ -20,13 +23,41 @@ import 'package:provider/provider.dart';
 /// So: a location if there is one already, a list of everything if
 /// there is not, and the prompt only when they ask for near me.
 class RoadsListScreen extends StatefulWidget {
-  const RoadsListScreen({super.key});
+  /// The shell's scroll listener, when this is a Home section.
+  ///
+  /// ── WHY A SECTION AND A SCREEN AT ONCE ──────────────────────────
+  ///
+  /// It is a tab in the Home row beside Events and Places, and it is
+  /// also pushed on its own from the create menu. The difference is
+  /// entirely chrome: as a section the shell supplies a header and
+  /// wants to be told about scrolling so the bottom bar can get out of
+  /// the way; on its own it needs an app bar of its own instead.
+  ///
+  /// Null for the pushed version, which is what [header] being null
+  /// decides.
+  final ChromeVisibility? chrome;
+
+  /// The shell's header and section tabs, drawn inside this screen's
+  /// own scroll view so the scroll moves them.
+  final Widget? header;
+
+  /// How tall [header] is. A sliver header declares its extent before
+  /// it is laid out, so it has to be told rather than measured.
+  final double headerHeight;
+
+  const RoadsListScreen({
+    super.key,
+    this.chrome,
+    this.header,
+    this.headerHeight = 0,
+  });
 
   @override
   State<RoadsListScreen> createState() => _RoadsListScreenState();
 }
 
-class _RoadsListScreenState extends State<RoadsListScreen> {
+class _RoadsListScreenState extends State<RoadsListScreen>
+    with TickerProviderStateMixin {
   List<DrivingRoad> _roads = const [];
 
   bool _loading = true;
@@ -215,55 +246,88 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
     if (changed == true && mounted) _load();
   }
 
+  /// Whether the shell is drawing the chrome above this.
+  bool get _asSection => widget.header != null;
+
+  /// How tall the switcher row is, declared because a pinned sliver
+  /// has to say its extent up front. The row boxes itself to the same
+  /// number, so the two cannot drift.
+  static const double _switcherHeight = 62;
+
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F6F6),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        centerTitle: true,
-        title: const Text(
-          'Driving Roads',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-      body: Column(
-        children: [
-          _Switcher(
-            mine: _mine,
-            accent: theme.primaryColor,
-            onChanged: (mine) {
-              if (mine == _mine) return;
-
-              setState(() {
-                _mine = mine;
-                // Cleared rather than left behind: the old list under
-                // the other tab's heading is worse than a spinner.
-                _roads = const [];
-              });
-
-              _load();
-            },
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              color: theme.primaryColor,
-              onRefresh: _load,
-              child: _body(theme),
+      // Only when it is a screen. As a section the shell above has
+      // already drawn one, and a second would be two headers arguing.
+      appBar: _asSection
+          ? null
+          : AppBar(
+              backgroundColor: Colors.white,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+                onPressed: () => Navigator.pop(context),
+              ),
+              centerTitle: true,
+              title: const Text(
+                'Driving Roads',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
+      // Every scroll in here reports to the shell through this one
+      // listener, which is what takes the bottom bar away and brings
+      // it back. Harmless when there is no shell.
+      body: NotificationListener<ScrollNotification>(
+        onNotification: widget.chrome?.handle ?? (_) => false,
+        child: RefreshIndicator(
+          color: theme.primaryColor,
+          onRefresh: _load,
+          child: CustomScrollView(
+            // Always scrollable, so a short list still reaches far
+            // enough for pull-to-refresh and for the chrome to be
+            // scrolled away.
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              if (_asSection) _floatingChrome(),
+
+              // Pinned, like the tab row on Places: the one control
+              // that changes what the list IS should not have to be
+              // scrolled back to.
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: PinnedSliverBar(
+                  height: _switcherHeight,
+                  child: _Switcher(
+                    mine: _mine,
+                    accent: theme.primaryColor,
+                    onChanged: (mine) {
+                      if (mine == _mine) return;
+
+                      setState(() {
+                        _mine = mine;
+                        // Cleared rather than left behind: the old
+                        // list under the other tab's heading is worse
+                        // than a spinner.
+                        _roads = const [];
+                      });
+
+                      _load();
+                    },
+                  ),
+                ),
+              ),
+
+              ..._contentSlivers(theme),
+            ],
           ),
-        ],
+        ),
       ),
       // Shown even while the list is empty, and especially then: the
       // emptiest version of this screen is the one where adding a road
@@ -283,67 +347,124 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
     );
   }
 
-  Widget _body(ThemeProvider theme) {
+  /// The shell's header, floating: it leaves as you scroll on and comes
+  /// back the moment you scroll up, without having to reach the top.
+  Widget _floatingChrome() {
+    return SliverPersistentHeader(
+      floating: true,
+      delegate: FloatingChromeHeader(
+        height: widget.headerHeight,
+        vsync: this,
+        child: widget.header!,
+      ),
+    );
+  }
+
+  List<Widget> _contentSlivers(ThemeProvider theme) {
     if (_loading) {
-      return Center(
-        child: CircularProgressIndicator(color: theme.primaryColor),
-      );
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: CircularProgressIndicator(color: theme.primaryColor),
+          ),
+        ),
+      ];
     }
 
     if (!_ready) {
-      return _message(
-        icon: Icons.cloud_off_rounded,
-        title: 'Not switched on yet',
-        body:
-            'Driving roads are not available on this server. '
-            'Nothing is wrong with the app.',
-      );
+      return [
+        _messageSliver(
+          icon: Icons.cloud_off_rounded,
+          title: 'Not switched on yet',
+          body:
+              'Driving roads are not available on this server. '
+              'Nothing is wrong with the app.',
+        ),
+      ];
     }
 
     if (_roads.isEmpty) {
       if (_mine) {
-        return _message(
-          icon: Icons.add_road_rounded,
-          title: 'You have not added one yet',
-          body:
-              'Add a road you think is worth driving and it will show up '
-              'here, with whether it has been checked yet.',
-        );
+        return [
+          _messageSliver(
+            icon: Icons.add_road_rounded,
+            title: 'You have not added one yet',
+            body:
+                'Add a road you think is worth driving and it will show up '
+                'here, with whether it has been checked yet.',
+          ),
+        ];
       }
 
       // No longer "none near you": by this point the radius has been
-      // dropped and the whole country asked for, so an empty list means
-      // the table is empty.
-      return _message(
-        icon: Icons.route_rounded,
-        title: 'No roads yet',
-        body: 'Nobody has added one. Pull down to look again.',
-      );
+      // dropped and the whole country asked for, so an empty list
+      // means the table is empty.
+      return [
+        _messageSliver(
+          icon: Icons.route_rounded,
+          title: 'No roads yet',
+          body: 'Nobody has added one. Pull down to look again.',
+        ),
+      ];
     }
 
-    return ListView.separated(
-      // Always scrollable, so a one-item list can still be pulled to
-      // refresh — which is the only way back from an empty one.
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-      // One extra row for the note, when there is one to make.
-      itemCount: _roads.length + (_widened || _waitingNote ? 1 : 0),
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (_, i) {
-        if (i == 0) {
-          if (_widened) return _widenedNote();
-          if (_waitingNote) return _waitingBanner(theme);
-        }
+    return [
+      SliverPadding(
+        // Room at the foot for the button that floats over it.
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        sliver: SliverList.separated(
+          itemCount: _roads.length + (_widened || _waitingNote ? 1 : 0),
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (_, i) {
+            if (i == 0) {
+              if (_widened) return _widenedNote();
+              if (_waitingNote) return _waitingBanner(theme);
+            }
 
-        final road = _roads[i - (_widened || _waitingNote ? 1 : 0)];
+            final road = _roads[i - (_widened || _waitingNote ? 1 : 0)];
 
-        return _RoadCard(
-          road: road,
-          accent: theme.primaryColor,
-          showStatus: _mine,
-          onTap: () => _open(road),
-        );
-      },
+            return _RoadCard(
+              road: road,
+              accent: theme.primaryColor,
+              showStatus: _mine,
+              onTap: () => _open(road),
+            );
+          },
+        ),
+      ),
+    ];
+  }
+
+  /// An empty state that says which kind of empty it is.
+  Widget _messageSliver({
+    required IconData icon,
+    required String title,
+    required String body,
+  }) {
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(32, 60, 32, 32),
+        child: Column(
+          children: [
+            Icon(icon, size: 46, color: const Color(0xFFBDBDBD)),
+            const SizedBox(height: 18),
+            DlHeading(
+              title,
+              fontSize: 22,
+              color: const Color(0xFF0B0B0B),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 15, color: Color(0xFF6B6B6B)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -415,36 +536,6 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  /// An empty state that says which kind of empty it is.
-  Widget _message({
-    required IconData icon,
-    required String title,
-    required String body,
-  }) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(32, 120, 32, 32),
-      children: [
-        Icon(icon, size: 46, color: const Color(0xFFBDBDBD)),
-        const SizedBox(height: 18),
-        Center(
-          child: DlHeading(
-            title,
-            fontSize: 22,
-            color: const Color(0xFF0B0B0B),
-            textAlign: TextAlign.center,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          body,
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 15, color: Color(0xFF6B6B6B)),
-        ),
-      ],
     );
   }
 }
