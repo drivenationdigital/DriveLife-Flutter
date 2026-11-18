@@ -149,6 +149,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           BottomNavProvider.forYou,
           BottomNavProvider.events,
           BottomNavProvider.places,
+          // Roads draws the header in its own floating sliver, exactly
+          // as Places and Tracks do. Leaving it out of this set is what
+          // put TWO headers on the Roads tab: the shell drew one above
+          // the section and the section drew one inside itself.
+          BottomNavProvider.roads,
           BottomNavProvider.tracks,
         }.contains(_homeTab);
   }
