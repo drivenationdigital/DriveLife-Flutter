@@ -329,21 +329,17 @@ class _RoadsListScreenState extends State<RoadsListScreen>
           ),
         ),
       ),
-      // Shown even while the list is empty, and especially then: the
-      // emptiest version of this screen is the one where adding a road
-      // is the most useful thing anybody could do.
-      floatingActionButton: _loading
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _add,
-              backgroundColor: theme.primaryColor,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add_road_rounded),
-              label: const Text(
-                'Add a road',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
+      // ── NO FLOATING BUTTON ────────────────────────────────────
+      //
+      // It sat underneath the shell's bottom bar, which draws over
+      // this screen rather than around it — a Scaffold inside a
+      // destination cannot see the chrome above it, so it had no way
+      // to know what it was hiding behind.
+      //
+      // Nothing is lost. Adding a road is a create action and the
+      // create menu is where create actions live; the empty state
+      // below offers it as well, for the one moment somebody is
+      // looking at this screen with nothing on it.
     );
   }
 
@@ -393,6 +389,7 @@ class _RoadsListScreenState extends State<RoadsListScreen>
             body:
                 'Add a road you think is worth driving and it will show up '
                 'here, with whether it has been checked yet.',
+            action: 'Add a road',
           ),
         ];
       }
@@ -404,15 +401,17 @@ class _RoadsListScreenState extends State<RoadsListScreen>
         _messageSliver(
           icon: Icons.route_rounded,
           title: 'No roads yet',
-          body: 'Nobody has added one. Pull down to look again.',
+          body: 'Nobody has added one yet. Yours could be the first.',
+          action: 'Add a road',
         ),
       ];
     }
 
     return [
       SliverPadding(
-        // Room at the foot for the button that floats over it.
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        // Enough to clear the shell's bottom bar, which draws over
+        // this screen rather than around it.
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 108),
         sliver: SliverList.separated(
           itemCount: _roads.length + (_widened || _waitingNote ? 1 : 0),
           separatorBuilder: (_, __) => const SizedBox(height: 12),
@@ -437,10 +436,15 @@ class _RoadsListScreenState extends State<RoadsListScreen>
   }
 
   /// An empty state that says which kind of empty it is.
+  ///
+  /// [action] is offered only where it is the obvious next thing. On
+  /// "the server has no roads switched on" there is nothing anybody
+  /// here can do about it, and a button would be a lie.
   Widget _messageSliver({
     required IconData icon,
     required String title,
     required String body,
+    String? action,
   }) {
     return SliverFillRemaining(
       hasScrollBody: false,
@@ -462,6 +466,35 @@ class _RoadsListScreenState extends State<RoadsListScreen>
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 15, color: Color(0xFF6B6B6B)),
             ),
+            if (action != null) ...[
+              const SizedBox(height: 22),
+              ElevatedButton.icon(
+                onPressed: _add,
+                icon: const Icon(Icons.add_road_rounded, size: 19),
+                label: Text(
+                  action,
+                  style: const TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Provider.of<ThemeProvider>(
+                    context,
+                    listen: false,
+                  ).primaryColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
