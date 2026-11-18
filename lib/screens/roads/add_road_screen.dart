@@ -10,6 +10,7 @@ import 'package:drivelife/models/road_polyline.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/media_picker/media_picker_screen.dart';
 import 'package:drivelife/screens/roads/road_map_icons.dart';
+import 'package:drivelife/screens/roads/road_tips.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:geolocator/geolocator.dart';
@@ -69,6 +70,20 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   bool _saving = false;
   bool _styleReady = false;
 
+  /// Which half of the flow is showing: 1 the map, 2 the name.
+  ///
+  /// ── WHY THE STATE NEEDS NO STORE ────────────────────────────────
+  ///
+  /// The points, the two controllers and the chosen photograph are all
+  /// fields on this State, and both steps are built by the same build
+  /// method. So moving between them changes what is drawn and nothing
+  /// else: going back to the map and returning finds the name still
+  /// typed and the photograph still chosen.
+  int _step = 1;
+
+  /// The map, with everything else out of the way.
+  bool _fullScreen = false;
+
   /// The cover photograph, before it has been uploaded.
   ///
   /// Uploaded at Save rather than at pick, deliberately. The scan in
@@ -86,6 +101,18 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   /// so two passes overlapping delete each other's work.
   bool _drawing = false;
   bool _drawAgain = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // After the first frame, so the card lands over a map rather than
+    // over the white rectangle that precedes one. Not awaited by
+    // anything: a tour that delays the screen is worse than no tour.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(showRoadTips(context));
+    });
+  }
 
   @override
   void dispose() {
@@ -522,228 +549,437 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  /// How long the drawn line is, following it point to point.
+  ///
+  /// The straight distance between the ends would be the wrong number
+  /// on any road worth adding, which is the whole premise of the
+  /// feature.
+  double get _miles {
+    var total = 0.0;
+
+    for (var i = 1; i < _points.length; i++) {
+      total += _points[i - 1].milesTo(_points[i]);
+    }
+
+    return total;
+  }
+
+  bool get _canContinue => _points.length >= 2;
+
+  // ── the screen ────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
-    final size = MediaQuery.sizeOf(context);
 
-    // ── THE MAP GETS OUT OF THE WAY WHILE TYPING ──────────────────
-    //
-    // Its height came from MediaQuery.sizeOf, which is the whole
-    // SCREEN and does not shrink when a keyboard opens — only
-    // viewInsets changes. So the Column kept asking for 44% of a
-    // screen out of what was left of one, and on a small phone with a
-    // tall keyboard there was nothing left for the fields.
-    //
-    // A strip rather than nothing: removing the MapWidget from the
-    // tree would dispose the map and take the drawn line and the
-    // camera with it, and somebody would come back from the keyboard
-    // to an empty map.
+    // The form panel takes the whole screen while a keyboard is up.
+    // See the note on the panel below: a map strip is worth having
+    // right up until somebody is typing, and then it is worth nothing
+    // at all.
     final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
 
-    final mapHeight = typing ? 120.0 : size.height * 0.44;
+    return PopScope(
+      // Back has three meanings here and only the last of them leaves.
+      canPop: !_fullScreen && _step == 1,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        centerTitle: true,
-        title: const Text(
-          'Add a Road',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        actions: [
-          // Which half is running, not just that something is. The
-          // photograph is the slow part, and a spinner that says
-          // nothing for eight seconds reads as a hang.
-          if (_saving)
-            Padding(
-              padding: const EdgeInsets.only(right: 14),
-              child: Row(
-                children: [
-                  if (_uploading) ...[
-                    const Text(
-                      'Uploading photo',
-                      style: TextStyle(
-                        color: Color(0xFF6B6B6B),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Color(0xFFAE9159),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else
-            TextButton(
-              onPressed: _save,
-              child: const Text(
-                'Save',
-                style: TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+        if (_fullScreen) {
+          setState(() => _fullScreen = false);
+        } else if (_step == 2) {
+          setState(() => _step = 1);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF6F6F6),
+        appBar: _fullScreen ? null : _bar(theme),
+        body: Stack(
+          children: [
+            // ── ALWAYS FIRST, ALWAYS PRESENT ──────────────────────
+            //
+            // The map stays at the same place in the tree in every
+            // state this screen has. Moving it, or building it only
+            // on step one, would dispose the platform view and take
+            // the drawn line and the camera with it — so going back a
+            // step, or leaving full screen, would hand somebody an
+            // empty map and no way to get their road back.
+            Positioned.fill(
+              child: MapboxConfig.isConfigured
+                  ? mb.MapWidget(
+                      key: const ValueKey('dl-add-road-map'),
+                      androidHostingMode: _hosting,
+                      styleUri: MapboxConfig.styleUri,
+                      onMapCreated: _onMapCreated,
+                      onStyleLoadedListener: (_) {
+                        _styleReady = true;
+                        unawaited(_draw());
+                      },
+                    )
+                  : const _NoMap(),
             ),
-        ],
+
+            if (_fullScreen) ..._fullScreenChrome(theme),
+
+            if (!_fullScreen && _step == 1) ..._drawChrome(theme),
+
+            if (!_fullScreen && _step == 2)
+              Positioned(
+                // A strip of the road stays visible while naming it,
+                // because "what am I naming" is a fair question — and
+                // it goes the moment a keyboard needs the room.
+                top: typing ? 0 : 150,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _detailsPanel(theme, typing),
+              ),
+          ],
+        ),
       ),
-      body: Column(
-        children: [
-          SizedBox(
-            height: mapHeight,
-            child: Stack(
+    );
+  }
+
+  PreferredSizeWidget _bar(ThemeProvider theme) {
+    return AppBar(
+      backgroundColor: Colors.white,
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+        onPressed: () {
+          if (_step == 2) {
+            setState(() => _step = 1);
+            return;
+          }
+
+          Navigator.pop(context);
+        },
+      ),
+      centerTitle: true,
+      title: Text(
+        _step == 1 ? 'Draw the road' : 'Name it',
+        style: const TextStyle(
+          color: Colors.black,
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      actions: [
+        if (_step == 1)
+          IconButton(
+            tooltip: 'Tips',
+            icon: const Icon(Icons.help_outline_rounded, color: Colors.black),
+            onPressed: () => showRoadTips(context, force: true),
+          )
+        else if (_saving)
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: Row(
               children: [
-                Positioned.fill(
-                  child: MapboxConfig.isConfigured
-                      ? mb.MapWidget(
-                          key: const ValueKey('dl-add-road-map'),
-                          androidHostingMode: _hosting,
-                          styleUri: MapboxConfig.styleUri,
-                          onMapCreated: _onMapCreated,
-                          onStyleLoadedListener: (_) {
-                            _styleReady = true;
-                            unawaited(_draw());
-                          },
-                        )
-                      : const _NoMap(),
-                ),
-
-                if (!typing)
-                  Positioned(
-                    left: 12,
-                    right: 12,
-                    top: 12,
-                    child: _Hint(count: _points.length),
-                  ),
-
-                if (_points.isNotEmpty && !typing)
-                  Positioned(
-                    right: 12,
-                    bottom: 12,
-                    child: Row(
-                      children: [
-                        // Only once there is a direction to reverse.
-                        if (_points.length >= 2) ...[
-                          _MapButton(
-                            icon: Icons.swap_horiz_rounded,
-                            label: 'Reverse',
-                            onTap: _reverse,
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        _MapButton(
-                          icon: Icons.undo_rounded,
-                          label: 'Undo',
-                          onTap: _undo,
-                        ),
-                        const SizedBox(width: 8),
-                        _MapButton(
-                          icon: Icons.clear_rounded,
-                          label: 'Clear',
-                          onTap: _clear,
-                        ),
-                      ],
+                if (_uploading) ...[
+                  const Text(
+                    'Uploading photo',
+                    style: TextStyle(
+                      color: Color(0xFF6B6B6B),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
+                  const SizedBox(width: 8),
+                ],
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFFAE9159),
+                  ),
+                ),
               ],
             ),
+          )
+        else
+          TextButton(
+            onPressed: _save,
+            child: const Text(
+              'Save',
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+      ],
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(3),
+        child: Row(
+          children: [
+            Expanded(child: Container(height: 3, color: theme.primaryColor)),
+            Expanded(
+              child: Container(
+                height: 3,
+                color: _step == 2
+                    ? theme.primaryColor
+                    : const Color(0xFFE2E2E2),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Step one: the map, and the three things that can be done to it.
+  List<Widget> _drawChrome(ThemeProvider theme) {
+    return [
+      Positioned(
+        left: 12,
+        right: 12,
+        top: 12,
+        child: _Hint(count: _points.length),
+      ),
+
+      Positioned(
+        right: 12,
+        top: 64,
+        child: _MapButton(
+          icon: Icons.open_in_full_rounded,
+          label: 'Full screen',
+          onTap: () => setState(() => _fullScreen = true),
+        ),
+      ),
+
+      if (_points.isNotEmpty)
+        Positioned(
+          right: 12,
+          bottom: 104,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (_points.length >= 2) ...[
+                _MapButton(
+                  icon: Icons.swap_horiz_rounded,
+                  label: 'Reverse',
+                  onTap: _reverse,
+                ),
+                const SizedBox(height: 8),
+              ],
+              _MapButton(
+                icon: Icons.undo_rounded,
+                label: 'Undo',
+                onTap: _undo,
+              ),
+              const SizedBox(height: 8),
+              _MapButton(
+                icon: Icons.clear_rounded,
+                label: 'Clear',
+                onTap: _clear,
+              ),
+            ],
+          ),
+        ),
+
+      Positioned(
+        left: 0,
+        right: 0,
+        bottom: 0,
+        child: _BottomBar(
+          accent: theme.primaryColor,
+          points: _points.length,
+          miles: _miles,
+          enabled: _canContinue,
+          onNext: () {
+            FocusScope.of(context).unfocus();
+            setState(() => _step = 2);
+          },
+        ),
+      ),
+    ];
+  }
+
+  /// Nothing but the map and a way back out of it.
+  List<Widget> _fullScreenChrome(ThemeProvider theme) {
+    return [
+      Positioned(
+        left: 12,
+        right: 12,
+        top: MediaQuery.paddingOf(context).top + 10,
+        child: Row(
+          children: [
+            Expanded(child: _Hint(count: _points.length)),
+            const SizedBox(width: 8),
+            _MapButton(
+              icon: Icons.close_fullscreen_rounded,
+              label: 'Done',
+              onTap: () => setState(() => _fullScreen = false),
+            ),
+          ],
+        ),
+      ),
+
+      if (_points.isNotEmpty)
+        Positioned(
+          right: 12,
+          bottom: MediaQuery.paddingOf(context).bottom + 20,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (_points.length >= 2) ...[
+                _MapButton(
+                  icon: Icons.swap_horiz_rounded,
+                  label: 'Reverse',
+                  onTap: _reverse,
+                ),
+                const SizedBox(height: 8),
+              ],
+              _MapButton(
+                icon: Icons.undo_rounded,
+                label: 'Undo',
+                onTap: _undo,
+              ),
+              const SizedBox(height: 8),
+              _MapButton(
+                icon: Icons.clear_rounded,
+                label: 'Clear',
+                onTap: _clear,
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
+
+  /// Step two: the whole screen, for the two fields and the photograph.
+  ///
+  /// ── WHY THEY GET A STEP OF THEIR OWN ──────────────────────────────
+  ///
+  /// They were under the map, in whatever was left of the screen after
+  /// a 44% map and a keyboard. The name of the road is the single most
+  /// important thing anybody types here and it was the least visible
+  /// thing on the page.
+  ///
+  /// Nothing is stored anywhere special to survive the move between
+  /// steps: the controllers, the points and the chosen photograph are
+  /// all fields on this one State, so going back to the map and
+  /// returning finds everything exactly as it was left. The only thing
+  /// that would lose it is leaving the screen.
+  Widget _detailsPanel(ThemeProvider theme, bool typing) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: typing
+            ? null
+            : const BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x1A000000), blurRadius: 18, spreadRadius: 2),
+        ],
+      ),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
+        children: [
+          // What they are naming, in one line. The map behind this
+          // panel answers "where"; this answers "how much".
+          Row(
+            children: [
+              Icon(Icons.route_rounded, size: 18, color: theme.primaryColor),
+              const SizedBox(width: 8),
+              Text(
+                _miles >= 10
+                    ? '${_miles.round()} miles drawn'
+                    : '${_miles.toStringAsFixed(1)} miles drawn',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0B0B0B),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '${_points.length} points',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF8A8A8A),
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() => _step = 1),
+                child: Text(
+                  'Edit route',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: theme.primaryColor,
+                  ),
+                ),
+              ),
+            ],
           ),
 
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+          const SizedBox(height: 20),
+
+          TextField(
+            controller: _titleCtrl,
+            textCapitalization: TextCapitalization.words,
+            style: const TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+            ),
+            decoration: _decoration(
+              'Name',
+              'Cat and Fiddle, Snake Pass…',
+              theme,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          TextField(
+            controller: _summaryCtrl,
+            maxLines: 4,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: _decoration(
+              'What makes it worth driving?',
+              'Optional. The bends, the view, the pub at the end.',
+              theme,
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          _CoverPicker(
+            file: _cover,
+            accent: theme.primaryColor,
+            onPick: _pickCover,
+            onClear: () => setState(() => _cover = null),
+          ),
+
+          const SizedBox(height: 18),
+
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEDEDED),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
-                  controller: _titleCtrl,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: _decoration(
-                    'Name',
-                    'Cat and Fiddle, Snake Pass…',
-                    theme,
-                  ),
+                Icon(
+                  Icons.auto_fix_high_rounded,
+                  size: 19,
+                  color: Color(0xFF6B6B6B),
                 ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _summaryCtrl,
-                  maxLines: 3,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: _decoration(
-                    'What makes it worth driving?',
-                    'Optional',
-                    theme,
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
-                // ── THE COVER ─────────────────────────────────────
-                //
-                // Optional, and said so. A road is useful without a
-                // photograph and most people adding one are standing
-                // at a laptop rather than at the road — demanding a
-                // picture would mean either a worse photograph or no
-                // road.
-                _CoverPicker(
-                  file: _cover,
-                  accent: theme.primaryColor,
-                  onPick: _pickCover,
-                  onClear: () => setState(() => _cover = null),
-                ),
-
-                const SizedBox(height: 18),
-
-                // ── WHAT HAPPENS TO THE LINE ──────────────────────
-                //
-                // Worth saying before Save rather than explaining a
-                // changed shape afterwards. The dashed line on the map
-                // is not what gets stored, and somebody who does not
-                // know that will think the save went wrong.
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEDEDED),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.auto_fix_high_rounded,
-                        size: 19,
-                        color: Color(0xFF6B6B6B),
-                      ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Your taps are a sketch. We follow the road '
-                          'between them, so the saved line will bend '
-                          'where the road bends.',
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            color: Color(0xFF4A4A4A),
-                            height: 1.35,
-                          ),
-                        ),
-                      ),
-                    ],
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Your taps are a sketch. We follow the road between '
+                    'them, so the saved line will bend where the road '
+                    'bends.',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      color: Color(0xFF4A4A4A),
+                      height: 1.35,
+                    ),
                   ),
                 ),
               ],
@@ -776,6 +1012,95 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
       borderSide: BorderSide(color: theme.primaryColor, width: 1.6),
     ),
   );
+}
+
+/// The strip across the foot of step one.
+class _BottomBar extends StatelessWidget {
+  final Color accent;
+  final int points;
+  final double miles;
+  final bool enabled;
+  final VoidCallback onNext;
+
+  const _BottomBar({
+    required this.accent,
+    required this.points,
+    required this.miles,
+    required this.enabled,
+    required this.onNext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        12,
+        16,
+        12 + MediaQuery.paddingOf(context).bottom,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(color: Color(0x14000000), blurRadius: 16, spreadRadius: 2),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  points == 0
+                      ? 'Nothing drawn yet'
+                      : (miles >= 10
+                            ? '${miles.round()} miles'
+                            : '${miles.toStringAsFixed(1)} miles'),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0B0B0B),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  points == 1
+                      ? '1 point — tap the other end'
+                      : '$points points',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: Color(0xFF8A8A8A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 48,
+            child: ElevatedButton(
+              onPressed: enabled ? onNext : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: accent,
+                disabledBackgroundColor: const Color(0xFFD9D9D9),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 26),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Next',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// The cover photograph, or an invitation to add one.
