@@ -85,6 +85,36 @@ class VehicleGuess {
 
   static const VehicleGuess none = VehicleGuess();
 
+  /// The same guess, with figures that arrived later.
+  ///
+  /// ── WHY THEY ARE PUT BACK ON THE GUESS ──────────────────────────
+  ///
+  /// The figures come from a second call now, which means the banner's
+  /// "Not right?" would otherwise know nothing about them — and
+  /// clearing a wrong car would leave its power, 0-62 and top speed
+  /// sitting in the form underneath.
+  ///
+  /// They were recalled from the name this guess read, so disowning
+  /// the car has to disown its numbers.
+  VehicleGuess copyWithStats({
+    String? powerBhp,
+    String? zeroTo62,
+    String? topSpeedMph,
+  }) => VehicleGuess(
+    make: make,
+    model: model,
+    variant: variant,
+    year: year,
+    colour: colour,
+    body: body,
+    confidence: confidence,
+    registration: registration,
+    imagesUsed: imagesUsed,
+    powerBhp: powerBhp ?? this.powerBhp,
+    zeroTo62: zeroTo62 ?? this.zeroTo62,
+    topSpeedMph: topSpeedMph ?? this.topSpeedMph,
+  );
+
   /// Is there anything here worth showing somebody?
   ///
   /// A make or a model. Not a colour on its own — "we think this is a

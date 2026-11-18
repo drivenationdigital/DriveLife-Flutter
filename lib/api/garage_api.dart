@@ -531,6 +531,68 @@ class GarageAPI {
   /// Never throws and never reports failure as an error: not being able
   /// to tell what a car is, is an ordinary outcome, and the screen's
   /// answer to it is the form somebody would have filled in anyway.
+  /// The performance figures for a vehicle that is already named.
+  ///
+  /// ── A SECOND CALL, ON PURPOSE ───────────────────────────────────
+  ///
+  /// These used to come back with the scan, and that is what made
+  /// adding a vehicle feel slow. Identifying a car and recalling its
+  /// figures are two different jobs: the first needs the photographs,
+  /// the second needs nothing but the name — nothing in a photograph
+  /// shows how fast a car is.
+  ///
+  /// So the scan answers as soon as it has read the badges, and this
+  /// runs afterwards against TEXT ALONE while somebody is already
+  /// filling the form in. No images go up, so it is a fraction of the
+  /// request and a fraction of the wait.
+  ///
+  /// Empty strings are the normal answer for a name that covers
+  /// several variants. Never throws.
+  static Future<VehicleGuess> vehicleStats({
+    required String make,
+    required String model,
+    String variant = '',
+    String year = '',
+  }) async {
+    if (make.trim().isEmpty || model.trim().isEmpty) return VehicleGuess.none;
+
+    try {
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v2/garage/stats'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'make': make,
+          'model': model,
+          'variant': variant,
+          'year': year,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint('[Garage] stats HTTP ${response.statusCode}');
+        return VehicleGuess.none;
+      }
+
+      final body = jsonDecode(response.body);
+
+      if (body is! Map || body['stats'] is! Map) {
+        debugPrint('[Garage] stats found nothing: ${body is Map ? body['why'] : body}');
+        return VehicleGuess.none;
+      }
+
+      // Reusing VehicleGuess rather than a type of its own: the three
+      // fields read the same keys, land in the same controllers, and
+      // get cleared by the same "Not right?" — a second class would be
+      // the same three strings under a different name.
+      return VehicleGuess.fromMap(
+        Map<String, dynamic>.from(body['stats'] as Map),
+      );
+    } catch (e) {
+      debugPrint('[Garage] stats threw: $e');
+      return VehicleGuess.none;
+    }
+  }
+
   static Future<VehicleGuess> identifyVehicle(List<Uint8List> photos) async {
     final usable = photos.where((b) => b.isNotEmpty).toList();
 

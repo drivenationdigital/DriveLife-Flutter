@@ -1,5 +1,6 @@
 import 'package:drivelife/widgets/points/points_reward.dart';
 import 'package:drivelife/widgets/garage/photo_matches_sheet.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -137,6 +138,21 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   /// What the scan thinks the vehicle is. See [VehicleGuess].
   VehicleGuess _guess = VehicleGuess.none;
 
+  /// True while the performance figures are being looked up.
+  ///
+  /// ── WHY THEY ARE NOT PART OF THE SCAN ───────────────────────────
+  ///
+  /// Identifying a car and recalling its figures are two different
+  /// jobs. The first needs the photographs; the second needs nothing
+  /// but the name. Asking one call to do both meant the form waited on
+  /// the slower half before it could show the faster one.
+  ///
+  /// So the form opens as soon as the car is named, three fields spin
+  /// quietly in the corner, and the figures drop in while somebody is
+  /// already typing. If they never arrive, three fields stay empty on
+  /// a form that is otherwise complete and already usable.
+  bool _statsLoading = false;
+
   /// How many photographs the scan reads.
   ///
   /// ── TWO, AND IT USED TO BE FOUR ─────────────────────────────────
@@ -189,7 +205,20 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   final _zero62Ctrl = TextEditingController();
   final _topSpeedCtrl = TextEditingController();
 
-  bool _taggingEnabled = false;
+  /// Whether this vehicle can be found and tagged by its plate.
+  ///
+  /// ── ON BY DEFAULT ───────────────────────────────────────────────
+  ///
+  /// It shipped off, which made the whole photo-matching side of the
+  /// app opt-in — and the people it is FOR are the ones least likely
+  /// to go looking for a switch they have never heard of. Somebody
+  /// adding a car to a car-spotting app is not surprised to be found
+  /// in photographs of it.
+  ///
+  /// It is still a switch, on the same screen, one tap from off, and
+  /// an edit loads whatever the vehicle already has — so nothing that
+  /// exists is changed by this.
+  bool _taggingEnabled = true;
 
   /// Whether this car's content reaches the make/model/category groups.
   ///
@@ -889,6 +918,43 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     );
   }
 
+  /// One of the three performance fields, with its own spinner.
+  ///
+  /// ── WHY THE SPINNER IS IN THE FIELD ─────────────────────────────
+  ///
+  /// Because that is where the answer is going to land, and it is the
+  /// only honest way to say "this one is still coming" about three
+  /// fields out of a dozen. A banner over the form would claim the
+  /// whole thing was loading when everything else is already typed
+  /// into, and nothing at all would make three empty boxes look like
+  /// three boxes nobody is going to fill.
+  ///
+  /// It goes away the moment a field has something in it, including
+  /// something typed — somebody who has answered is not waiting.
+  InputDecoration _statsDec(String label, String hint) {
+    final base = _dec(label, hint: hint);
+
+    if (!_statsLoading) return base;
+
+    return base.copyWith(
+      suffixIcon: const Padding(
+        padding: EdgeInsets.all(14),
+        child: SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Color(0xFFAE9159),
+          ),
+        ),
+      ),
+      suffixIconConstraints: const BoxConstraints(
+        minWidth: 44,
+        minHeight: 44,
+      ),
+    );
+  }
+
   InputDecoration _dec(String label, {String? hint}) {
     return InputDecoration(
       labelText: label,
@@ -1251,6 +1317,69 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       // The one thing a skipped scan does not get to do. See
       // [_scanSkipped]: the form is already open and being typed into.
       if (!_scanSkipped) _step = 2;
+    });
+
+    // Deliberately after the form is on screen, and deliberately not
+    // awaited by anything the screen draws. See [_statsLoading].
+    unawaited(_loadStats(guess));
+  }
+
+  /// Fetches the three performance figures for whatever was identified.
+  ///
+  /// Text only — no photographs go up — so this is a fraction of the
+  /// scan it used to be part of.
+  Future<void> _loadStats(VehicleGuess guess) async {
+    final model = guess.model.trim();
+
+    // A make with no model is not a vehicle to look figures up for,
+    // and asking anyway invites an average of a whole range.
+    if (_make == null && guess.make.trim().isEmpty) return;
+    if (model.isEmpty) return;
+
+    // Nothing to fill. Somebody who has already typed their own
+    // numbers, or come back to a part-filled form, is not waiting for
+    // ours.
+    if (_bhpCtrl.text.trim().isNotEmpty &&
+        _zero62Ctrl.text.trim().isNotEmpty &&
+        _topSpeedCtrl.text.trim().isNotEmpty) {
+      return;
+    }
+
+    setState(() => _statsLoading = true);
+
+    final stats = await GarageAPI.vehicleStats(
+      // The matched dropdown entry where there is one, because that is
+      // the spelling a database recognises — "Mercedes-Benz" rather
+      // than "Mercedes".
+      make: _make ?? guess.make,
+      model: model,
+      variant: guess.variant,
+      year: guess.yearForField,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _statsLoading = false;
+
+      // Still only into an empty field. A minute has passed and
+      // somebody may well have typed their own by now — theirs wins.
+      void fill(TextEditingController ctrl, String value) {
+        if (ctrl.text.trim().isEmpty && value.isNotEmpty) ctrl.text = value;
+      }
+
+      fill(_bhpCtrl, stats.powerBhp);
+      fill(_zero62Ctrl, stats.zeroTo62);
+      fill(_topSpeedCtrl, stats.topSpeedMph);
+
+      // Remembered on the guess, so "Not right?" clears these too —
+      // they were recalled from the name the scan read, so disowning
+      // the car disowns its numbers.
+      _guess = _guess.copyWithStats(
+        powerBhp: stats.powerBhp,
+        zeroTo62: stats.zeroTo62,
+        topSpeedMph: stats.topSpeedMph,
+      );
     });
   }
 
@@ -2472,7 +2601,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                         TextFormField(
                           controller: _bhpCtrl,
                           keyboardType: TextInputType.number,
-                          decoration: _dec('Power (BHP)', hint: 'Enter BHP'),
+                          decoration: _statsDec('Power (BHP)', 'Enter BHP'),
                         ),
                         _divider(),
                         TextFormField(
@@ -2480,9 +2609,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          decoration: _dec(
+                          decoration: _statsDec(
                             '0 - 62mph time',
-                            hint: 'Enter 0-62 time',
+                            'Enter 0-62 time',
                           ),
                         ),
                         _divider(),
@@ -2491,9 +2620,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          decoration: _dec(
+                          decoration: _statsDec(
                             'Top Speed (MPH)',
-                            hint: 'Enter top speed',
+                            'Enter top speed',
                           ),
                         ),
                       ],
