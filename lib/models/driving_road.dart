@@ -155,6 +155,43 @@ class DrivingRoad {
 
   bool get isPublished => status == 'published';
   bool get isPending => status == 'pending';
+  bool get isRejected => status == 'rejected';
+  bool get isHidden => status == 'hidden';
+
+  /// What the status means, said to the person who submitted it.
+  ///
+  /// ── WHY NOT JUST THE WORD ───────────────────────────────────────
+  ///
+  /// Because "pending" and "hidden" are our words for our process, and
+  /// neither tells somebody whether they need to do anything. The
+  /// question behind this label is always the same — did my road work,
+  /// and is it my turn — so the label answers that instead.
+  ///
+  /// Empty for a road in a normal listing, where every road is
+  /// published and saying so is noise.
+  String get statusLabel {
+    switch (status) {
+      case 'published':
+        return 'Live';
+      case 'pending':
+        return 'Waiting to be checked';
+      case 'rejected':
+        return 'Not accepted';
+      case 'hidden':
+        return 'Hidden';
+      default:
+        return '';
+    }
+  }
+
+  /// Whether this status is the person's to do something about.
+  ///
+  /// Nothing currently is: a rejected road has no reason attached and
+  /// no way to edit it, so the honest answer is "no, and we will not
+  /// pretend otherwise". Kept as a getter so the screen asks a
+  /// question rather than hard-coding the answer, and so adding a
+  /// reason later changes one place.
+  bool get needsOwnerAction => false;
 
   /// "12.4 miles", for a list row.
   String get lengthLabel {

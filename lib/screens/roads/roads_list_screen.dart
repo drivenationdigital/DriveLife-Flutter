@@ -34,6 +34,20 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
   /// Whether the list on screen was measured from somewhere.
   bool _nearby = false;
 
+  /// Whose roads are on screen.
+  ///
+  /// ── WHY "MINE" IS A VIEW AND NOT A SCREEN ───────────────────────
+  ///
+  /// Because a road somebody added and a road near them are the same
+  /// object, opened the same way, and the question "did the one I
+  /// added work" is asked from exactly here. A separate screen behind
+  /// a menu would be a second place to maintain and one more tap from
+  /// the only moment anybody wonders.
+  bool _mine = false;
+
+  /// How many of their own roads are still waiting to be checked.
+  int _waiting = 0;
+
   /// Set when the radius found nothing and the whole country was shown
   /// instead.
   ///
@@ -78,6 +92,26 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+
+    if (_mine) {
+      // No location, no radius, no widening. These are theirs
+      // wherever they are, and sorting a list of five by distance
+      // answers a question nobody asked of it.
+      final roads = await RoadsAPI.mine();
+
+      if (!mounted) return;
+
+      setState(() {
+        _roads = roads;
+        _waiting = roads.where((r) => r.isPending).length;
+        _nearby = false;
+        _widened = false;
+        _ready = RoadsAPI.lastReady;
+        _loading = false;
+      });
+
+      return;
+    }
 
     // A cached fix, with no GPS wait and no prompt. Somebody who has
     // already granted location to Discover gets a nearby list without
@@ -204,10 +238,32 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
           ),
         ),
       ),
-      body: RefreshIndicator(
-        color: theme.primaryColor,
-        onRefresh: _load,
-        child: _body(theme),
+      body: Column(
+        children: [
+          _Switcher(
+            mine: _mine,
+            accent: theme.primaryColor,
+            onChanged: (mine) {
+              if (mine == _mine) return;
+
+              setState(() {
+                _mine = mine;
+                // Cleared rather than left behind: the old list under
+                // the other tab's heading is worse than a spinner.
+                _roads = const [];
+              });
+
+              _load();
+            },
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              color: theme.primaryColor,
+              onRefresh: _load,
+              child: _body(theme),
+            ),
+          ),
+        ],
       ),
       // Shown even while the list is empty, and especially then: the
       // emptiest version of this screen is the one where adding a road
@@ -245,6 +301,16 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
     }
 
     if (_roads.isEmpty) {
+      if (_mine) {
+        return _message(
+          icon: Icons.add_road_rounded,
+          title: 'You have not added one yet',
+          body:
+              'Add a road you think is worth driving and it will show up '
+              'here, with whether it has been checked yet.',
+        );
+      }
+
       // No longer "none near you": by this point the radius has been
       // dropped and the whole country asked for, so an empty list means
       // the table is empty.
@@ -261,19 +327,61 @@ class _RoadsListScreenState extends State<RoadsListScreen> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
       // One extra row for the note, when there is one to make.
-      itemCount: _roads.length + (_widened ? 1 : 0),
+      itemCount: _roads.length + (_widened || _waitingNote ? 1 : 0),
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (_, i) {
-        if (_widened && i == 0) return _widenedNote();
+        if (i == 0) {
+          if (_widened) return _widenedNote();
+          if (_waitingNote) return _waitingBanner(theme);
+        }
 
-        final road = _roads[i - (_widened ? 1 : 0)];
+        final road = _roads[i - (_widened || _waitingNote ? 1 : 0)];
 
         return _RoadCard(
           road: road,
           accent: theme.primaryColor,
+          showStatus: _mine,
           onTap: () => _open(road),
         );
       },
+    );
+  }
+
+  /// Whether there is something to say at the top of their own list.
+  bool get _waitingNote => _mine && _waiting > 0;
+
+  /// What "waiting to be checked" actually means, said once.
+  ///
+  /// Per road it would be noise on a list where most of them are
+  /// waiting; said once at the top it answers the question the whole
+  /// screen exists for.
+  Widget _waitingBanner(ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: theme.primaryColor.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.schedule_rounded, size: 19, color: theme.primaryColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _waiting == 1
+                  ? 'One road is waiting to be checked. Only you can see '
+                        'it until then.'
+                  : '$_waiting roads are waiting to be checked. Only you '
+                        'can see them until then.',
+              style: const TextStyle(
+                fontSize: 13.5,
+                color: Color(0xFF4A4A4A),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -346,10 +454,18 @@ class _RoadCard extends StatelessWidget {
   final Color accent;
   final VoidCallback onTap;
 
+  /// Whether to say what state this road is in.
+  ///
+  /// Only on somebody's own list. In a public one every road is
+  /// published by definition, and a row of "Live" badges says nothing
+  /// anybody needed.
+  final bool showStatus;
+
   const _RoadCard({
     required this.road,
     required this.accent,
     required this.onTap,
+    this.showStatus = false,
   });
 
   @override
@@ -413,8 +529,11 @@ class _RoadCard extends StatelessWidget {
                       ),
                     ],
                     // Said out loud, because a road somebody submitted
-                    // that is simply not in the list reads as lost.
-                    if (road.isPending) ...[
+                    // that is simply not in a list reads as lost.
+                    if (showStatus && road.statusLabel.isNotEmpty) ...[
+                      const SizedBox(height: 7),
+                      _StatusChip(road: road, accent: accent),
+                    ] else if (road.isPending) ...[
                       const SizedBox(height: 6),
                       Text(
                         'Waiting to be checked',
@@ -435,6 +554,141 @@ class _RoadCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Near me, or mine.
+class _Switcher extends StatelessWidget {
+  final bool mine;
+  final Color accent;
+  final ValueChanged<bool> onChanged;
+
+  const _Switcher({
+    required this.mine,
+    required this.accent,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: _Segment(
+              label: 'All roads',
+              on: !mine,
+              accent: accent,
+              onTap: () => onChanged(false),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _Segment(
+              label: 'My roads',
+              on: mine,
+              accent: accent,
+              onTap: () => onChanged(true),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Segment extends StatelessWidget {
+  final String label;
+  final bool on;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _Segment({
+    required this.label,
+    required this.on,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: on ? accent : const Color(0xFFF2F2F2),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          height: 40,
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w700,
+              color: on ? Colors.white : const Color(0xFF6B6B6B),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What became of a road its owner submitted.
+///
+/// Coloured by what it means for them rather than by whether it is a
+/// "good" status: amber is "nothing to do but wait", grey is "this is
+/// over", green is "it worked".
+class _StatusChip extends StatelessWidget {
+  final DrivingRoad road;
+  final Color accent;
+
+  const _StatusChip({required this.road, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    late final Color colour;
+    late final IconData icon;
+
+    if (road.isPublished) {
+      colour = const Color(0xFF2E7D32);
+      icon = Icons.check_circle_rounded;
+    } else if (road.isPending) {
+      colour = accent;
+      icon = Icons.schedule_rounded;
+    } else if (road.isRejected) {
+      colour = const Color(0xFFB3261E);
+      icon = Icons.block_rounded;
+    } else {
+      colour = const Color(0xFF8A8A8A);
+      icon = Icons.visibility_off_rounded;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: colour.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: colour),
+          const SizedBox(width: 5),
+          Text(
+            road.statusLabel,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: colour,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -175,6 +175,52 @@ void main() {
     });
   });
 
+  group('what became of a road somebody submitted', () {
+    DrivingRoad at(String status) => DrivingRoad(id: 1, status: status);
+
+    test('live', () {
+      expect(at('published').isPublished, isTrue);
+      expect(at('published').statusLabel, 'Live');
+    });
+
+    test('waiting', () {
+      // "Pending" is our word for our process and tells nobody whether
+      // it is their turn. The label answers that instead.
+      expect(at('pending').isPending, isTrue);
+      expect(at('pending').statusLabel, 'Waiting to be checked');
+    });
+
+    test('turned down', () {
+      expect(at('rejected').isRejected, isTrue);
+      expect(at('rejected').statusLabel, 'Not accepted');
+    });
+
+    test('taken down', () {
+      expect(at('hidden').isHidden, isTrue);
+      expect(at('hidden').statusLabel, 'Hidden');
+    });
+
+    test('a status nothing knows about says nothing', () {
+      // Rather than printing a raw word from the database at somebody.
+      expect(at('quarantined').statusLabel, '');
+      expect(at('').statusLabel, '');
+    });
+
+    test('the states are exclusive', () {
+      expect(at('pending').isPublished, isFalse);
+      expect(at('published').isPending, isFalse);
+      expect(at('rejected').isPublished, isFalse);
+    });
+
+    test('nothing is the owner\'s to act on yet', () {
+      // A rejected road has no reason attached and no way to edit it,
+      // so claiming otherwise would be a button with nowhere to go.
+      for (final status in ['published', 'pending', 'rejected', 'hidden']) {
+        expect(at(status).needsOwnerAction, isFalse);
+      }
+    });
+  });
+
   group('the cover photograph', () {
     test('a stored id becomes a delivery URL', () {
       // What is stored is the Cloudflare id, not a URL: the rest of

@@ -103,6 +103,20 @@ class RoadsAPI {
     );
   }
 
+  /// Every road this person has submitted, whatever became of it.
+  ///
+  /// The only listing that ignores `status`, so it is the only one
+  /// that shows a road still waiting to be checked or one that was
+  /// turned down. The owner comes from the token rather than from a
+  /// parameter — there is no id to change in a URL and read somebody
+  /// else's submissions.
+  static Future<List<DrivingRoad>> mine() async {
+    return _list(
+      Uri.parse('$_base/wp-json/app/v2/roads/mine'),
+      'mine',
+    );
+  }
+
   /// Every road a vehicle has been down, most recent first.
   ///
   /// Lives in roads.php rather than garage.php on purpose: it is a
