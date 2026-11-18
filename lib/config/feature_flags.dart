@@ -292,10 +292,21 @@ class FeatureFlags {
 
   /// Driving roads — the roads list, the map and the submission flow.
   ///
-  /// ── OFF, AND OFF ON THE SERVER TOO ───────────────────────────────
+  /// ── ON, SO A PLAIN BUILD CARRIES IT ──────────────────────────────
   ///
-  /// This flag only hides the UI. It is NOT what keeps roads off the
-  /// live API, and it must not be mistaken for it:
+  /// It shipped off and had to be asked for with
+  /// `--dart-define=DL_ROADS=true`, which is exactly the kind of thing
+  /// that gets forgotten on the one build that matters. A TestFlight
+  /// upload with roads quietly missing looks identical to a TestFlight
+  /// upload with roads broken.
+  ///
+  /// Still a switch, and still off-able for a single build:
+  ///   flutter build ipa --dart-define=DL_ROADS=false
+  ///
+  /// ── THIS IS NOT WHAT KEEPS ROADS OFF A SERVER ────────────────────
+  ///
+  /// It only decides whether the UI is reachable. The API is gated
+  /// separately and independently:
   ///
   ///   * endpoints/roads.php registers no route at all unless
   ///     DL_ROADS_ENABLED is defined in endpoints/app-secrets.php
@@ -303,18 +314,15 @@ class FeatureFlags {
   ///     (php-api/sql/roads.sql)
   ///   * app-endpoints.php only includes the file if it is there
   ///
-  /// So the server is inert in three independent ways, and this is the
-  /// fourth. php-api is not in git, which is why the feature branch
-  /// isolates the app and the constant isolates the API.
-  ///
-  /// Turn it on for a single build without committing anything:
-  ///   flutter run --dart-define=DL_ROADS=true
-  ///
-  /// Nothing is stranded when it is off: RoadsAPI never gets called, so
-  /// the app makes no request a server without roads would 404.
+  /// So a build carrying this still shows nothing on a server that has
+  /// not been set up: RoadsAPI reads the 404 or the 503 and the list
+  /// says "Not switched on yet" rather than failing. Which is the
+  /// right behaviour, and is also worth knowing before shipping this
+  /// to a store — somebody on a server without roads would find the
+  /// menu item and then that message.
   static const bool drivingRoads = bool.fromEnvironment(
     'DL_ROADS',
-    defaultValue: false,
+    defaultValue: true,
   );
 
   /// Community gallery on events: the tab on the event detail screen and the
