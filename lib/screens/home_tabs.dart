@@ -922,8 +922,8 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           // is for making things, which drawing a road is.
           if (FeatureFlags.drivingRoads)
             _CreateAction(
-              label: 'Add a Road',
-              subtitle: 'One worth driving',
+              label: 'Add Route',
+              subtitle: 'Roads worth driving',
               icon: Icons.add_road_outlined,
               onTap: () => NavigationHelper.navigateTo(
                 context,
@@ -940,6 +940,17 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
             // label names, and not what somebody picking "Event
             // Manager" is asking for.
             onTap: _openEventsManager,
+          ),
+          // Last, and the only dark one. See _CreateAction.dark: it
+          // reads a ticket rather than making anything, and it used to
+          // be a full-width bar under the grid saying so with a whole
+          // row of its own.
+          _CreateAction(
+            label: 'Scan QR Code',
+            subtitle: 'Tickets and entry',
+            svg: 'assets/app-icons/header-qr.svg',
+            dark: true,
+            onTap: () => SharedHeaderIcons.scanQrCode(context),
           ),
           // Add Venue has gone from this menu. CreateVenueScreen is
           // untouched and still reachable from Places; it just has no
@@ -1026,42 +1037,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
                       ],
                     );
                   },
-                ),
-
-                const SizedBox(height: 18),
-
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF0B0B0B),
-                      minimumSize: const Size.fromHeight(58),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    onPressed: () {
-                      Navigator.pop(sheetContext);
-                      SharedHeaderIcons.scanQrCode(context);
-                    },
-                    icon: SvgPicture.asset(
-                      'assets/app-icons/header-qr.svg',
-                      width: 22,
-                      height: 22,
-                      colorFilter: const ColorFilter.mode(
-                        Colors.white,
-                        BlendMode.srcIn,
-                      ),
-                    ),
-                    label: const Text(
-                      'Scan QR Code',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -1450,6 +1425,20 @@ class _CreateAction {
   /// A plain line instead, for the actions that earn nothing.
   final String? subtitle;
 
+  /// Draws this card dark, with its icon and text inverted.
+  ///
+  /// ── WHY ONE CARD BREAKS THE SET ─────────────────────────────────
+  ///
+  /// Scanning a code is not making something. Every other card in this
+  /// sheet creates a post, a vehicle, a route; this one READS a
+  /// ticket. Dropped into the grid in the same grey as the rest it
+  /// would quietly file itself as one more thing to add.
+  ///
+  /// It was a full-width black bar under the grid, which said that
+  /// with a whole row of its own. As a card it says the same thing
+  /// with a colour and gives the row back.
+  final bool dark;
+
   const _CreateAction({
     required this.label,
     required this.onTap,
@@ -1457,6 +1446,7 @@ class _CreateAction {
     this.svg,
     this.points,
     this.subtitle,
+    this.dark = false,
   });
 }
 
@@ -1473,8 +1463,14 @@ class _CreateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // One card is deliberately not like the others. See
+    // _CreateAction.dark.
+    final ink = action.dark ? Colors.white : theme.textColor;
+
     return Material(
-      color: theme.isDarkMode ? Colors.white10 : const Color(0xFFF4F4F4),
+      color: action.dark
+          ? const Color(0xFF0B0B0B)
+          : (theme.isDarkMode ? Colors.white10 : const Color(0xFFF4F4F4)),
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
@@ -1489,7 +1485,9 @@ class _CreateCard extends StatelessWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: theme.isDarkMode ? Colors.white12 : Colors.white,
+                  color: action.dark
+                      ? Colors.white.withValues(alpha: 0.12)
+                      : (theme.isDarkMode ? Colors.white12 : Colors.white),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Center(
@@ -1499,11 +1497,17 @@ class _CreateCard extends StatelessWidget {
                           width: 22,
                           height: 22,
                           colorFilter: ColorFilter.mode(
-                            theme.primaryColor,
+                            action.dark ? Colors.white : theme.primaryColor,
                             BlendMode.srcIn,
                           ),
                         )
-                      : Icon(action.icon, size: 24, color: theme.primaryColor),
+                      : Icon(
+                          action.icon,
+                          size: 24,
+                          color: action.dark
+                              ? Colors.white
+                              : theme.primaryColor,
+                        ),
                 ),
               ),
               const SizedBox(height: 14),
@@ -1514,7 +1518,7 @@ class _CreateCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: theme.textColor,
+                  color: ink,
                 ),
               ),
 
@@ -1539,7 +1543,12 @@ class _CreateCard extends StatelessWidget {
                   action.subtitle!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 14, color: theme.subtextColor),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: action.dark
+                        ? Colors.white.withValues(alpha: 0.65)
+                        : theme.subtextColor,
+                  ),
                 ),
               ],
             ],
