@@ -6,6 +6,40 @@ import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+/// One page of roads, and whether there is another.
+class RoadPage {
+  final List<DrivingRoad> roads;
+
+  /// Whether asking again with a bigger offset would return anything.
+  ///
+  /// Taken from the server rather than guessed from the page being
+  /// full: a page that happens to end exactly on the last road is
+  /// indistinguishable from one with more behind it, and guessing
+  /// gives an infinite list one empty fetch at the bottom every time.
+  final bool hasMore;
+
+  const RoadPage({this.roads = const [], this.hasMore = false});
+
+  bool get isEmpty => roads.isEmpty;
+}
+
+/// How a list of roads is ordered.
+enum RoadSort {
+  nearest('nearest', 'Nearest'),
+  newest('new', 'Newest'),
+  popular('popular', 'Most driven'),
+  longest('longest', 'Longest'),
+  shortest('shortest', 'Shortest');
+
+  const RoadSort(this.code, this.label);
+
+  /// What the server calls it.
+  final String code;
+
+  /// What a person calls it.
+  final String label;
+}
+
 /// What a press of "I drove this" or "Save" came back with.
 class RoadActionResult {
   /// How many people, recalculated from the rows rather than
@@ -83,24 +117,73 @@ class RoadsAPI {
     );
   }
 
-  /// A plain list, for a screen opened before any location is known.
-  static Future<List<DrivingRoad>> list({
+  /// One page of roads, filtered and ordered.
+  ///
+  /// ── ONE ENDPOINT, NOT TWO ───────────────────────────────────────
+  ///
+  /// Searching, filtering by length, ordering and paging all have to
+  /// happen in the same query or they disagree: a radius applied in
+  /// the app after a page has been fetched hides some of the twenty
+  /// that came back and leaves a short page with no way to ask for
+  /// more.
+  ///
+  /// So [from] goes to the server too. With it, distance is a column
+  /// the database sorts and pages by; without it, "nearest" is not on
+  /// offer.
+  static Future<RoadPage> page({
+    RoadPoint? from,
+    String query = '',
+    double? minMiles,
+    double? maxMiles,
+    double? withinMiles,
+    RoadSort sort = RoadSort.newest,
     String? site,
-    String sort = 'new',
     int limit = 20,
     int offset = 0,
   }) async {
-    return _list(
-      Uri.parse('$_base/wp-json/app/v2/roads').replace(
-        queryParameters: {
-          if (site != null && site.isNotEmpty) 'site': site,
-          'sort': sort,
-          'limit': '$limit',
-          'offset': '$offset',
-        },
-      ),
-      'list',
+    final url = Uri.parse('$_base/wp-json/app/v2/roads').replace(
+      queryParameters: {
+        if (site != null && site.isNotEmpty) 'site': site,
+        if (query.trim().isNotEmpty) 'q': query.trim(),
+        if (from != null) 'lat': '${from.lat}',
+        if (from != null) 'lng': '${from.lng}',
+        if (minMiles != null && minMiles > 0) 'min_miles': '$minMiles',
+        if (maxMiles != null && maxMiles > 0) 'max_miles': '$maxMiles',
+        if (withinMiles != null && withinMiles > 0)
+          'within_miles': '$withinMiles',
+        'sort': sort.code,
+        'limit': '$limit',
+        'offset': '$offset',
+      },
     );
+
+    try {
+      final headers = await _headers();
+      if (headers == null) return const RoadPage();
+
+      final response = await http.get(url, headers: headers);
+
+      lastReady = _readyFrom(response.statusCode);
+
+      if (response.statusCode != 200) return const RoadPage();
+
+      final body = jsonDecode(response.body);
+      if (body is! Map || body['success'] != true) return const RoadPage();
+
+      final rows = body['roads'];
+      if (rows is! List) return const RoadPage();
+
+      return RoadPage(
+        roads: rows
+            .whereType<Map>()
+            .map((row) => DrivingRoad.fromMap(Map<String, dynamic>.from(row)))
+            .toList(),
+        hasMore: body['has_more'] == true,
+      );
+    } catch (e) {
+      debugPrint('[Roads] page threw: $e');
+      return const RoadPage();
+    }
   }
 
   /// Every road this person has submitted, whatever became of it.

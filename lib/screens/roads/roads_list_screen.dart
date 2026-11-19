@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drivelife/api/roads_api.dart';
 import 'package:drivelife/models/driving_road.dart';
 import 'package:drivelife/providers/theme_provider.dart';
@@ -79,6 +81,41 @@ class _RoadsListScreenState extends State<RoadsListScreen>
   /// How many of their own roads are still waiting to be checked.
   int _waiting = 0;
 
+  // ── Filtering ─────────────────────────────────────────────────────
+  //
+  // All of it goes to the server. Filtering a page after it arrives
+  // hides some of the twenty that came back and leaves a short page
+  // with no honest way to ask for more.
+
+  final _searchCtrl = TextEditingController();
+
+  /// What is actually being searched for, as opposed to what is being
+  /// typed. See [_onSearchChanged]: a request per keystroke is a
+  /// request per keystroke.
+  String _query = '';
+
+  Timer? _debounce;
+
+  RoadSort _sort = RoadSort.newest;
+
+  /// The length band, or null for any length.
+  _LengthBand? _band;
+
+  // ── Paging ────────────────────────────────────────────────────────
+
+  static const int _pageSize = 20;
+
+  int _offset = 0;
+  bool _hasMore = false;
+  bool _loadingMore = false;
+
+  /// Where the person is, when that is known.
+  ///
+  /// Held rather than fetched per request: it decides whether
+  /// "Nearest" is offered at all, and asking the OS on every page
+  /// would be a permission-shaped question asked twenty times.
+  RoadPoint? _from;
+
   /// Set when the radius found nothing and the whole country was shown
   /// instead.
   ///
@@ -94,11 +131,6 @@ class _RoadsListScreenState extends State<RoadsListScreen>
   /// correct empty screen. So an empty radius now asks for everything
   /// and says what it did.
   bool _widened = false;
-
-  /// Where the question was asked from, kept so the national list can
-  /// still be ordered by distance. Every row carries its midpoint, so
-  /// that is arithmetic rather than another request.
-  RoadPoint? _from;
 
   /// How far "near me" looks before widening.
   ///
@@ -121,106 +153,30 @@ class _RoadsListScreenState extends State<RoadsListScreen>
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
-
-    if (_mine) {
-      // No location, no radius, no widening. These are theirs
-      // wherever they are, and sorting a list of five by distance
-      // answers a question nobody asked of it.
-      final roads = await RoadsAPI.mine();
-
-      if (!mounted) return;
-
-      setState(() {
-        _roads = roads;
-        _waiting = roads.where((r) => r.isPending).length;
-        _nearby = false;
-        _widened = false;
-        _ready = RoadsAPI.lastReady;
-        _loading = false;
-      });
-
-      return;
-    }
-
-    // A cached fix, with no GPS wait and no prompt. Somebody who has
-    // already granted location to Discover gets a nearby list without
-    // being asked anything; somebody who has not gets the full list.
-    Position? here;
-
-    try {
-      if (await Geolocator.isLocationServiceEnabled()) {
-        final permission = await Geolocator.checkPermission();
-
-        if (permission == LocationPermission.always ||
-            permission == LocationPermission.whileInUse) {
-          here = await Geolocator.getLastKnownPosition();
-        }
-      }
-    } catch (_) {
-      // Any failure here is "no location", which is a state this screen
-      // already handles.
-    }
-
-    final from = here == null
-        ? null
-        : RoadPoint(here.latitude, here.longitude);
-
-    var roads = from == null
-        ? await RoadsAPI.list()
-        : await RoadsAPI.nearby(
-            lat: from.lat,
-            lng: from.lng,
-            radius: _radiusMiles,
-          );
-
-    // Nothing within the radius, but there may be roads. Ask for all of
-    // them rather than leaving a true and useless empty screen.
-    var widened = false;
-
-    if (roads.isEmpty && from != null && RoadsAPI.lastReady) {
-      roads = _byDistance(await RoadsAPI.list(), from);
-      widened = roads.isNotEmpty;
-    }
-
-    if (!mounted) return;
-
-    setState(() {
-      _roads = roads;
-      _from = from;
-      _nearby = from != null;
-      _widened = widened;
-      _ready = RoadsAPI.lastReady;
-      _loading = false;
-    });
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
-  /// The national list, measured and sorted from here.
+  /// A request per keystroke is a request per keystroke.
   ///
-  /// The server only works distances out for a nearby query, but every
-  /// row carries its midpoint either way — so this costs one pass and
-  /// no extra request, and the widened list still reads nearest first
-  /// rather than newest first.
-  List<DrivingRoad> _byDistance(List<DrivingRoad> roads, RoadPoint from) {
-    final measured = roads
-        .map(
-          (road) => road.mid.isReal
-              ? road.copyWith(distanceMiles: from.milesTo(road.mid))
-              : road,
-        )
-        .toList();
+  /// Half a second after the typing stops, which is long enough that
+  /// a word is a word and short enough that nobody notices waiting.
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
 
-    measured.sort((a, b) {
-      // A road with no usable midpoint cannot be placed, so it goes
-      // last rather than to the top on a distance of zero.
-      final aMiles = a.distanceMiles <= 0 ? double.infinity : a.distanceMiles;
-      final bMiles = b.distanceMiles <= 0 ? double.infinity : b.distanceMiles;
+    _debounce = Timer(const Duration(milliseconds: 450), () {
+      if (!mounted) return;
 
-      return aMiles.compareTo(bMiles);
+      final next = value.trim();
+
+      if (next == _query) return;
+
+      setState(() => _query = next);
+      _load();
     });
-
-    return measured;
   }
 
   Future<void> _add() async {
@@ -245,6 +201,143 @@ class _RoadsListScreenState extends State<RoadsListScreen>
     // screen opened and closed should not cost a round trip.
     if (changed == true && mounted) _load();
   }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _offset = 0;
+      _hasMore = false;
+    });
+
+    if (_mine) {
+      // Their own roads come back whole: somebody has a handful, not
+      // a hundred, and a filter row over five rows is more chrome than
+      // content. Sorting them by distance answers a question nobody
+      // asked of a list they wrote themselves.
+      final roads = await RoadsAPI.mine();
+
+      if (!mounted) return;
+
+      setState(() {
+        _roads = roads;
+        _waiting = roads.where((r) => r.isPending).length;
+        _nearby = false;
+        _widened = false;
+        _hasMore = false;
+        _ready = RoadsAPI.lastReady;
+        _loading = false;
+      });
+
+      return;
+    }
+
+    final from = await _whereAmI();
+
+    // ── ONE REQUEST, FILTERED AND ORDERED BY THE SERVER ─────────────
+    //
+    // Everything that decides WHICH roads these are travels with the
+    // query: the search, the length band, the sort and where the
+    // person is. The alternative — fetching a page and filtering it
+    // here — hides some of the twenty that came back and leaves a
+    // short page with no honest way to ask for more.
+    final page = await RoadsAPI.page(
+      from: from,
+      query: _query,
+      minMiles: _band?.min,
+      maxMiles: _band?.max,
+      sort: _sortInUse(from),
+      limit: _pageSize,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _roads = page.roads;
+      _hasMore = page.hasMore;
+      _offset = page.roads.length;
+      _from = from;
+      _nearby = from != null && _sortInUse(from) == RoadSort.nearest;
+      // Nothing is widened any more: the radius went with the
+      // filters. A list with nothing in it now means the FILTERS
+      // found nothing, which is a different sentence and gets one.
+      _widened = false;
+      _ready = RoadsAPI.lastReady;
+      _loading = false;
+    });
+  }
+
+  /// The next page, appended.
+  ///
+  /// Guarded three ways because a scroll notification fires many times
+  /// a second: not while one is in flight, not when there is no more,
+  /// and not during the first load.
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore || _loading || _mine) return;
+
+    setState(() => _loadingMore = true);
+
+    final page = await RoadsAPI.page(
+      from: _from,
+      query: _query,
+      minMiles: _band?.min,
+      maxMiles: _band?.max,
+      sort: _sortInUse(_from),
+      limit: _pageSize,
+      offset: _offset,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _loadingMore = false;
+
+      // Appended by id, not blindly. A road added while somebody was
+      // reading shifts every later row by one, and the page after it
+      // then repeats whatever fell across the boundary.
+      final seen = _roads.map((r) => r.id).toSet();
+
+      _roads = [
+        ..._roads,
+        ...page.roads.where((r) => !seen.contains(r.id)),
+      ];
+
+      _offset += page.roads.length;
+      _hasMore = page.hasMore;
+    });
+  }
+
+  /// A cached fix, with no GPS wait and no permission prompt.
+  ///
+  /// Somebody who has already granted location to Discover gets
+  /// distances without being asked anything; somebody who has not gets
+  /// a list ordered some other way. Neither is interrupted.
+  Future<RoadPoint?> _whereAmI() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return null;
+
+      final permission = await Geolocator.checkPermission();
+
+      if (permission != LocationPermission.always &&
+          permission != LocationPermission.whileInUse) {
+        return null;
+      }
+
+      final here = await Geolocator.getLastKnownPosition();
+
+      return here == null ? null : RoadPoint(here.latitude, here.longitude);
+    } catch (_) {
+      // Any failure here is "no location", which this screen handles.
+      return null;
+    }
+  }
+
+  /// The sort actually asked for.
+  ///
+  /// "Nearest" needs somewhere to measure from. Without one it is not
+  /// a sort, it is a silent no-op — so it quietly becomes Newest
+  /// rather than returning a list in an order nobody chose.
+  RoadSort _sortInUse(RoadPoint? from) =>
+      _sort == RoadSort.nearest && from == null ? RoadSort.newest : _sort;
 
   /// Whether the shell is drawing the chrome above this.
   bool get _asSection => widget.header != null;
@@ -285,7 +378,30 @@ class _RoadsListScreenState extends State<RoadsListScreen>
       // listener, which is what takes the bottom bar away and brings
       // it back. Harmless when there is no shell.
       body: NotificationListener<ScrollNotification>(
-        onNotification: widget.chrome?.handle ?? (_) => false,
+        onNotification: (notification) {
+          // ── WHY THE THRESHOLD IS A SCREEN AND NOT A ROW ─────────
+          //
+          // Fetching when the last row appears means waiting at the
+          // bottom while it arrives. Fetching a screen early means
+          // the next page is usually there before anybody reaches it,
+          // and the list simply never ends.
+          //
+          // _loadMore guards itself against being called twice, which
+          // it will be: this fires many times a second.
+          final metrics = notification.metrics;
+
+          if (metrics.axis == Axis.vertical &&
+              metrics.extentAfter < 900 &&
+              _hasMore &&
+              !_loadingMore) {
+            unawaited(_loadMore());
+          }
+
+          // The shell still gets every scroll. Returning its answer
+          // rather than true: this listener reads, it does not
+          // consume.
+          return widget.chrome?.handle(notification) ?? false;
+        },
         child: RefreshIndicator(
           color: theme.primaryColor,
           onRefresh: _load,
@@ -296,6 +412,17 @@ class _RoadsListScreenState extends State<RoadsListScreen>
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               if (_asSection) _floatingChrome(),
+
+              // Scrolls away with the header. A search box three rows
+              // into a list is the least useful thing on screen, and
+              // the switcher below stays pinned so the list can still
+              // be swapped from anywhere.
+              //
+              // Not on My Routes: somebody has a handful of their own
+              // roads, and a filter row over five rows is more chrome
+              // than content.
+              if (!_mine)
+                SliverToBoxAdapter(child: _filterRow(theme)),
 
               // Pinned, like the tab row on Places: the one control
               // that changes what the list IS should not have to be
@@ -356,6 +483,195 @@ class _RoadsListScreenState extends State<RoadsListScreen>
     );
   }
 
+  /// Search, length and order.
+  ///
+  /// ── WHY THESE THREE ─────────────────────────────────────────────
+  ///
+  /// Name, because somebody who has heard of a road is looking for
+  /// that road. Length, because the real question is "have I got an
+  /// hour or an afternoon". Order, because with no location granted
+  /// "nearest" is not available and something has to be.
+  ///
+  /// Region was the obvious fourth and is deliberately absent: it is
+  /// free text on the road, so the list of values would be whatever
+  /// people happened to type. The search box already matches it.
+  Widget _filterRow(ThemeProvider theme) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 44,
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: _onSearchChanged,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: 'Search by name or area',
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _query = '');
+                          _load();
+                        },
+                      ),
+                isDense: true,
+                filled: true,
+                fillColor: const Color(0xFFF2F2F2),
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          SizedBox(
+            height: 34,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                _FilterChip(
+                  label: _band?.label ?? 'Any length',
+                  on: _band != null,
+                  accent: theme.primaryColor,
+                  onTap: () => _pickBand(theme),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: _sortInUse(_from).label,
+                  on: _sort != RoadSort.newest,
+                  accent: theme.primaryColor,
+                  icon: Icons.swap_vert_rounded,
+                  onTap: () => _pickSort(theme),
+                ),
+                if (_band != null || _sort != RoadSort.newest) ...[
+                  const SizedBox(width: 8),
+                  _FilterChip(
+                    label: 'Clear',
+                    on: false,
+                    accent: theme.primaryColor,
+                    icon: Icons.close_rounded,
+                    onTap: () {
+                      setState(() {
+                        _band = null;
+                        _sort = RoadSort.newest;
+                      });
+
+                      _load();
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickBand(ThemeProvider theme) async {
+    final chosen = await _choose<_LengthBand?>(
+      title: 'How long?',
+      options: [
+        (null, 'Any length'),
+        for (final band in _LengthBand.values) (band, band.label),
+      ],
+      current: _band,
+      accent: theme.primaryColor,
+    );
+
+    if (!mounted) return;
+
+    // A sheet dismissed is not a choice. Only a tap is, and "Any
+    // length" is a tap that happens to be null — which is why the
+    // result is wrapped rather than compared against null.
+    if (chosen == null) return;
+
+    setState(() => _band = chosen.value);
+    _load();
+  }
+
+  Future<void> _pickSort(ThemeProvider theme) async {
+    final chosen = await _choose<RoadSort>(
+      title: 'Order by',
+      options: [
+        for (final sort in RoadSort.values)
+          // Nearest needs somewhere to measure from. Offering it
+          // without one is offering a button that does nothing.
+          if (sort != RoadSort.nearest || _from != null)
+            (sort, sort.label),
+      ],
+      current: _sort,
+      accent: theme.primaryColor,
+    );
+
+    if (!mounted || chosen == null) return;
+
+    setState(() => _sort = chosen.value);
+    _load();
+  }
+
+  /// One of a list, in a sheet. Null when it was dismissed.
+  Future<({T value})?> _choose<T>({
+    required String title,
+    required List<(T, String)> options,
+    required T current,
+    required Color accent,
+  }) {
+    return showModalBottomSheet<({T value})>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+              child: DlHeading(
+                title,
+                fontSize: 20,
+                color: const Color(0xFF0B0B0B),
+              ),
+            ),
+            for (final (value, label) in options)
+              ListTile(
+                title: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: value == current
+                        ? FontWeight.w800
+                        : FontWeight.w500,
+                    color: value == current ? accent : const Color(0xFF0B0B0B),
+                  ),
+                ),
+                trailing: value == current
+                    ? Icon(Icons.check_rounded, color: accent, size: 20)
+                    : null,
+                onTap: () => Navigator.pop(sheetContext, (value: value)),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   List<Widget> _contentSlivers(ThemeProvider theme) {
     if (_loading) {
       return [
@@ -394,9 +710,23 @@ class _RoadsListScreenState extends State<RoadsListScreen>
         ];
       }
 
-      // No longer "none near you": by this point the radius has been
-      // dropped and the whole country asked for, so an empty list
-      // means the table is empty.
+      // Two different empties, and they want different sentences. A
+      // filter that matched nothing is not an app with nothing in it,
+      // and offering "add a road" to somebody who mistyped a search is
+      // answering a question they did not ask.
+      if (_query.isNotEmpty || _band != null) {
+        return [
+          _messageSliver(
+            icon: Icons.search_off_rounded,
+            title: 'Nothing matches',
+            body: _query.isEmpty
+                ? 'No roads of that length. Try another.'
+                : 'No roads called "$_query"'
+                      '${_band == null ? '' : ' of that length'}.',
+          ),
+        ];
+      }
+
       return [
         _messageSliver(
           icon: Icons.route_rounded,
@@ -432,6 +762,26 @@ class _RoadsListScreenState extends State<RoadsListScreen>
           },
         ),
       ),
+
+      // A spinner under the last row while the next page is on its
+      // way. Not a button: the fetch has already started by the time
+      // this is visible.
+      if (_loadingMore)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 90),
+            child: Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  color: theme.primaryColor,
+                ),
+              ),
+            ),
+          ),
+        ),
     ];
   }
 
@@ -683,6 +1033,86 @@ class _RoadCard extends StatelessWidget {
   }
 }
 
+/// How long a road is, as somebody would ask for it.
+///
+/// ── WHY BANDS AND NOT A SLIDER ──────────────────────────────────────
+///
+/// Because nobody wants roads between 7 and 23 miles. They want a
+/// quick blast, an afternoon, or a day out, and a slider makes them
+/// invent numbers to express that. These are the three answers, named.
+enum _LengthBand {
+  short('Under 5 miles', null, 5),
+  medium('5 to 20 miles', 5, 20),
+  long('Over 20 miles', 20, null);
+
+  const _LengthBand(this.label, this.min, this.max);
+
+  final String label;
+  final double? min;
+  final double? max;
+}
+
+/// One filter, as a tappable pill.
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool on;
+  final Color accent;
+  final IconData? icon;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.on,
+    required this.accent,
+    required this.onTap,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: on ? accent.withValues(alpha: 0.12) : const Color(0xFFF2F2F2),
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(9),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(
+              color: on ? accent : Colors.transparent,
+              width: 1.2,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(
+                  icon,
+                  size: 15,
+                  color: on ? accent : const Color(0xFF6B6B6B),
+                ),
+                const SizedBox(width: 5),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: on ? accent : const Color(0xFF4A4A4A),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Near me, or mine.
 class _Switcher extends StatelessWidget {
   final bool mine;
@@ -704,7 +1134,7 @@ class _Switcher extends StatelessWidget {
         children: [
           Expanded(
             child: _Segment(
-              label: 'All roads',
+              label: 'All Routes',
               on: !mine,
               accent: accent,
               onTap: () => onChanged(false),
@@ -713,7 +1143,7 @@ class _Switcher extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: _Segment(
-              label: 'My roads',
+              label: 'My Routes',
               on: mine,
               accent: accent,
               onTap: () => onChanged(true),
