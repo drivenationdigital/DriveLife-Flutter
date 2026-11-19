@@ -1,4 +1,5 @@
 import 'package:drivelife/models/driving_road.dart';
+import 'package:drivelife/models/road_polyline.dart';
 
 /// Handing a road to the thing that actually gives directions.
 ///
@@ -30,6 +31,31 @@ import 'package:drivelife/models/driving_road.dart';
 /// question, and [startUrl] is the answer to it.
 abstract final class RoadNavigation {
   const RoadNavigation._();
+
+  /// The points to hand a maps app for [road].
+  ///
+  /// ── THE DRAWN POINTS, NOT THE DRAWN LINE ────────────────────────
+  ///
+  /// `polyline` is the snapped line: hundreds of points along the real
+  /// tarmac. A URL holds eleven of them, so sending it means [sample]
+  /// picking eleven evenly spaced ones — and an evenly spaced point is
+  /// nowhere in particular. A road built from seven stops arrived in
+  /// Google as eleven stops somewhere else, which is neither the road
+  /// somebody drew nor anything that looks like it.
+  ///
+  /// `waypoints` ARE the road: the junctions somebody picked, which is
+  /// what a maps app wants and how the route was built to begin with.
+  /// Google joins them up the same way it did for them, and a route
+  /// imported from a link comes back out identical to the link.
+  ///
+  /// The line is the fallback, for a road saved before waypoints were
+  /// kept — see [DrivingRoad.waypoints]. Worse, and still the only
+  /// thing those roads have.
+  static List<RoadPoint> routeFor(DrivingRoad road) {
+    final drawn = RoadPolyline.decode(road.waypoints);
+
+    return drawn.length >= 2 ? drawn : RoadPolyline.decode(road.polyline);
+  }
 
   /// How many coordinates the URL may carry, start and end included.
   ///
@@ -88,6 +114,11 @@ abstract final class RoadNavigation {
   /// rather than clustered at one end, which is what taking the first
   /// nine would do — and a route pinned only at the start is free to
   /// rejoin the main road for the rest of it.
+  ///
+  /// Mostly a fallback now. [routeFor] hands over the drawn waypoints
+  /// where a road has them, and there are rarely eleven of those. This
+  /// still runs for the roads saved before they were kept, and for the
+  /// rare road drawn with more points than a URL holds.
   static List<RoadPoint> sample(List<RoadPoint> points, int count) {
     final usable = points.where((p) => p.isReal).toList();
 

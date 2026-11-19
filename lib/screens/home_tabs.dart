@@ -980,7 +980,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           // row of its own.
           _CreateAction(
             label: 'Scan QR Code',
-            subtitle: 'Tickets and entry',
+            subtitle: 'DriveLife vehicle tags',
             svg: 'assets/app-icons/header-qr.svg',
             dark: true,
             onTap: () => SharedHeaderIcons.scanQrCode(context),

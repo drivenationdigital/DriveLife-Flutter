@@ -535,7 +535,8 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
 
     setState(() => _importing = true);
 
-    final points = await _pointsFromLink(url.trim());
+    final read = await _pointsFromLink(url.trim());
+    final points = read.points;
 
     if (!mounted) return;
 
@@ -566,11 +567,26 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
 
     if (!mounted) return;
 
+    // A stop the link wrote as a name and gave no coordinate for is
+    // simply absent from the list — which is how a route came back
+    // missing both of its ends and looked, on the map, like a route.
+    // Say the number out loud so it is noticed here rather than after
+    // the road is published.
+    final missed = read.stops - points.length;
+
     _say(
-      points.length > _maxPoints
-          ? 'Imported the first $_maxPoints points of ${points.length}.'
-          : 'Imported ${points.length} points. Check the route and adjust '
-                'if you need to.',
+      switch (0) {
+        _ when points.length > _maxPoints =>
+          'Imported the first $_maxPoints points of ${points.length}.',
+        _ when missed > 0 =>
+          'Imported ${points.length} of ${read.stops} stops. '
+              '${missed == 1 ? 'One was a named place' : '$missed were '
+                  'named places'} with no coordinates in the link — '
+              'tap to add ${missed == 1 ? 'it' : 'them'}.',
+        _ =>
+          'Imported ${points.length} points. Check the route and adjust '
+              'if you need to.',
+      },
     );
   }
 
@@ -579,9 +595,11 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   /// A maps.app.goo.gl link carries nothing until it has been
   /// resolved — it is an identifier, not a route. Following it is one
   /// request and the only way to read it.
-  Future<List<RoadPoint>> _pointsFromLink(String url) async {
+  Future<({List<RoadPoint> points, int stops})> _pointsFromLink(
+    String url,
+  ) async {
     if (!GoogleMapsLink.looksShortened(url)) {
-      return GoogleMapsLink.pointsFrom(url);
+      return GoogleMapsLink.read(url);
     }
 
     try {
@@ -598,11 +616,11 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
       final location = response.headers['location'] ?? '';
 
       return location.isEmpty
-          ? const []
-          : GoogleMapsLink.pointsFrom(location);
+          ? (points: const <RoadPoint>[], stops: 0)
+          : GoogleMapsLink.read(location);
     } catch (e) {
       debugPrint('[AddRoad] could not follow $url: $e');
-      return const [];
+      return (points: const <RoadPoint>[], stops: 0);
     }
   }
 
@@ -1009,31 +1027,50 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   /// Step one: the map, and the three things that can be done to it.
   List<Widget> _drawChrome(ThemeProvider theme) {
     return [
+      // The hint and the two map-wide actions, in ONE Positioned.
+      //
+      // They used to be two, the buttons pinned at top: 64 under a
+      // hint pinned at top: 12 — which only held while the hint was one
+      // line. At three points or more it wraps to two and the buttons
+      // sat on top of it. Stacked in a column instead, the hint can be
+      // whatever height it likes and the row follows it down.
       Positioned(
         left: 12,
         right: 12,
         top: 12,
-        child: _Hint(count: _points.length),
-      ),
-
-      Positioned(
-        right: 12,
-        top: 64,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            _MapButton(
-              icon: Icons.open_in_full_rounded,
-              label: 'Full screen',
-              onTap: () => setState(() => _fullScreen = true),
-            ),
+            _Hint(count: _points.length),
             const SizedBox(height: 8),
-            _MapButton(
-              icon: _importing
-                  ? Icons.hourglass_top_rounded
-                  : Icons.link_rounded,
-              label: _importing ? 'Reading…' : 'Paste a link',
-              onTap: _importing ? () {} : _importLink,
+
+            // Half and half, so neither reads as the main one: looking
+            // closer and pasting a route are both just ways in.
+            Row(
+              children: [
+                Expanded(
+                  child: _MapButton(
+                    icon: Icons.open_in_full_rounded,
+                    label: 'Full screen',
+                    fill: true,
+                    onTap: () => setState(() => _fullScreen = true),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _MapButton(
+                    icon: _importing
+                        ? Icons.hourglass_top_rounded
+                        : Icons.link_rounded,
+                    // Shortened from 'Import Google Maps link': half a
+                    // phone's width does not hold it, and a label that
+                    // ellipsises into 'Import Google Ma…' says less
+                    // than a shorter one that fits.
+                    label: _importing ? 'Reading…' : 'Import Maps link',
+                    fill: true,
+                    onTap: _importing ? () {} : _importLink,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1548,6 +1585,7 @@ class _Hint extends StatelessWidget {
     };
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.94),
@@ -1571,14 +1609,37 @@ class _MapButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
+  /// Take the whole width the parent offers, centre the label in it and
+  /// let it ellipsise, rather than shrink-wrapping the text.
+  ///
+  /// For the pair under the hint, which share a row half and half: the
+  /// label has to live inside its half instead of setting the width.
+  ///
+  /// NOT for the free-standing buttons stacked over the map. [Flexible]
+  /// needs a bounded width and a column pinned to the edge gives it
+  /// none, so turning this on there throws at layout.
+  final bool fill;
+
   const _MapButton({
     required this.icon,
     required this.label,
     required this.onTap,
+    this.fill = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final text = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        color: Color(0xFF0B0B0B),
+      ),
+    );
+
     return Material(
       color: Colors.white.withValues(alpha: 0.94),
       borderRadius: BorderRadius.circular(10),
@@ -1588,17 +1649,12 @@ class _MapButton extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           child: Row(
+            mainAxisAlignment:
+                fill ? MainAxisAlignment.center : MainAxisAlignment.start,
             children: [
               Icon(icon, size: 17, color: const Color(0xFF0B0B0B)),
               const SizedBox(width: 6),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF0B0B0B),
-                ),
-              ),
+              if (fill) Flexible(child: text) else text,
             ],
           ),
         ),

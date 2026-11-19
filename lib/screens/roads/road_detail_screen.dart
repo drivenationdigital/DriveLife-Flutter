@@ -74,6 +74,12 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
   /// Whether anything was pressed, so the list knows to reload.
   bool _changed = false;
 
+  /// Up while the delete is in flight, to cover the gap between the
+  /// tap and the screen closing. Without it the road sits there
+  /// looking untouched and invites a second tap, which would be a
+  /// second request for something already being done.
+  bool _deleting = false;
+
   List<RoadPoint> _points = const [];
 
   /// The name of the vehicle they recorded, once it has been looked
@@ -527,6 +533,127 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
     return me != null && me == _road.ownerId && _road.ownerId > 0;
   }
 
+  /// What the owner of a road may do to it.
+  Future<void> _ownerMenu() async {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFDADADA),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 10),
+            ListTile(
+              leading: Icon(Icons.edit_rounded, color: theme.primaryColor),
+              title: const Text(
+                'Edit route',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'edit'),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.delete_outline_rounded,
+                color: Color(0xFFC0392B),
+              ),
+              title: const Text(
+                'Delete route',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFC0392B),
+                ),
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'delete'),
+            ),
+            const SizedBox(height: 6),
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (choice == 'edit') await _edit();
+    if (choice == 'delete') await _delete();
+  }
+
+  /// Deletes the road, once, after asking.
+  ///
+  /// ── WHY IT ASKS, AND WHY IT SAYS WHAT IT IS DELETING ────────────
+  ///
+  /// There is no undo in the app. The row survives on the server and
+  /// an admin can put it back — see dl_roads_delete — but that is not
+  /// a thing the person tapping this can reach, so as far as they are
+  /// concerned this is final. A confirmation naming the road is the
+  /// only chance they get to notice it is the wrong one.
+  Future<void> _delete() async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this route?'),
+        content: Text(
+          _road.title.isEmpty
+              ? 'It will be removed from the app. This cannot be undone.'
+              : '“${_road.title}” will be removed from the app. '
+                    'This cannot be undone.',
+          style: const TextStyle(fontSize: 14, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep it'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text(
+              'Delete',
+              style: TextStyle(
+                color: Color(0xFFC0392B),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (sure != true || !mounted) return;
+
+    setState(() => _deleting = true);
+
+    final gone = await RoadsAPI.delete(_road.id);
+
+    if (!mounted) return;
+
+    setState(() => _deleting = false);
+
+    // Left exactly where it was on a failure. Closing the screen would
+    // say the road is gone, the list it returns to would show it still
+    // there, and the two together read as a bug rather than a retry.
+    if (!gone) {
+      _say('Could not delete that route. Try again in a moment.');
+      return;
+    }
+
+    // true, so the list that opened this reloads rather than keeping a
+    // row for a road that no longer answers.
+    Navigator.pop(context, true);
+  }
+
   /// Opens the editor, and takes whatever comes back.
   Future<void> _edit() async {
     final changed = await Navigator.push<bool>(
@@ -552,7 +679,12 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
   /// already has an app with their settings, their voice and their
   /// traffic, and it is not this one.
   Future<void> _drive() async {
-    final url = RoadNavigation.directionsUrl(_points);
+    // The DRAWN points, not the drawn line. See
+    // RoadNavigation.routeFor, which is where the difference is
+    // explained and why it matters.
+    final url = RoadNavigation.directionsUrl(
+      RoadNavigation.routeFor(_road),
+    );
 
     if (url == null) {
       _say('This road has no route to follow yet.');
@@ -584,7 +716,7 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
     final theme = Provider.of<ThemeProvider>(context);
     final size = MediaQuery.sizeOf(context);
 
-    return PopScope(
+    final screen = PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) Navigator.pop(context, _changed);
@@ -621,13 +753,18 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
                   // Only for the person who added it, and only once
                   // the road has actually loaded — an edit button over
                   // a spinner opens an editor with nothing in it.
+                  //
+                  // A sheet rather than two buttons side by side. Edit
+                  // and delete are a tap apart and one of them cannot
+                  // be undone from the app, and 38 logical pixels is
+                  // not enough distance between those two things.
                   if (!_loading && _isMine)
                     Positioned(
                       top: MediaQuery.paddingOf(context).top + 8,
                       right: 12,
                       child: _RoundButton(
-                        icon: Icons.edit_rounded,
-                        onTap: _edit,
+                        icon: Icons.more_horiz_rounded,
+                        onTap: _ownerMenu,
                       ),
                     ),
                 ],
@@ -647,6 +784,26 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
         ),
       ),
     );
+
+    // Over the whole screen rather than inside the sheet, because the
+    // sheet has already closed by the time the request goes out.
+    if (_deleting) {
+      return Stack(
+        children: [
+          screen,
+          const Positioned.fill(
+            child: ColoredBox(
+              color: Color(0x66000000),
+              child: Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return screen;
   }
 
   /// "You drove this in August 2019", with as much of it as was said.

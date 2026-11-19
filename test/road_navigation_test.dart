@@ -1,5 +1,6 @@
 import 'package:drivelife/models/driving_road.dart';
 import 'package:drivelife/models/road_navigation.dart';
+import 'package:drivelife/models/road_polyline.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Handing a road to a maps app.
@@ -160,6 +161,95 @@ void main() {
     test('a road with one point has no route', () {
       expect(RoadNavigation.directionsUrl(const [RoadPoint(53, -2)]), isNull);
       expect(RoadNavigation.directionsUrl(const []), isNull);
+    });
+  });
+
+  // ── WHICH POINTS GO IN THE URL ────────────────────────────────────
+  //
+  // Sending the snapped line meant sampling eleven evenly spaced
+  // points off it, and an evenly spaced point is nowhere in
+  // particular. A road built from seven stops arrived in Google as
+  // eleven stops in different places.
+  group('the drawn points, not the drawn line', () {
+    // Helmsley → five pins → Pickering, as imported.
+    const stops = [
+      RoadPoint(54.2461552, -1.0613535),
+      RoadPoint(54.3866883, -0.9535802),
+      RoadPoint(54.4614216, -0.9256848),
+      RoadPoint(54.4986472, -0.8908063),
+      RoadPoint(54.4030181, -0.7482026),
+      RoadPoint(54.4183671, -0.6841913),
+      RoadPoint(54.2438582, -0.7744189),
+    ];
+
+    test('a road with waypoints is sent as those waypoints', () {
+      final road = DrivingRoad(
+        id: 1,
+        waypoints: RoadPolyline.encode(stops),
+        // Four hundred points of snapped tarmac, which is what used to
+        // be sampled and sent instead.
+        polyline: RoadPolyline.encode(line(400)),
+      );
+
+      final sent = RoadNavigation.routeFor(road);
+
+      expect(sent.length, stops.length);
+
+      // Ends included and in place: the whole point. Six decimals of
+      // the encoding, which is the resolution a maps URL carries.
+      expect(sent.first.lat, closeTo(54.2461552, 0.00001));
+      expect(sent.first.lng, closeTo(-1.0613535, 0.00001));
+      expect(sent.last.lat, closeTo(54.2438582, 0.00001));
+      expect(sent.last.lng, closeTo(-0.7744189, 0.00001));
+    });
+
+    test('and the URL carries all seven, not eleven', () {
+      final road = DrivingRoad(
+        id: 1,
+        waypoints: RoadPolyline.encode(stops),
+        polyline: RoadPolyline.encode(line(400)),
+      );
+
+      final url = RoadNavigation.directionsUrl(
+        RoadNavigation.routeFor(road),
+      )!;
+
+      // Origin, five waypoints, destination.
+      expect(url.queryParameters['waypoints']!.split('|').length, 5);
+
+      // Five decimal places, not six: that is what the polyline
+      // encoding stores, and it is about a metre. A road is wider.
+      expect(url.queryParameters['origin'], startsWith('54.2461'));
+      expect(url.queryParameters['destination'], startsWith('54.2438'));
+    });
+
+    test('a road saved before waypoints were kept falls back', () {
+      // Nothing survives of these but the snapped line, so the line is
+      // what they send. Worse, and better than refusing to navigate.
+      final road = DrivingRoad(
+        id: 1,
+        polyline: RoadPolyline.encode(line(400)),
+      );
+
+      expect(RoadNavigation.routeFor(road).length, 400);
+      expect(
+        RoadNavigation.directionsUrl(
+          RoadNavigation.sample(RoadNavigation.routeFor(road), 11),
+        )!.queryParameters['waypoints']!.split('|').length,
+        9,
+      );
+    });
+
+    test('a single stray waypoint is not a route', () {
+      // One point cannot be driven, and silently sending a one-point
+      // road as a full snapped line would hide that it was broken.
+      final road = DrivingRoad(
+        id: 1,
+        waypoints: RoadPolyline.encode(const [RoadPoint(54.0, -1.0)]),
+        polyline: RoadPolyline.encode(line(400)),
+      );
+
+      expect(RoadNavigation.routeFor(road).length, 400);
     });
   });
 

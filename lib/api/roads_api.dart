@@ -421,6 +421,44 @@ class RoadsAPI {
   /// echoed: on a server that has not run roads-drives.sql the car and
   /// the date come back empty, which is how the screen learns not to
   /// show something it thinks it just saved.
+  /// Deletes a road. Its owner's only.
+  ///
+  /// ── WHAT THE SERVER ACTUALLY DOES ───────────────────────────────
+  ///
+  /// Sets the status to `deleted` rather than removing the row, so
+  /// that other people's drives recorded against it survive and an
+  /// admin can put a misplaced tap back. See dl_roads_delete. From
+  /// here it is gone: no listing returns it and /road answers 404,
+  /// to its owner as well as to everybody else.
+  ///
+  /// True only on a confirmed delete. A false means the road is still
+  /// there, so the screen that called this must not pretend otherwise
+  /// -- a list that drops a row the server kept is a road somebody
+  /// will think they deleted.
+  static Future<bool> delete(int id) async {
+    try {
+      final headers = await _headers();
+      if (headers == null) return false;
+
+      final response = await http.post(
+        Uri.parse('$_base/wp-json/app/v2/road/delete'),
+        headers: headers,
+        body: jsonEncode({'id': id}),
+      );
+
+      lastReady = _readyFrom(response.statusCode);
+
+      if (response.statusCode != 200) return false;
+
+      final body = jsonDecode(response.body);
+
+      return body is Map && body['success'] == true;
+    } catch (e) {
+      debugPrint('[Roads] delete threw: $e');
+      return false;
+    }
+  }
+
   static Future<RoadActionResult?> setAction({
     required int id,
     required String kind,

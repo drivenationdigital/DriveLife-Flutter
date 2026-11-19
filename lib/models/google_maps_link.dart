@@ -32,6 +32,22 @@ import 'package:drivelife/models/driving_road.dart';
 /// the stops, and it is not a stop. Taken as one it drops a waypoint in
 /// the middle of the route at whatever the map happened to be centred
 /// on, which on a long road is miles off it.
+///
+/// ── THE ONE THAT BIT ────────────────────────────────────────────────
+///
+/// In shape 2 a stop is written as a NAME whenever it was picked from
+/// search rather than dropped as a pin. Real routes are planned exactly
+/// that way at the ends — you start at a car park and finish at one —
+/// and so a seven-stop route arrives as
+///
+///     /dir/Helmsley Market Place Parking/54.4,-0.9/…/Eastgate Car Park/
+///
+/// where only the five in the middle are numbers. Reading the path
+/// alone returns those five: a road beginning and ending two stops
+/// short of where it was drawn, with nothing to say anything was lost.
+///
+/// Google's own `data=` blob has those coordinates, and ONLY those.
+/// See [_fromData]. It is read to fill the gaps the path leaves.
 abstract final class GoogleMapsLink {
   const GoogleMapsLink._();
 
@@ -60,17 +76,33 @@ abstract final class GoogleMapsLink {
   /// Place names are skipped rather than guessed at: "Buxton" is a town
   /// and a road does not start in the middle of one. What comes back is
   /// the coordinates the link actually carried.
-  static List<RoadPoint> pointsFrom(String url) {
+  static List<RoadPoint> pointsFrom(String url) => read(url).points;
+
+  /// What a link describes: the stops that could be PLACED, and how
+  /// many it listed in all.
+  ///
+  /// ── WHY THE COUNT COMES BACK TOO ────────────────────────────────
+  ///
+  /// Because the two differ, and when they do something was lost. A
+  /// stop written as a name and left unplaced simply does not appear
+  /// in [points], and a caller holding only that list cannot tell five
+  /// stops from seven with two dropped. That is how a route came back
+  /// missing both of its ends with nothing said about it.
+  ///
+  /// [_fromData] now rescues most of those. This is for the rest.
+  static ({List<RoadPoint> points, int stops}) read(String url) {
+    const nothing = (points: <RoadPoint>[], stops: 0);
+
     final text = url.trim();
 
-    if (text.isEmpty) return const [];
+    if (text.isEmpty) return nothing;
 
     final Uri uri;
 
     try {
       uri = Uri.parse(text);
     } catch (_) {
-      return const [];
+      return nothing;
     }
 
     // ── Shape 1: the documented parameters ──────────────────────────
@@ -79,38 +111,147 @@ abstract final class GoogleMapsLink {
     // the whole route in them, and the path is decoration.
     final params = uri.queryParameters;
 
-    final origin = _point(params['origin']);
-    final destination = _point(params['destination']);
-    final middle = (params['waypoints'] ?? '')
-        .split(RegExp(r'[|]'))
-        .map(_point)
-        .whereType<RoadPoint>()
-        .toList();
+    final listed = <String>[
+      params['origin'] ?? '',
+      ...(params['waypoints'] ?? '').split(RegExp(r'[|]')),
+      params['destination'] ?? '',
+    ].map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
 
-    if (origin != null || destination != null || middle.isNotEmpty) {
-      return [
-        if (origin != null) origin,
-        ...middle,
-        if (destination != null) destination,
-      ];
+    final placed = listed.map(_point).whereType<RoadPoint>().toList();
+
+    // Not `listed.isNotEmpty`: a link whose origin and destination are
+    // both names carries these parameters and no route we can read, and
+    // the path below may still hold one.
+    if (placed.isNotEmpty) {
+      return (points: placed, stops: listed.length);
     }
 
-    // ── Shape 2: coordinates in the path ────────────────────────────
-    final out = <RoadPoint>[];
+    // ── Shape 2: the stops are path segments ────────────────────────
+    final found = _scan(uri);
 
-    for (final raw in uri.pathSegments) {
-      final segment = Uri.decodeComponent(raw);
+    // Nulls kept rather than dropped. A null IS the information here:
+    // it marks a stop the path named and did not place, which is the
+    // slot the blob below is read to fill. Dropping it first is how
+    // the ends of a route went missing with nothing to say they had.
+    final fromPath = found.stops.map(_point).toList();
+    final gaps = fromPath.where((point) => point == null).length;
+
+    final filler = _fromData(found.data);
+
+    // ── WHY THE BLOB FILLS GAPS RATHER THAN REPLACING EVERYTHING ────
+    //
+    // Because it only HAS the gaps. A real seven-stop link reads
+    //
+    //   !1m5!1m1!1s0x487ecf…!2m2!1d-1.0613535!2d54.2461552   ← Helmsley
+    //   !1m0!1m0!1m0!1m0!1m0                                 ← five pins
+    //   !1m5!1m1!1s0x487f28…!2m2!1d-0.7744189!2d54.2438582   ← Pickering
+    //
+    // One entry per stop, in order, but a stop already written in the
+    // path as numbers is encoded as an EMPTY `!1m0` — its coordinates
+    // are in the path and Google does not repeat them. Only a stop
+    // identified as a place carries its own pair, because a name alone
+    // is not a location.
+    //
+    // So the pairs line up with the stops the path could not place,
+    // one for one, and the count is the check that they do. Anything
+    // else is a route the two halves disagree about: fall back to the
+    // path, which is the half that needs no guessing, and let the
+    // caller see `stops` exceed the points it got.
+    if (gaps > 0 && filler.length == gaps) {
+      var next = 0;
+
+      return (
+        points: [for (final point in fromPath) point ?? filler[next++]],
+        stops: found.stops.length,
+      );
+    }
+
+    return (
+      points: fromPath.whereType<RoadPoint>().toList(),
+      stops: found.stops.length,
+    );
+  }
+
+  /// The stop segments of a shape 2 path, as TEXT, and its data blob.
+  ///
+  /// Text rather than points because the COUNT of the stops is what
+  /// decides whether the blob can be trusted, and reading them as
+  /// coordinates first throws away the names — which are exactly the
+  /// ones the count is there to notice.
+  static ({List<String> stops, String data}) _scan(Uri uri) {
+    final stops = <String>[];
+    var data = '';
+
+    for (final segment in uri.pathSegments) {
+      // Already decoded. pathSegments decodes for us, and decoding a
+      // second time turns a '%' in a place name into a FormatException
+      // thrown out of a parser nobody is catching.
+      if (segment.isEmpty) continue;
+
+      // The route's address, not stops on it.
+      if (segment == 'maps' || segment == 'dir' || segment == 'preview') {
+        continue;
+      }
 
       // THE CAMERA, NOT A STOP. See the note at the top of the file.
       if (segment.startsWith('@')) continue;
 
-      // Everything from `data=` on is Google's own encoding of the
-      // route and is full of numbers that are not coordinates.
-      if (segment.startsWith('data=')) break;
+      if (segment.startsWith('data=')) {
+        data = segment.substring('data='.length);
 
-      final point = _point(segment);
+        // Everything past it belongs to the blob.
+        break;
+      }
 
-      if (point != null) out.add(point);
+      stops.add(segment);
+    }
+
+    return (stops: stops, data: data);
+  }
+
+  /// The coordinates inside Google's `data=` blob, in route order.
+  ///
+  /// ── WHAT IS IN THERE ────────────────────────────────────────────
+  ///
+  /// The blob is Google's own encoding of the route, written as a flat
+  /// run of `!<n><type><value>` fields. A stop identified as a PLACE
+  /// contributes
+  ///
+  ///     !1m5!1m1!1s<feature id>!2m2!1d<longitude>!2d<latitude>
+  ///
+  /// and a stop that was a dropped pin contributes `!1m0` and nothing
+  /// else, because its coordinates are already in the path. So what
+  /// comes back here is the named stops only — see the merge at the
+  /// call site, which is where they are put back in place.
+  ///
+  /// NOTE THE ORDER. `1d` is longitude and `2d` is latitude, the
+  /// opposite way round from every other coordinate in this file.
+  /// Reading them in the order they are written puts a route through
+  /// the North York Moors into the Gulf of Guinea.
+  ///
+  /// Anything that is not a believable pair is dropped, which shortens
+  /// the list, which fails the count check at the call site and falls
+  /// back to the path. Silence here is not silent there.
+  static List<RoadPoint> _fromData(String data) {
+    if (data.isEmpty) return const [];
+
+    final out = <RoadPoint>[];
+
+    final matches = RegExp(
+      r'!2m2!1d(-?\d{1,3}(?:\.\d+)?)!2d(-?\d{1,3}(?:\.\d+)?)',
+    ).allMatches(data);
+
+    for (final match in matches) {
+      final lng = double.tryParse(match.group(1)!);
+      final lat = double.tryParse(match.group(2)!);
+
+      if (lat == null || lng == null) continue;
+
+      final point = RoadPoint(lat, lng);
+
+      if (point.isReal && lat.abs() <= 90 && lng.abs() <= 180) {
+        out.add(point);
+      }
     }
 
     return out;
