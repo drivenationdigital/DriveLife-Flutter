@@ -354,10 +354,55 @@ class UserProvider extends ChangeNotifier {
 
   /// 🔹 Clear user on logout
   Future<void> logout() async {
+    // ── TELL THE SERVER TO STOP SENDING HERE ────────────────────
+    //
+    // Before the account goes, because afterwards there is no user id
+    // left to name. This is the other half of the registration above:
+    // a device token belongs to the app INSTALL rather than to an
+    // account, and registering only ever turns a row ON — so without
+    // this the phone keeps a live row for every account ever signed
+    // in on it, and a broadcast sends it one push per account.
+    //
+    // That is what five identical notifications on one lock screen
+    // was, and why pushes kept arriving for accounts signed out of
+    // weeks ago.
+    //
+    // Only THIS account's row. Another account still signed in on the
+    // same phone keeps its notifications, which is the point of
+    // allowing two at once.
+    await _releaseDevice();
+
     await _auth.logout();
     _user = null;
     Analytics.clearUser();
     notifyListeners();
+  }
+
+  /// Stops this device receiving notifications for the account being
+  /// signed out of.
+  ///
+  /// Awaited, but it cannot fail in a way that matters: the call
+  /// swallows its own errors, and this swallows the rest. Somebody
+  /// leaving an account must leave it whatever the network is doing,
+  /// and a row this could not reach is caught later by
+  /// dl-devices-tidy.php.
+  Future<void> _releaseDevice() async {
+    try {
+      final userId = _user?.id;
+
+      if (userId == null) return;
+
+      final deviceToken = await FirebaseMessagingService.getToken();
+
+      if (deviceToken == null || deviceToken.isEmpty) return;
+
+      await ProfileAPI.releaseDeviceFromUser(
+        userId: userId,
+        deviceToken: deviceToken,
+      );
+    } catch (e) {
+      debugPrint('[Logout] could not release the device: $e');
+    }
   }
 
   void clearUser() {

@@ -419,6 +419,10 @@ class AuthService {
   }
 
   /// Logout (clear everything)
+  ///
+  /// The device is released from this account first, by
+  /// UserProvider.logout() -- see there for why. This only clears what
+  /// is stored.
   Future<void> logout() async {
     if (_accountManager != null) {
       final activeIndex = _accountManager!.accounts.indexOf(
