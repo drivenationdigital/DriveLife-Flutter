@@ -101,6 +101,31 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final title = data['title'] ?? 'Notification';
   final body = data['body'] ?? '';
 
+  // ── A MESSAGE WITH NOTHING TO SAY IS NOT A NOTIFICATION ───────────
+  //
+  // The two lines above default a missing title to the literal word
+  // "Notification" and a missing body to nothing — so a data message
+  // carrying neither draws a notification that says "Notification" and
+  // is otherwise blank. That is the empty one appearing on Android,
+  // and it is the fallbacks working exactly as written on something
+  // that was never meant to be drawn.
+  //
+  // A push with no words is a data message: a sync, a badge, something
+  // the app is meant to ACT on rather than show. Drawn, it is noise
+  // nobody can do anything with and cannot be traced back to a sender.
+  //
+  // Logged with its keys rather than silently dropped, because the
+  // real question is what is sending them.
+  if ((data['title'] ?? '').toString().trim().isEmpty &&
+      (data['body'] ?? '').toString().trim().isEmpty) {
+    debugPrint(
+      '[Push] a message with no title and no body — not drawing it. '
+      'keys: ${data.keys.toList()}',
+    );
+
+    return;
+  }
+
   // Init local notifications
   final localNotifications = FlutterLocalNotificationsPlugin();
   const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -638,6 +663,19 @@ class FirebaseMessagingService {
       'notify_kind': data['notify_kind']?.toString() ?? 'unknown',
       'app_state': 'foreground',
     });
+    // The same guard as the background handler, for the same reason: a
+    // data message with no words is a sync or a badge, not something
+    // to draw. Here it would appear as "Someone" with a blank body.
+    if ((data['title'] ?? '').toString().trim().isEmpty &&
+        (data['body'] ?? '').toString().trim().isEmpty) {
+      debugPrint(
+        '[Push] foreground message with no title and no body — not '
+        'drawing it. keys: ${data.keys.toList()}',
+      );
+
+      return;
+    }
+
     final isGroup = data['is_group'] == 'true';
     final senderId = data['sender_id'] ?? '';
     final convId = data['conversation_id'] ?? '';
