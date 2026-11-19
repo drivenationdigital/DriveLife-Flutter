@@ -290,6 +290,41 @@ class FeatureFlags {
   static const bool encryptChatMessages = true;
 
 
+  /// Driving roads — the roads list, the map and the submission flow.
+  ///
+  /// ── ON, SO A PLAIN BUILD CARRIES IT ──────────────────────────────
+  ///
+  /// It shipped off and had to be asked for with
+  /// `--dart-define=DL_ROADS=true`, which is exactly the kind of thing
+  /// that gets forgotten on the one build that matters. A TestFlight
+  /// upload with roads quietly missing looks identical to a TestFlight
+  /// upload with roads broken.
+  ///
+  /// Still a switch, and still off-able for a single build:
+  ///   flutter build ipa --dart-define=DL_ROADS=false
+  ///
+  /// ── THIS IS NOT WHAT KEEPS ROADS OFF A SERVER ────────────────────
+  ///
+  /// It only decides whether the UI is reachable. The API is gated
+  /// separately and independently:
+  ///
+  ///   * endpoints/roads.php registers no route at all unless
+  ///     DL_ROADS_ENABLED is defined in endpoints/app-secrets.php
+  ///   * every handler answers 503 until wp_dl_roads exists
+  ///     (php-api/sql/roads.sql)
+  ///   * app-endpoints.php only includes the file if it is there
+  ///
+  /// So a build carrying this still shows nothing on a server that has
+  /// not been set up: RoadsAPI reads the 404 or the 503 and the list
+  /// says "Not switched on yet" rather than failing. Which is the
+  /// right behaviour, and is also worth knowing before shipping this
+  /// to a store — somebody on a server without roads would find the
+  /// menu item and then that message.
+  static const bool drivingRoads = bool.fromEnvironment(
+    'DL_ROADS',
+    defaultValue: true,
+  );
+
   /// Community gallery on events: the tab on the event detail screen and the
   /// "Share photos" buttons on the events list.
   ///

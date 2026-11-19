@@ -104,9 +104,21 @@ class BottomNavProvider extends ChangeNotifier {
   static const int forYou = 0;
   static const int events = 1;
   static const int places = 2;
+
   static const int tracks = 3;
-  static const int businesses = 4;
-  static const int shop = 5;
+
+  // Routes after Tracks. Both are places to drive rather than places
+  // to be, and Tracks is the older of the two -- a new section
+  // shouldering past an established one in the row is a change
+  // everybody notices and nobody asked for.
+  //
+  // Moved here from index 3, which shifted tracks back down. Nothing
+  // addresses a section by its number, which is the whole reason
+  // these are named -- and nav_destinations_test pins them so a move
+  // cannot happen quietly.
+  static const int routes = 4;
+  static const int businesses = 5;
+  static const int shop = 6;
 
   // No `messages` any more. The inbox left the home tab row for a screen
   // of its own shared with notifications -- see MessagesScreen -- and a

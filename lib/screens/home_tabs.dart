@@ -44,6 +44,8 @@ import 'package:drivelife/screens/garage/garage_list_screen.dart';
 import 'package:drivelife/screens/places/places_screen.dart';
 import 'package:drivelife/screens/profile/my_club_profile_view.dart';
 import 'package:drivelife/config/feature_flags.dart';
+import 'package:drivelife/screens/roads/add_road_screen.dart';
+import 'package:drivelife/screens/roads/roads_list_screen.dart';
 import 'package:drivelife/screens/media/new_gallery_screen.dart';
 import 'package:drivelife/screens/media/media_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
@@ -89,6 +91,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     // They shared the Places pin until now, which told the user nothing
     // about either.
     DlTopTab(label: 'Tracks & Raceways', glyph: CupertinoIcons.flag),
+    // Routes after Tracks: both are places to DRIVE rather than places
+    // to be, and Tracks is the older of the two — a new section
+    // shouldering past an established one in the row is a change
+    // everybody notices and nobody asked for.
+    DlTopTab(label: 'Routes', glyph: CupertinoIcons.arrow_turn_up_right),
     DlTopTab(label: 'Businesses', glyph: CupertinoIcons.building_2_fill),
     // Groups is not here: it is a bottom-bar destination again. Listing it
     // in both would mean two routes to the same screen, each with its own
@@ -144,6 +151,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           BottomNavProvider.events,
           BottomNavProvider.places,
           BottomNavProvider.tracks,
+          // Routes draws the header in its own floating sliver, exactly
+          // as Places and Tracks do. Leaving it out of this set is what
+          // put TWO headers on the tab: the shell drew one above the
+          // section and the section drew one inside itself.
+          BottomNavProvider.routes,
         }.contains(_homeTab);
   }
 
@@ -639,6 +651,19 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         headerHeight: _chromeHeight,
       ),
 
+      // The same screen the create menu pushes, handed the shell's
+      // chrome instead of drawing an app bar of its own. See
+      // RoadsListScreen: the difference between a section and a screen
+      // is entirely the header.
+      //
+      // Its POSITION has to match BottomNavProvider.routes. These two
+      // lists are matched by index and nothing else.
+      RoadsListScreen(
+        chrome: _chrome,
+        header: _buildChrome(theme),
+        headerHeight: _chromeHeight,
+      ),
+
       // There is no `businesses` post type in WordPress yet, so this says
       // so rather than running a search that can only ever come back empty.
       // "No businesses found" reads as "none near you"; this reads as what
@@ -895,6 +920,20 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
               svg: 'assets/app-icons/07-groups.svg',
               onTap: _createClub,
             ),
+          // Add, not browse. The list has a tab of its own now, so
+          // a menu item that opened it would be a second route to the
+          // same screen with its own scroll position — and this menu
+          // is for making things, which drawing a road is.
+          if (FeatureFlags.drivingRoads)
+            _CreateAction(
+              label: '+ Add Route',
+              subtitle: 'Roads worth driving',
+              icon: Icons.add_road_outlined,
+              onTap: () => NavigationHelper.navigateTo(
+                context,
+                const AddRoadScreen(),
+              ),
+            ),
           _CreateAction(
             label: 'Event Manager',
             subtitle: 'For organisers',
@@ -905,6 +944,17 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
             // label names, and not what somebody picking "Event
             // Manager" is asking for.
             onTap: _openEventsManager,
+          ),
+          // Last, and the only dark one. See _CreateAction.dark: it
+          // reads a ticket rather than making anything, and it used to
+          // be a full-width bar under the grid saying so with a whole
+          // row of its own.
+          _CreateAction(
+            label: 'Scan QR Code',
+            subtitle: 'Tickets and entry',
+            svg: 'assets/app-icons/header-qr.svg',
+            dark: true,
+            onTap: () => SharedHeaderIcons.scanQrCode(context),
           ),
           // Add Venue has gone from this menu. CreateVenueScreen is
           // untouched and still reachable from Places; it just has no
@@ -991,42 +1041,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
                       ],
                     );
                   },
-                ),
-
-                const SizedBox(height: 18),
-
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF0B0B0B),
-                      minimumSize: const Size.fromHeight(58),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    onPressed: () {
-                      Navigator.pop(sheetContext);
-                      SharedHeaderIcons.scanQrCode(context);
-                    },
-                    icon: SvgPicture.asset(
-                      'assets/app-icons/header-qr.svg',
-                      width: 22,
-                      height: 22,
-                      colorFilter: const ColorFilter.mode(
-                        Colors.white,
-                        BlendMode.srcIn,
-                      ),
-                    ),
-                    label: const Text(
-                      'Scan QR Code',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -1415,6 +1429,20 @@ class _CreateAction {
   /// A plain line instead, for the actions that earn nothing.
   final String? subtitle;
 
+  /// Draws this card dark, with its icon and text inverted.
+  ///
+  /// ── WHY ONE CARD BREAKS THE SET ─────────────────────────────────
+  ///
+  /// Scanning a code is not making something. Every other card in this
+  /// sheet creates a post, a vehicle, a route; this one READS a
+  /// ticket. Dropped into the grid in the same grey as the rest it
+  /// would quietly file itself as one more thing to add.
+  ///
+  /// It was a full-width black bar under the grid, which said that
+  /// with a whole row of its own. As a card it says the same thing
+  /// with a colour and gives the row back.
+  final bool dark;
+
   const _CreateAction({
     required this.label,
     required this.onTap,
@@ -1422,6 +1450,7 @@ class _CreateAction {
     this.svg,
     this.points,
     this.subtitle,
+    this.dark = false,
   });
 }
 
@@ -1438,8 +1467,14 @@ class _CreateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // One card is deliberately not like the others. See
+    // _CreateAction.dark.
+    final ink = action.dark ? Colors.white : theme.textColor;
+
     return Material(
-      color: theme.isDarkMode ? Colors.white10 : const Color(0xFFF4F4F4),
+      color: action.dark
+          ? const Color(0xFF0B0B0B)
+          : (theme.isDarkMode ? Colors.white10 : const Color(0xFFF4F4F4)),
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
@@ -1454,7 +1489,9 @@ class _CreateCard extends StatelessWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: theme.isDarkMode ? Colors.white12 : Colors.white,
+                  color: action.dark
+                      ? Colors.white.withValues(alpha: 0.12)
+                      : (theme.isDarkMode ? Colors.white12 : Colors.white),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Center(
@@ -1464,11 +1501,17 @@ class _CreateCard extends StatelessWidget {
                           width: 22,
                           height: 22,
                           colorFilter: ColorFilter.mode(
-                            theme.primaryColor,
+                            action.dark ? Colors.white : theme.primaryColor,
                             BlendMode.srcIn,
                           ),
                         )
-                      : Icon(action.icon, size: 24, color: theme.primaryColor),
+                      : Icon(
+                          action.icon,
+                          size: 24,
+                          color: action.dark
+                              ? Colors.white
+                              : theme.primaryColor,
+                        ),
                 ),
               ),
               const SizedBox(height: 14),
@@ -1479,7 +1522,7 @@ class _CreateCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: theme.textColor,
+                  color: ink,
                 ),
               ),
 
@@ -1504,7 +1547,12 @@ class _CreateCard extends StatelessWidget {
                   action.subtitle!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 14, color: theme.subtextColor),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: action.dark
+                        ? Colors.white.withValues(alpha: 0.65)
+                        : theme.subtextColor,
+                  ),
                 ),
               ],
             ],

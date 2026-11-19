@@ -22,6 +22,10 @@ import 'package:drivelife/api/events_api.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:drivelife/widgets/nav/dl_haptics.dart';
+import 'package:drivelife/api/roads_api.dart';
+import 'package:drivelife/config/feature_flags.dart';
+import 'package:drivelife/models/driving_road.dart';
+import 'package:drivelife/widgets/garage/vehicle_roads_section.dart';
 import 'package:drivelife/widgets/garage/vehicle_share_card.dart';
 import 'package:provider/provider.dart';
 import '../../api/garage_api.dart';
@@ -118,10 +122,31 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   late TabController _tabController;
   int _overdueOrDueCount = 0;
 
+  /// The roads this vehicle has been down.
+  ///
+  /// Loaded once here and handed to both the preview above the tabs
+  /// and the tab itself, so the two cannot disagree — which they would
+  /// the first time one of them refreshed and the other did not.
+  List<DrivingRoad> _roads = const [];
+
+  /// ── THE TAB COUNT, IN ONE PLACE ─────────────────────────────────
+  ///
+  /// The TabController's length, the Tab list and the TabBarView's
+  /// children all have to agree, and a mismatch is an exception rather
+  /// than a layout problem. This is the one number they all read.
+  ///
+  /// Safe to vary because the flag is a compile-time constant: a build
+  /// has roads or it does not, and nothing can flip it between
+  /// initState and build.
+  static int get _tabCount => FeatureFlags.drivingRoads ? 4 : 3;
+
+  /// Which tab Roads is, or -1 where there is none.
+  static int get _roadsTab => FeatureFlags.drivingRoads ? 3 : -1;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: _tabCount, vsync: this);
     attachTabHaptics(_tabController);
 
     // Try to load from cache first
@@ -137,6 +162,26 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 
     _loadVehicle();
     _loadReminderBadge();
+    _loadRoads();
+  }
+
+  /// Not awaited with the vehicle, and not part of it.
+  ///
+  /// A failure here is an empty list, which is what most vehicles have
+  /// anyway — so nothing on this page waits for it and nothing breaks
+  /// without it. See the note on the endpoint in roads.php for why
+  /// this is a roads call rather than something the garage payload
+  /// carries.
+  Future<void> _loadRoads() async {
+    if (!FeatureFlags.drivingRoads) return;
+
+    final roads = await RoadsAPI.forVehicle(
+      int.tryParse(widget.garageId) ?? 0,
+    );
+
+    if (!mounted) return;
+
+    setState(() => _roads = roads);
   }
 
   @override
@@ -1252,6 +1297,23 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                       ],
                     ),
                   ),
+                  // The two most recent, as a hook rather than a
+                  // list. A car with thirty roads against it would
+                  // push everything else off the page, and the
+                  // question up here is "does this car get driven",
+                  // not "where" — the tab answers that.
+                  //
+                  // Draws nothing when there are none, so a vehicle
+                  // that has never had a road recorded looks exactly
+                  // as it did.
+                  VehicleRoadsPreview(
+                    roads: _roads,
+                    accent: theme.primaryColor,
+                    onSeeAll: _roadsTab < 0
+                        ? null
+                        : () => _tabController.animateTo(_roadsTab),
+                  ),
+
                   const SizedBox(height: 18),
                   // Tabs
                   Container(
@@ -1279,10 +1341,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                       // what the design draws.
                       indicatorSize: TabBarIndicatorSize.tab,
                       indicatorWeight: 3,
-                      tabs: const [
-                        Tab(text: 'Posts'),
-                        Tab(text: 'Upgrades'),
-                        Tab(text: 'Tags'),
+                      // In step with _tabCount and the TabBarView
+                      // below. All three read the same flag.
+                      tabs: [
+                        const Tab(text: 'Posts'),
+                        const Tab(text: 'Upgrades'),
+                        const Tab(text: 'Tags'),
+                        if (FeatureFlags.drivingRoads)
+                          const Tab(text: 'Roads'),
                       ],
                     ),
                   ),
@@ -1322,6 +1388,19 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
               taggingOff: _vehicle?['allow_tagging']?.toString() == '0',
               isOwner: isVehiclePublisher(),
             ),
+            // Fourth, in step with _tabCount and the Tab list above.
+            // Presentational: the list is already loaded, so this tab
+            // costs nothing to open and cannot show something
+            // different from the preview.
+            if (FeatureFlags.drivingRoads)
+              VehicleRoadsList(
+                // Keyed like the others. Four tab bodies sharing one
+                // anonymous PageStorage bucket is what made swiping
+                // between them restore the wrong scroll offset.
+                key: const PageStorageKey<String>('garage-roads'),
+                roads: _roads,
+                accent: theme.primaryColor,
+              ),
           ],
         ),
       ),

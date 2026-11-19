@@ -53,15 +53,20 @@ void main() {
       // Tracks before Businesses: one has somewhere to go, the other is a
       // "coming soon" page.
       expect(BottomNavProvider.tracks, 3);
-      expect(BottomNavProvider.businesses, 4);
+      // Routes AFTER Tracks: both are places to drive rather than
+      // places to be, and Tracks is the older of the two. It was at 3
+      // and moved, which this test caught — the reason it pins every
+      // number rather than the count alone.
+      expect(BottomNavProvider.routes, 4);
+      expect(BottomNavProvider.businesses, 5);
       // Last. Messages used to sit after this one and no longer does —
       // the inbox moved out of the row into MessagesScreen, which it
       // shares with notifications behind the header's message icon.
-      expect(BottomNavProvider.shop, 5);
+      expect(BottomNavProvider.shop, 6);
     });
 
     test('the count matches the names', () {
-      expect(BottomNavProvider.sectionCount, 6);
+      expect(BottomNavProvider.sectionCount, 7);
     });
 
     test('a section index is not a destination index', () {

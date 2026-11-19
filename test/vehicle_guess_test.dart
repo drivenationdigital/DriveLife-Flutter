@@ -203,6 +203,50 @@ void main() {
     });
   });
 
+  group('answers that arrive after the scan', () {
+    // The figures and the plate come from their own calls now: the
+    // figures need no photograph at all, and the plate needs a BIGGER
+    // one than the scan sends. Both land on the guess afterwards so
+    // that "Not right?" still clears them — they came from the same
+    // photographs as everything else.
+    const scanned = VehicleGuess(make: 'Ford', model: 'Mustang');
+
+    test('the figures land on it', () {
+      final withStats = scanned.copyWithStats(
+        powerBhp: '453',
+        zeroTo62: '4.1',
+        topSpeedMph: '166',
+      );
+
+      expect(withStats.powerBhp, '453');
+      expect(withStats.make, 'Ford');
+      expect(withStats.model, 'Mustang');
+    });
+
+    test('the plate lands on it', () {
+      final withPlate = scanned.copyWithStats(registration: 'EF26RTO');
+
+      expect(withPlate.registration, 'EF26RTO');
+      expect(withPlate.make, 'Ford');
+    });
+
+    test('one does not wipe the other', () {
+      // They arrive from two calls that finish in either order.
+      final both = scanned
+          .copyWithStats(registration: 'EF26RTO')
+          .copyWithStats(powerBhp: '453');
+
+      expect(both.registration, 'EF26RTO');
+      expect(both.powerBhp, '453');
+    });
+
+    test('and nothing passed leaves everything alone', () {
+      final before = scanned.copyWithStats(registration: 'EF26RTO');
+
+      expect(before.copyWithStats().registration, 'EF26RTO');
+    });
+  });
+
   group('the year, for a field expecting four digits', () {
     test('a plain year passes through', () {
       expect(const VehicleGuess(year: '2022').yearForField, '2022');
