@@ -105,13 +105,18 @@ class BottomNavProvider extends ChangeNotifier {
   static const int events = 1;
   static const int places = 2;
 
-  // Roads sits beside Places because it is the same kind of question
-  // -- somewhere to go -- and because inserting it here rather than
-  // appending keeps the row in a sensible reading order. Everything
-  // after it moves up one, which is exactly why these are named
-  // constants and nothing addresses a section by its number.
-  static const int roads = 3;
-  static const int tracks = 4;
+  static const int tracks = 3;
+
+  // Routes after Tracks. Both are places to drive rather than places
+  // to be, and Tracks is the older of the two -- a new section
+  // shouldering past an established one in the row is a change
+  // everybody notices and nobody asked for.
+  //
+  // Moved here from index 3, which shifted tracks back down. Nothing
+  // addresses a section by its number, which is the whole reason
+  // these are named -- and nav_destinations_test pins them so a move
+  // cannot happen quietly.
+  static const int routes = 4;
   static const int businesses = 5;
   static const int shop = 6;
 

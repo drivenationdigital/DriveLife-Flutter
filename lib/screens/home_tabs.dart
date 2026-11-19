@@ -84,10 +84,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     DlTopTab(label: 'For You', icon: 'assets/app-icons/01-Home.svg'),
     DlTopTab(label: 'Events', icon: 'assets/app-icons/02-Events.svg'),
     DlTopTab(label: 'Places', icon: 'assets/app-icons/03-Venues.svg'),
-    // Beside Places, for the same reason the constant is: it answers
-    // the same question. A Cupertino glyph because assets/app-icons
-    // has no road.
-    DlTopTab(label: 'Roads', glyph: CupertinoIcons.arrow_turn_up_right),
     // Tracks before Businesses: one has somewhere to go, the other is still
     // a "coming soon" page.
     //
@@ -95,6 +91,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     // They shared the Places pin until now, which told the user nothing
     // about either.
     DlTopTab(label: 'Tracks & Raceways', glyph: CupertinoIcons.flag),
+    // Routes after Tracks: both are places to DRIVE rather than places
+    // to be, and Tracks is the older of the two — a new section
+    // shouldering past an established one in the row is a change
+    // everybody notices and nobody asked for.
+    DlTopTab(label: 'Routes', glyph: CupertinoIcons.arrow_turn_up_right),
     DlTopTab(label: 'Businesses', glyph: CupertinoIcons.building_2_fill),
     // Groups is not here: it is a bottom-bar destination again. Listing it
     // in both would mean two routes to the same screen, each with its own
@@ -149,12 +150,12 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           BottomNavProvider.forYou,
           BottomNavProvider.events,
           BottomNavProvider.places,
-          // Roads draws the header in its own floating sliver, exactly
-          // as Places and Tracks do. Leaving it out of this set is what
-          // put TWO headers on the Roads tab: the shell drew one above
-          // the section and the section drew one inside itself.
-          BottomNavProvider.roads,
           BottomNavProvider.tracks,
+          // Routes draws the header in its own floating sliver, exactly
+          // as Places and Tracks do. Leaving it out of this set is what
+          // put TWO headers on the tab: the shell drew one above the
+          // section and the section drew one inside itself.
+          BottomNavProvider.routes,
         }.contains(_homeTab);
   }
 
@@ -641,20 +642,23 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         headerHeight: _chromeHeight,
       ),
 
-      // The same screen the create menu pushes, handed the shell's
-      // chrome instead of drawing an app bar of its own. See
-      // RoadsListScreen: the difference between a section and a screen
-      // is entirely the header.
-      RoadsListScreen(
+      // Tracks have their own screen and their own endpoints. They were
+      // briefly the venues screen with a post type argument, which listed
+      // the user's venues under "My tracks" and could not open any of them.
+      TracksScreen(
         chrome: _chrome,
         header: _buildChrome(theme),
         headerHeight: _chromeHeight,
       ),
 
-      // Tracks have their own screen and their own endpoints. They were
-      // briefly the venues screen with a post type argument, which listed
-      // the user's venues under "My tracks" and could not open any of them.
-      TracksScreen(
+      // The same screen the create menu pushes, handed the shell's
+      // chrome instead of drawing an app bar of its own. See
+      // RoadsListScreen: the difference between a section and a screen
+      // is entirely the header.
+      //
+      // Its POSITION has to match BottomNavProvider.routes. These two
+      // lists are matched by index and nothing else.
+      RoadsListScreen(
         chrome: _chrome,
         header: _buildChrome(theme),
         headerHeight: _chromeHeight,
@@ -922,7 +926,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           // is for making things, which drawing a road is.
           if (FeatureFlags.drivingRoads)
             _CreateAction(
-              label: 'Add Route',
+              label: '+ Add Route',
               subtitle: 'Roads worth driving',
               icon: Icons.add_road_outlined,
               onTap: () => NavigationHelper.navigateTo(

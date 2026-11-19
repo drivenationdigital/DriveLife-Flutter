@@ -593,6 +593,56 @@ class GarageAPI {
     }
   }
 
+  /// Reads the number plate out of the photographs, and nothing else.
+  ///
+  /// ── A SECOND CALL, FOR A REASON OF SIZE ─────────────────────────
+  ///
+  /// The scan sends 1024px images because that is plenty for a badge
+  /// and a body shape. A number plate on a three-quarter shot is about
+  /// six per cent of the frame — sixty pixels across for seven
+  /// characters — and at that size it is not a reading problem, it is
+  /// a resolution problem. No prompt fixes it.
+  ///
+  /// So the plate gets its own pass at its own size, run after the
+  /// form is already on screen. Send BIGGER images than the scan did.
+  ///
+  /// An empty string is the ordinary answer for half the photographs
+  /// people take: angled, dirty, cropped, or a car with no plate on
+  /// it. Never throws.
+  static Future<String> readPlate(List<Uint8List> photos) async {
+    final usable = photos.where((b) => b.isNotEmpty).toList();
+
+    if (usable.isEmpty) return '';
+
+    try {
+      final response = await http.post(
+        Uri.parse('$_apiUrl/wp-json/app/v2/garage/plate'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'photos': usable.map(base64Encode).toList()}),
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint('[Garage] plate HTTP ${response.statusCode}');
+        return '';
+      }
+
+      final body = jsonDecode(response.body);
+
+      if (body is! Map) return '';
+
+      final plate = '${body['registration'] ?? ''}'.trim();
+
+      if (plate.isEmpty) {
+        debugPrint('[Garage] no plate read: ${body['why']}');
+      }
+
+      return plate;
+    } catch (e) {
+      debugPrint('[Garage] plate threw: $e');
+      return '';
+    }
+  }
+
   static Future<VehicleGuess> identifyVehicle(List<Uint8List> photos) async {
     final usable = photos.where((b) => b.isNotEmpty).toList();
 

@@ -100,6 +100,7 @@ class VehicleGuess {
     String? powerBhp,
     String? zeroTo62,
     String? topSpeedMph,
+    String? registration,
   }) => VehicleGuess(
     make: make,
     model: model,
@@ -108,7 +109,7 @@ class VehicleGuess {
     colour: colour,
     body: body,
     confidence: confidence,
-    registration: registration,
+    registration: registration ?? this.registration,
     imagesUsed: imagesUsed,
     powerBhp: powerBhp ?? this.powerBhp,
     zeroTo62: zeroTo62 ?? this.zeroTo62,

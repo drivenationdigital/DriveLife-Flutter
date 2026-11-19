@@ -153,6 +153,23 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   /// a form that is otherwise complete and already usable.
   bool _statsLoading = false;
 
+  /// True while the number plate is being read.
+  ///
+  /// ── WHY THE PLATE IS ITS OWN PASS ───────────────────────────────
+  ///
+  /// Not for the same reason as the figures. Those need no photograph
+  /// at all; this needs a BIGGER one.
+  ///
+  /// The scan sends 1024px images, which is plenty for a badge and a
+  /// body shape. A plate on a three-quarter shot is about six per cent
+  /// of the frame — sixty pixels across for seven characters — and at
+  /// that size it is a resolution problem rather than a reading one.
+  /// Which is why a plate that is perfectly clear in the photograph
+  /// came back empty.
+  ///
+  /// So it goes again, bigger, after the form is already usable.
+  bool _plateLoading = false;
+
   /// How many photographs the scan reads.
   ///
   /// ── TWO, AND IT USED TO BE FOUR ─────────────────────────────────
@@ -173,6 +190,13 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   /// the phone in the first place, which is where the wait actually
   /// is.
   static const int _scanPhotoLimit = 2;
+
+  /// How many photographs the plate pass reads.
+  ///
+  /// The plate is on one end of the car, so a second angle is often
+  /// the difference between reading it and not. A third is usually the
+  /// interior.
+  static const int _platePhotoLimit = 2;
 
   /// The largest photograph worth sending uncompressed.
   ///
@@ -1320,8 +1344,61 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     });
 
     // Deliberately after the form is on screen, and deliberately not
-    // awaited by anything the screen draws. See [_statsLoading].
+    // awaited by anything the screen draws. Both run at once: neither
+    // needs the other's answer, and run in sequence the second would
+    // land a long way after the first.
     unawaited(_loadStats(guess));
+    unawaited(_loadPlate());
+  }
+
+  /// Reads the plate from bigger copies of the same photographs.
+  ///
+  /// Re-compressed rather than kept: holding full-size bytes for two
+  /// photographs through a whole scan is megabytes of memory on a
+  /// phone, for something only needed if the field is still empty.
+  Future<void> _loadPlate() async {
+    if (_regCtrl.text.trim().isNotEmpty) return;
+    if (_galleryPicks.isEmpty) return;
+
+    setState(() => _plateLoading = true);
+
+    final photos = <Uint8List>[];
+
+    for (final file in _galleryPicks.take(_platePhotoLimit)) {
+      Uint8List? bytes;
+
+      try {
+        bytes = await FlutterImageCompress.compressWithFile(
+          file.path,
+          // Bigger than the scan's 1024, which is the entire point.
+          minWidth: 1800,
+          minHeight: 1800,
+          quality: 90,
+        );
+      } catch (e) {
+        debugPrint('[AddVehicle] plate compress failed for ${file.path}: $e');
+      }
+
+      if (bytes != null && bytes.isNotEmpty) photos.add(bytes);
+    }
+
+    final plate = photos.isEmpty ? '' : await GarageAPI.readPlate(photos);
+
+    if (!mounted) return;
+
+    setState(() {
+      _plateLoading = false;
+
+      // Still only into an empty field. A minute has passed and
+      // somebody may well have typed their own by now — theirs wins.
+      if (plate.isNotEmpty && _regCtrl.text.trim().isEmpty) {
+        _regCtrl.text = plate;
+
+        // Remembered on the guess so "Not right?" clears it too. It
+        // came from the same photographs as everything else.
+        _guess = _guess.copyWithStats(registration: plate);
+      }
+    });
   }
 
   /// Fetches the three performance figures for whatever was identified.
@@ -2478,7 +2555,28 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                         TextFormField(
                           controller: _regCtrl,
                           textCapitalization: TextCapitalization.characters,
-                          decoration: _regLookupInUi && _canLookUpReg
+                          decoration: _plateLoading
+                              ? _dec(
+                                  'Registration',
+                                  hint: 'Reading the plate…',
+                                ).copyWith(
+                                  suffixIcon: const Padding(
+                                    padding: EdgeInsets.all(14),
+                                    child: SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Color(0xFFAE9159),
+                                      ),
+                                    ),
+                                  ),
+                                  suffixIconConstraints: const BoxConstraints(
+                                    minWidth: 44,
+                                    minHeight: 44,
+                                  ),
+                                )
+                              : _regLookupInUi && _canLookUpReg
                               ? _dec(
                                   'Registration',
                                   hint: 'Your vehicle reg',

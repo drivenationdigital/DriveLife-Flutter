@@ -50,14 +50,14 @@ void main() {
       expect(BottomNavProvider.forYou, 0);
       expect(BottomNavProvider.events, 1);
       expect(BottomNavProvider.places, 2);
-      // Roads beside Places, because it answers the same question:
-      // somewhere to go. INSERTED rather than appended, so everything
-      // after it moved up one — which this test caught the moment it
-      // happened, which is the entire reason it pins the numbers.
-      expect(BottomNavProvider.roads, 3);
       // Tracks before Businesses: one has somewhere to go, the other is a
       // "coming soon" page.
-      expect(BottomNavProvider.tracks, 4);
+      expect(BottomNavProvider.tracks, 3);
+      // Routes AFTER Tracks: both are places to drive rather than
+      // places to be, and Tracks is the older of the two. It was at 3
+      // and moved, which this test caught — the reason it pins every
+      // number rather than the count alone.
+      expect(BottomNavProvider.routes, 4);
       expect(BottomNavProvider.businesses, 5);
       // Last. Messages used to sit after this one and no longer does —
       // the inbox moved out of the row into MessagesScreen, which it
