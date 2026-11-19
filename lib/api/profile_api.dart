@@ -1,6 +1,7 @@
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:drivelife/models/user_model.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -50,6 +51,47 @@ class ProfileAPI {
         'message': 'Network error: ${error.toString()}',
         'code': 'network_error',
       };
+    }
+  }
+
+  /// Stops this device receiving notifications for one account.
+  ///
+  /// ── WHY SIGNING OUT HAS TO SAY SO ───────────────────────────────
+  ///
+  /// A device token belongs to the app INSTALL, not to the account.
+  /// Registering only ever turns a row ON, so without this call a
+  /// phone keeps a live row for every account ever signed in on it —
+  /// and a broadcast then sends that phone one push per account.
+  ///
+  /// Which is what five identical notifications on one lock screen
+  /// was, and why pushes kept arriving for accounts signed out of
+  /// weeks ago.
+  ///
+  /// Only this account's row is touched. Another account still signed
+  /// in on the same phone keeps its notifications, which is the whole
+  /// point of letting two be signed in at once.
+  ///
+  /// Never throws and never blocks the sign-out. Somebody leaving an
+  /// account must leave it whatever the network is doing; the tidy
+  /// cron catches a row this could not reach.
+  static Future<void> releaseDeviceFromUser({
+    required int userId,
+    required String deviceToken,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse(
+          '$_baseUrl/wp-json/expoapi/v1/set-associated-user-as-inactive',
+        ),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'user_id': userId, 'device_id': deviceToken}),
+      );
+
+      debugPrint(
+        '[Device] released from user $userId: ${response.statusCode}',
+      );
+    } catch (e) {
+      debugPrint('[Device] could not release from user $userId: $e');
     }
   }
 
