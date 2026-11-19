@@ -93,10 +93,15 @@ void main() {
       // type, so every chip for them was a chip nobody could use. Hidden
       // rather than deleted: the enum, the colours and the pin images all
       // still exist, so bringing them back is one line in `shown`.
+      //
+      // Routes joined them, last: it is the newest and the one people
+      // are least likely to be looking for, and the order here is the
+      // order of the chips.
       expect(DiscoverKind.shown, [
         DiscoverKind.event,
         DiscoverKind.venue,
         DiscoverKind.track,
+        DiscoverKind.route,
       ]);
 
       expect(
@@ -166,11 +171,16 @@ void main() {
     test('only the types WordPress actually has are backed', () {
       // Businesses and locations have no post type behind them, so they read
       // "Coming soon" in the filters rather than claiming a count of 0.
+      //
+      // Routes have no post type either and are still backed: they live
+      // in their own table behind their own endpoint, which is a
+      // different thing from having nothing behind them.
       final backed = DiscoverKind.values.where((k) => k.backed).toSet();
       expect(backed, {
         DiscoverKind.event,
         DiscoverKind.venue,
         DiscoverKind.track,
+        DiscoverKind.route,
       });
     });
 

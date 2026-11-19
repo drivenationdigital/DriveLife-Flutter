@@ -1,3 +1,4 @@
+import 'package:drivelife/models/driving_road.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -32,6 +33,12 @@ enum DiscoverKind {
     icon: Icons.sports_score_rounded,
     backed: true,
   ),
+  route(
+    label: 'Routes',
+    colour: Color(0xFF7A5EA8),
+    icon: Icons.route_rounded,
+    backed: true,
+  ),
   business(
     label: 'Businesses',
     colour: Color(0xFF5B7FA3),
@@ -63,7 +70,7 @@ enum DiscoverKind {
   /// filter plumbing — still works, so bringing them back is one line here
   /// plus the fetch. Use this wherever the UI lists categories, and
   /// `values` only where every case must be handled.
-  static const List<DiscoverKind> shown = [event, venue, track];
+  static const List<DiscoverKind> shown = [event, venue, track, route];
 
   final String label;
 
@@ -241,6 +248,47 @@ class DiscoverPlace {
   /// A separate endpoint from venues with its own field names, so a separate
   /// reader. The shared version of these two is what put the user's venues
   /// under "My tracks".
+  /// A driving route, pinned at the point it STARTS.
+  ///
+  /// ── WHY THE START AND NOT THE MIDDLE ────────────────────────────
+  ///
+  /// The list uses the midpoint, because "is this road near me" is a
+  /// question about the whole road and a twelve-mile road whose start
+  /// is just outside a radius is still one you can drive.
+  ///
+  /// A map pin answers a different question: where do I GO. The start
+  /// is the only point on the line somebody can actually drive to and
+  /// begin, and a pin in the middle of a road sends them to a passing
+  /// place halfway along it.
+  ///
+  /// Takes the typed road rather than JSON because it already has one
+  /// — RoadsAPI returns DrivingRoad, not a map — and the detail screen
+  /// wants the same object back.
+  static DiscoverPlace? fromRoad(DrivingRoad road) {
+    if (!road.start.isReal) return null;
+
+    final facts = [
+      road.lengthLabel,
+      road.region,
+    ].where((s) => s.isNotEmpty).join('  ·  ');
+
+    return DiscoverPlace(
+      id: 'route-${road.id}',
+      kind: DiscoverKind.route,
+      title: road.title,
+      subtitle: facts.isEmpty ? null : facts,
+      thumbnail: road.coverUrl.isEmpty ? null : road.coverUrl,
+      latitude: road.start.lat,
+      longitude: road.start.lng,
+      distance: road.distanceMiles > 0 ? road.distanceMiles : null,
+      site: road.site.isEmpty ? null : road.site,
+      // Nothing reads this for a route — the detail screen is handed
+      // the typed road instead. Kept non-null because every other kind
+      // carries one and the field is required.
+      raw: const {},
+    );
+  }
+
   static DiscoverPlace? fromTrack(Map<String, dynamic> json) {
     final lat = _coord(json['latitude']);
     final lng = _coord(json['longitude']);

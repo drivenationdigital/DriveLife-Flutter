@@ -12,6 +12,7 @@ import 'package:drivelife/screens/media/new_gallery_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/screens/media/all_galleries_screen.dart';
 import 'package:drivelife/providers/gallery_upload_provider.dart';
+import 'package:drivelife/widgets/nav/chrome_visibility.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
@@ -24,7 +25,20 @@ import 'package:shimmer/shimmer.dart';
 /// *fails* shows an inline message with a retry, so a total outage reads as
 /// broken rather than as a blank page.
 class MediaScreen extends StatefulWidget {
-  const MediaScreen({super.key});
+  /// The shell's scroll listener.
+  ///
+  /// ── WHY THE BOTTOM BAR STAYED PUT HERE ──────────────────────────
+  ///
+  /// Every other destination takes this and hands it every scroll
+  /// notification, which is the only way the shell knows to take its
+  /// bar away and bring it back. This screen never took one, so it
+  /// scrolled in silence and the bar sat there through all of it.
+  ///
+  /// Nullable because the screen is also perfectly usable on its own,
+  /// where there is no bar to move.
+  final ChromeVisibility? chrome;
+
+  const MediaScreen({super.key, this.chrome});
 
   @override
   State<MediaScreen> createState() => _MediaScreenState();
@@ -227,7 +241,12 @@ class _MediaScreenState extends State<MediaScreen>
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: RefreshIndicator(
+      // Every scroll in here reports to the shell through this one
+      // listener, which is what takes the bottom bar away and brings
+      // it back. Harmless when there is no shell.
+      body: NotificationListener<ScrollNotification>(
+        onNotification: widget.chrome?.handle ?? (_) => false,
+        child: RefreshIndicator(
         color: theme.primaryColor,
         onRefresh: _loadAll,
         child: ListView(
@@ -239,6 +258,7 @@ class _MediaScreenState extends State<MediaScreen>
             ..._gallerySection(),
             ..._popularSection(),
           ],
+        ),
         ),
       ),
     );

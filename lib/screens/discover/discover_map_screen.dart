@@ -17,6 +17,10 @@ import 'discover_filters.dart';
 import 'discover_place.dart';
 import 'discover_pins.dart';
 import 'discover_sheet.dart';
+import 'package:drivelife/api/roads_api.dart';
+import 'package:drivelife/models/driving_road.dart';
+import 'package:drivelife/screens/roads/road_detail_screen.dart';
+
 import 'discover_tips.dart';
 
 /// Discover: everything nearby, on one map.
@@ -389,6 +393,22 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
     final centred = _lat != null && _lng != null;
     final where = centred ? 'custom' : 'near-me';
 
+    // Started here, read after the wait below. Routes live in their
+    // own table behind their own endpoint and answer with typed roads
+    // rather than decoded JSON, so they cannot go in a list with the
+    // other three — but there is no reason for them to wait for it.
+    //
+    // Pinned at their START, which is the only point on a road
+    // somebody can drive to and begin. See DiscoverPlace.fromRoad.
+    final roadsRequest = RoadsAPI.page(
+      from: centred && _lat != null && _lng != null
+          ? RoadPoint(_lat!, _lng!)
+          : null,
+      withinMiles: _filters.radius.toDouble(),
+      sort: RoadSort.nearest,
+      limit: 100,
+    );
+
     // Both at once. They hit different post types and neither depends on the
     // other, so waiting for one before starting the other would double the
     // time the map sits empty.
@@ -438,12 +458,28 @@ class _DiscoverMapScreenState extends State<DiscoverMapScreen>
       ),
     ]);
 
+    // ── ROUTES, FETCHED APART FROM THE OTHER THREE ────────────────
+    //
+    // Not in the wait above because it does not answer in the same
+    // shape: RoadsAPI returns typed roads, the other three return
+    // decoded JSON, and forcing one list to hold both would mean
+    // casting at every use.
+    //
+    // Started before that wait and read after it, so it still runs
+    // alongside rather than after. A failure comes back as an empty
+    // page, which is also what a map with no roads near it looks
+    // like — neither is an error worth a banner.
+    final roads = await roadsRequest;
+
     if (!mounted || id != _fetchId) return;
 
     final places = <DiscoverPlace>[
       ..._read(responses[0], DiscoverPlace.fromEvent),
       ..._read(responses[1], DiscoverPlace.fromVenue),
       ..._read(responses[2], DiscoverPlace.fromTrack),
+      ...roads.roads
+          .map(DiscoverPlace.fromRoad)
+          .whereType<DiscoverPlace>(),
     ];
 
     // Nearest first, across all three kinds.
@@ -1340,6 +1376,25 @@ void openPlace(BuildContext context, DiscoverPlace place) {
     // Nothing can produce one of these yet, so nothing can tap one. Listed
     // rather than defaulted: when a post type does appear, the compiler asks
     // for its route here instead of silently doing nothing.
+    case DiscoverKind.route:
+      // The id carries the prefix that keeps it unique against an
+      // event or a venue with the same number — see
+      // DiscoverPlace.fromRoad. The detail screen wants the number.
+      final id = int.tryParse(place.id.replaceFirst('route-', '')) ?? 0;
+
+      if (id > 0) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            // Opened by id rather than by the pin's copy of the road:
+            // the detail screen fetches the full one anyway, and a
+            // half-filled object on the way in draws a title and then
+            // replaces it.
+            builder: (_) => RoadDetailScreen(road: DrivingRoad(id: id)),
+          ),
+        );
+      }
+
     case DiscoverKind.business:
     case DiscoverKind.location:
       break;

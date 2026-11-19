@@ -193,6 +193,29 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   static const int _dPhotos = BottomNavProvider.photos;
   static const int _dGarage = BottomNavProvider.garage;
 
+  /// The destinations whose scrolling is allowed to move the bottom bar.
+  ///
+  /// ── WHY THIS IS A LIST AND NOT "ANY OF THEM" ────────────────────
+  ///
+  /// A screen can only hide the bar if it REPORTS its scrolling — it
+  /// has to be handed [_chrome] and hand it every notification. A
+  /// screen that does not, and a screen that does nothing but sit
+  /// there, look identical from here: both simply never say anything.
+  ///
+  /// Without this set, the bar would slide away on whichever screen
+  /// happened to report last and then stay away on one that cannot
+  /// bring it back.
+  ///
+  /// So it is kept by hand, and adding a destination to it is the
+  /// SECOND half of wiring one up. Media was handed the chrome and
+  /// left out of here, which is why its bar still would not move.
+  static const Set<int> _barFollowsScroll = {
+    _dHome,
+    _dGroups,
+    _dGarage,
+    _dPhotos,
+  };
+
   // Garage is a destination again, in the slot Account used to hold. The
   // profile is no longer a tab at all — it is the avatar in the header.
   void _setIndex(int index) {
@@ -396,7 +419,13 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
       // has a live notification badge on it — captured once here it would
       // never update.
       const SizedBox.shrink(),
-      if (FeatureFlags.mediaTab) MediaScreen() else const SizedBox.shrink(),
+      // Handed the shell's scroll listener like every other
+      // destination. Without it this screen scrolled in silence and
+      // the bottom bar sat there through all of it.
+      if (FeatureFlags.mediaTab)
+        MediaScreen(chrome: _chrome)
+      else
+        const SizedBox.shrink(),
 
       // A placeholder: the garage is rebuilt every frame in
       // _buildDestinations, because it carries the shell's header and that
@@ -1382,14 +1411,11 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         bottomNavigationBar: ValueListenableBuilder<bool>(
           valueListenable: _chrome,
           builder: (context, chromeVisible, child) {
-            // The bottom bar follows the scroll on the destinations that
-            // report one, and stays put on the rest. Groups reports now, so
-            // it hides with the header there as it does on the feed.
+            // The bottom bar follows the scroll on the destinations
+            // that report one, and stays put on the rest. See
+            // [_barFollowsScroll], which is the list of the former.
             final showChrome =
-                chromeVisible ||
-                (_currentIndex != _dHome &&
-                    _currentIndex != _dGroups &&
-                    _currentIndex != _dGarage);
+                chromeVisible || !_barFollowsScroll.contains(_currentIndex);
 
             // Slides off the bottom rather than collapsing. Collapsing would
             // change the body's height and reflow the feed mid-scroll.
