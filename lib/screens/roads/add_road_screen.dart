@@ -40,7 +40,20 @@ import 'package:provider/provider.dart';
 /// dual carriageway. Two points and a junction beat twelve points
 /// placed approximately.
 class AddRoadScreen extends StatefulWidget {
-  const AddRoadScreen({super.key});
+  /// The road being changed, or null to add one.
+  ///
+  /// ── WHY EDITING IS THIS SCREEN AND NOT ANOTHER ──────────────────
+  ///
+  /// Everything an edit needs is already here: a map that draws a
+  /// line, the controls that change it, the fields, the photograph
+  /// and the import. A second screen would be the same eight hundred
+  /// lines with a different verb on the button, and the first bug
+  /// fixed in one of them would live on in the other.
+  ///
+  /// What differs is the starting state and where Save sends it.
+  final DrivingRoad? road;
+
+  const AddRoadScreen({super.key, this.road});
 
   @override
   State<AddRoadScreen> createState() => _AddRoadScreenState();
@@ -125,9 +138,34 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   bool _drawing = false;
   bool _drawAgain = false;
 
+  bool get _isEdit => widget.road != null;
+
   @override
   void initState() {
     super.initState();
+
+    final road = widget.road;
+
+    if (road != null) {
+      _titleCtrl.text = road.title;
+      _summaryCtrl.text = road.summary;
+
+      // ── THE DRAWN POINTS, NOT THE LINE ──────────────────────────
+      //
+      // road.polyline is the SNAPPED line: hundreds of points, far
+      // past the twenty-five a routing call takes. Loading that as
+      // the editable route would make every edit unsendable.
+      //
+      // waypoints is the handful somebody actually placed. Empty for
+      // a road added before they were kept — see canEditRoute, which
+      // is what stops this screen pretending otherwise.
+      _points.addAll(RoadPolyline.decode(road.waypoints));
+
+      // Straight to the details for a road whose route cannot be
+      // edited. The map step would be a screen with nothing to do on
+      // it.
+      if (!road.canEditRoute) _step = 2;
+    }
 
     // After the first frame, so the card lands over a map rather than
     // over the white rectangle that precedes one. Not awaited by
@@ -677,6 +715,11 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
       _say('The photo could not be uploaded, so the road was saved without it.');
     }
 
+    if (_isEdit) {
+      await _saveEdit(title, cover);
+      return;
+    }
+
     final id = await RoadsAPI.create(
       title: title,
       points: _points,
@@ -715,6 +758,63 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
         ],
       ),
     );
+
+    if (mounted) Navigator.pop(context, true);
+  }
+
+  /// Sends the changes, and says what the server made of them.
+  Future<void> _saveEdit(String title, String cover) async {
+    final road = widget.road!;
+
+    final updated = await RoadsAPI.update(
+      id: road.id,
+      title: title,
+      summary: _summaryCtrl.text.trim(),
+      // Only when it is a photograph they just chose. An empty string
+      // would CLEAR the one already on the road, and somebody editing
+      // a title did not ask for that.
+      coverImage: cover.isEmpty ? null : cover,
+      // Likewise: sending points re-routes the whole geometry, so a
+      // road whose route cannot be edited must not send any.
+      points: road.canEditRoute ? _points : null,
+    );
+
+    if (!mounted) return;
+
+    setState(() => _saving = false);
+
+    if (updated == null) {
+      _say(
+        RoadsAPI.lastError.isNotEmpty
+            ? RoadsAPI.lastError
+            : 'Could not save those changes.',
+      );
+
+      return;
+    }
+
+    // Only worth a dialog when something happened that is not
+    // obvious. A saved edit that stays live needs no ceremony.
+    if (updated.isPending && road.isPublished) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Back for checking'),
+          content: Text(
+            '${updated.title} has changed enough to be looked at again. '
+            'It stays visible to you until then.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      _say('Saved.');
+    }
 
     if (mounted) Navigator.pop(context, true);
   }
@@ -832,7 +932,9 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
       ),
       centerTitle: true,
       title: Text(
-        _step == 1 ? 'Draw the road' : 'Name it',
+        _step == 1
+            ? (_isEdit ? 'Edit the route' : 'Draw the road')
+            : (_isEdit ? 'Edit details' : 'Name it'),
         style: const TextStyle(
           color: Colors.black,
           fontSize: 18,
@@ -1052,6 +1154,8 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   /// returning finds everything exactly as it was left. The only thing
   /// that would lose it is leaving the screen.
   Widget _detailsPanel(ThemeProvider theme, bool typing) {
+    final canEditRoute = !_isEdit || widget.road!.canEditRoute;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1090,17 +1194,18 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
                 ),
               ),
               const Spacer(),
-              GestureDetector(
-                onTap: () => setState(() => _step = 1),
-                child: Text(
-                  'Edit route',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: theme.primaryColor,
+              if (canEditRoute)
+                GestureDetector(
+                  onTap: () => setState(() => _step = 1),
+                  child: Text(
+                    'Edit route',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: theme.primaryColor,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
 
@@ -1150,21 +1255,32 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
               color: const Color(0xFFEDEDED),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
-                  Icons.auto_fix_high_rounded,
+                  canEditRoute
+                      ? Icons.auto_fix_high_rounded
+                      : Icons.lock_outline_rounded,
                   size: 19,
-                  color: Color(0xFF6B6B6B),
+                  color: const Color(0xFF6B6B6B),
                 ),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Your taps are a sketch. We follow the road between '
-                    'them, so the saved line will bend where the road '
-                    'bends.',
-                    style: TextStyle(
+                    // Said plainly rather than offering an edit that
+                    // cannot work. A road added before its drawn
+                    // points were kept has only the snapped line left,
+                    // which is hundreds of points and far too many to
+                    // send back.
+                    canEditRoute
+                        ? 'Your taps are a sketch. We follow the road '
+                              'between them, so the saved line will bend '
+                              'where the road bends.'
+                        : 'This road was added before its drawn points '
+                              'were kept, so its route cannot be changed. '
+                              'The name, description and photo can.',
+                    style: const TextStyle(
                       fontSize: 13.5,
                       color: Color(0xFF4A4A4A),
                       height: 1.35,

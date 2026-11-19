@@ -221,6 +221,54 @@ void main() {
     });
   });
 
+  group('whether the route can be edited', () {
+    test('a road that kept its drawn points', () {
+      // waypoints is the handful somebody actually placed. It is the
+      // only thing a route can be edited FROM.
+      expect(
+        const DrivingRoad(id: 1, waypoints: '_p~iF~ps|U').canEditRoute,
+        isTrue,
+      );
+    });
+
+    test('a road that only has its snapped line', () {
+      // polyline is hundreds of points following the real tarmac —
+      // far past the twenty-five a routing call takes, so it cannot be
+      // sent back as an edit. Offering one would be offering something
+      // that cannot work.
+      expect(
+        const DrivingRoad(id: 1, polyline: '_p~iF~ps|U').canEditRoute,
+        isFalse,
+      );
+    });
+
+    test('a list row knows nothing either way', () {
+      // The detail call is the only one that carries waypoints, and
+      // only to the owner.
+      expect(const DrivingRoad(id: 1).canEditRoute, isFalse);
+    });
+
+    test('the waypoints come off the payload', () {
+      final road = DrivingRoad.fromMap(const {
+        'id': 1,
+        'polyline': 'aaaa',
+        'waypoints': 'bbbb',
+      });
+
+      expect(road.polyline, 'aaaa');
+      expect(road.waypoints, 'bbbb');
+      expect(road.canEditRoute, isTrue);
+    });
+
+    test('and survive a copyWith', () {
+      // The editor hands the road around; losing the waypoints on the
+      // way would turn an editable road into one that is not.
+      const road = DrivingRoad(id: 1, waypoints: 'bbbb');
+
+      expect(road.copyWith(iSaved: true).canEditRoute, isTrue);
+    });
+  });
+
   group('the cover photograph', () {
     test('a stored id becomes a delivery URL', () {
       // What is stored is the Cloudflare id, not a URL: the rest of

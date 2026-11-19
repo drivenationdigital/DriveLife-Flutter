@@ -263,6 +263,66 @@ class RoadsAPI {
     }
   }
 
+  /// Changes a road this person submitted.
+  ///
+  /// Every field is optional and an absent one is left alone, so a
+  /// screen changing only a title sends only a title.
+  ///
+  /// [points] is the exception worth knowing: sending it re-routes and
+  /// rewrites the whole geometry. A caller that does not mean to
+  /// change the route must leave it out rather than send back what it
+  /// was given.
+  ///
+  /// Returns the road as it now stands, or null with [lastError] set.
+  static Future<DrivingRoad?> update({
+    required int id,
+    String? title,
+    String? summary,
+    String? description,
+    String? coverImage,
+    List<RoadPoint>? points,
+  }) async {
+    lastError = '';
+
+    try {
+      final headers = await _headers();
+      if (headers == null) return null;
+
+      final response = await http.post(
+        Uri.parse('$_base/wp-json/app/v2/road/update'),
+        headers: headers,
+        body: jsonEncode({
+          'id': id,
+          if (title != null) 'title': title,
+          if (summary != null) 'summary': summary,
+          if (description != null) 'description': description,
+          if (coverImage != null) 'cover_image': coverImage,
+          if (points != null)
+            'points': points.map((p) => [p.lat, p.lng]).toList(),
+        }),
+      );
+
+      lastReady = _readyFrom(response.statusCode);
+
+      final body = jsonDecode(response.body);
+
+      if (body is Map && body['success'] == true && body['road'] is Map) {
+        return DrivingRoad.fromMap(
+          Map<String, dynamic>.from(body['road'] as Map),
+        );
+      }
+
+      if (body is Map && body['message'] != null) {
+        lastError = '${body['message']}';
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('[Roads] update threw: $e');
+      return null;
+    }
+  }
+
   /// "I've driven this" / "save".
   ///
   /// Safe to press twice. The server keys on (road, person, kind), so a

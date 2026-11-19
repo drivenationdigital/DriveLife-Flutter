@@ -96,6 +96,23 @@ class DrivingRoad {
 
   final String description;
 
+  /// The points this road was DRAWN from, encoded.
+  ///
+  /// ── NOT THE SAME THING AS [polyline] ────────────────────────────
+  ///
+  /// polyline is the snapped line: hundreds of points following the
+  /// real tarmac, which is far past the twenty-five a routing call
+  /// takes. It can be drawn and it cannot be edited.
+  ///
+  /// This is the handful somebody actually placed, and it is the only
+  /// thing a route can be edited from. Sent only to the owner, and
+  /// only on the detail call.
+  ///
+  /// Empty on a road added before the column existed — see
+  /// sql/roads-waypoints.sql. Such a road can still have its words and
+  /// its photograph changed; its route cannot be recovered.
+  final String waypoints;
+
   const DrivingRoad({
     required this.id,
     this.site = '',
@@ -121,10 +138,19 @@ class DrivingRoad {
     this.droveOn = '',
     this.polyline = '',
     this.description = '',
+    this.waypoints = '',
   });
 
   /// Whether the detail call has been made for this one.
   bool get hasShape => polyline.isNotEmpty;
+
+  /// Whether the ROUTE can be changed, as opposed to just the words.
+  ///
+  /// False for a road added before waypoints were kept: all that
+  /// survives of it is the snapped line, which is too many points to
+  /// send back. Saying so is better than offering an edit that cannot
+  /// work.
+  bool get canEditRoute => waypoints.isNotEmpty;
 
   /// The cover photograph, as something Image.network can take.
   ///
@@ -275,6 +301,7 @@ class DrivingRoad {
     droveOn: droveOn ?? this.droveOn,
     polyline: polyline ?? this.polyline,
     description: description ?? this.description,
+    waypoints: waypoints,
   );
 
   factory DrivingRoad.fromMap(Map<String, dynamic> map) => DrivingRoad(
@@ -302,6 +329,7 @@ class DrivingRoad {
     droveOn: asText(map['drove_on']),
     polyline: asText(map['polyline']),
     description: asText(map['description']),
+    waypoints: asText(map['waypoints']),
   );
 
   /// ── WHY EVERY NUMBER GOES THROUGH A READER ────────────────────────

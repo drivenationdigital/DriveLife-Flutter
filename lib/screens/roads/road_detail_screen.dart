@@ -11,6 +11,8 @@ import 'package:drivelife/models/road_polyline.dart';
 import 'package:drivelife/screens/roads/road_drive_sheet.dart';
 import 'package:drivelife/screens/roads/road_map_icons.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/providers/user_provider.dart';
+import 'package:drivelife/screens/roads/add_road_screen.dart';
 import 'package:drivelife/theme/dl_type.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
@@ -514,6 +516,36 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
     if (kind == 'drove') unawaited(_loadVehicleName());
   }
 
+  /// Whether the person looking at this is the one who added it.
+  ///
+  /// Read from the signed-in account rather than from anything the
+  /// server said about this screen: the owner id comes down with the
+  /// road, and the only other half of the comparison is who is here.
+  bool get _isMine {
+    final me = Provider.of<UserProvider>(context, listen: false).user?.id;
+
+    return me != null && me == _road.ownerId && _road.ownerId > 0;
+  }
+
+  /// Opens the editor, and takes whatever comes back.
+  Future<void> _edit() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => AddRoadScreen(road: _road)),
+    );
+
+    if (changed != true || !mounted) return;
+
+    // Reloaded rather than patched from the editor's copy: an edit can
+    // change the status as well as the words, and the server is the
+    // only thing that knows which.
+    _changed = true;
+
+    setState(() => _loading = true);
+
+    await _load();
+  }
+
   /// Hands the road to whatever gives directions on this phone.
   ///
   /// See [RoadNavigation] for why this is a handoff: the driver
@@ -585,6 +617,19 @@ class _RoadDetailScreenState extends State<RoadDetailScreen> {
                       onTap: () => Navigator.pop(context, _changed),
                     ),
                   ),
+
+                  // Only for the person who added it, and only once
+                  // the road has actually loaded — an edit button over
+                  // a spinner opens an editor with nothing in it.
+                  if (!_loading && _isMine)
+                    Positioned(
+                      top: MediaQuery.paddingOf(context).top + 8,
+                      right: 12,
+                      child: _RoundButton(
+                        icon: Icons.edit_rounded,
+                        onTap: _edit,
+                      ),
+                    ),
                 ],
               ),
             ),
