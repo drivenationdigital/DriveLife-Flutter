@@ -69,6 +69,24 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   final _titleCtrl = TextEditingController();
   final _summaryCtrl = TextEditingController();
 
+  /// The pasted link.
+  ///
+  /// ── WHY IT IS A FIELD AND NOT A LOCAL ───────────────────────────
+  ///
+  /// It was made inside _importLink() and disposed the moment
+  /// showDialog returned, which crashed the app with "a ChangeNotifier
+  /// was used after being disposed".
+  ///
+  /// The dialog's route is still ANIMATING OUT when its future
+  /// completes. The TextField is still in the tree for those few
+  /// hundred milliseconds, and the exit transition rebuilds it — so it
+  /// calls addListener on a controller that has already been thrown
+  /// away.
+  ///
+  /// Owned by the State and disposed with the rest, which is the only
+  /// lifetime that outlives the animation.
+  final _linkCtrl = TextEditingController();
+
   bool _saving = false;
   bool _styleReady = false;
 
@@ -123,6 +141,7 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   void dispose() {
     _titleCtrl.dispose();
     _summaryCtrl.dispose();
+    _linkCtrl.dispose();
     super.dispose();
   }
 
@@ -431,7 +450,9 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   /// map is asking them to do it worse — a finger is less precise than
   /// the thing that produced the link.
   Future<void> _importLink() async {
-    final controller = TextEditingController();
+    // Cleared rather than recreated. See [_linkCtrl] for why it
+    // outlives this method.
+    _linkCtrl.clear();
 
     final url = await showDialog<String>(
       context: context,
@@ -448,7 +469,7 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
             ),
             const SizedBox(height: 14),
             TextField(
-              controller: controller,
+              controller: _linkCtrl,
               autofocus: true,
               maxLines: 3,
               minLines: 1,
@@ -465,14 +486,12 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            onPressed: () => Navigator.pop(dialogContext, _linkCtrl.text),
             child: const Text('Import'),
           ),
         ],
       ),
     );
-
-    controller.dispose();
 
     if (url == null || url.trim().isEmpty || !mounted) return;
 
