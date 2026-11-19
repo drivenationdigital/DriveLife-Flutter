@@ -40,7 +40,7 @@ abstract final class RoadTips {
   /// Bump the version to show these again after the screen changes.
   /// The old key is left behind rather than migrated: somebody who saw
   /// v1 has not seen v2, which is the whole point of showing it again.
-  static const String _seenKey = 'road_tips_seen_v1';
+  static const String _seenKey = 'road_tips_seen_v2';
 
   static const List<RoadTip> steps = [
     RoadTip(
@@ -74,6 +74,14 @@ abstract final class RoadTips {
           'Your first tap is the START and the arrows run from it. A road '
           'is a different road the other way — Reverse flips it without '
           'redrawing anything.',
+    ),
+    RoadTip(
+      icon: Icons.link_rounded,
+      title: 'Already planned it?',
+      body:
+          'Paste a Google Maps link and we will read the route straight '
+          'out of it. Share the DIRECTIONS rather than a place, and the '
+          'stops come across exactly as you set them.',
     ),
     RoadTip(
       icon: Icons.open_in_full_rounded,

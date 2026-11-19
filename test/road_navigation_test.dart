@@ -74,22 +74,40 @@ void main() {
       expect(url.queryParameters['destination'], '53.100000,-2.100000');
     });
 
-    test('and starts the road as a waypoint, not as the destination', () {
-      // Otherwise the maps app is free to take the motorway that
-      // bypasses the whole thing and still claim to have got you
-      // there.
+    test('and starts at the start of the road', () {
+      // NOT at the driver's location. That spent one of the nine free
+      // waypoints on getting to the road, which meant a road imported
+      // with ten points could not be sent at all — and it drew a leg
+      // across a county over the top of the thing being looked at.
       final url = RoadNavigation.directionsUrl(const [
         RoadPoint(53.0, -2.0),
         RoadPoint(53.1, -2.1),
       ])!;
 
-      expect(url.queryParameters['waypoints'], '53.000000,-2.000000');
+      expect(url.queryParameters['origin'], '53.000000,-2.000000');
     });
 
-    test('no origin, so it starts from wherever the driver is', () {
-      final url = RoadNavigation.directionsUrl(line(5))!;
+    test('a two-point road carries no waypoints parameter at all', () {
+      // Empty is not the same as absent: Google reads an empty
+      // waypoints parameter as a stop it cannot find.
+      final url = RoadNavigation.directionsUrl(const [
+        RoadPoint(53.0, -2.0),
+        RoadPoint(53.1, -2.1),
+      ])!;
 
-      expect(url.queryParameters.containsKey('origin'), isFalse);
+      expect(url.queryParameters.containsKey('waypoints'), isFalse);
+    });
+
+    test('the middle becomes the waypoints, and only the middle', () {
+      final url = RoadNavigation.directionsUrl(const [
+        RoadPoint(53.0, -2.0),
+        RoadPoint(53.1, -2.0),
+        RoadPoint(53.2, -2.0),
+      ])!;
+
+      expect(url.queryParameters['origin'], '53.000000,-2.000000');
+      expect(url.queryParameters['waypoints'], '53.100000,-2.000000');
+      expect(url.queryParameters['destination'], '53.200000,-2.000000');
     });
 
     test('latitude first, which is the opposite of GeoJSON', () {
@@ -116,9 +134,27 @@ void main() {
 
       final waypoints = url.queryParameters['waypoints']!.split('|');
 
-      // Nine waypoints plus the destination is the free allowance.
-      expect(waypoints.length, RoadNavigation.maxStops - 1);
+      // An origin, a destination and nine waypoints between them is
+      // the free allowance — and all eleven are usable now that the
+      // origin is the road rather than the driver.
+      expect(waypoints.length, RoadNavigation.maxStops - 2);
       expect(waypoints.length, lessThanOrEqualTo(9));
+    });
+
+    test('a road imported with ten points sends all ten', () {
+      // The case that prompted this. Google takes ten stops before the
+      // destination; spending one on the driver's location meant a
+      // ten-point import lost a point every time.
+      final url = RoadNavigation.directionsUrl(line(10))!;
+
+      final stops = <String>[
+        url.queryParameters['origin']!,
+        ...url.queryParameters['waypoints']!.split('|'),
+        url.queryParameters['destination']!,
+      ];
+
+      expect(stops.length, 10);
+      expect(stops.toSet().length, 10, reason: 'no point sent twice');
     });
 
     test('a road with one point has no route', () {

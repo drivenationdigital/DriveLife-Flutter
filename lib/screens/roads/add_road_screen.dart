@@ -6,6 +6,7 @@ import 'package:drivelife/api/cloudflare_images.dart';
 import 'package:drivelife/api/roads_api.dart';
 import 'package:drivelife/config/mapbox_config.dart';
 import 'package:drivelife/models/driving_road.dart';
+import 'package:drivelife/models/google_maps_link.dart';
 import 'package:drivelife/models/road_polyline.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/media_picker/media_picker_screen.dart';
@@ -14,6 +15,7 @@ import 'package:drivelife/screens/roads/road_tips.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
 import 'package:provider/provider.dart';
 
@@ -83,6 +85,9 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
 
   /// The map, with everything else out of the way.
   bool _fullScreen = false;
+
+  /// True while a pasted link is being read.
+  bool _importing = false;
 
   /// The cover photograph, before it has been uploaded.
   ///
@@ -415,6 +420,158 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
     ],
   });
 
+  // ── importing a route somebody already has ────────────────────────
+
+  /// Asks for a Google Maps link and turns it into points.
+  ///
+  /// ── WHY THIS IS WORTH HAVING ────────────────────────────────────
+  ///
+  /// Somebody who already planned the road in Google Maps has done
+  /// this work once. Asking them to tap it out again on a phone-sized
+  /// map is asking them to do it worse — a finger is less precise than
+  /// the thing that produced the link.
+  Future<void> _importLink() async {
+    final controller = TextEditingController();
+
+    final url = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Paste a Google Maps link'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Open your route in Google Maps, Share, copy the link, and '
+              'paste it here.',
+              style: TextStyle(fontSize: 14, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLines: 3,
+              minLines: 1,
+              decoration: const InputDecoration(
+                hintText: 'https://maps.app.goo.gl/…',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('Import'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+
+    if (url == null || url.trim().isEmpty || !mounted) return;
+
+    setState(() => _importing = true);
+
+    final points = await _pointsFromLink(url.trim());
+
+    if (!mounted) return;
+
+    setState(() => _importing = false);
+
+    if (points.length < 2) {
+      _say(
+        GoogleMapsLink.looksLikeMaps(url)
+            ? 'That link has no route in it — share directions rather than '
+                  'a place.'
+            : 'That does not look like a Google Maps link.',
+      );
+
+      return;
+    }
+
+    // Replaces rather than appends. An import is "this is the road",
+    // not "add these to what I was drawing", and silently mixing the
+    // two would produce a line through both.
+    setState(() {
+      _points
+        ..clear()
+        ..addAll(points.take(_maxPoints));
+    });
+
+    unawaited(_draw());
+    await _frameDrawn();
+
+    if (!mounted) return;
+
+    _say(
+      points.length > _maxPoints
+          ? 'Imported the first $_maxPoints points of ${points.length}.'
+          : 'Imported ${points.length} points. Check the route and adjust '
+                'if you need to.',
+    );
+  }
+
+  /// The points in a link, following it first if it is a short one.
+  ///
+  /// A maps.app.goo.gl link carries nothing until it has been
+  /// resolved — it is an identifier, not a route. Following it is one
+  /// request and the only way to read it.
+  Future<List<RoadPoint>> _pointsFromLink(String url) async {
+    if (!GoogleMapsLink.looksShortened(url)) {
+      return GoogleMapsLink.pointsFrom(url);
+    }
+
+    try {
+      // Redirects are NOT followed automatically here on purpose: the
+      // whole point is to read the Location header rather than the
+      // page it leads to.
+      final request = http.Request('GET', Uri.parse(url))
+        ..followRedirects = false;
+
+      final response = await http.Client()
+          .send(request)
+          .timeout(const Duration(seconds: 12));
+
+      final location = response.headers['location'] ?? '';
+
+      return location.isEmpty
+          ? const []
+          : GoogleMapsLink.pointsFrom(location);
+    } catch (e) {
+      debugPrint('[AddRoad] could not follow $url: $e');
+      return const [];
+    }
+  }
+
+  /// Waits for the line to be on screen before framing it.
+  Future<void> _frameDrawn() async {
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+
+    if (!mounted || _points.length < 2) return;
+
+    final bounds = RoadBounds.of(_points);
+
+    if (bounds == null) return;
+
+    final size = MediaQuery.sizeOf(context);
+
+    await _map?.flyTo(
+      mb.CameraOptions(
+        center: mb.Point(
+          coordinates: mb.Position(bounds.centre.lng, bounds.centre.lat),
+        ),
+        zoom: bounds.zoomFor(widthPx: size.width, heightPx: size.height),
+      ),
+      mb.MapAnimationOptions(duration: 600),
+    );
+  }
+
   // ── the cover photograph ──────────────────────────────────────────
 
   Future<void> _pickCover() async {
@@ -741,10 +898,23 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
       Positioned(
         right: 12,
         top: 64,
-        child: _MapButton(
-          icon: Icons.open_in_full_rounded,
-          label: 'Full screen',
-          onTap: () => setState(() => _fullScreen = true),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _MapButton(
+              icon: Icons.open_in_full_rounded,
+              label: 'Full screen',
+              onTap: () => setState(() => _fullScreen = true),
+            ),
+            const SizedBox(height: 8),
+            _MapButton(
+              icon: _importing
+                  ? Icons.hourglass_top_rounded
+                  : Icons.link_rounded,
+              label: _importing ? 'Reading…' : 'Paste a link',
+              onTap: _importing ? () {} : _importLink,
+            ),
+          ],
         ),
       ),
 

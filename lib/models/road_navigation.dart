@@ -11,27 +11,36 @@ import 'package:drivelife/models/driving_road.dart';
 ///
 /// So this builds a URL and gets out of the way.
 ///
-/// ── AND WHY THE ORIGIN IS LEFT OUT ──────────────────────────────────
+/// ── AND WHY THE ROUTE IS THE ROAD, NOT THE WAY TO IT ────────────────
 ///
-/// Omitting it makes the maps app start from wherever the driver is,
-/// which is right both times it matters: planning at home on Friday,
-/// and standing next to the car on Sunday. A stored origin would be
-/// wrong on at least one of those.
+/// The origin used to be left out, so the maps app started from
+/// wherever the driver was and the road's own start became the first
+/// WAYPOINT. That read well — "get to the beginning, then drive it" —
+/// and it cost a waypoint slot, which is the one thing here in genuinely
+/// short supply.
 ///
-/// The road's own start then becomes the first WAYPOINT, so the route
-/// is "get to the beginning, then drive the road" rather than "get to
-/// the end" — which would happily send somebody down the motorway that
-/// bypasses the whole thing.
+/// Google takes nine free waypoints plus a destination. Spending one of
+/// them on the start means a road imported with ten points cannot be
+/// sent at all, and every other road loses a point of the detail that
+/// keeps the route pinned to the right tarmac.
+///
+/// So the origin IS the start now. The route is the road and nothing
+/// else — no guess about where the driver is, no leg across a county
+/// drawn over the top of it. Getting to the start is a different
+/// question, and [startUrl] is the answer to it.
 abstract final class RoadNavigation {
   const RoadNavigation._();
 
   /// How many coordinates the URL may carry, start and end included.
   ///
-  /// Google Maps takes nine free waypoints plus a destination. Ten is
-  /// comfortably inside that, and more would not help anyway: the
-  /// points are there to pin the route to the right road, not to
-  /// describe it.
-  static const int maxStops = 10;
+  /// Google Maps takes an origin, a destination and nine waypoints
+  /// between them. Eleven in all — and all eleven are usable now that
+  /// the origin is the road's own start rather than the driver's
+  /// location.
+  ///
+  /// More would not help anyway: the points are there to pin the route
+  /// to the right road, not to describe it.
+  static const int maxStops = 11;
 
   /// A directions URL for driving this road, or null if there is no
   /// road to drive.
@@ -45,14 +54,19 @@ abstract final class RoadNavigation {
 
     if (stops.length < 2) return null;
 
+    final origin = stops.first;
     final destination = stops.last;
-    final waypoints = stops.sublist(0, stops.length - 1);
+    final waypoints = stops.sublist(1, stops.length - 1);
 
     return Uri.parse(
       'https://www.google.com/maps/dir/?api=1'
       '&travelmode=driving'
+      '&origin=${_coord(origin)}'
       '&destination=${_coord(destination)}'
-      '&waypoints=${waypoints.map(_coord).join('|')}',
+      // Omitted entirely when there are none. An empty waypoints
+      // parameter is not the same as no parameter, and Google reads
+      // the empty one as a stop it cannot find.
+      '${waypoints.isEmpty ? '' : '&waypoints=${waypoints.map(_coord).join('|')}'}',
     );
   }
 
