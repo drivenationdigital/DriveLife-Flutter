@@ -1030,23 +1030,27 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
       // The hint and the two map-wide actions, in ONE Positioned.
       //
       // They used to be two, the buttons pinned at top: 64 under a
-      // hint pinned at top: 12 — which only held while the hint was one
-      // line. At three points or more it wraps to two and the buttons
-      // sat on top of it. Stacked in a column instead, the hint can be
-      // whatever height it likes and the row follows it down.
+      // hint pinned at top: 12 — which only held while the hint was
+      // one line. At three points or more it wraps to two and the
+      // buttons sat on top of it. In a column instead, the hint can be
+      // whatever height it likes and everything follows it down.
+      //
+      // stretch, so the import button below fills the width rather
+      // than shrink-wrapping its label in the middle.
       Positioned(
         left: 12,
         right: 12,
         top: 12,
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _Hint(count: _points.length),
-            const SizedBox(height: 8),
-
-            // Half and half, so neither reads as the main one: looking
-            // closer and pasting a route are both just ways in.
+            // The hint and the way to see more of the map, half each.
+            // Both are about LOOKING at the road rather than changing
+            // it, which is why they share a line.
             Row(
               children: [
+                Expanded(child: _Hint(count: _points.length)),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _MapButton(
                     icon: Icons.open_in_full_rounded,
@@ -1055,22 +1059,21 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
                     onTap: () => setState(() => _fullScreen = true),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _MapButton(
-                    icon: _importing
-                        ? Icons.hourglass_top_rounded
-                        : Icons.link_rounded,
-                    // Shortened from 'Import Google Maps link': half a
-                    // phone's width does not hold it, and a label that
-                    // ellipsises into 'Import Google Ma…' says less
-                    // than a shorter one that fits.
-                    label: _importing ? 'Reading…' : 'Import Maps link',
-                    fill: true,
-                    onTap: _importing ? () {} : _importLink,
-                  ),
-                ),
               ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // Full width on its own line, which buys back the words:
+            // at half a phone's width this had to read 'Import Maps
+            // link' to fit, and the whole label says what it wants.
+            _MapButton(
+              icon: _importing
+                  ? Icons.hourglass_top_rounded
+                  : Icons.link_rounded,
+              label: _importing ? 'Reading…' : 'Import Google Maps link',
+              fill: true,
+              onTap: _importing ? () {} : _importLink,
             ),
           ],
         ),

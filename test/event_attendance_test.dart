@@ -240,4 +240,54 @@ void main() {
       expect(found.summary, '');
     });
   });
+
+  // ── YOU ARE NOT ONE OF THE PEOPLE YOU KNOW ────────────────────────
+  //
+  // An account that ends up inside its own follow list is both going
+  // and a "friend who is going", and the line came out as "You and
+  // drivelife are going" — read by drivelife. One person, named
+  // twice, in a sentence whose only job is to say who ELSE is there.
+  group('the viewer is kept out of their own line', () {
+    const body = {
+      'going': true,
+      'count': 1,
+      'friend_count': 1,
+      'friends': [
+        {'id': 42, 'name': 'drivelife', 'username': 'drivelife'},
+      ],
+    };
+
+    test('a friends list containing you is read without you in it', () {
+      final found = EventAttendance.fromMap(body, meId: 42);
+
+      expect(found.friends, isEmpty);
+      expect(found.summary, "You're going");
+    });
+
+    test('and the friend count comes down with the list', () {
+      // Otherwise "and 1 other" keeps counting somebody who is no
+      // longer named, and that somebody is the person reading it.
+      expect(EventAttendance.fromMap(body, meId: 42).friendCount, 0);
+    });
+
+    test('somebody else with the same shape is left alone', () {
+      final found = EventAttendance.fromMap(body, meId: 7);
+
+      expect(found.friends.length, 1);
+      expect(found.friendCount, 1);
+    });
+
+    test('signed out filters nothing', () {
+      // meId 0 is nobody. There is no "you" in the sentence to double,
+      // and dropping a real friend to be safe would be the worse bug.
+      expect(EventAttendance.fromMap(body).friends.length, 1);
+    });
+
+    test('the count of everybody is untouched by any of it', () {
+      // `count` is every attendee, you included, and it is what
+      // `others` is worked out from. Filtering a NAME out of a list
+      // must not quietly change how many people are going.
+      expect(EventAttendance.fromMap(body, meId: 42).count, 1);
+    });
+  });
 }

@@ -111,17 +111,46 @@ class EventAttendance {
     return '${parts.join(', ')} and $last are going';
   }
 
-  factory EventAttendance.fromMap(Map<String, dynamic> map) {
+  /// [meId] is the signed-in user, so they can be kept out of
+  /// [friends].
+  ///
+  /// ── WHY THE CLIENT CHECKS SOMETHING THE SERVER ALREADY DOES ─────
+  ///
+  /// It does now. It did not when an account appeared in its own
+  /// follow list, and the line came out as "You and drivelife are
+  /// going" for drivelife — one person named twice, in a sentence
+  /// whose only job is to say who ELSE will be there.
+  ///
+  /// This is the cheaper half of that fix and the half that does not
+  /// wait for a deploy. It also holds for any future list that arrives
+  /// with you in it, which is the sort of thing that comes back.
+  ///
+  /// Zero means nobody is signed in, and then nothing is filtered:
+  /// there is no "you" in the sentence to be duplicated.
+  factory EventAttendance.fromMap(Map<String, dynamic> map, {int meId = 0}) {
     int asInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
+
+    final named = ((map['friends'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Attendee.fromMap(Map<String, dynamic>.from(e)))
+        .toList();
+
+    final friends = named
+        .where((a) => meId == 0 || a.id != meId)
+        .toList();
+
+    // Brought down by however many were dropped, so a count that was
+    // counting you stops. clamp because a server that sends a count
+    // smaller than its own list should not produce a negative one.
+    final friendCount =
+        (asInt(map['friend_count']) - (named.length - friends.length))
+            .clamp(0, 1 << 30);
 
     return EventAttendance(
       going: map['going'] == true,
       count: asInt(map['count']),
-      friends: ((map['friends'] as List?) ?? const [])
-          .whereType<Map>()
-          .map((e) => Attendee.fromMap(Map<String, dynamic>.from(e)))
-          .toList(),
-      friendCount: asInt(map['friend_count']),
+      friends: friends,
+      friendCount: friendCount,
       viaTicket: map['via_ticket'] == true,
     );
   }

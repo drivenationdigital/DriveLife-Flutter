@@ -224,6 +224,25 @@ class EventsAPI {
     }
   }
 
+  /// The signed-in user's id, or 0 when nobody is.
+  ///
+  /// Only for keeping the viewer out of their own "who is going" line
+  /// — see EventAttendance.fromMap. Nothing is sent anywhere with it.
+  static Future<int> _meId() async {
+    try {
+      final user = await _authService.getUser();
+      final id = user?['id'];
+
+      return id is num ? id.toInt() : int.tryParse('$id') ?? 0;
+    } catch (e) {
+      debugPrint('[EventsAPI] could not read the signed-in id: $e');
+
+      // Zero filters nothing, which is the right way to fail here: a
+      // duplicated name is better than a friend silently missing.
+      return 0;
+    }
+  }
+
   /// Fetch single event details
   /// Who is going to this event.
   ///
@@ -260,7 +279,10 @@ class EventsAPI {
 
       if (body is! Map || body['success'] != true) return EventAttendance.none;
 
-      return EventAttendance.fromMap(Map<String, dynamic>.from(body));
+      return EventAttendance.fromMap(
+        Map<String, dynamic>.from(body),
+        meId: await _meId(),
+      );
     } catch (e) {
       debugPrint('[EventsAPI] attendance threw: $e');
       return EventAttendance.none;
@@ -304,7 +326,10 @@ class EventsAPI {
 
       if (body is! Map || body['success'] != true) return null;
 
-      return EventAttendance.fromMap(Map<String, dynamic>.from(body));
+      return EventAttendance.fromMap(
+        Map<String, dynamic>.from(body),
+        meId: await _meId(),
+      );
     } catch (e) {
       debugPrint('[EventsAPI] going threw: $e');
       return null;

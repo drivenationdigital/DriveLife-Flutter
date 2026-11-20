@@ -1031,14 +1031,25 @@ class _NotificationTile extends StatelessWidget {
         final hasPost =
             entityData['post_id'] != null || entityData['media'] != null;
 
+        // ── WHOSE CAR, AND WHOSE POST ─────────────────────────────
+        //
+        // Both the other way round from what this used to say. A
+        // 'tag' + 'car' notification is written by one thing only: the
+        // accept in dl_mm_apply_post_tag(). The vehicle's owner has
+        // confirmed a plate match on somebody else's photo, and it is
+        // the PHOTOGRAPHER who is told.
+        //
+        // So the car is the sender's and the post is the reader's.
+        // "tagged your car in a post" read as a stranger claiming your
+        // vehicle, which is the opposite of what happened.
         if (!hasPost) {
           return entityType == 'car'
-              ? '$name tagged your vehicle'
+              ? '$name tagged their car'
               : '$name tagged you';
         }
 
         return entityType == 'car'
-            ? '$name tagged your car in a post'
+            ? '$name tagged their car in your post'
             : '$name tagged you in a post';
       case 'invite':
         final clubName = entityData['club_name']?.toString() ?? 'a group';
