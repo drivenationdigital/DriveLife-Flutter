@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:drivelife/services/app_badge.dart';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import 'package:drivelife/config/app_environment.dart';
@@ -83,6 +86,24 @@ class NotificationsAPI {
   }
 
   /// Get unread notification count
+  ///
+  /// ── AND SET THE APP ICON BADGE WHILE WE ARE HERE ────────────────
+  ///
+  /// Here rather than at the call sites, of which there are three and
+  /// counting: the home shell, the messages screen and the shared
+  /// header. Every one of them is asking the same question for the
+  /// same reason, and a fourth one added later would silently not
+  /// update the badge.
+  ///
+  /// It matters on iOS only. The badge there is whatever the last push
+  /// put on it — nothing takes it off when the notifications are read
+  /// — so without this an iPhone keeps showing a number for things the
+  /// person dealt with days ago. See [AppBadge].
+  ///
+  /// Only on a successful read. A failed request returns 0 so callers
+  /// can hide their dot, but 0 is also the instruction to CLEAR the
+  /// badge, and clearing it because the network dropped would hide
+  /// real unread notifications.
   static Future<int> getNotificationCount() async {
     try {
       final user = await _auth.getUser();
@@ -97,7 +118,13 @@ class NotificationsAPI {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final count = data['count'];
-        return count is int ? count : int.tryParse(count.toString()) ?? 0;
+        final unread = count is int
+            ? count
+            : int.tryParse(count.toString()) ?? 0;
+
+        unawaited(AppBadge.set(unread));
+
+        return unread;
       }
     } catch (e) {
       print('Error fetching notification count: $e');
@@ -106,6 +133,11 @@ class NotificationsAPI {
   }
 
   /// Mark all notifications as read
+  ///
+  /// Clears the icon badge with them. Opening the notifications screen
+  /// is the moment somebody has dealt with the lot, and waiting for
+  /// the next count refresh to notice leaves a number on the icon of
+  /// an app they are currently looking at.
   static Future<bool> markMultipleNotificationsAsRead() async {
     try {
       final user = await _auth.getUser();
@@ -116,6 +148,14 @@ class NotificationsAPI {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'user_id': user['id']}),
       );
+
+      // Only when the server agreed. A badge cleared against a request
+      // that failed says "nothing waiting" about notifications that
+      // are still unread on the server and will come back on the next
+      // refresh.
+      if (response.statusCode == 200) {
+        unawaited(AppBadge.clear());
+      }
 
       return response.statusCode == 200;
     } catch (e) {
