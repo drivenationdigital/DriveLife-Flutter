@@ -54,6 +54,16 @@ class _GuessScreenState extends State<GuessScreen>
   GuessGame? _today;
   List<GuessGame> _history = const [];
 
+  /// How many days of history to ask for.
+  ///
+  /// Seven to start with, because the list sits under today's game and
+  /// a month of it between the card and the leaderboard would make the
+  /// history the page. Thirty is the server's ceiling — see
+  /// dl_guess_history.
+  int _historyDays = 7;
+
+  static const int _historyMax = 30;
+
   List<GuessRank> _board = const [];
   int _myCorrect = 0;
 
@@ -103,7 +113,7 @@ class _GuessScreenState extends State<GuessScreen>
 
     final results = await Future.wait([
       GuessAPI.today(date: _viewingDate),
-      GuessAPI.history(),
+      GuessAPI.history(days: _historyDays),
       GuessAPI.leaderboard(scope: _scope),
     ]);
 
@@ -450,9 +460,39 @@ class _GuessScreenState extends State<GuessScreen>
           if (_today == null) _noGame(theme) else _gameCard(theme, _today!),
           if (_history.isNotEmpty) ...[
             const SizedBox(height: 28),
-            DlHeading('Previous 7 days', fontSize: 22, color: theme.textColor),
+            DlHeading(
+              _historyDays <= 7 ? 'Previous 7 days' : 'Previous games',
+              fontSize: 22,
+              color: theme.textColor,
+            ),
             const SizedBox(height: 8),
             for (final game in _history) _historyRow(theme, game),
+
+            // ── DELIBERATELY PLAIN ──────────────────────────────────
+            //
+            // A text button and nothing else: no card, no chevron, no
+            // count. Everything above this is the game, and a list of
+            // old ones should be findable without competing with it.
+            //
+            // Hidden once the server has nothing more to give, rather
+            // than left to tap and do nothing.
+            if (_historyDays < _historyMax &&
+                _history.length >= _historyDays) ...[
+              const SizedBox(height: 4),
+              Center(
+                child: TextButton(
+                  onPressed: _loading ? null : _moreHistory,
+                  child: Text(
+                    'Show earlier games',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: theme.subtextColor,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ],
       ),
@@ -1043,7 +1083,19 @@ class _GuessScreenState extends State<GuessScreen>
     final played = game.hasPlayed;
     final right = game.myCorrect == true;
 
-    return Padding(
+    // How hard the car turned out to be. Appended to the line about
+    // guessing rather than given one of its own: a fourth line makes
+    // every row taller, and this is a footnote on a list that is
+    // already under the thing people came for.
+    final solved = game.crowd.solvedLabel(game.answerIndex);
+
+    return InkWell(
+      // Opens that day's game, in the same screen, with the past-day
+      // bar above it. There is no second screen for this: the card
+      // already knows how to draw a closed game, and the only thing
+      // a history row was missing was a way to ask it to.
+      onTap: () => _viewDate(game.date),
+      child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1073,7 +1125,9 @@ class _GuessScreenState extends State<GuessScreen>
                   ),
                 ),
                 Text(
-                  _guessedLabel(game),
+                  solved == null
+                      ? _guessedLabel(game)
+                      : '${_guessedLabel(game)}  ·  $solved',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 13.5, color: theme.subtextColor),
@@ -1102,7 +1156,38 @@ class _GuessScreenState extends State<GuessScreen>
           ),
         ],
       ),
+      ),
     );
+  }
+
+  /// Asks for the rest of the month.
+  ///
+  /// One step to the ceiling rather than a page at a time. There are
+  /// thirty of these at most, they are small, and a second "show even
+  /// more" on a list this short would be a control for its own sake.
+  Future<void> _moreHistory() async {
+    if (_historyDays >= _historyMax) return;
+
+    setState(() => _historyDays = _historyMax);
+
+    await _load();
+  }
+
+  /// Looks at one past day.
+  ///
+  /// The same reload the screen does on open, with a date in it. The
+  /// card draws a closed game already — the reveal, the answer, the
+  /// shares on each option — so nothing new is drawn here, and there
+  /// is nothing to keep in step with the card above.
+  Future<void> _viewDate(String date) async {
+    if (date.trim().isEmpty || date == _viewingDate) return;
+
+    setState(() {
+      _viewingDate = date;
+      _loading = true;
+    });
+
+    await _load();
   }
 
   // ── Leaderboard ────────────────────────────────────────────────────

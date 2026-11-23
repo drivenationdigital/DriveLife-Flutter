@@ -134,6 +134,39 @@ void main() {
     });
   });
 
+  // For the list of old games, where the interesting number is not
+  // what anybody picked but how hard the car turned out to be.
+  group('how hard it was', () {
+    test('the share on the answer', () {
+      const crowd = GuessCrowd([80, 10, 7, 3]);
+
+      expect(crowd.solvedLabel(3), '3% got it');
+    });
+
+    test('a car almost nobody got still names them', () {
+      const crowd = GuessCrowd([399, 1, 0, 0]);
+
+      expect(crowd.solvedLabel(1), '<1% got it');
+    });
+
+    test('no answer index, nothing to say', () {
+      const crowd = GuessCrowd([80, 10, 7, 3]);
+
+      expect(crowd.solvedLabel(null), isNull);
+    });
+
+    test('too few players, nothing to say', () {
+      // A row that shrugs is worse than a row that does not mention it.
+      const crowd = GuessCrowd([1, 2, 0, 0]);
+
+      expect(crowd.solvedLabel(1), isNull);
+    });
+
+    test('a game with no breakdown at all', () {
+      expect(GuessCrowd.none.solvedLabel(0), isNull);
+    });
+  });
+
   group('reading what the server sent', () {
     test('ordinary numbers', () {
       expect(GuessCrowd.fromMap([1, 2, 3]).counts, [1, 2, 3]);

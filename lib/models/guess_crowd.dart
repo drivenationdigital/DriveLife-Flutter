@@ -60,6 +60,18 @@ class GuessCrowd {
     return percent < 1 ? '<1%' : '$percent%';
   }
 
+  /// "41% got it", or null.
+  ///
+  /// For a list of old games, where the interesting number is not what
+  /// anybody picked but how hard the car turned out to be. Null for a
+  /// game with no breakdown and for a crowd too small to describe, so
+  /// the row shows nothing rather than a shrug.
+  String? solvedLabel(int? answerIndex) {
+    if (answerIndex == null || !hasCrowd) return null;
+
+    return '${percentOf(answerIndex)} got it';
+  }
+
   /// The line under the result, or null when there is nothing to say.
   ///
   /// Null for somebody who did not play, for a game with no breakdown
