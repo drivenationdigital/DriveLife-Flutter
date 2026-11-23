@@ -974,15 +974,16 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
             // Manager" is asking for.
             onTap: _openEventsManager,
           ),
-          // Last, and the only dark one. See _CreateAction.dark: it
-          // reads a ticket rather than making anything, and it used to
-          // be a full-width bar under the grid saying so with a whole
-          // row of its own.
+          // Last, and the only outlined one. See
+          // _CreateAction.outlined: it reads a ticket rather than
+          // making anything, so it is marked out — but with a gold
+          // edge rather than the black card it used to be, which
+          // shouted the difference louder than it deserved.
           _CreateAction(
             label: 'Scan QR Code',
             subtitle: 'DriveLife vehicle tags',
             svg: 'assets/app-icons/header-qr.svg',
-            dark: true,
+            outlined: true,
             onTap: () => SharedHeaderIcons.scanQrCode(context),
           ),
           // Add Venue has gone from this menu. CreateVenueScreen is
@@ -1455,19 +1456,23 @@ class _CreateAction {
   /// A plain line instead, for the actions that earn nothing.
   final String? subtitle;
 
-  /// Draws this card dark, with its icon and text inverted.
+  /// Marks this card out with a gold border, keeping the grey.
   ///
   /// ── WHY ONE CARD BREAKS THE SET ─────────────────────────────────
   ///
   /// Scanning a code is not making something. Every other card in this
   /// sheet creates a post, a vehicle, a route; this one READS a
-  /// ticket. Dropped into the grid in the same grey as the rest it
-  /// would quietly file itself as one more thing to add.
+  /// ticket. Dropped into the grid in exactly the same dress as the
+  /// rest it would quietly file itself as one more thing to add.
   ///
-  /// It was a full-width black bar under the grid, which said that
-  /// with a whole row of its own. As a card it says the same thing
-  /// with a colour and gives the row back.
-  final bool dark;
+  /// ── AND WHY A BORDER RATHER THAN A BLACK CARD ───────────────────
+  ///
+  /// It was black, which said "different" far louder than the
+  /// difference deserved: a sheet of eight cards with one of them
+  /// inverted reads as the one that matters, and this is the one you
+  /// use least. A gold edge on the same grey says the same thing at
+  /// the right volume.
+  final bool outlined;
 
   const _CreateAction({
     required this.label,
@@ -1476,7 +1481,7 @@ class _CreateAction {
     this.svg,
     this.points,
     this.subtitle,
-    this.dark = false,
+    this.outlined = false,
   });
 }
 
@@ -1493,19 +1498,26 @@ class _CreateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // One card is deliberately not like the others. See
-    // _CreateAction.dark.
-    final ink = action.dark ? Colors.white : theme.textColor;
+    // Every card is the same grey now. One is deliberately not quite
+    // like the others — see _CreateAction.outlined — and says so with
+    // an edge rather than by inverting itself.
+    final ink = theme.textColor;
 
     return Material(
-      color: action.dark
-          ? const Color(0xFF0B0B0B)
-          : (theme.isDarkMode ? Colors.white10 : const Color(0xFFF4F4F4)),
+      color: theme.isDarkMode ? Colors.white10 : const Color(0xFFF4F4F4),
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        child: Padding(
+        child: Container(
+          decoration: action.outlined
+              ? BoxDecoration(
+                  // 1.5, not 1: a hairline against this grey reads as
+                  // an artefact at a glance rather than as a choice.
+                  border: Border.all(color: theme.primaryColor, width: 1.5),
+                  borderRadius: BorderRadius.circular(18),
+                )
+              : null,
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1515,9 +1527,7 @@ class _CreateCard extends StatelessWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: action.dark
-                      ? Colors.white.withValues(alpha: 0.12)
-                      : (theme.isDarkMode ? Colors.white12 : Colors.white),
+                  color: theme.isDarkMode ? Colors.white12 : Colors.white,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Center(
@@ -1527,16 +1537,14 @@ class _CreateCard extends StatelessWidget {
                           width: 22,
                           height: 22,
                           colorFilter: ColorFilter.mode(
-                            action.dark ? Colors.white : theme.primaryColor,
+                            theme.primaryColor,
                             BlendMode.srcIn,
                           ),
                         )
                       : Icon(
                           action.icon,
                           size: 24,
-                          color: action.dark
-                              ? Colors.white
-                              : theme.primaryColor,
+                          color: theme.primaryColor,
                         ),
                 ),
               ),
@@ -1573,12 +1581,7 @@ class _CreateCard extends StatelessWidget {
                   action.subtitle!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: action.dark
-                        ? Colors.white.withValues(alpha: 0.65)
-                        : theme.subtextColor,
-                  ),
+                  style: TextStyle(fontSize: 14, color: theme.subtextColor),
                 ),
               ],
             ],

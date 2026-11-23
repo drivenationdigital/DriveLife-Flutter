@@ -466,6 +466,30 @@ class GlobalGroup {
 
   String? get image => coverImage ?? logo;
 
+  /// The group's id, under whichever name this endpoint used.
+  ///
+  /// ── WHY THERE ARE TWO NAMES ─────────────────────────────────────
+  ///
+  /// There just are. The detail endpoint and the garage suggestions
+  /// send `ID`; the list endpoints and the interest suggestions send
+  /// `id`. One suggestions response contains both, because its two
+  /// halves are built by different functions.
+  ///
+  /// Reading only `ID` meant every group from a list, and every
+  /// interest-matched suggestion, arrived with id 0 — all of them
+  /// equal to each other, which is how one Join flipped three rows.
+  ///
+  /// The same trap is already written up in groups_screen.dart and in
+  /// group_search_screen.dart, both of which read either. This was the
+  /// one place left that did not.
+  static int _id(Map<String, dynamic> json) {
+    final raw = json['ID'] ?? json['id'];
+
+    if (raw is num) return raw.toInt();
+
+    return int.tryParse('$raw') ?? 0;
+  }
+
   factory GlobalGroup.fromJson(Map<String, dynamic> json) {
     final rawRules = json['rules'];
 
@@ -483,7 +507,7 @@ class GlobalGroup {
       garageCount: count('garages'),
       spotCount: count('spots'),
       eventCount: count('events'),
-      id: (json['ID'] as num?)?.toInt() ?? 0,
+      id: _id(json),
       slug: json['slug'] as String? ?? '',
       kind: json['kind'] as String? ?? 'scene',
       title: json['title'] as String? ?? '',

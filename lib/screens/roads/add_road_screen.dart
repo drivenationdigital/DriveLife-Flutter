@@ -9,9 +9,11 @@ import 'package:drivelife/models/driving_road.dart';
 import 'package:drivelife/models/google_maps_link.dart';
 import 'package:drivelife/models/road_polyline.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/media_picker/media_picker_screen.dart';
 import 'package:drivelife/screens/roads/road_map_icons.dart';
 import 'package:drivelife/screens/roads/road_tips.dart';
+import 'package:drivelife/services/place_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:geolocator/geolocator.dart';
@@ -77,7 +79,28 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
 
   mb.MapboxMap? _map;
 
-  final List<RoadPoint> _points = [];
+  /// The road, in order, each with whatever we can call it.
+  ///
+  /// ── WHY NOT JUST A LIST OF COORDINATES ──────────────────────────
+  ///
+  /// Because the list of them is now on screen, and "54.386688,
+  /// -0.953580" is not a thing anybody can check their route against.
+  /// A stop picked from the search knows its own name; one tapped on
+  /// the map does not, and says so.
+  final List<_Stop> _stops = [];
+
+  /// Never reused, so a name that comes back late cannot land on a
+  /// stop added after the one it was looked up for.
+  int _nextStopKey = 1;
+
+  /// Just the coordinates, which is all the drawing and saving want.
+  ///
+  /// UNMODIFIABLE on purpose. It used to be the real list, so every
+  /// `_points.add(...)` worked; now it is rebuilt on each read, and a
+  /// mutation missed in the change above would silently do nothing at
+  /// all. Throwing is the only version of that anybody would notice.
+  List<RoadPoint> get _points =>
+      List.unmodifiable([for (final stop in _stops) stop.point]);
 
   final _titleCtrl = TextEditingController();
   final _summaryCtrl = TextEditingController();
@@ -86,6 +109,36 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   ///
   /// ── WHY IT IS A FIELD AND NOT A LOCAL ───────────────────────────
   ///
+  /// What is typed in the place search, and what came back.
+  ///
+  /// A State field for the same reason [_linkCtrl] is one: it outlives
+  /// any single build, and a controller disposed while a route is
+  /// still animating takes the app with it.
+  final TextEditingController _findCtrl = TextEditingController();
+
+  List<PlaceHit> _hits = const [];
+  bool _finding = false;
+
+  /// Whether the search box is showing, as opposed to the + that opens
+  /// it.
+  ///
+  /// Open on an empty road, because finding the start is the first
+  /// thing anybody does. Closed once there is a road, so the list of
+  /// stops gets the room instead — and reopened by the + beside it.
+  bool _searchOpen = true;
+
+  final FocusNode _findFocus = FocusNode();
+
+  /// Whether the middle stops are showing.
+  ///
+  /// Collapsed by default. The ends are what somebody checks; a
+  /// twenty-stop road listed in full would be the whole map.
+  bool _stopsExpanded = false;
+
+  /// Cancelled and restarted on every keystroke, so typing a town name
+  /// is one request rather than eight. See PlaceSearch.debounce.
+  Timer? _findDebounce;
+
   /// It was made inside _importLink() and disposed the moment
   /// showDialog returned, which crashed the app with "a ChangeNotifier
   /// was used after being disposed".
@@ -159,7 +212,34 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
       // waypoints is the handful somebody actually placed. Empty for
       // a road added before they were kept — see canEditRoute, which
       // is what stops this screen pretending otherwise.
-      _points.addAll(RoadPolyline.decode(road.waypoints));
+      // ── THE NAMES COME BACK WITH THE POINTS ─────────────────
+      //
+      // The polyline keeps coordinates and nothing else, so this used
+      // to reopen every road as a list of dropped pins however
+      // carefully it had been drawn. waypoint_names is the column that
+      // fixes that — padded server-side to the points it was stored
+      // with, so entry 3 is point 3 whatever either end does.
+      //
+      // Empty for a road saved before the column existed, which reads
+      // exactly as it did then.
+      final drawn = RoadPolyline.decode(road.waypoints);
+      final names = road.waypointNames(drawn.length);
+
+      for (var i = 0; i < drawn.length; i++) {
+        final full = i < names.length ? names[i] : '';
+        final comma = full.indexOf(', ');
+
+        _stops.add(
+          _Stop(
+            drawn[i],
+            key: _nextStopKey++,
+            // Stored as one string and shown as two lines, split the
+            // same way PlaceHit splits it.
+            name: comma > 0 ? full.substring(0, comma) : full,
+            detail: comma > 0 ? full.substring(comma + 2) : '',
+          ),
+        );
+      }
 
       // Straight to the details for a road whose route cannot be
       // edited. The map step would be a screen with nothing to do on
@@ -180,6 +260,14 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
     _titleCtrl.dispose();
     _summaryCtrl.dispose();
     _linkCtrl.dispose();
+
+    // The timer goes first. It calls setState on a State that is about
+    // to stop existing, and a controller disposed out from under a
+    // pending search is the same crash by a different route.
+    _findDebounce?.cancel();
+    _findCtrl.dispose();
+    _findFocus.dispose();
+
     super.dispose();
   }
 
@@ -236,31 +324,112 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   }
 
   void _addPoint(mb.Point point) {
-    if (_points.length >= _maxPoints) {
+    final position = point.coordinates;
+
+    _addStop(
+      _Stop(RoadPoint(position.lat.toDouble(), position.lng.toDouble())),
+    );
+  }
+
+  /// Puts a stop on the end of the road, from wherever it came.
+  ///
+  /// One door for the map and the search, so the cap, the sanity check
+  /// and the redraw cannot drift apart between the two.
+  void _addStop(_Stop stop) {
+    if (_stops.length >= _maxPoints) {
       _say('That is as many points as a road takes.');
       return;
     }
 
-    final position = point.coordinates;
+    if (!stop.point.isReal) return;
 
-    final next = RoadPoint(
-      position.lat.toDouble(),
-      position.lng.toDouble(),
+    final keyed = _Stop(
+      stop.point,
+      key: _nextStopKey++,
+      name: stop.name,
+      detail: stop.detail,
     );
 
-    if (!next.isReal) return;
+    setState(() => _stops.add(keyed));
 
-    setState(() => _points.add(next));
+    unawaited(_draw());
+
+    // Only for a point nobody has named. A search result arrives
+    // already knowing what it is, and asking again would be a request
+    // to replace a good answer with a near-identical one.
+    if (stop.name.trim().isEmpty) unawaited(_nameStop(keyed));
+  }
+
+  /// Asks what is at a tapped point, and fills the name in when it
+  /// lands.
+  ///
+  /// Nothing waits on this. The point is already on the map and in the
+  /// list reading "Dropped pin"; a name arriving a moment later
+  /// improves the row, and a name that never arrives leaves it exactly
+  /// as it was.
+  Future<void> _nameStop(_Stop stop) async {
+    final country = mounted
+        ? Provider.of<UserProvider>(
+            context,
+            listen: false,
+          ).user?.lastLocation?.country
+        : null;
+
+    final hit = await PlaceSearch.describe(stop.point, country: country);
+
+    if (hit == null || !mounted) return;
+
+    // By key. See _Stop.key: the list may have been reversed, cleared
+    // or had something removed from the middle while this was out.
+    final index = _stops.indexWhere((s) => s.key == stop.key);
+
+    if (index < 0) return;
+
+    // And it may have been named by something else in the meantime —
+    // an import, or a save and reopen. Last writer does not win here;
+    // the one that was sure of itself does.
+    if (_stops[index].name.trim().isNotEmpty) return;
+
+    setState(() {
+      _stops[index] = _stops[index].named(hit.name, hit.detail);
+    });
+  }
+
+  void _undo() {
+    if (_stops.isEmpty) return;
+
+    setState(() {
+      _stops.removeLast();
+      _settleFold();
+    });
 
     unawaited(_draw());
   }
 
-  void _undo() {
-    if (_points.isEmpty) return;
+  /// Takes one stop out of the middle.
+  ///
+  /// By index rather than by value: two taps on the same spot are two
+  /// stops, and removing "the one equal to this" would take the first
+  /// of them whichever was tapped.
+  void _removeStop(int index) {
+    if (index < 0 || index >= _stops.length) return;
 
-    setState(_points.removeLast);
+    setState(() {
+      _stops.removeAt(index);
+      _settleFold();
+    });
 
     unawaited(_draw());
+  }
+
+  /// Keeps the fold honest about what is left.
+  ///
+  /// Expanded is a state about stops that may no longer be there. A
+  /// road cut back to two would otherwise come back expanded the next
+  /// time it grew past three, showing a list somebody had not asked to
+  /// see again.
+  void _settleFold() {
+    if (_stops.length <= 3) _stopsExpanded = false;
   }
 
   /// Turns the road round.
@@ -276,12 +445,12 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   /// is a different road westbound, and whoever adds it should be able
   /// to say which one they meant in one tap.
   void _reverse() {
-    if (_points.length < 2) return;
+    if (_stops.length < 2) return;
 
     setState(() {
-      final flipped = _points.reversed.toList();
+      final flipped = _stops.reversed.toList();
 
-      _points
+      _stops
         ..clear()
         ..addAll(flipped);
     });
@@ -290,9 +459,16 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   }
 
   void _clear() {
-    if (_points.isEmpty) return;
+    if (_stops.isEmpty) return;
 
-    setState(_points.clear);
+    setState(() {
+      _stops.clear();
+      _settleFold();
+
+      // Nothing left to list, so the box that fills the list comes
+      // back rather than leaving a + over an empty map.
+      _searchOpen = true;
+    });
 
     unawaited(_draw());
   }
@@ -477,6 +653,125 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
     ],
   });
 
+  // ── finding the place first ───────────────────────────────────────
+
+  /// Looks for a place, a third of a second after the typing stops.
+  void _onFindChanged(String value) {
+    _findDebounce?.cancel();
+
+    if (value.trim().length < 3) {
+      setState(() {
+        _hits = const [];
+        _finding = false;
+      });
+
+      return;
+    }
+
+    setState(() => _finding = true);
+
+    _findDebounce = Timer(PlaceSearch.debounce, () => _find(value));
+  }
+
+  Future<void> _find(String value) async {
+    // Biased towards where the map is looking, so "Newport" finds the
+    // one up the road before the one in Rhode Island.
+    final camera = await _map?.getCameraState();
+
+    final near = camera == null
+        ? null
+        : RoadPoint(
+            camera.center.coordinates.lat.toDouble(),
+            camera.center.coordinates.lng.toDouble(),
+          );
+
+    // Held to the country the app last placed this person in. See
+    // PlaceSearch.find: an unknown country searches the world rather
+    // than nothing.
+    final country = mounted
+        ? Provider.of<UserProvider>(
+            context,
+            listen: false,
+          ).user?.lastLocation?.country
+        : null;
+
+    final hits = await PlaceSearch.find(value, near: near, country: country);
+
+    // Typed on while this was in flight. The later request owns the
+    // list, and showing these would overwrite it with older answers.
+    if (!mounted || _findCtrl.text.trim() != value.trim()) return;
+
+    setState(() {
+      _hits = hits;
+      _finding = false;
+    });
+  }
+
+  /// Adds a result to the road, and moves the map to it.
+  ///
+  /// ── WHY IT PLACES A POINT AND NOT JUST THE CAMERA ───────────────
+  ///
+  /// Because searching for somewhere and then having to find it again
+  /// on the map to tap it is the same work twice. A geocoded point is
+  /// the middle of a town rather than the exact kerb — so it is a
+  /// STOP, not a promise, and the list below says what it is and lets
+  /// it be removed.
+  ///
+  /// Still flies there, because the next point is usually near this
+  /// one and because a point added off-screen is a point nobody can
+  /// check.
+  Future<void> _addHit(PlaceHit hit) async {
+    FocusScope.of(context).unfocus();
+
+    _addStop(_Stop(hit.point, name: hit.name, detail: hit.detail));
+
+    setState(() {
+      _hits = const [];
+      _findCtrl.clear();
+
+      // Closed again, so the list it just added to is what is on
+      // screen rather than the box that added to it.
+      _searchOpen = false;
+    });
+
+    await _map?.flyTo(
+      mb.CameraOptions(
+        center: mb.Point(
+          coordinates: mb.Position(hit.point.lng, hit.point.lat),
+        ),
+        // The same zoom the map opens at on a known location: close
+        // enough to tell one road from the one beside it.
+        zoom: 12,
+      ),
+      mb.MapAnimationOptions(duration: 700),
+    );
+  }
+
+  void _clearFind() {
+    _findDebounce?.cancel();
+
+    setState(() {
+      _findCtrl.clear();
+      _hits = const [];
+      _finding = false;
+
+      // The box closes with the text when there is a road to show
+      // instead. On an empty one it stays, because there is nothing
+      // else for that space to hold.
+      _searchOpen = _stops.isEmpty;
+    });
+  }
+
+  void _openFind() {
+    setState(() => _searchOpen = true);
+
+    // After the frame that builds the field, or there is nothing yet
+    // to give the focus to.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _findFocus.requestFocus();
+    });
+  }
+
   // ── importing a route somebody already has ────────────────────────
 
   /// Asks for a Google Maps link and turns it into points.
@@ -557,9 +852,13 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
     // not "add these to what I was drawing", and silently mixing the
     // two would produce a line through both.
     setState(() {
-      _points
+      _stops
         ..clear()
-        ..addAll(points.take(_maxPoints));
+        ..addAll(
+          points
+              .take(_maxPoints)
+              .map((point) => _Stop(point, key: _nextStopKey++)),
+        );
     });
 
     unawaited(_draw());
@@ -741,6 +1040,7 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
     final id = await RoadsAPI.create(
       title: title,
       points: _points,
+      pointNames: _pointNames,
       summary: _summaryCtrl.text.trim(),
       coverImage: cover,
     );
@@ -795,6 +1095,9 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
       // Likewise: sending points re-routes the whole geometry, so a
       // road whose route cannot be edited must not send any.
       points: road.canEditRoute ? _points : null,
+      // Only alongside the points, for the same reason: the names mean
+      // nothing against a route they did not come with.
+      pointNames: road.canEditRoute ? _pointNames : null,
     );
 
     if (!mounted) return;
@@ -859,6 +1162,24 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   }
 
   bool get _canContinue => _points.length >= 2;
+
+  /// One name per point, in the same order, for saving.
+  ///
+  /// The two halves joined back into the one string the column holds —
+  /// "Helmsley, North Yorkshire" — because that is how it was read out
+  /// of the geocoder and splitting it again on the way back in is the
+  /// job of whoever draws the row.
+  ///
+  /// An unnamed point is an empty string rather than a gap, so entry 3
+  /// is point 3 however many of them have no name.
+  List<String> get _pointNames => [
+    for (final stop in _stops)
+      stop.name.trim().isEmpty
+          ? ''
+          : (stop.detail.trim().isEmpty
+                ? stop.name.trim()
+                : '${stop.name.trim()}, ${stop.detail.trim()}'),
+  ];
 
   // ── the screen ────────────────────────────────────────────────────
 
@@ -1027,16 +1348,17 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
   /// Step one: the map, and the three things that can be done to it.
   List<Widget> _drawChrome(ThemeProvider theme) {
     return [
-      // The hint and the two map-wide actions, in ONE Positioned.
+      // ── THE TOP, AND WHY IT NO LONGER GROWS ─────────────────────
       //
-      // They used to be two, the buttons pinned at top: 64 under a
-      // hint pinned at top: 12 — which only held while the hint was
-      // one line. At three points or more it wraps to two and the
-      // buttons sat on top of it. In a column instead, the hint can be
-      // whatever height it likes and everything follows it down.
+      // It used to be hint + buttons, and the hint got longer with
+      // every point: at five it was three lines of prose, which pushed
+      // everything under it down the map and left the row beside it
+      // ragged.
       //
-      // stretch, so the import button below fills the width rather
-      // than shrink-wrapping its label in the middle.
+      // The list of stops replaces it. That is the same information
+      // said once, in a shape that does not grow — the two ends are
+      // always shown and everything between them is one collapsed row
+      // until somebody asks for it.
       Positioned(
         left: 12,
         right: 12,
@@ -1044,29 +1366,30 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // The hint and the way to see more of the map, half each.
-            // Both are about LOOKING at the road rather than changing
-            // it, which is why they share a line.
-            Row(
-              children: [
-                Expanded(child: _Hint(count: _points.length)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _MapButton(
-                    icon: Icons.open_in_full_rounded,
-                    label: 'Full screen',
-                    fill: true,
-                    onTap: () => setState(() => _fullScreen = true),
-                  ),
-                ),
-              ],
-            ),
+            // Open on an empty road, because finding the start is the
+            // first thing anybody does. A + afterwards, so the list
+            // gets the room instead.
+            if (_searchOpen) _findBox(theme) else _addPointButton(theme),
+
+            // The results hang under it, over the map. Nothing when
+            // there is nothing to show.
+            if (_hits.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              _findResults(theme),
+            ],
 
             const SizedBox(height: 8),
 
-            // Full width on its own line, which buys back the words:
-            // at half a phone's width this had to read 'Import Maps
-            // link' to fit, and the whole label says what it wants.
+            // One or the other, never both: an empty road has nothing
+            // to list, and a road with stops does not need telling
+            // what tapping does.
+            if (_stops.isEmpty)
+              _Hint(count: 0)
+            else
+              _stopList(theme),
+
+            const SizedBox(height: 8),
+
             _MapButton(
               icon: _importing
                   ? Icons.hourglass_top_rounded
@@ -1079,14 +1402,30 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
         ),
       ),
 
-      if (_points.isNotEmpty)
-        Positioned(
-          right: 12,
-          bottom: 104,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (_points.length >= 2) ...[
+      // ── THE MAP'S OWN CONTROLS, ALL IN ONE PLACE ────────────────
+      //
+      // Full screen moved down here from the top. It belongs with
+      // Reverse, Undo and Clear — all four act on the map rather than
+      // on the road's details — and the top had run out of room for
+      // it once the list of stops arrived.
+      //
+      // Always drawn, unlike the other three: there is nothing to
+      // reverse or undo on an empty road, but looking at more of the
+      // map is exactly what somebody with an empty road wants.
+      Positioned(
+        right: 12,
+        bottom: 104,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _MapButton(
+              icon: Icons.open_in_full_rounded,
+              label: 'Full screen',
+              onTap: () => setState(() => _fullScreen = true),
+            ),
+            if (_stops.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              if (_stops.length >= 2) ...[
                 _MapButton(
                   icon: Icons.swap_horiz_rounded,
                   label: 'Reverse',
@@ -1106,8 +1445,9 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
                 onTap: _clear,
               ),
             ],
-          ),
+          ],
         ),
+      ),
 
       Positioned(
         left: 0,
@@ -1125,6 +1465,340 @@ class _AddRoadScreenState extends State<AddRoadScreen> {
         ),
       ),
     ];
+  }
+
+  /// Where to look. Moves the map; places nothing.
+  Widget _findBox(ThemeProvider theme) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.94),
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 12, right: 6),
+        child: Row(
+          children: [
+            Icon(
+              Icons.search_rounded,
+              size: 18,
+              color: const Color(0xFF0B0B0B).withValues(alpha: 0.55),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _findCtrl,
+                focusNode: _findFocus,
+                onChanged: _onFindChanged,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (value) {
+                  _findDebounce?.cancel();
+                  _find(value);
+                },
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0B0B0B),
+                ),
+                decoration: InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  hintText: _stops.isEmpty
+                      ? 'Find where the road starts'
+                      : 'Add another point',
+                  hintStyle: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF0B0B0B).withValues(alpha: 0.4),
+                  ),
+                ),
+              ),
+            ),
+            if (_finding)
+              const Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFFAE9159),
+                  ),
+                ),
+              )
+            else if (_findCtrl.text.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18),
+                color: const Color(0xFF0B0B0B),
+                visualDensity: VisualDensity.compact,
+                onPressed: _clearFind,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The + that brings the search box back.
+  ///
+  /// Takes the search box's place rather than sitting beside it: two
+  /// ways to start the same search, on one line, is one too many.
+  Widget _addPointButton(ThemeProvider theme) {
+    return _MapButton(
+      icon: Icons.add_rounded,
+      label: 'Add a point',
+      fill: true,
+      onTap: _openFind,
+    );
+  }
+
+  /// The road so far, as a list of places.
+  ///
+  /// ── WHY THE MIDDLE IS FOLDED AWAY ───────────────────────────────
+  ///
+  /// Because this sits over the map, and the map is the thing being
+  /// worked on. The two ends are what somebody checks — did it start
+  /// where I meant, does it finish where I meant — and a twenty-stop
+  /// road listed in full would cover the road itself.
+  ///
+  /// One row says how many are hidden and opens them. Nothing is
+  /// hidden below four stops, because folding one row away to save one
+  /// row's height is a tap for nothing.
+  Widget _stopList(ThemeProvider theme) {
+    final last = _stops.length - 1;
+
+    // Three or fewer fit without folding: first, middle, last is the
+    // same height as first, "1 more", last.
+    final folded = _stops.length > 3 && !_stopsExpanded;
+
+    return Material(
+      color: Colors.white.withValues(alpha: 0.94),
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _stopRow(theme, 0),
+
+          if (folded)
+            _moreRow(theme, _stops.length - 2, open: true)
+          else ...[
+            for (var i = 1; i < last; i++) ...[
+              const Divider(height: 1, indent: 36, color: Color(0xFFEDEDED)),
+              _stopRow(theme, i),
+            ],
+
+            // The way back. Without it, expanding is one-way and the
+            // list somebody opened stays open over the map for the
+            // rest of the road.
+            if (_stops.length > 3) _moreRow(theme, 0, open: false),
+          ],
+
+          if (last > 0) ...[
+            const Divider(height: 1, indent: 36, color: Color(0xFFEDEDED)),
+            _stopRow(theme, last),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// "3 more points" and the tap that shows them, or the way back.
+  Widget _moreRow(ThemeProvider theme, int hidden, {required bool open}) {
+    return InkWell(
+      onTap: () => setState(() => _stopsExpanded = open),
+      child: Container(
+        color: const Color(0xFFF4F4F4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        child: Row(
+          children: [
+            Icon(
+              open
+                  ? Icons.keyboard_arrow_down_rounded
+                  : Icons.keyboard_arrow_up_rounded,
+              size: 18,
+              color: theme.primaryColor,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              !open
+                  ? 'Show less'
+                  : hidden == 1
+                  ? '1 more point'
+                  : '$hidden more points',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: theme.primaryColor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// One stop: where it is in the road, what it is called, and the way
+  /// to take it off.
+  Widget _stopRow(ThemeProvider theme, int index) {
+    final stop = _stops[index];
+    final isStart = index == 0;
+    final isEnd = index == _stops.length - 1 && _stops.length > 1;
+
+    final marker = isStart
+        ? 'A'
+        : isEnd
+        ? 'B'
+        : '${index + 1}';
+
+    return InkWell(
+      // Tapping a stop shows it, which is the only way to check one
+      // that is not at either end without reading its coordinates.
+      onTap: () => _lookAt(stop.point),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
+        child: Row(
+          children: [
+            Container(
+              width: 18,
+              height: 18,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: isStart || isEnd
+                    ? theme.primaryColor
+                    : const Color(0xFFD8D8D8),
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                marker,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: isStart || isEnd
+                      ? Colors.white
+                      : const Color(0xFF4A4A4A),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    stop.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0B0B0B),
+                    ),
+                  ),
+                  if (stop.detail.isNotEmpty)
+                    Text(
+                      stop.detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Color(0xFF6B6B6B),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close_rounded, size: 16),
+              color: const Color(0xFF8A8A8A),
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(minWidth: 34, minHeight: 28),
+              padding: EdgeInsets.zero,
+              tooltip: 'Remove',
+              onPressed: () => _removeStop(index),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Moves the map to a stop without changing the road.
+  Future<void> _lookAt(RoadPoint point) async {
+    await _map?.flyTo(
+      mb.CameraOptions(
+        center: mb.Point(coordinates: mb.Position(point.lng, point.lat)),
+      ),
+      mb.MapAnimationOptions(duration: 500),
+    );
+  }
+
+  /// What the search found, over the map.
+  ///
+  /// Capped by the request rather than here — see PlaceSearch, which
+  /// asks for five. A list long enough to scroll would be covering the
+  /// thing somebody is trying to look at.
+  Widget _findResults(ThemeProvider theme) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.96),
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < _hits.length; i++) ...[
+            if (i > 0)
+              const Divider(height: 1, indent: 12, color: Color(0xFFEDEDED)),
+            InkWell(
+              onTap: () => _addHit(_hits[i]),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.place_outlined,
+                      size: 16,
+                      color: theme.primaryColor,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _hits[i].name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0B0B0B),
+                            ),
+                          ),
+                          if (_hits[i].detail.isNotEmpty)
+                            Text(
+                              _hits[i].detail,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF6B6B6B),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   /// Nothing but the map and a way back out of it.
@@ -1572,6 +2246,52 @@ class _CoverButton extends StatelessWidget {
 }
 
 /// Says what to do, and then what has been done.
+/// One point on the road, and what to call it.
+///
+/// The label is empty for a point tapped on the map — a coordinate is
+/// not a name, and inventing one from a reverse lookup would be a
+/// request per tap for a string nobody asked for. The list shows those
+/// as "Dropped pin" and the ones from the search by their own name.
+class _Stop {
+  /// This stop, as opposed to one that happens to be equal to it.
+  ///
+  /// ── WHY A KEY AND NOT AN INDEX ──────────────────────────────────
+  ///
+  /// A name is looked up after the point is placed, and by the time it
+  /// comes back the list may have been reversed, cleared, or had
+  /// something removed from the middle. An index captured at the start
+  /// names whatever has since moved into that slot, which is a wrong
+  /// name on a real place — and two taps on the same spot are two
+  /// stops, so the coordinates cannot tell them apart either.
+  final int key;
+
+  final RoadPoint point;
+
+  /// "Helmsley". Empty until something names it, which for a tapped
+  /// point is a lookup that may never come back.
+  final String name;
+
+  /// "North Yorkshire, England", or empty.
+  final String detail;
+
+  const _Stop(
+    this.point, {
+    this.key = 0,
+    this.name = '',
+    this.detail = '',
+  });
+
+  _Stop named(String name, String detail) =>
+      _Stop(point, key: key, name: name, detail: detail);
+
+  /// What the list calls it.
+  ///
+  /// A tapped point has no name and is not given one: a reverse lookup
+  /// per tap is a request for a string nobody asked for, and "Unnamed
+  /// Road, York" is not more useful than knowing you put it there.
+  String get title => name.trim().isEmpty ? 'Dropped pin' : name.trim();
+}
+
 class _Hint extends StatelessWidget {
   final int count;
 
@@ -1579,12 +2299,19 @@ class _Hint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ── ONE LINE, WHATEVER THE COUNT ────────────────────────────────
+    //
+    // This used to grow: at three points it became three lines of
+    // prose about junctions, which pushed everything under it down the
+    // map and left the row beside it ragged against a one-line pill.
+    //
+    // The list of stops says what the long version said, in a shape
+    // that does not change height — so this is back to being a prompt,
+    // and a prompt is one line.
     final text = switch (count) {
-      0 => 'Tap where the road starts',
+      0 => 'Tap the map, or search for the start',
       1 => 'Now tap where it ends',
-      _ =>
-        '$count points, running START to END — '
-            'add more at junctions if the route looks wrong',
+      _ => '$count points, START to END',
     };
 
     return Container(
@@ -1597,6 +2324,8 @@ class _Hint extends StatelessWidget {
       child: Text(
         text,
         textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: const TextStyle(
           fontSize: 13.5,
           fontWeight: FontWeight.w600,

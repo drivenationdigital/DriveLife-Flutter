@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:drivelife/config/app_environment.dart';
+import 'package:drivelife/models/guess_crowd.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -43,6 +44,16 @@ class GuessGame {
   /// a clear photo of the car IS the answer.
   final String revealImage;
 
+  /// What everybody else picked.
+  ///
+  /// Empty until the game closes, and withheld on the same terms as
+  /// the answer: a breakdown is a strong hint, since three quarters of
+  /// a car crowd picking one option is usually the right option.
+  ///
+  /// Also empty against a server that has not been updated, which is
+  /// why nothing on the screen may assume it is there.
+  final GuessCrowd crowd;
+
   const GuessGame({
     required this.id,
     required this.date,
@@ -58,6 +69,7 @@ class GuessGame {
     this.answerIndex,
     this.answer,
     this.revealImage = '',
+    this.crowd = GuessCrowd.none,
   });
 
   bool get hasPlayed => myChoice != null;
@@ -116,6 +128,7 @@ class GuessGame {
     answerIndex: map['answer_index'] == null ? null : _int(map['answer_index']),
     answer: map['answer'] == null ? null : '${map['answer']}',
     revealImage: '${map['reveal_image'] ?? ''}',
+    crowd: GuessCrowd.fromMap(map['option_counts']),
   );
 }
 

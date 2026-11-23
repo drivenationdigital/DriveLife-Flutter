@@ -672,6 +672,15 @@ class _GuessScreenState extends State<GuessScreen>
 
           const SizedBox(height: 18),
           Center(child: _prompt(theme, game)),
+
+          // Under the verdict, not beside it. "Not this time" is the
+          // headline and this is the consolation, and a reader who
+          // only takes in one line should take in that one.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Center(child: _crowdNote(theme, game)),
+          ),
+
           const SizedBox(height: 14),
 
           Padding(
@@ -916,16 +925,115 @@ class _GuessScreenState extends State<GuessScreen>
             ),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Text(
-            game.options[index],
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              height: 1.2,
-              color: Colors.white,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                game.options[index],
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  height: 1.2,
+                  color: Colors.white,
+                ),
+              ),
+
+              // Gated on the reveal for the same reason the colours
+              // are: a bar three quarters full against one option is
+              // the answer, drawn.
+              if (shown && game.crowd.hasCrowd) ...[
+                const SizedBox(height: 8),
+                _shareBar(theme, game, index, border),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// How many people picked this one, as a bar and a number.
+  ///
+  /// ── WHY IT IS COLOURED LIKE THE BORDER ──────────────────────────
+  ///
+  /// Because it is the same fact. The border already says what this
+  /// option is — the answer, your wrong pick, or neither — and giving
+  /// the bar a colour of its own would make the tile argue with
+  /// itself.
+  Widget _shareBar(
+    ThemeProvider theme,
+    GuessGame game,
+    int index,
+    Color colour,
+  ) {
+    final share = game.crowd.shareOf(index);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // The track is always full width, so the bars can be read
+        // against each other rather than each one on its own.
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: SizedBox(
+            height: 5,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: ColoredBox(color: Colors.white.withValues(alpha: 0.1)),
+                ),
+                FractionallySizedBox(
+                  // Nothing is drawn at zero, rather than a sliver that
+                  // looks like somebody.
+                  widthFactor: share.clamp(0.0, 1.0),
+                  child: ColoredBox(color: colour),
+                ),
+              ],
             ),
           ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          game.crowd.percentOf(index),
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: Colors.white.withValues(alpha: 0.65),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// "You were not alone - 54% said the same."
+  ///
+  /// The point of the breakdown. Right or wrong says nothing about the
+  /// person who answered; being one of the four who spotted it, or
+  /// wrong alongside two thirds of the app, is the part worth reading.
+  ///
+  /// Left out entirely when there is nothing to say — see
+  /// GuessCrowd.noteFor.
+  Widget _crowdNote(ThemeProvider theme, GuessGame game) {
+    if (!_revealed.contains(game.id)) return const SizedBox.shrink();
+
+    final note = game.crowd.noteFor(
+      myChoice: game.myChoice,
+      correct: game.myCorrect,
+    );
+
+    if (note == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Text(
+        note,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Colors.white.withValues(alpha: 0.6),
         ),
       ),
     );

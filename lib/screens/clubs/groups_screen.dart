@@ -316,6 +316,23 @@ class _GroupsScreenState extends State<GroupsScreen>
   /// Local only — there is nothing to send it to yet. It exists so the
   /// button does something when pressed, because a button that does
   /// nothing reads as broken rather than as unfinished.
+  /// Groups joined from a suggestion row, by SLUG.
+  ///
+  /// ── WHY THE SLUG AND NOT THE ID ─────────────────────────────────
+  ///
+  /// Because the slug is what _toggleJoin acts on — it is what the
+  /// join and leave calls take, and the method refuses outright
+  /// without one. State keyed on anything else can disagree with the
+  /// thing it is meant to describe.
+  ///
+  /// It did. The id arrived as 0 for every suggestion the server
+  /// built from somebody's interests, so all of them compared equal:
+  /// joining one marked every row Joined, and the next tap on any of
+  /// them offered to LEAVE a group that had never been joined.
+  ///
+  /// The id is fixed too (see GlobalGroup._id), and this is the half
+  /// that cannot come back — a slug is unique by definition and every
+  /// row here has one.
   final Set<String> _joined = <String>{};
 
   /// Groups with a join or leave in flight, so a second tap cannot
@@ -463,7 +480,7 @@ class _GroupsScreenState extends State<GroupsScreen>
   Future<void> _toggleJoin(GroupSummary group) async {
     if (group.slug.isEmpty) return;
 
-    final wasJoined = _joined.contains(group.id);
+    final wasJoined = _joined.contains(group.slug);
 
     // Ask before leaving, never before joining.
     //
@@ -474,7 +491,7 @@ class _GroupsScreenState extends State<GroupsScreen>
     if (wasJoined && !await _confirmLeave(group)) return;
 
     setState(() {
-      _busy.add(group.id);
+      _busy.add(group.slug);
       // The pill shows a spinner while this is in flight rather than
       // flipping straight to its new label: it switched instantly
       // before, which made a slow request look like it had finished.
@@ -487,13 +504,13 @@ class _GroupsScreenState extends State<GroupsScreen>
     if (!mounted) return;
 
     setState(() {
-      _busy.remove(group.id);
+      _busy.remove(group.slug);
 
       // Applied on success only. The pill waited rather than guessing,
       // so a failure leaves it exactly where it was and there is
       // nothing to roll back.
       if (ok) {
-        wasJoined ? _joined.remove(group.id) : _joined.add(group.id);
+        wasJoined ? _joined.remove(group.slug) : _joined.add(group.slug);
       }
     });
 
@@ -1445,7 +1462,7 @@ class _GroupsScreenState extends State<GroupsScreen>
   }
 
   Widget _garageRow(ThemeProvider theme, GroupSummary group) {
-    final joined = _joined.contains(group.id);
+    final joined = _joined.contains(group.slug);
 
     return Material(
       color: _panel,
@@ -1503,7 +1520,7 @@ class _GroupsScreenState extends State<GroupsScreen>
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
-                  onTap: _busy.contains(group.id)
+                  onTap: _busy.contains(group.slug)
                       ? null
                       : () => _toggleJoin(group),
                   child: Padding(
@@ -1511,7 +1528,7 @@ class _GroupsScreenState extends State<GroupsScreen>
                       horizontal: 22,
                       vertical: 11,
                     ),
-                    child: _busy.contains(group.id)
+                    child: _busy.contains(group.slug)
                         // Sized to the text it replaces, so the row
                         // does not jump while the request is in
                         // flight.

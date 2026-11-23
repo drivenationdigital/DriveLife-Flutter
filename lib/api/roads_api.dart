@@ -293,6 +293,10 @@ class RoadsAPI {
   static Future<int?> create({
     required String title,
     List<RoadPoint>? points,
+    /// One name per point, in the same order. Empty string for a point
+    /// nothing could name. Ignored without [points], because a name
+    /// without the point it belongs to names the wrong place.
+    List<String>? pointNames,
     String? polyline,
     String summary = '',
     String description = '',
@@ -314,6 +318,12 @@ class RoadsAPI {
           'title': title,
           if (points != null)
             'points': points.map((p) => [p.lat, p.lng]).toList(),
+          // Beside the points and never without them. The names only
+          // mean anything against the order they were sent with, so
+          // the server pads and trims this to the points it received
+          // rather than trusting the two to line up.
+          if (points != null && pointNames != null)
+            'waypoint_names': pointNames,
           if (polyline != null && polyline.isNotEmpty) 'polyline': polyline,
           'summary': summary,
           'description': description,
@@ -364,6 +374,10 @@ class RoadsAPI {
     String? description,
     String? coverImage,
     List<RoadPoint>? points,
+    /// One name per point, in the same order. Empty string for a point
+    /// nothing could name. Ignored without [points], because a name
+    /// without the point it belongs to names the wrong place.
+    List<String>? pointNames,
   }) async {
     lastError = '';
 
@@ -382,6 +396,8 @@ class RoadsAPI {
           if (coverImage != null) 'cover_image': coverImage,
           if (points != null)
             'points': points.map((p) => [p.lat, p.lng]).toList(),
+          if (points != null && pointNames != null)
+            'waypoint_names': pointNames,
         }),
       );
 

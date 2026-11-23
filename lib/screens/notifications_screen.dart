@@ -1,6 +1,7 @@
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/screens/media/gallery_view_screen.dart';
 import 'package:drivelife/screens/media/images_of_you_screen.dart';
+import 'package:drivelife/models/notification_group.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/services/user_service.dart';
@@ -411,23 +412,40 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         itemCount: _groupedNotifications.length,
         itemBuilder: (context, groupIndex) {
           final groupName = _groupedNotifications.keys.elementAt(groupIndex);
-          final groupNotifications = _groupedNotifications[groupName]!;
+          final rows = _groupedNotifications[groupName]!;
+
+          // Once per bucket. Called inline it ran again for every row
+          // in the bucket, which is the whole list rebuilt per item.
+          final collapsed = groupNotifications(rows);
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildSectionHeader(groupName),
-              ...groupNotifications.asMap().entries.map((entry) {
-                final notification = entry.value;
-                final isLast = entry.key == groupNotifications.length - 1;
+              // ── COLLAPSED HERE, NOT IN THE PAYLOAD ──────────────
+              //
+              // Ten people liking one post is ten rows from the server
+              // and one row on screen. The grouping is built fresh from
+              // whatever arrived, every build, and nothing outside this
+              // list knows about it — see groupNotifications().
+              //
+              // Per bucket rather than across all of them, so a like
+              // from today is never folded into one from last week
+              // under a "Recent" heading it does not belong to.
+              ...collapsed.asMap().entries.map((entry) {
+                final group = entry.value;
+                final isLast = entry.key == collapsed.length - 1;
 
                 return Column(
                   children: [
                     _NotificationTile(
-                      notification: notification,
+                      group: group,
                       theme: theme,
                       sessionUserFollowing: sessionUserFollowing,
-                      onTap: () => _handleNotificationTap(notification),
+                      // The newest of them. They all point at the same
+                      // post, so any would do — the newest is the one
+                      // whose avatar and timestamp the row is showing.
+                      onTap: () => _handleNotificationTap(group.newest),
                       onFollowBack: _handleFollowBack,
                     ),
                     if (!isLast)
@@ -532,19 +550,26 @@ class _NotificationSkeleton extends StatelessWidget {
 }
 
 class _NotificationTile extends StatelessWidget {
-  final Map<String, dynamic> notification;
+  final NotificationGroup group;
   final ThemeProvider theme;
   final List<dynamic>? sessionUserFollowing;
   final VoidCallback onTap;
   final Function(int userId, bool wasFollowing) onFollowBack;
 
   const _NotificationTile({
-    required this.notification,
+    required this.group,
     required this.theme,
     required this.sessionUserFollowing,
     required this.onTap,
     required this.onFollowBack,
   });
+
+  /// The one this row is drawn from: the newest of the group, which for
+  /// everything ungrouped is the only one there is.
+  ///
+  /// A getter rather than a second field, so there is no way for the
+  /// two to disagree about which notification this row is about.
+  Map<String, dynamic> get notification => group.newest;
 
   Widget _buildEntityAvatar(
     BuildContext context,
@@ -631,11 +656,43 @@ class _NotificationTile extends StatelessWidget {
         entityDataRaw is Map<String, dynamic> ? entityDataRaw : {};
 
     final profileImage = initiatorData['profile_image'];
-    final displayName = initiatorData['display_name'] ?? 'Unknown';
-    final isVerified = initiatorData['user_verified'] == true;
-    final message = _buildNotificationMessage(notification);
+
+    // ── ONE NAME, USED TWICE ────────────────────────────────────────
+    //
+    // _buildMessageContent draws this in bold and then prints the
+    // message from displayName.length onwards, so the two have to
+    // agree to the character. They used to be worked out separately
+    // and disagreed whenever display_name was missing: this said
+    // 'Unknown', the message said 'User', and the row rendered as
+    // "ked your post".
+    //
+    // For a group it is the list of people — "Ali, Sam and 18 others"
+    // — which is the same substitution in the same place.
+    // The pieces of the name line, and the same line as one string.
+    // The spans are drawn from the pieces; the string is what the
+    // message is built to start with and what gets sliced off it.
+    final nameChunks = group.isGrouped
+        ? group.nameChunks
+        : <NameChunk>[
+            (
+              text: '${initiatorData['display_name'] ?? ''}'.trim().isEmpty
+                  ? 'Someone'
+                  : '${initiatorData['display_name']}'.trim(),
+              bold: true,
+            ),
+          ];
+
+    final displayName = nameChunks.map((c) => c.text).join();
+
+    // Only one person's tick to show, and a group has several people.
+    final isVerified =
+        !group.isGrouped && initiatorData['user_verified'] == true;
+    final message = _buildNotificationMessage(notification, displayName);
     final timeAgo = _formatTimeAgo(notification['date'] ?? '');
-    final isRead = notification['is_read'] == '1';
+
+    // Read only when every one of them has been. See
+    // NotificationGroup.anyUnread.
+    final isRead = !group.anyUnread;
     final isFollow = notification['type'] == 'follow';
     // Gallery notifications carry media_url rather than a social post's
     // media, so without the fallback their rows rendered with no thumbnail.
@@ -687,6 +744,7 @@ class _NotificationTile extends StatelessWidget {
                 children: [
                   _buildMessageContent(
                     context,
+                    nameChunks,
                     displayName,
                     isVerified,
                     message,
@@ -790,6 +848,7 @@ class _NotificationTile extends StatelessWidget {
 
   Widget _buildMessageContent(
     BuildContext context,
+    List<NameChunk> nameChunks,
     String displayName,
     bool isVerified,
     String message,
@@ -804,14 +863,27 @@ class _NotificationTile extends StatelessWidget {
           child: RichText(
             text: TextSpan(
               children: [
-                TextSpan(
-                  text: displayName,
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
+                // ── THE NAMES BOLD, THE JOINS BETWEEN THEM NOT ──────
+                //
+                // "Ali, Sam and 18 others" is four pieces, and only two
+                // of them are names. Bolding the whole run made ", "
+                // and " and " look like part of a name, which on a line
+                // whose entire job is listing names is the one thing a
+                // reader is trying to tell apart.
+                //
+                // One chunk for anything ungrouped, so this is the same
+                // single bold span it always was.
+                for (final chunk in nameChunks)
+                  TextSpan(
+                    text: chunk.text,
+                    style: TextStyle(
+                      color: chunk.bold ? Colors.black : Colors.black87,
+                      fontWeight: chunk.bold
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                      fontSize: 14,
+                    ),
                   ),
-                ),
 
                 // ✅ Entity badge (like Discord)
                 if (isEntity)
@@ -933,18 +1005,20 @@ class _NotificationTile extends StatelessWidget {
   }
 
   // ✅ OPTIMIZE - Cache these helper methods
-  static String _buildNotificationMessage(Map<String, dynamic> notification) {
+  /// [name] is who the message must START with, to the character.
+  ///
+  /// Handed in rather than worked out here because the caller draws it
+  /// in bold and then slices this string at its length — and because
+  /// for a grouped row it is not one person's name at all. See the
+  /// note in build().
+  static String _buildNotificationMessage(
+    Map<String, dynamic> notification,
+    String name,
+  ) {
     final type = notification['type']?.toString() ?? '';
     final entity = (notification['entity'] is Map)
         ? Map<String, dynamic>.from(notification['entity'])
         : <String, dynamic>{};
-    final initiator = (entity['initiator_data'] is Map)
-        ? Map<String, dynamic>.from(entity['initiator_data'])
-        : <String, dynamic>{};
-    final name =
-        (initiator['display_name']?.toString().trim().isNotEmpty ?? false)
-        ? initiator['display_name'].toString()
-        : 'User';
     final entityType = entity['entity_type']?.toString();
     final rawEntityData = entity['entity_data'];
     final Map<String, dynamic> entityData = rawEntityData is Map

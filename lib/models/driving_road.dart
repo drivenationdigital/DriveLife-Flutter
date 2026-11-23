@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:drivelife/api/cloudflare_images.dart';
@@ -113,6 +114,44 @@ class DrivingRoad {
   /// its photograph changed; its route cannot be recovered.
   final String waypoints;
 
+  /// What each waypoint is called, as the JSON array the server stores.
+  ///
+  /// Same order and same length as [waypoints] — entry 3 names point 3
+  /// — and an empty string for a point nothing could name. Empty when
+  /// the road predates the column, or when every point was unnamed.
+  ///
+  /// Kept as the raw string rather than a parsed list because that is
+  /// what arrives and what goes back: anything that wants the names
+  /// calls [waypointNames].
+  final String waypointNamesJson;
+
+  /// The names, parsed, padded to [count] so index 3 is always point 3.
+  ///
+  /// Anything unreadable comes back as all-empty rather than throwing.
+  /// A list of names is decoration on a route that works without it,
+  /// and a road nobody can open is worse than a road with no labels.
+  List<String> waypointNames(int count) {
+    if (count < 1) return const [];
+
+    final out = List<String>.filled(count, '');
+
+    if (waypointNamesJson.trim().isEmpty) return out;
+
+    try {
+      final decoded = jsonDecode(waypointNamesJson);
+
+      if (decoded is! List) return out;
+
+      for (var i = 0; i < count && i < decoded.length; i++) {
+        out[i] = '${decoded[i] ?? ''}'.trim();
+      }
+    } catch (_) {
+      // Not JSON. Unnamed is the honest answer.
+    }
+
+    return out;
+  }
+
   const DrivingRoad({
     required this.id,
     this.site = '',
@@ -139,6 +178,7 @@ class DrivingRoad {
     this.polyline = '',
     this.description = '',
     this.waypoints = '',
+    this.waypointNamesJson = '',
   });
 
   /// Whether the detail call has been made for this one.
@@ -302,6 +342,7 @@ class DrivingRoad {
     polyline: polyline ?? this.polyline,
     description: description ?? this.description,
     waypoints: waypoints,
+    waypointNamesJson: waypointNamesJson,
   );
 
   factory DrivingRoad.fromMap(Map<String, dynamic> map) => DrivingRoad(
@@ -330,6 +371,7 @@ class DrivingRoad {
     polyline: asText(map['polyline']),
     description: asText(map['description']),
     waypoints: asText(map['waypoints']),
+    waypointNamesJson: asText(map['waypoint_names']),
   );
 
   /// ── WHY EVERY NUMBER GOES THROUGH A READER ────────────────────────

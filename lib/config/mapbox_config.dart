@@ -59,6 +59,17 @@ abstract final class MapboxConfig {
   /// Whether [load] has run, whatever it found.
   static bool get isLoaded => _loaded;
 
+  /// The token itself, for the Mapbox HTTP APIs the SDK does not cover.
+  ///
+  /// The map plugin is handed the token by [load] and needs nothing
+  /// further. Geocoding is a plain REST call, so it has to carry the
+  /// token in a query string — see PlaceSearch.
+  ///
+  /// Empty when there is no usable token, which every caller must
+  /// treat as "this feature is off" rather than sending the request
+  /// anyway and reading a 401 as no results.
+  static String get token => _token;
+
   /// Mapbox's own light style. Standard is the 3D-capable default and renders
   /// closest to the design: muted land, clear road hierarchy, no competing
   /// POI colour to fight the pins for attention.
