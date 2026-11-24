@@ -9,6 +9,8 @@ import 'package:drivelife/widgets/media/gallery_card.dart';
 import 'package:drivelife/screens/chat/ChatScreen.dart';
 import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/screens/garage/garage_list_screen.dart';
+import 'package:drivelife/widgets/membership/membership_card.dart';
+import 'package:drivelife/widgets/membership/plus_badge.dart';
 import 'package:drivelife/widgets/garage/vehicle_card.dart';
 import 'package:drivelife/screens/profile/edit_profile_settings_screen.dart';
 import 'package:drivelife/screens/profile/followers_screen.dart';
@@ -1625,6 +1627,27 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                                 color: theme.primaryColor,
                               ),
                             ],
+
+                            // ── THE MEMBERSHIP TICK ─────────────────
+                            //
+                            // Beside the verification tick, not
+                            // instead of it. Being verified and paying
+                            // for a membership are two different
+                            // claims about a person, and one standing
+                            // in for the other is a claim nobody made.
+                            //
+                            // OWN PROFILE ONLY, for now. The tier
+                            // comes from MembershipProvider, which
+                            // holds the SIGNED-IN person's membership
+                            // — drawing it on somebody else's page
+                            // would show them your badge wearing
+                            // their name. Somebody else's tier has to
+                            // arrive on their profile payload, and the
+                            // server does not send it yet.
+                            if (_isOwnProfile) ...[
+                              const SizedBox(width: 4),
+                              const PlusTick(size: 15),
+                            ],
                           ],
                         ),
                         Text(
@@ -1691,6 +1714,20 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                     : _buildOtherProfileButtons(theme),
               ),
               const SizedBox(height: 12),
+
+              // ── MEMBERSHIP ──────────────────────────────────────
+              //
+              // Your own profile only. Somebody else's membership is
+              // theirs to have, not something to sell against - and a
+              // "become a member" card on a stranger's page is an
+              // advert wearing their name.
+              //
+              // Under the buttons rather than over them: the things
+              // somebody came to this screen to do come first.
+              if (_isOwnProfile) ...[
+                const MembershipCard(),
+                const SizedBox(height: 4),
+              ],
 
               // Social buttons
               Padding(

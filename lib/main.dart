@@ -1,3 +1,5 @@
+import 'package:drivelife/providers/membership_config_provider.dart';
+import 'package:drivelife/providers/membership_provider.dart';
 import 'package:drivelife/providers/cart_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:drivelife/theme/dl_type.dart';
@@ -304,6 +306,15 @@ void main() async {
         ChangeNotifierProvider(create: (_) => UserProvider()),
         ChangeNotifierProvider(create: (_) => VideoMuteProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        // Nothing sets this yet except the demo screen - see
+        // MembershipProvider, which says what has to replace that.
+        ChangeNotifierProvider(create: (_) => MembershipProvider()),
+        // The benefit copy and the advert switch, both editable
+        // without a build. Starts on what shipped in the binary and
+        // never waits on the network - see MembershipConfigProvider.
+        ChangeNotifierProvider(
+          create: (_) => MembershipConfigProvider()..load(),
+        ),
         ChangeNotifierProvider(create: (_) => UploadPostProvider()),
         // Above the navigator so a gallery upload outlives the screen that
         // started it.

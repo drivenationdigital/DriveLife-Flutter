@@ -17,6 +17,11 @@ import 'package:drivelife/widgets/feed/offers_banner.dart';
 import 'package:drivelife/widgets/upload_progress_card.dart';
 import 'package:flutter/material.dart';
 import 'package:drivelife/widgets/nav/dl_haptics.dart';
+import 'package:drivelife/models/feed_ad_slots.dart';
+import 'package:drivelife/providers/membership_config_provider.dart';
+import 'package:drivelife/providers/membership_provider.dart';
+import 'package:drivelife/services/ad_service.dart';
+import 'package:drivelife/widgets/ads/feed_ad_card.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 
@@ -391,6 +396,15 @@ class _PostsTabState extends State<_PostsTab> {
   int? _currentUserId;
 
   List<dynamic> _posts = [];
+
+  /// Where the adverts go, and whether there are any.
+  ///
+  /// Recomputed on every build from the membership, so turning the
+  /// tier on in the demo empties the feed of adverts immediately
+  /// rather than on the next refresh. Nothing is inserted into
+  /// [_posts] - see FeedAdSlots for why the positions are computed
+  /// instead.
+  final AdService _ads = HouseAds();
   List<EventOffer> _offers = [];
   int _page = 1;
   bool _isLoading = false;
@@ -554,6 +568,31 @@ class _PostsTabState extends State<_PostsTab> {
   }
 
   /// Reloads this feed from the first page. The screen scrolls; this fetches.
+  /// Where the adverts go, if anywhere.
+  ///
+  /// ── TWO SWITCHES, AND BOTH HAVE TO AGREE ────────────────────────
+  ///
+  /// The REMOTE one says whether adverts run at all. It is off until
+  /// somebody turns it on, so a build shipped before the membership
+  /// launches shows none, and so does a build that cannot reach the
+  /// config - see AdConfig.enabled.
+  ///
+  /// The MEMBERSHIP one says whether this person sees them. Ad-free is
+  /// a paid benefit and this is the whole of it.
+  ///
+  /// Read in one place so the row builder and the row count cannot
+  /// disagree about how long the list is - a mismatch there is a feed
+  /// that drops its last post, or one that asks for a row that is not
+  /// there.
+  FeedAdSlots _slotsFor(BuildContext context) {
+    final ads = context.watch<MembershipConfigProvider>().config.ads;
+    final tier = context.watch<MembershipProvider>().tier;
+
+    if (!ads.enabled || !adsAllowedFor(tier)) return FeedAdSlots.none;
+
+    return FeedAdSlots(firstAfter: ads.firstAfter, every: ads.every);
+  }
+
   Future<void> refresh() => _fetchPosts(refresh: true);
 
   Future<void> _fetchPosts({bool refresh = false}) async {
@@ -826,7 +865,52 @@ class _PostsTabState extends State<_PostsTab> {
 
           SliverList(
             delegate: SliverChildBuilderDelegate(
-              (context, index) {
+              (context, displayIndex) {
+                // ── ADVERTS, WORKED OUT RATHER THAN INSERTED ──────
+                //
+                // The posts list is never touched. Advert rows are
+                // positions computed from its length, so pagination,
+                // de-duplication and refresh all carry on knowing
+                // nothing about advertising - and a member's feed is
+                // the same list with the positions switched off.
+                //
+                // See FeedAdSlots, where the index translation is and
+                // where it is tested: the bug this shape avoids is a
+                // feed that silently drops one post per advert.
+                final slots = _slotsFor(context);
+
+                final shown = slots.displayCount(_posts.length);
+
+                if (displayIndex < shown
+                    && slots.isAd(displayIndex, _posts.length)) {
+                  final slot =
+                      slots.adIndexAt(displayIndex, _posts.length) ?? 0;
+                  final creative = _ads.adAt(slot);
+
+                  // No advert to show is NOTHING, not a gap. An empty
+                  // box with a divider under it is a hole in the feed
+                  // that nobody can explain.
+                  if (creative == null) return const SizedBox.shrink();
+
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      FeedAdCard(
+                        key: ValueKey('ad-$slot'),
+                        ad: creative,
+                        slot: slot,
+                        service: _ads,
+                      ),
+                      const FeedDivider(),
+                    ],
+                  );
+                }
+
+                final index = slots.postIndexFor(
+                  displayIndex,
+                  _posts.length,
+                );
+
                 if (index == _posts.length) {
                   if (!_hasMore) return const SizedBox.shrink();
                   return Padding(
@@ -935,7 +1019,13 @@ class _PostsTabState extends State<_PostsTab> {
                   ),
                 );
               },
-              childCount: _posts.length + (_hasMore ? 1 : 0),
+              // The posts, the adverts between them, and the
+              // loader. Computed the same way the builder translates
+              // its index, so the two cannot disagree about how long
+              // the list is.
+              childCount:
+                  _slotsFor(context).displayCount(_posts.length) +
+                  (_hasMore ? 1 : 0),
               // FIX: Let the framework manage RepaintBoundaries — removing
               // manual RepaintBoundary wrappers and enabling the delegate flag
               // is more efficient (avoids double boundaries)

@@ -31,6 +31,7 @@ import 'package:drivelife/utils/deeplinks_helper.dart';
 import 'package:drivelife/widgets/auth/email_verification.dart';
 import 'package:drivelife/widgets/profile/post_detail_screen.dart';
 import 'package:drivelife/screens/auth/register/step_brands.dart';
+import 'package:drivelife/screens/subscription/subscribe_screen.dart';
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/splash_screen.dart';
@@ -64,6 +65,13 @@ class AppRoutes {
   static const String registerStepFour = '/register-step-4';
   static const String registerStepFive = '/register-step-5';
   static const String resetPassword = '/reset-password';
+
+  /// The paywall.
+  ///
+  /// Not wired to anything yet on purpose: the store has no products
+  /// in it, so every entry point would be a button that cannot buy
+  /// anything. Reachable by name while that is still true.
+  static const String subscribe = '/subscribe';
 
   static const String home = '/home';
   static const String posts = '/posts';
@@ -207,6 +215,10 @@ class AppRoutes {
         return _slide(const RegisterStepThreeScreen());
       case registerBrands:
         return _slide(const RegisterBrandsScreen());
+      case subscribe:
+        // No service passed, so it builds its own — which today is
+        // FakeSubscriptions. See SubscribeScreen.
+        return _slide(const SubscribeScreen());
       case registerStepFour:
         return _slide(const RegisterStepFourScreen());
       case registerStepFive:

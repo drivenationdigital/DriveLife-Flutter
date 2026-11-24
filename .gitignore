@@ -52,6 +52,11 @@ app.*.map.json
 
 php-api/
 drivelife-accounts-api/
+
+# Server-side PHP that is deployed by hand, same as php-api above. It
+# also holds live secrets: an Apify token in import.php and the import
+# token in config.php, neither of which belongs in a repo.
+event-import/
 get-tickets/
 ticketing/
 

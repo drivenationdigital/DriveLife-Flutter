@@ -1,0 +1,167 @@
+{
+  "identifier" : "A1F3C6D2-9B47-4E51-8C0A-7D2E5F8B1C34",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "1500589187",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 0,
+    "_locale" : "en_GB",
+    "_storefront" : "GBR",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21498765",
+      "localizations" : [
+        {
+          "description" : "Membership for DriveLife",
+          "displayName" : "DriveLife Plus",
+          "locale" : "en_GB"
+        }
+      ],
+      "name" : "DriveLife Plus",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6749301001",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "A badge on your profile, early access to events, and a range of partner discounts and benefits.",
+              "displayName" : "DriveLife Plus",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "drivelife_plus_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "DriveLife Plus - Monthly",
+          "subscriptionGroupID" : "21498765",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "44.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6749301002",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "A badge on your profile, early access to events, and a range of partner discounts and benefits. Two months free against paying monthly.",
+              "displayName" : "DriveLife Plus",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "drivelife_plus_yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "DriveLife Plus - Yearly",
+          "subscriptionGroupID" : "21498765",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "99.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6749301003",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Everything in Plus, and more.",
+              "displayName" : "DriveLife SuperCharged",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "drivelife_supercharged_yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "DriveLife SuperCharged - Yearly",
+          "subscriptionGroupID" : "21498765",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

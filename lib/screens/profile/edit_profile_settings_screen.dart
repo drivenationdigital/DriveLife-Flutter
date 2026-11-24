@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:drivelife/api/test_location_api.dart';
+import 'package:drivelife/screens/subscription/subscription_demo_screen.dart';
+import 'package:drivelife/widgets/membership/membership_card.dart';
 import 'package:drivelife/providers/account_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/services/upload_quality_prefs.dart';
@@ -172,6 +175,12 @@ class EditProfileSettingsScreen extends StatelessWidget {
             }
           }),
           const SizedBox(height: 8),
+
+          // Above Interests and below the account rows: a membership
+          // is closer to "what this account is" than to a preference.
+          const MembershipSettingsRow(),
+          const SizedBox(height: 8),
+
           _buildMenuItem(
             context,
             'Interests & Notifications',
@@ -205,6 +214,29 @@ class EditProfileSettingsScreen extends StatelessWidget {
           // administrator, so it costs non-admins one request and no pixels.
           const _TestLocationTile(),
           const SizedBox(height: 8),
+
+          // ── THE WAY INTO THE SUBSCRIPTION DEMO ──────────────────
+          //
+          // Debug builds only, and it goes the moment there is a real
+          // store with real products in it. Until then nothing in the
+          // app gates on Pro, so this is the only way to look at any
+          // of those screens without wiring a gate and unwiring it
+          // again.
+          //
+          // kDebugMode rather than a flag: a flag is something
+          // somebody has to remember to turn off.
+          if (kDebugMode) ...[
+            _buildMenuItem(
+              context,
+              'Subscription demo',
+              () => NavigationHelper.navigateTo(
+                context,
+                const SubscriptionDemoScreen(),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+
           // ✅ Logout button - properly placed as separate menu item
           _buildMenuItem(
             context,
