@@ -177,36 +177,63 @@ class StoreSubscriptions implements SubscriptionService {
     return _current;
   }
 
+  /// Handles a batch from the purchase feed.
+  ///
+  /// ── WHY EVERY PURCHASE IS WRAPPED ───────────────────────────────
+  ///
+  /// This is an ASYNC listener callback, and the stream's `onError`
+  /// does not cover it: `onError` is for errors the stream delivers,
+  /// not for something thrown inside the handler. An uncaught throw
+  /// here becomes an unhandled asynchronous error, which on a debug
+  /// build stops the app dead at launch — [MembershipSync] calls
+  /// `restore()` on boot, restored transactions arrive here, and
+  /// `completePurchase` on one the store already considers finished
+  /// is enough to do it.
+  ///
+  /// So each purchase is handled in isolation: one bad transaction is
+  /// logged and stepped over rather than taking the launch with it,
+  /// and the rest of the batch is still processed.
   Future<void> _onPurchases(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
-      switch (purchase.status) {
-        case PurchaseStatus.pending:
-          // Google Play deferred payment. Not granted, not failed.
-          _finish(PurchaseOutcome.pending);
+      try {
+        await _handle(purchase);
+      } catch (e) {
+        debugPrint('[subscriptions] handling ${purchase.productID}: $e');
 
-        case PurchaseStatus.purchased:
-        case PurchaseStatus.restored:
-          _grant(purchase);
-          _finish(
-            purchase.status == PurchaseStatus.restored
-                ? PurchaseOutcome.alreadyOwned
-                : PurchaseOutcome.success,
-          );
-
-        case PurchaseStatus.canceled:
-          _finish(PurchaseOutcome.cancelled);
-
-        case PurchaseStatus.error:
-          debugPrint('[subscriptions] ${purchase.error}');
-          _finish(PurchaseOutcome.failed);
+        // Something is waiting on this and must not wait forever.
+        _finish(PurchaseOutcome.failed);
       }
+    }
+  }
 
-      // Required by both stores, and required even for a failure: an
-      // uncompleted transaction is re-delivered on every launch and,
-      // on iOS, blocks later purchases behind it.
-      if (purchase.pendingCompletePurchase) {
-        await _iap.completePurchase(purchase);
-      }
+  Future<void> _handle(PurchaseDetails purchase) async {
+    switch (purchase.status) {
+      case PurchaseStatus.pending:
+        // Google Play deferred payment. Not granted, not failed.
+        _finish(PurchaseOutcome.pending);
+
+      case PurchaseStatus.purchased:
+      case PurchaseStatus.restored:
+        _grant(purchase);
+        _finish(
+          purchase.status == PurchaseStatus.restored
+              ? PurchaseOutcome.alreadyOwned
+              : PurchaseOutcome.success,
+        );
+
+      case PurchaseStatus.canceled:
+        _finish(PurchaseOutcome.cancelled);
+
+      case PurchaseStatus.error:
+        debugPrint('[subscriptions] ${purchase.error}');
+        _finish(PurchaseOutcome.failed);
+    }
+
+    // Required by both stores, and required even for a failure: an
+    // uncompleted transaction is re-delivered on every launch and,
+    // on iOS, blocks later purchases behind it.
+    if (purchase.pendingCompletePurchase) {
+      await _iap.completePurchase(purchase);
     }
   }
 

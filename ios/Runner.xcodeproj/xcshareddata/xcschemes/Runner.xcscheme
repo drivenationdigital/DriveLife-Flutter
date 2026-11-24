@@ -74,7 +74,7 @@
          </BuildableReference>
       </BuildableProductRunnable>
       <StoreKitConfigurationFileReference
-         identifier = "../../../DriveLife.storekit">
+         identifier = "../DriveLife.storekit">
       </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction
