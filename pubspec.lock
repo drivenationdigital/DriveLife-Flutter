@@ -1069,6 +1069,38 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.2"
+  in_app_purchase:
+    dependency: "direct main"
+    description:
+      name: in_app_purchase
+      sha256: d8317ec2ed6fe33199957d67ee67e08a4fd4871ef93b91d7611d8ee560892afc
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.3.1"
+  in_app_purchase_android:
+    dependency: transitive
+    description:
+      name: in_app_purchase_android
+      sha256: b8af1b6f0e57076b5da5ede71e3af2d727017c0416ad2a41017c6ed2b102381d
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.5.0"
+  in_app_purchase_platform_interface:
+    dependency: transitive
+    description:
+      name: in_app_purchase_platform_interface
+      sha256: "0b0076cac8ce4fa7048f01e76af8b123aeb6a7c4e0dea2a5206d6664454f3e36"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.4.1"
+  in_app_purchase_storekit:
+    dependency: transitive
+    description:
+      name: in_app_purchase_storekit
+      sha256: e9278eb778170ce65a9e2d17672924f41b0f2f3ad958cd9f6ea7ffc0826efa29
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.17"
   intl:
     dependency: "direct main"
     description:
@@ -1201,10 +1233,10 @@ packages:
     dependency: transitive
     description:
       name: matcher
-      sha256: "12956d0ad8390bbcc63ca2e1469c0619946ccb52809807067a7020d57e647aa6"
+      sha256: dc0b7dc7651697ea4ff3e69ef44b0407ea32c487a39fff6a4004fa585e901861
       url: "https://pub.dev"
     source: hosted
-    version: "0.12.18"
+    version: "0.12.19"
   material_color_utilities:
     dependency: transitive
     description:
@@ -1838,10 +1870,10 @@ packages:
     dependency: transitive
     description:
       name: test_api
-      sha256: "93167629bfc610f71560ab9312acdda4959de4df6fac7492c89ff0d3886f6636"
+      sha256: "8161c84903fd860b26bfdefb7963b3f0b68fee7adea0f59ef805ecca346f0c7a"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.9"
+    version: "0.7.10"
   timezone:
     dependency: transitive
     description:
@@ -2179,5 +2211,5 @@ packages:
     source: hosted
     version: "2.1.0"
 sdks:
-  dart: ">=3.10.0 <4.0.0"
-  flutter: ">=3.38.1"
+  dart: ">=3.11.0 <4.0.0"
+  flutter: ">=3.41.0"

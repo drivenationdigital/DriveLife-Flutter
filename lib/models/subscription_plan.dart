@@ -13,34 +13,44 @@ import 'package:drivelife/models/membership_tier.dart';
 /// and for a build that cannot reach it at all. Anything the store
 /// returns wins — see StorePlan.
 enum SubscriptionPlan {
-  /// £5 a month.
+  /// £4.99 a month.
   monthly(
     productId: 'drivelife_plus_monthly',
-    fallbackPrice: '£5',
+    fallbackPrice: '£4.99',
     period: 'month',
-    pence: 500,
+    pence: 499,
     months: 1,
   ),
 
-  /// £45 a year, which is two months free against the monthly.
+  /// £44.99 a year — three months free against paying monthly.
+  ///
+  /// Twelve months at £4.99 is £59.88, so £44.99 is about nine months'
+  /// worth. Earlier copy here and in ios/DriveLife.storekit said two
+  /// months, which undersold it; [savingLabel] computes the real figure
+  /// from [pence], so the wording had to agree with the arithmetic
+  /// rather than sit next to a badge contradicting it.
   yearly(
     productId: 'drivelife_plus_yearly',
-    fallbackPrice: '£45',
+    fallbackPrice: '£44.99',
     period: 'year',
-    pence: 4500,
+    pence: 4499,
     months: 12,
   ),
 
   /// The higher tier. Level 1 in the group, against Plus at level 2.
   ///
-  /// ── TWO THINGS HERE ARE GUESSES ─────────────────────────────────
+  /// ── THE PRICE HERE IS STILL A GUESS ─────────────────────────────
   ///
-  /// The product id was truncated in App Store Connect
-  /// ('drivelife_supercharged_year…') and the price was invented to
-  /// make the tier visible. Both must be corrected from the console
-  /// before anything is tested, HERE and in ios/DriveLife.storekit —
-  /// an id that does not match is a product that never loads, and the
-  /// paywall shows no price rather than an error.
+  /// The product id was confirmed against App Store Connect on
+  /// 24 November 2026 and is correct as written; it had only looked
+  /// uncertain because the console truncated it to
+  /// 'drivelife_supercharged_year…'.
+  ///
+  /// The price was not confirmed. £99.99 was invented to make the tier
+  /// visible, and still needs the real figure from the console, HERE
+  /// and in ios/DriveLife.storekit. It is only a fallback, so the store
+  /// overrides it at runtime — but it is what a buyer sees for the
+  /// moment before the store answers.
   ///
   /// YEARLY ONLY, as created. Worth noticing: somebody on Plus
   /// Monthly who wants this has to jump straight to an annual

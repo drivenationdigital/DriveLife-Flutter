@@ -5,6 +5,7 @@ import 'package:drivelife/providers/membership_config_provider.dart';
 import 'package:drivelife/models/membership_tier.dart';
 import 'package:drivelife/models/subscription_plan.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/services/store_subscriptions.dart';
 import 'package:drivelife/services/subscription_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -15,9 +16,16 @@ import 'package:url_launcher/url_launcher.dart';
 ///
 /// ── WHAT IS REAL HERE AND WHAT IS NOT ───────────────────────────────
 ///
-/// The screen is real. The store is not: it talks to a
-/// [SubscriptionService], and until the App Store and Play consoles
-/// have products in them the thing behind that is [FakeSubscriptions].
+/// The screen is real, and so is the store it talks to: the default
+/// behind [SubscriptionService] is [StoreSubscriptions], which drives
+/// the platform's own purchase flow. [FakeSubscriptions] is still here
+/// but only reachable by being handed in, by the demo screen and the
+/// tests.
+///
+/// What is NOT real yet is the entitlement. The store tells this device
+/// what it believes; nothing has verified that with Apple or Google.
+/// [MembershipProvider] therefore still takes its tier from elsewhere —
+/// see docs/pro-membership-design.md §2.
 ///
 /// That is the point of building it this way round. Every outcome a
 /// real store can produce — cancelled, pending, already owned, failed
@@ -76,7 +84,11 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     super.initState();
 
     _mine = widget.service == null;
-    _store = widget.service ?? FakeSubscriptions();
+    // The real store by default. FakeSubscriptions is reachable only by
+    // being handed in — the demo screen and the tests do that — because
+    // a paywall that defaults to the stand-in is a paywall that grants
+    // memberships for free the day nobody remembers to pass one.
+    _store = widget.service ?? StoreSubscriptions();
     _status = _store.current;
 
     // A purchase can complete while this screen is not asking: a

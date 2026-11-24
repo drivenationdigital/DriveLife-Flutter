@@ -10,16 +10,16 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('what a year costs', () {
     test('the monthly plan, twelve times', () {
-      expect(SubscriptionPlan.monthly.yearlyPence, 6000);
+      expect(SubscriptionPlan.monthly.yearlyPence, 5988);
     });
 
     test('the yearly plan is its own price', () {
-      expect(SubscriptionPlan.yearly.yearlyPence, 4500);
+      expect(SubscriptionPlan.yearly.yearlyPence, 4499);
     });
   });
 
   group('the saving', () {
-    test('a quarter off, which is two months free', () {
+    test('a quarter off, which is three months free', () {
       expect(
         SubscriptionPlan.yearly.savingAgainst(SubscriptionPlan.monthly),
         25,
@@ -79,7 +79,7 @@ void main() {
     });
 
     test('and falls back only until the store answers', () {
-      expect(StorePlan.fallback(SubscriptionPlan.monthly).price, '£5');
+      expect(StorePlan.fallback(SubscriptionPlan.monthly).price, '£4.99');
     });
   });
 

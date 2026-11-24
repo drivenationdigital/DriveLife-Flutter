@@ -21,6 +21,24 @@ import 'package:flutter/foundation.dart';
 /// The real implementation swaps in underneath without the screen
 /// changing. See the note on [FakeSubscriptions.plans] for the one
 /// thing that must NOT be carried over from the fake.
+/// Thrown when the stand-in store is reached in a release build.
+///
+/// [FakeSubscriptions] grants whatever it is asked for, so reaching it
+/// with real users behind it is a free subscription for everybody. An
+/// `assert` cannot say so — asserts are stripped from release builds,
+/// which is precisely where the mistake matters — so every entry point
+/// on the fake throws this instead.
+class FakeStoreInReleaseError extends Error {
+  final String member;
+
+  FakeStoreInReleaseError(this.member);
+
+  @override
+  String toString() =>
+      'FakeSubscriptions.$member was reached in a release build. '
+      'The paywall must be given a real SubscriptionService.';
+}
+
 abstract class SubscriptionService {
   /// What the store will sell, at the store's prices.
   ///
@@ -103,13 +121,7 @@ class FakeSubscriptions implements SubscriptionService {
 
   @override
   Future<List<StorePlan>> plans() async {
-    // A loud one. This class granting a subscription in a release
-    // build would be a free subscription for everybody, so it refuses
-    // to be useful there rather than quietly working.
-    assert(
-      !kReleaseMode,
-      'FakeSubscriptions must never run in a release build.',
-    );
+    _refuseInRelease('plans');
 
     await Future<void>.delayed(delay);
 
@@ -126,7 +138,7 @@ class FakeSubscriptions implements SubscriptionService {
 
   @override
   Future<PurchaseOutcome> buy(SubscriptionPlan plan) async {
-    assert(!kReleaseMode, 'FakeSubscriptions must never run in release.');
+    _refuseInRelease('buy');
 
     await Future<void>.delayed(delay);
 
@@ -147,7 +159,7 @@ class FakeSubscriptions implements SubscriptionService {
 
   @override
   Future<SubscriptionStatus> restore() async {
-    assert(!kReleaseMode, 'FakeSubscriptions must never run in release.');
+    _refuseInRelease('restore');
 
     await Future<void>.delayed(delay);
 
@@ -163,6 +175,17 @@ class FakeSubscriptions implements SubscriptionService {
 
   /// And pretends it lapsed.
   void lapse() => _set(SubscriptionStatus.none);
+
+  /// Refuses to work in a release build, loudly.
+  ///
+  /// A plain `assert` was here and did nothing: the compiler drops
+  /// asserts from release builds, so the one build where this class
+  /// must not run was the one build where the guard was absent. This
+  /// throws instead, so the failure is a crash on the paywall rather
+  /// than a membership given away.
+  void _refuseInRelease(String member) {
+    if (kReleaseMode) throw FakeStoreInReleaseError(member);
+  }
 
   void _set(SubscriptionStatus status) {
     _current = status;
