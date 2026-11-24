@@ -30,24 +30,42 @@ import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 /// the other two and being wrong half the time. "Unknown" draws
 /// cautious wording - what they have and when it runs out - without
 /// claiming a renewal nobody checked.
+/// What the store says about one subscription's next renewal.
+class Renewal {
+  /// Whether it will renew at all. False means cancelled.
+  final bool willRenew;
+
+  /// The product it will renew INTO, when that is not the one they
+  /// hold. Null when nothing is pending, or when the platform cannot
+  /// say.
+  ///
+  /// Only iOS reports this. Apple applies an upgrade immediately and
+  /// DEFERS a downgrade to the end of the paid period, so a downgrade
+  /// is invisible without it: the person still holds the old plan and
+  /// everything looks normal until the day it changes under them.
+  final String? renewingTo;
+
+  const Renewal({required this.willRenew, this.renewingTo});
+}
+
 class RenewalStatus {
   static const MethodChannel _ios = MethodChannel('drivelife/subscription');
 
-  /// Whether [productId] is set to renew. Null means nobody could say.
+  /// What happens next to [productId]. Null means nobody could say.
   ///
   /// Cheap enough to call on every screen build? No. Call it when the
   /// status changes and when coming back from the manage sheet.
-  static Future<bool?> willRenew(String productId) async {
+  static Future<Renewal?> forProduct(String productId) async {
     final all = await all_();
 
     return all[productId];
   }
 
-  /// Every subscription this device can see, and whether each renews.
+  /// Every subscription this device can see.
   ///
   /// Named with a trailing underscore to keep `all` free as a getter
   /// if this ever grows one.
-  static Future<Map<String, bool>> all_() async {
+  static Future<Map<String, Renewal>> all_() async {
     if (defaultTargetPlatform == TargetPlatform.iOS) return _fromStoreKit();
 
     if (defaultTargetPlatform == TargetPlatform.android) return _fromPlay();
@@ -61,13 +79,13 @@ class RenewalStatus {
   /// Works against a local .storekit configuration exactly as against
   /// the App Store, so cancelling in Xcode's Transaction Manager shows
   /// up here straight away.
-  static Future<Map<String, bool>> _fromStoreKit() async {
+  static Future<Map<String, Renewal>> _fromStoreKit() async {
     try {
       final raw = await _ios.invokeMethod<List<dynamic>>('renewalStatus');
 
       if (raw == null) return const {};
 
-      final out = <String, bool>{};
+      final out = <String, Renewal>{};
 
       for (final entry in raw) {
         if (entry is! Map) continue;
@@ -75,7 +93,19 @@ class RenewalStatus {
         final id = entry['productId'];
         final renews = entry['willRenew'];
 
-        if (id is String && renews is bool) out[id] = renews;
+        if (id is! String || renews is! bool) continue;
+
+        final next = entry['renewingTo'];
+
+        // Equal to the current product means nothing is pending, and
+        // empty means StoreKit did not say. Neither is a plan change,
+        // and treating either as one would announce a downgrade to
+        // somebody who has not asked for anything.
+        final pending = next is String && next.isNotEmpty && next != id
+            ? next
+            : null;
+
+        out[id] = Renewal(willRenew: renews, renewingTo: pending);
       }
 
       return out;
@@ -96,13 +126,13 @@ class RenewalStatus {
   /// Read through `restorePurchases`, which emits what is owned onto
   /// the purchase feed. That feed is already being listened to for
   /// other reasons, so this only has to catch what goes past.
-  static Future<Map<String, bool>> _fromPlay() async {
+  static Future<Map<String, Renewal>> _fromPlay() async {
     try {
       final iap = InAppPurchase.instance;
 
       if (!await iap.isAvailable()) return const {};
 
-      final out = <String, bool>{};
+      final out = <String, Renewal>{};
       final done = Completer<void>();
 
       late final StreamSubscription<List<PurchaseDetails>> watch;
@@ -110,8 +140,12 @@ class RenewalStatus {
       watch = iap.purchaseStream.listen((purchases) {
         for (final purchase in purchases) {
           if (purchase is GooglePlayPurchaseDetails) {
-            out[purchase.productID] =
-                purchase.billingClientPurchase.isAutoRenewing;
+            // Play tells us whether it renews, not what into. A
+            // pending plan change is invisible here, so renewingTo
+            // stays null and the screen simply does not mention one.
+            out[purchase.productID] = Renewal(
+              willRenew: purchase.billingClientPurchase.isAutoRenewing,
+            );
           }
         }
 

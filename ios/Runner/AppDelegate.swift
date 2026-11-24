@@ -155,9 +155,23 @@ import StoreKit
             // which leaves this product "unknown" to the app.
             guard case .verified(let renewal) = status.renewalInfo else { continue }
 
+            // autoRenewPreference is the product it will renew INTO,
+            // which is how a pending downgrade is visible at all.
+            //
+            // Apple applies an upgrade immediately and defers a
+            // downgrade to the end of the paid period. So somebody who
+            // switched SuperCharged -> Plus this morning still holds
+            // SuperCharged, and the only trace of their decision is
+            // this field pointing at a different product from the one
+            // they own. Without it the app shows them SuperCharged
+            // renewing happily, and they get a surprise in December.
+            //
+            // Equal to the current product when nothing is pending, so
+            // the Dart side compares before believing it.
             out.append([
               "productId": transaction.productID,
               "willRenew": renewal.willAutoRenew,
+              "renewingTo": renewal.autoRenewPreference ?? "",
               "state": Self.stateName(status.state),
             ])
           }

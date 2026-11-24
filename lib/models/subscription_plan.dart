@@ -245,12 +245,42 @@ class SubscriptionStatus {
   /// the server, which makes the same distinction.
   final bool? willRenew;
 
+  /// The plan it will renew INTO, when that is not the one they have.
+  ///
+  /// ── WHY A DOWNGRADE IS INVISIBLE WITHOUT THIS ────────────────────
+  ///
+  /// Apple applies an UPGRADE immediately - the new plan starts, the
+  /// old one is refunded pro rata, and the app sees a new transaction
+  /// like any other purchase.
+  ///
+  /// A DOWNGRADE is deferred to the end of the paid period. Somebody
+  /// who switched SuperCharged to Plus this morning still holds
+  /// SuperCharged, still has every SuperCharged benefit, and nothing
+  /// about their transaction has changed. The only trace of the
+  /// decision is the store saying it will renew into a different
+  /// product - which is this.
+  ///
+  /// Without it the app tells them SuperCharged renews in December,
+  /// and in December they quietly become a Plus member instead.
+  ///
+  /// Null when nothing is pending, and on Android, where Play reports
+  /// whether a subscription renews but not what into.
+  final SubscriptionPlan? renewingTo;
+
   const SubscriptionStatus({
     this.active = false,
     this.plan,
     this.renewsAt,
     this.willRenew,
+    this.renewingTo,
   });
+
+  /// A plan change is waiting for the period to end.
+  ///
+  /// Distinct from [endingSoon]: this person is not leaving, they are
+  /// moving. Telling them their membership is ending would be wrong.
+  bool get changingPlan =>
+      active && renewingTo != null && renewingTo != plan;
 
   /// Cancelled, but still being paid for.
   ///
@@ -259,11 +289,15 @@ class SubscriptionStatus {
   /// cancel something already cancelled.
   bool get endingSoon => active && willRenew == false;
 
-  SubscriptionStatus copyWith({bool? willRenew}) => SubscriptionStatus(
+  SubscriptionStatus copyWith({
+    bool? willRenew,
+    SubscriptionPlan? renewingTo,
+  }) => SubscriptionStatus(
     active: active,
     plan: plan,
     renewsAt: renewsAt,
     willRenew: willRenew ?? this.willRenew,
+    renewingTo: renewingTo ?? this.renewingTo,
   );
 
   static const SubscriptionStatus none = SubscriptionStatus();

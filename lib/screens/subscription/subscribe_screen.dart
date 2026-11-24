@@ -299,6 +299,25 @@ class _SubscribeScreenState extends State<SubscribeScreen>
     if (Navigator.canPop(context)) Navigator.pop(context, true);
   }
 
+  /// The EULA and privacy policy, which App Review checks by opening.
+  ///
+  /// These pointed at drivelife.app, which does not resolve - both
+  /// links failed outright. Apple requires working ones on a
+  /// subscription paywall, so that was a guaranteed rejection.
+  static const String _termsUrl =
+      'https://www.carevents.com/uk/terms-and-conditions/';
+
+  static const String _privacyUrl =
+      'https://www.carevents.com/uk/privacy-policy/';
+
+  /// Whose account they manage it in. Named per platform rather than
+  /// listing both: an iPhone owner has no Google Play account, and
+  /// telling them to look in one is a support message waiting to be
+  /// sent.
+  String get _storeName => defaultTargetPlatform == TargetPlatform.iOS
+      ? 'App Store'
+      : 'Google Play';
+
   Future<void> _restore() async {
     if (_busy) return;
 
@@ -335,7 +354,10 @@ class _SubscribeScreenState extends State<SubscribeScreen>
         elevation: 0,
         foregroundColor: theme.textColor,
         title: Text(
-          _status.active ? 'Your subscription' : 'DriveLife Plus',
+          // Follows the TAB, not the brand. It read "DriveLife Plus"
+          // with the SuperCharged tab open and SuperCharged benefits
+          // on screen, which is the wrong product name above a price.
+          _status.active ? 'Your subscription' : 'DriveLife ${_tier.label}',
           style: TextStyle(
             fontWeight: FontWeight.w800,
             color: theme.textColor,
@@ -438,6 +460,55 @@ class _SubscribeScreenState extends State<SubscribeScreen>
             .config
             .benefitsFor(_status.plan?.tier ?? MembershipTier.plus))
           _benefitRow(theme, benefit),
+        // ── A PLAN CHANGE WAITING TO HAPPEN ──────────────────────
+        //
+        // Only a downgrade reaches here: Apple applies an upgrade on
+        // the spot, so it arrives as an ordinary purchase and this
+        // screen simply shows the new plan. A downgrade waits for the
+        // period to end, and until this was added the app said the
+        // OLD plan was renewing - so somebody who had chosen to move
+        // down would have been told the opposite of what they chose.
+        if (_status.changingPlan) ...[
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: theme.dividerColor),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.swap_horiz_rounded,
+                  size: 20,
+                  color: theme.subtextColor,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _status.renewsAt == null
+                        ? 'Changing to DriveLife '
+                              '${_status.renewingTo!.tier.label} when this '
+                              'period ends. You keep what you have until '
+                              'then.'
+                        : 'Changing to DriveLife '
+                              '${_status.renewingTo!.tier.label} on '
+                              '${_date(_status.renewsAt!)}. You keep what '
+                              'you have until then.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.35,
+                      color: theme.textColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
         const SizedBox(height: 24),
 
         // ── THE BUTTON THAT WAS STALE ─────────────────────────────
@@ -491,8 +562,8 @@ class _SubscribeScreenState extends State<SubscribeScreen>
               ? 'Your membership is cancelled and will not renew. You '
                     'keep everything until it ends, and turning '
                     'renewal back on costs nothing extra.'
-              : 'Subscriptions are managed by the App Store or Google '
-                    'Play, not by DriveLife.',
+              : 'Subscriptions are managed by the $_storeName, not by '
+                    'DriveLife.',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 12.5,
@@ -802,7 +873,7 @@ class _SubscribeScreenState extends State<SubscribeScreen>
           Text(
             'Renews automatically every ${_chosen.period} at '
             '${store.price} until cancelled. Cancel any time in your '
-            'App Store or Google Play account.',
+            '$_storeName account.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 11.5,
@@ -825,7 +896,7 @@ class _SubscribeScreenState extends State<SubscribeScreen>
               ),
               Text('·', style: TextStyle(color: theme.subtextColor)),
               TextButton(
-                onPressed: () => _openLink('https://www.drivelife.app/terms'),
+                onPressed: () => _openLink(_termsUrl),
                 child: Text(
                   'Terms',
                   style: TextStyle(fontSize: 12.5, color: theme.subtextColor),
@@ -833,7 +904,7 @@ class _SubscribeScreenState extends State<SubscribeScreen>
               ),
               Text('·', style: TextStyle(color: theme.subtextColor)),
               TextButton(
-                onPressed: () => _openLink('https://www.drivelife.app/privacy'),
+                onPressed: () => _openLink(_privacyUrl),
                 child: Text(
                   'Privacy',
                   style: TextStyle(fontSize: 12.5, color: theme.subtextColor),

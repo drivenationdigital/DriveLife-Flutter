@@ -165,4 +165,91 @@ void main() {
       expect(c.renewing || c.ending || c.unknown, isFalse);
     });
   });
+
+  group('a plan change waiting to happen', () {
+    test('a pending downgrade is a change, not an ending', () {
+      // Apple defers a downgrade to the end of the period. This person
+      // is not leaving, they are moving - and telling them their
+      // membership is ending would be wrong.
+      const status = SubscriptionStatus(
+        active: true,
+        plan: SubscriptionPlan.superchargedYearly,
+        willRenew: true,
+        renewingTo: SubscriptionPlan.yearly,
+      );
+
+      expect(status.changingPlan, isTrue);
+      expect(status.endingSoon, isFalse);
+      expect(status.active, isTrue);
+    });
+
+    test('renewing into the SAME plan is not a change', () {
+      // StoreKit reports autoRenewPreference as the current product
+      // when nothing is pending. Treated naively that announces a plan
+      // change to everybody.
+      const status = SubscriptionStatus(
+        active: true,
+        plan: SubscriptionPlan.monthly,
+        willRenew: true,
+        renewingTo: SubscriptionPlan.monthly,
+      );
+
+      expect(status.changingPlan, isFalse);
+    });
+
+    test('no pending plan is not a change', () {
+      const status = SubscriptionStatus(
+        active: true,
+        plan: SubscriptionPlan.monthly,
+        willRenew: true,
+      );
+
+      expect(status.changingPlan, isFalse);
+    });
+
+    test('a non-member is never changing plan', () {
+      const status = SubscriptionStatus(renewingTo: SubscriptionPlan.yearly);
+
+      expect(status.changingPlan, isFalse);
+    });
+
+    test('cancelled and changing are independent', () {
+      // Cancelling a subscription that had a downgrade queued leaves
+      // both true. The screen has to handle that without contradicting
+      // itself.
+      const status = SubscriptionStatus(
+        active: true,
+        plan: SubscriptionPlan.superchargedYearly,
+        willRenew: false,
+        renewingTo: SubscriptionPlan.yearly,
+      );
+
+      expect(status.endingSoon, isTrue);
+      expect(status.changingPlan, isTrue);
+    });
+
+    test('copyWith carries the pending plan', () {
+      final status = const SubscriptionStatus(
+        active: true,
+        plan: SubscriptionPlan.superchargedYearly,
+      ).copyWith(willRenew: true, renewingTo: SubscriptionPlan.monthly);
+
+      expect(status.renewingTo, SubscriptionPlan.monthly);
+      expect(status.changingPlan, isTrue);
+    });
+
+    test('a crossgrade within one tier still registers', () {
+      // Yearly to monthly is the same tier at a different price. Not a
+      // tier change, but still a change worth telling somebody about.
+      const status = SubscriptionStatus(
+        active: true,
+        plan: SubscriptionPlan.yearly,
+        willRenew: true,
+        renewingTo: SubscriptionPlan.monthly,
+      );
+
+      expect(status.changingPlan, isTrue);
+      expect(status.renewingTo!.tier, status.plan!.tier);
+    });
+  });
 }

@@ -189,10 +189,17 @@ class StoreSubscriptions implements SubscriptionService {
     final plan = _current.plan;
 
     if (_current.active && plan != null) {
-      final renews = await RenewalStatus.willRenew(plan.productId);
+      final renewal = await RenewalStatus.forProduct(plan.productId);
 
-      if (renews != null && _current.active && _current.plan == plan) {
-        _set(_current.copyWith(willRenew: renews));
+      if (renewal != null && _current.active && _current.plan == plan) {
+        _set(
+          _current.copyWith(
+            willRenew: renewal.willRenew,
+            renewingTo: renewal.renewingTo == null
+                ? null
+                : SubscriptionPlan.forProduct(renewal.renewingTo!),
+          ),
+        );
       }
     }
 
@@ -296,16 +303,25 @@ class StoreSubscriptions implements SubscriptionService {
   /// Quiet on failure: an unknown renewal state is a real state that
   /// the screen already draws sensibly - see SubscriptionStatus.
   Future<void> _fillRenewal(SubscriptionPlan plan) async {
-    final renews = await RenewalStatus.willRenew(plan.productId);
+    final renewal = await RenewalStatus.forProduct(plan.productId);
 
-    if (renews == null) return;
+    if (renewal == null) return;
 
     // Only if it still describes the same subscription. A purchase or
     // a lapse while this was in flight makes the answer stale, and a
     // stale renewal flag is what this whole path exists to prevent.
     if (!_current.active || _current.plan != plan) return;
 
-    _set(_current.copyWith(willRenew: renews));
+    _set(
+      _current.copyWith(
+        willRenew: renewal.willRenew,
+        // A product id this build cannot name means nothing is shown,
+        // which is better than naming a plan wrongly.
+        renewingTo: renewal.renewingTo == null
+            ? null
+            : SubscriptionPlan.forProduct(renewal.renewingTo!),
+      ),
+    );
   }
 
   /// When the store says this subscription next renews.
