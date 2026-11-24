@@ -4,6 +4,7 @@ import 'package:drivelife/models/subscription_plan.dart';
 import 'package:drivelife/services/subscription_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
 
 /// The real store, behind the same interface the paywall already uses.
 ///
@@ -225,7 +226,33 @@ class StoreSubscriptions implements SubscriptionService {
       return;
     }
 
-    _set(SubscriptionStatus(active: true, plan: plan));
+    _set(
+      SubscriptionStatus(
+        active: true,
+        plan: plan,
+        renewsAt: _expiryOf(purchase),
+      ),
+    );
+  }
+
+  /// When the store says this subscription next renews.
+  ///
+  /// Taken from the transaction rather than worked out from the plan's
+  /// length. "Bought today, so it renews in a month" is wrong for
+  /// anybody who subscribed before this session - which, after launch
+  /// day, is nearly everybody - and wrong again for a free trial, an
+  /// introductory offer, or a plan switched mid-term.
+  ///
+  /// Only StoreKit 2 reports it. Android and StoreKit 1 return null,
+  /// and the screen simply omits the line rather than guessing.
+  static DateTime? _expiryOf(PurchaseDetails purchase) {
+    if (purchase is! SK2PurchaseDetails) return null;
+
+    final millis = int.tryParse(purchase.expirationDate ?? '');
+
+    if (millis == null) return null;
+
+    return DateTime.fromMillisecondsSinceEpoch(millis);
   }
 
   void _finish(PurchaseOutcome outcome) {

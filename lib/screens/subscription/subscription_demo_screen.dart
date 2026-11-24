@@ -118,6 +118,20 @@ class _SubscriptionDemoState extends State<SubscriptionDemoScreen> {
                   .debugSetTier(tier),
             ),
 
+          // The way back. Without it, demoing a tier makes the real
+          // one unreachable until the app is restarted - so "did my
+          // purchase actually register" becomes unanswerable the
+          // moment anybody touches the switch above.
+          _row(
+            theme,
+            icon: Icons.restart_alt_rounded,
+            title: 'Whatever the store says',
+            detail:
+                'Drops the override. Currently reading from: '
+                '${context.watch<MembershipProvider>().source}',
+            onTap: () => context.read<MembershipProvider>().debugUseLive(),
+          ),
+
           _heading(theme, 'Adverts'),
 
           _note(

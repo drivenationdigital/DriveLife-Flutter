@@ -5,7 +5,9 @@ import 'package:drivelife/providers/membership_config_provider.dart';
 import 'package:drivelife/models/membership_tier.dart';
 import 'package:drivelife/models/subscription_plan.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/services/membership_sync.dart';
 import 'package:drivelife/services/store_subscriptions.dart';
+import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
 import 'package:drivelife/services/subscription_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -51,7 +53,6 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   /// A service handed in belongs to whoever handed it in, and
   /// disposing somebody else's stream controller closes it for every
   /// other listener.
-  late final bool _mine;
 
   List<StorePlan> _plans = const [];
   bool _loading = true;
@@ -79,16 +80,30 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   SubscriptionStatus _status = SubscriptionStatus.none;
   StreamSubscription<SubscriptionStatus>? _watch;
 
+  /// The app's membership sync, when this screen is using the real
+  /// store. Null when a service was handed in by the demo or a test.
+  MembershipSync? _sync;
+
   @override
   void initState() {
     super.initState();
 
-    _mine = widget.service == null;
-    // The real store by default. FakeSubscriptions is reachable only by
-    // being handed in — the demo screen and the tests do that — because
-    // a paywall that defaults to the stand-in is a paywall that grants
-    // memberships for free the day nobody remembers to pass one.
-    _store = widget.service ?? StoreSubscriptions();
+    // The app's own store by default, borrowed from MembershipSync.
+    //
+    // Borrowed rather than built, because two services on the same
+    // purchase feed both call completePurchase on the same
+    // transaction, and the second call fails. Borrowed also means a
+    // purchase made here reaches MembershipProvider through the same
+    // listener as one made anywhere else, instead of this screen
+    // being the only place that knows.
+    //
+    // FakeSubscriptions is reachable only by being handed in - the
+    // demo screen and the tests do that - because a paywall that
+    // defaults to the stand-in is a paywall that grants memberships
+    // for free the day nobody remembers to pass one.
+    _sync = widget.service == null ? context.read<MembershipSync>() : null;
+    _store = widget.service ?? _sync!.store;
+
     _status = _store.current;
 
     // A purchase can complete while this screen is not asking: a
@@ -105,7 +120,10 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   void dispose() {
     _watch?.cancel();
 
-    if (_mine) _store.dispose();
+    // Nothing to dispose: the store is MembershipSync's, and one
+    // handed in belongs to whoever handed it in. Closing a shared
+    // store here would kill the purchase feed for the whole app the
+    // first time somebody backed out of the paywall.
 
     super.dispose();
   }
@@ -758,12 +776,56 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   /// Two different places, and neither is ours. iOS has a documented
   /// URL; Android wants the Play subscriptions page, which takes the
   /// package name to land on the right one.
+  /// Opens the place a subscription is actually cancelled.
+  ///
+  /// On iOS this is the NATIVE sheet, not a link to apps.apple.com.
+  /// Two reasons, and the second is the one that matters:
+  ///
+  ///   * It opens in place instead of throwing somebody out of the
+  ///     app into Safari and then Settings.
+  ///   * The link form cannot be tested. Under a local StoreKit
+  ///     configuration there is no App Store account to open, so the
+  ///     link goes somewhere real and unrelated, and the cancel path -
+  ///     the one path a reviewer always checks - can never be
+  ///     exercised before release. `showManageSubscriptions` is
+  ///     simulated by Xcode's StoreKit testing, so it can.
+  ///
+  /// Needs iOS 15 and StoreKit 2. The plugin defaults to StoreKit 2;
+  /// if the call fails for any reason the link is still there as a
+  /// fallback, because "we could not open it" is not an acceptable
+  /// answer to somebody trying to stop paying.
   Future<void> _openStoreSettings() async {
-    final url = defaultTargetPlatform == TargetPlatform.iOS
-        ? 'https://apps.apple.com/account/subscriptions'
-        : 'https://play.google.com/store/account/subscriptions';
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        await InAppPurchaseStoreKitPlatformAddition()
+            .showManageSubscriptions();
 
-    await _openLink(url);
+        // They may have just cancelled. Ask the store again rather
+        // than keep drawing a membership that has ended.
+        if (mounted) await _refreshAfterManaging();
+
+        return;
+      } catch (e) {
+        debugPrint('[subscriptions] manage sheet: $e');
+      }
+
+      await _openLink('https://apps.apple.com/account/subscriptions');
+
+      return;
+    }
+
+    await _openLink('https://play.google.com/store/account/subscriptions');
+  }
+
+  /// Re-reads the store after the manage sheet closes.
+  ///
+  /// A cancellation does not always arrive on the purchase feed, and
+  /// an app still showing "you are a member" after somebody has just
+  /// cancelled reads as the cancellation not having worked.
+  Future<void> _refreshAfterManaging() async {
+    final status = await _store.restore();
+
+    if (mounted) setState(() => _status = status);
   }
 
   static String _date(DateTime when) =>

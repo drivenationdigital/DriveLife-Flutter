@@ -1,5 +1,6 @@
 import 'package:drivelife/providers/membership_config_provider.dart';
 import 'package:drivelife/providers/membership_provider.dart';
+import 'package:drivelife/services/membership_sync.dart';
 import 'package:drivelife/providers/cart_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:drivelife/theme/dl_type.dart';
@@ -298,6 +299,22 @@ void main() async {
   // including the great majority whose messages are still plaintext.
   unawaited(ChatKeyAPI.load());
 
+  // Membership, and the thing that keeps it honest.
+  //
+  // Built here rather than inside the provider list because the two
+  // have to know about each other: MembershipSync owns the app's one
+  // subscription service, listens to it, and pushes what the store
+  // says into the provider. Without it a purchase succeeds and every
+  // screen still says Free.
+  //
+  // unawaited, not awaited: it asks the store what is already owned,
+  // and launch must not wait on the App Store being reachable. The
+  // answer arrives a moment later and the UI updates when it does.
+  final membership = MembershipProvider();
+  final membershipSync = MembershipSync(membership);
+
+  unawaited(membershipSync.start());
+
   runApp(
     MultiProvider(
       providers: [
@@ -306,9 +323,12 @@ void main() async {
         ChangeNotifierProvider(create: (_) => UserProvider()),
         ChangeNotifierProvider(create: (_) => VideoMuteProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        // Nothing sets this yet except the demo screen - see
-        // MembershipProvider, which says what has to replace that.
-        ChangeNotifierProvider(create: (_) => MembershipProvider()),
+        // Fed by MembershipSync from the store, and by the server
+        // once there is one - see MembershipProvider.
+        ChangeNotifierProvider.value(value: membership),
+        // The app's one subscription service lives in here. The
+        // paywall borrows it rather than building a second.
+        Provider.value(value: membershipSync),
         // The benefit copy and the advert switch, both editable
         // without a build. Starts on what shipped in the binary and
         // never waits on the network - see MembershipConfigProvider.
