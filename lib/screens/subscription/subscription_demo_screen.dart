@@ -242,9 +242,23 @@ class _SubscriptionDemoState extends State<SubscriptionDemoScreen> {
 
           _row(
             theme,
+            icon: Icons.event_busy_rounded,
+            title: 'Cancel, but keep it until it ends',
+            detail: 'What a real cancellation does. Still a member, '
+                'still has everything - and the paywall should stop '
+                'offering to cancel and offer a way back instead',
+            onTap: () {
+              _store.cancelRenewal();
+              setState(() {});
+            },
+          ),
+
+          _row(
+            theme,
             icon: Icons.restart_alt_rounded,
             title: 'Lapse it',
-            detail: 'Back to not subscribed',
+            detail: 'Back to not subscribed. The state AFTER the one '
+                'above runs out',
             onTap: () {
               _store.lapse();
               setState(() {});

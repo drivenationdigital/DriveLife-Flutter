@@ -45,7 +45,8 @@ class SubscribeScreen extends StatefulWidget {
   State<SubscribeScreen> createState() => _SubscribeScreenState();
 }
 
-class _SubscribeScreenState extends State<SubscribeScreen> {
+class _SubscribeScreenState extends State<SubscribeScreen>
+    with WidgetsBindingObserver {
   late final SubscriptionService _store;
 
   /// Whether this screen made the service and therefore owns it.
@@ -106,6 +107,8 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
 
     _status = _store.current;
 
+    WidgetsBinding.instance.addObserver(this);
+
     // A purchase can complete while this screen is not asking: a
     // deferred Play payment clears hours later, and a subscription
     // bought in iOS Settings arrives unprompted.
@@ -116,8 +119,26 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     _load();
   }
 
+  /// Re-reads the store when the app comes back to the foreground.
+  ///
+  /// A subscription can be cancelled in iOS Settings or the Play
+  /// Store, with this screen sitting open behind it the whole time.
+  /// Nothing arrives on the purchase feed for that - it is not a
+  /// purchase - so without this the screen keeps showing what was
+  /// true when it opened.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state != AppLifecycleState.resumed) return;
+    if (!_status.active) return;
+
+    unawaited(_refreshAfterManaging());
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _watch?.cancel();
 
     // Nothing to dispose: the store is MembershipSync's, and one
@@ -349,6 +370,15 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   /// the App Store or Play Store account settings, and an app that
   /// offers its own cancel either does nothing or lies. Both stores
   /// require a link to the real place instead.
+  /// The line under the heading, which has to carry the state.
+  String _subtitle(SubscriptionPlan? plan) {
+    if (_status.endingSoon) return 'Cancelled, and still yours for now.';
+
+    if (plan == null) return 'Thank you.';
+
+    return 'Billed every ${plan.period}. Thank you.';
+  }
+
   Widget _subscribed(ThemeProvider theme) {
     final plan = _status.plan;
 
@@ -362,8 +392,12 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
         ),
         const SizedBox(height: 16),
         Text(
-          'You are a '
-          '${(_status.plan?.tier ?? MembershipTier.plus).label} member',
+          _status.endingSoon
+              ? '${(_status.plan?.tier ?? MembershipTier.plus).label} '
+                    'until it ends'
+              : 'You are a '
+                    '${(_status.plan?.tier ?? MembershipTier.plus).label} '
+                    'member',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 24,
@@ -373,18 +407,29 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          plan == null
-              ? 'Thank you.'
-              : 'Billed every ${plan.period}. Thank you.',
+          _subtitle(plan),
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 15, color: theme.subtextColor),
         ),
         if (_status.renewsAt != null) ...[
           const SizedBox(height: 4),
           Text(
-            'Renews ${_date(_status.renewsAt!)}',
+            // The same date, and the word in front of it is the whole
+            // difference between the two states.
+            _status.endingSoon
+                ? 'You keep everything until '
+                      '${_date(_status.renewsAt!)}'
+                : _status.willRenew == true
+                ? 'Renews ${_date(_status.renewsAt!)}'
+                : 'Next due ${_date(_status.renewsAt!)}',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 14, color: theme.subtextColor),
+            style: TextStyle(
+              fontSize: 14,
+              color: theme.subtextColor,
+              fontWeight: _status.endingSoon
+                  ? FontWeight.w600
+                  : FontWeight.w400,
+            ),
           ),
         ],
         const SizedBox(height: 28),
@@ -394,26 +439,66 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
             .benefitsFor(_status.plan?.tier ?? MembershipTier.plus))
           _benefitRow(theme, benefit),
         const SizedBox(height: 24),
-        OutlinedButton(
-          onPressed: _openStoreSettings,
-          style: OutlinedButton.styleFrom(
-            side: BorderSide(color: theme.dividerColor),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-          ),
-          child: Text(
-            'Manage or cancel',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: theme.textColor,
+
+        // ── THE BUTTON THAT WAS STALE ─────────────────────────────
+        //
+        // It said "Manage or cancel" to everybody, including people
+        // who had just cancelled. Offering to cancel something
+        // already cancelled reads as the cancellation not having
+        // worked, and the one thing they might actually want - to
+        // come back - was nowhere on the screen.
+        //
+        // Both states lead to the same sheet, because the store owns
+        // this and there is no other way in. What changes is what the
+        // screen says it is for.
+        if (_status.endingSoon)
+          FilledButton(
+            onPressed: _openStoreSettings,
+            style: FilledButton.styleFrom(
+              backgroundColor:
+                  (_status.plan?.tier ?? MembershipTier.plus).colour,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            child: const Text(
+              'Turn renewal back on',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          )
+        else
+          OutlinedButton(
+            onPressed: _openStoreSettings,
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: theme.dividerColor),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            child: Text(
+              // Not "or cancel" when we cannot see whether they
+              // already have. "Manage" covers both and claims
+              // neither.
+              _status.willRenew == true
+                  ? 'Manage or cancel'
+                  : 'Manage subscription',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: theme.textColor,
+              ),
             ),
           ),
-        ),
         const SizedBox(height: 10),
         Text(
-          'Subscriptions are managed by the App Store or Google Play, '
-          'not by DriveLife.',
+          _status.endingSoon
+              ? 'Your membership is cancelled and will not renew. You '
+                    'keep everything until it ends, and turning '
+                    'renewal back on costs nothing extra.'
+              : 'Subscriptions are managed by the App Store or Google '
+                    'Play, not by DriveLife.',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12.5, color: theme.subtextColor),
+          style: TextStyle(
+            fontSize: 12.5,
+            height: 1.35,
+            color: theme.subtextColor,
+          ),
         ),
       ],
     );

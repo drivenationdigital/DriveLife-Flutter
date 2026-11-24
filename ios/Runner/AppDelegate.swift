@@ -3,9 +3,28 @@ import Flutter
 import Firebase
 import FirebaseCore
 import FirebaseMessaging
+import StoreKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+
+  /// StoreKit's subscription state as a word the app can read.
+  ///
+  /// Deliberately NOT used to decide entitlement -- that stays with
+  /// the expiry date and, once it exists, the server. This is for
+  /// wording only: what to tell somebody about where they stand.
+  @available(iOS 15.0, *)
+  static func stateName(_ state: Product.SubscriptionInfo.RenewalState) -> String {
+    switch state {
+    case .subscribed:           return "subscribed"
+    case .expired:              return "expired"
+    case .inBillingRetryPeriod: return "billingRetry"
+    case .inGracePeriod:        return "grace"
+    case .revoked:              return "revoked"
+    default:                    return "unknown"
+    }
+  }
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -81,6 +100,80 @@ import FirebaseMessaging
     }
     // 👆 End badge channel
     
+    // ── WILL IT RENEW? ──────────────────────────────────────────────
+    //
+    // in_app_purchase does not say. It reports WHAT is owned and when
+    // it expires, and nothing at all about whether it is set to renew
+    // -- because that lives on RenewalInfo, which the plugin has no
+    // wrapper for on either platform's Dart side.
+    //
+    // Without it the paywall cannot tell a member who is happily
+    // subscribed from one who cancelled an hour ago, and it offers
+    // both of them "Manage or cancel". The second person has already
+    // cancelled. The screen is lying to them, and the thing they
+    // actually want -- to come back -- is not on it.
+    //
+    // Android gets this free: isAutoRenewing is on the Play purchase
+    // and readable in Dart. iOS needs these thirty lines.
+    //
+    // Works against a local .storekit configuration exactly as it does
+    // against the App Store, because it is the real StoreKit 2 API
+    // either way -- so cancelling in Xcode's Transaction Manager shows
+    // up here immediately.
+    let subscriptionChannel = FlutterMethodChannel(
+      name: "drivelife/subscription",
+      binaryMessenger: controller.binaryMessenger)
+
+    subscriptionChannel.setMethodCallHandler { call, result in
+      guard call.method == "renewalStatus" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+
+      guard #available(iOS 15.0, *) else {
+        // StoreKit 2 starts at iOS 15. Below it the app falls back to
+        // "unknown", which draws the cautious wording rather than
+        // claiming a renewal it cannot check.
+        result([])
+        return
+      }
+
+      Task {
+        var out: [[String: Any]] = []
+
+        for await entitlement in Transaction.currentEntitlements {
+          guard case .verified(let transaction) = entitlement else { continue }
+
+          guard
+            let product = try? await Product.products(for: [transaction.productID]).first,
+            let subscription = product.subscription,
+            let statuses = try? await subscription.status
+          else { continue }
+
+          for status in statuses {
+            // Unverified renewal info is not a reason to guess. Skipped,
+            // which leaves this product "unknown" to the app.
+            guard case .verified(let renewal) = status.renewalInfo else { continue }
+
+            out.append([
+              "productId": transaction.productID,
+              "willRenew": renewal.willAutoRenew,
+              "state": Self.stateName(status.state),
+            ])
+          }
+        }
+
+        // Back on the platform thread. A FlutterResult called from a
+        // Task continuation is otherwise off the main thread, which is
+        // undefined behaviour and crashes intermittently rather than
+        // reliably -- the worst way for it to be wrong.
+        DispatchQueue.main.async {
+          result(out)
+        }
+      }
+    }
+    // 👆 End subscription channel
+
     // Setup notifications
     if #available(iOS 10.0, *) {
       UNUserNotificationCenter.current().delegate = self

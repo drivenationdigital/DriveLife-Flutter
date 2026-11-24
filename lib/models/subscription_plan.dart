@@ -218,11 +218,53 @@ class SubscriptionStatus {
   final bool active;
   final SubscriptionPlan? plan;
 
-  /// When it next renews, where the store says. Null is ordinary —
-  /// neither store promises this on every platform or every path.
+  /// When it next renews, or ends. Null is ordinary — neither store
+  /// promises this on every platform or every path.
+  ///
+  /// Which of the two it means depends on [willRenew], and that is the
+  /// whole reason [willRenew] exists: the same date is "renews on" to
+  /// one person and "ends on" to another.
   final DateTime? renewsAt;
 
-  const SubscriptionStatus({this.active = false, this.plan, this.renewsAt});
+  /// Whether the store will charge them again.
+  ///
+  /// ── THREE ANSWERS, AND NULL IS A REAL ONE ─────────────────────────
+  ///
+  /// true  - renewing, and the date above is the next charge.
+  /// false - CANCELLED but still entitled until that date. Not the
+  ///         same as lapsed, and the difference matters more than any
+  ///         other distinction on this screen: this person has already
+  ///         cancelled, so offering them "cancel" is stale, and the
+  ///         thing they might want is a way back.
+  /// null  - nobody could say. iOS below 15, a platform with no store,
+  ///         a failed lookup. Draws the cautious wording rather than
+  ///         guessing, because guessing is wrong half the time.
+  ///
+  /// Never used to decide entitlement. A cancelled subscription is
+  /// still a paid one until it expires — see dl_membership_entitled on
+  /// the server, which makes the same distinction.
+  final bool? willRenew;
+
+  const SubscriptionStatus({
+    this.active = false,
+    this.plan,
+    this.renewsAt,
+    this.willRenew,
+  });
+
+  /// Cancelled, but still being paid for.
+  ///
+  /// The state the paywall was getting wrong: active, so it drew the
+  /// member screen, and renewing as far as it knew, so it offered to
+  /// cancel something already cancelled.
+  bool get endingSoon => active && willRenew == false;
+
+  SubscriptionStatus copyWith({bool? willRenew}) => SubscriptionStatus(
+    active: active,
+    plan: plan,
+    renewsAt: renewsAt,
+    willRenew: willRenew ?? this.willRenew,
+  );
 
   static const SubscriptionStatus none = SubscriptionStatus();
 }

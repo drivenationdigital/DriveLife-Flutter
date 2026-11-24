@@ -150,6 +150,10 @@ class FakeSubscriptions implements SubscriptionService {
           active: true,
           plan: plan,
           renewsAt: DateTime.now().add(Duration(days: 30 * plan.months)),
+          // A fresh purchase always renews. Stated rather than left
+          // null so the demo shows the ordinary member state, not the
+          // "nobody could say" one.
+          willRenew: true,
         ),
       );
     }
@@ -170,7 +174,32 @@ class FakeSubscriptions implements SubscriptionService {
   /// somewhere else, which is what a deferred payment clearing or a
   /// subscription bought in Settings looks like to the app.
   void arriveFromOutside(SubscriptionPlan plan) {
-    _set(SubscriptionStatus(active: true, plan: plan));
+    _set(
+      SubscriptionStatus(
+        active: true,
+        plan: plan,
+        renewsAt: DateTime.now().add(Duration(days: 30 * plan.months)),
+        willRenew: true,
+      ),
+    );
+  }
+
+  /// Cancelled, and STILL A MEMBER until it runs out.
+  ///
+  /// ── THE STATE THAT IS HARDEST TO REACH FOR REAL ─────────────────
+  ///
+  /// On iOS it needs Xcode's Transaction Manager or a sandbox
+  /// account; on Android, the Play Store with a test subscription
+  /// running. Both take minutes, and it is the state most likely to
+  /// be drawn wrongly - the screen used to offer "Manage or cancel"
+  /// to somebody who had already cancelled.
+  ///
+  /// Note what this does NOT do: it does not take the membership
+  /// away. That is the entire distinction being tested.
+  void cancelRenewal() {
+    if (!_current.active) return;
+
+    _set(_current.copyWith(willRenew: false));
   }
 
   /// And pretends it lapsed.

@@ -122,6 +122,10 @@ dependencies:
   # date. Importing a transitive dependency works but is a lint, and
   # more to the point it can vanish under a minor bump of the parent.
   in_app_purchase_storekit: ^0.4.17
+  # Likewise transitive, named directly for one thing: Play puts
+  # isAutoRenewing on the purchase, and that is the only way either
+  # store tells us whether a subscription has been cancelled.
+  in_app_purchase_android: ^0.5.0
 
 dev_dependencies:
   flutter_test:

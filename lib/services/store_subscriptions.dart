@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drivelife/models/subscription_plan.dart';
+import 'package:drivelife/services/renewal_status.dart';
 import 'package:drivelife/services/subscription_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
@@ -174,6 +175,27 @@ class StoreSubscriptions implements SubscriptionService {
     await _iap.restorePurchases();
     await Future<void>.delayed(const Duration(milliseconds: 600));
 
+    // ── AND ASK AGAIN WHETHER IT RENEWS ──────────────────────────
+    //
+    // This is the call made after the manage sheet closes, which is
+    // exactly when somebody has just cancelled. restorePurchases
+    // reports what is OWNED, and a cancelled subscription is still
+    // owned until it expires - so without this the screen comes back
+    // from a cancellation reporting the state from before it.
+    //
+    // Awaited here, unlike in _grant. The caller is a refresh that is
+    // already showing a spinner and whose entire purpose is to come
+    // back with the new answer.
+    final plan = _current.plan;
+
+    if (_current.active && plan != null) {
+      final renews = await RenewalStatus.willRenew(plan.productId);
+
+      if (renews != null && _current.active && _current.plan == plan) {
+        _set(_current.copyWith(willRenew: renews));
+      }
+    }
+
     return _current;
   }
 
@@ -260,6 +282,30 @@ class StoreSubscriptions implements SubscriptionService {
         renewsAt: _expiryOf(purchase),
       ),
     );
+
+    // Asked for separately, and after. Neither store puts it on the
+    // purchase in a form the plugin exposes, so it is a second trip -
+    // and the screen must not wait on it, because "you are a member"
+    // is worth drawing immediately and "it renews on the 24th" can
+    // arrive a moment later.
+    unawaited(_fillRenewal(plan));
+  }
+
+  /// Asks whether the current plan is set to renew, and republishes.
+  ///
+  /// Quiet on failure: an unknown renewal state is a real state that
+  /// the screen already draws sensibly - see SubscriptionStatus.
+  Future<void> _fillRenewal(SubscriptionPlan plan) async {
+    final renews = await RenewalStatus.willRenew(plan.productId);
+
+    if (renews == null) return;
+
+    // Only if it still describes the same subscription. A purchase or
+    // a lapse while this was in flight makes the answer stale, and a
+    // stale renewal flag is what this whole path exists to prevent.
+    if (!_current.active || _current.plan != plan) return;
+
+    _set(_current.copyWith(willRenew: renews));
   }
 
   /// When the store says this subscription next renews.
