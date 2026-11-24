@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:drivelife/config/app_environment.dart';
 import 'package:drivelife/models/vehicle_guess.dart';
+import 'package:drivelife/services/app_error_logger.dart';
 
 class GarageAPI {
   static String get _apiUrl => AppEnvironment.wordpressBase;
@@ -646,6 +647,8 @@ class GarageAPI {
   static Future<VehicleGuess> identifyVehicle(List<Uint8List> photos) async {
     final usable = photos.where((b) => b.isNotEmpty).toList();
 
+    // Nothing to send. The caller reports this one, with the detail
+    // of what happened to each photograph - see _scanPhotos.
     if (usable.isEmpty) return VehicleGuess.none;
 
     try {
@@ -659,6 +662,20 @@ class GarageAPI {
 
       if (response.statusCode != 200) {
         debugPrint('[Garage] identify HTTP ${response.statusCode}');
+
+        // A 401 here is a signed-out token and looks, on the screen,
+        // exactly like a car nothing recognised. Worth knowing which.
+        unawaited(
+          AppLogger.logError(
+            error: 'identify HTTP ${response.statusCode}',
+            context: 'garage.identify',
+            meta: {
+              'photos': usable.length,
+              'bytes': usable.fold<int>(0, (sum, b) => sum + b.length),
+            },
+          ),
+        );
+
         return VehicleGuess.none;
       }
 
@@ -668,7 +685,25 @@ class GarageAPI {
         // A 200 with no vehicle is the server saying it could not tell,
         // which is not a failure. The reasons are logged, not shown:
         // "could not fetch image 2" is our problem, not the owner's.
-        debugPrint('[Garage] identify found nothing: ${body is Map ? body['why'] : body}');
+        final why = body is Map ? body['why'] : null;
+
+        debugPrint('[Garage] identify found nothing: $why');
+
+        // The server's own explanation, which is the one thing that
+        // separates "the photographs were not clear" from "the key is
+        // dead" - and which nobody can see from a user's handset.
+        unawaited(
+          AppLogger.logError(
+            error: 'identify found nothing',
+            context: 'garage.identify',
+            meta: {
+              'why': why is List ? why.join(' | ') : '$why',
+              'photos': usable.length,
+              'bytes': usable.fold<int>(0, (sum, b) => sum + b.length),
+            },
+          ),
+        );
+
         return VehicleGuess.none;
       }
 
@@ -677,6 +712,15 @@ class GarageAPI {
       );
     } catch (e) {
       debugPrint('[Garage] identify threw: $e');
+
+      unawaited(
+        AppLogger.logError(
+          error: 'identify threw: $e',
+          context: 'garage.identify',
+          meta: {'photos': usable.length},
+        ),
+      );
+
       return VehicleGuess.none;
     }
   }

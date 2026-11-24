@@ -10,6 +10,7 @@ import 'package:drivelife/api/garage_api.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/providers/user_provider.dart';
 import 'package:drivelife/screens/media_picker/media_picker_screen.dart';
+import 'package:drivelife/services/app_error_logger.dart';
 import 'package:drivelife/services/media_compressor.dart';
 import 'package:drivelife/services/upload_quality_prefs.dart';
 import 'package:drivelife/theme/dl_type.dart';
@@ -137,6 +138,21 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
   /// What the scan thinks the vehicle is. See [VehicleGuess].
   VehicleGuess _guess = VehicleGuess.none;
+
+  /// The scan ran, finished, and came back with nothing.
+  ///
+  /// ── WHY THIS NEEDED A FLAG OF ITS OWN ───────────────────────────
+  ///
+  /// Because "no guess" and "no scan" drew identically: an empty form
+  /// with nothing said. Somebody who waited through the scan and
+  /// somebody who skipped it saw the same screen, so a scan that had
+  /// quietly failed was indistinguishable from one that was never
+  /// asked for - which is how this reached a user before it reached
+  /// us.
+  ///
+  /// Distinct from `_guess.hasGuess` being false, which is also true
+  /// before the scan has run at all.
+  bool _scanFoundNothing = false;
 
   /// True while the performance figures are being looked up.
   ///
@@ -1266,6 +1282,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
     final photos = <Uint8List>[];
 
+    /// What happened to each photograph, for the failure report.
+    final attempts = <Map<String, Object>>[];
+
     for (final file in _galleryPicks.take(_scanPhotoLimit)) {
       Uint8List? bytes;
 
@@ -1283,35 +1302,83 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         debugPrint('[AddVehicle] compress failed for ${file.path}: $e');
       }
 
-      // ── THE FALLBACK USED TO BE INSIDE THE TRY ──────────────────
+      // ── THREE WAYS, BECAUSE THE FIRST TWO BOTH FAIL ─────────────
       //
-      // `photos.add(small ?? await file.readAsBytes())` only ever ran
-      // when compression RETURNED null. When it THREW — which it does
-      // on some content:// paths, and on an image the plugin cannot
-      // decode — the add never happened at all, and the photograph was
-      // dropped without anything on screen saying so. The progress row
-      // still counted it, because the counter is outside the catch.
+      // This used to be compressWithFile, then the raw file if it was
+      // under a ceiling, then nothing. Both halves of that could fail
+      // on the same photograph, and when they did the photograph was
+      // dropped in silence: the progress row still counted it, the
+      // scan posted an empty list, and identifyVehicle returned
+      // without making a request at all. The screen went straight to
+      // an empty form with no delay and nothing said why.
       //
-      // Five photographs could therefore become zero, and the scan
-      // posted an empty list: a request that comes back in two seconds
-      // having never reached Gemini, which is exactly what it looked
-      // like.
+      // That is precisely the report from the field - works on
+      // Android, instant and empty on iOS - so the path now has a
+      // middle rung that does not share a failure mode with either
+      // neighbour.
+      //
+      //   1. compressWithFile  - cheapest, but reads the PATH, and an
+      //                          extension it cannot place (.heic, a
+      //                          cache file with no extension at all)
+      //                          makes it return null or throw.
+      //   2. compressWithList  - same encoder, handed BYTES. Nothing
+      //                          about the path can reach it, and the
+      //                          result is small, so the ceiling
+      //                          below never applies to it.
+      //   3. the raw bytes     - last resort, and only when small
+      //                          enough that two of them will not have
+      //                          the request refused for size.
+      Uint8List? original;
+
       if (bytes == null) {
         try {
-          final raw = await file.readAsBytes();
-
-          if (raw.length <= _rawPhotoCeiling) {
-            bytes = raw;
-          } else {
-            debugPrint(
-              '[AddVehicle] ${file.path} is ${raw.length} bytes and would '
-              'not compress — too large to send as it is',
-            );
-          }
+          original = await file.readAsBytes();
         } catch (e) {
           debugPrint('[AddVehicle] could not read ${file.path}: $e');
         }
       }
+
+      if (bytes == null && original != null) {
+        try {
+          final shrunk = await FlutterImageCompress.compressWithList(
+            original,
+            minWidth: 1024,
+            minHeight: 1024,
+            quality: 80,
+          );
+
+          // Non-nullable, unlike compressWithFile - so a failure here
+          // is an EMPTY list, not a null. Left as it came, that empty
+          // list would satisfy the null check below, skip the raw
+          // fallback, and then be dropped by the isNotEmpty test at
+          // the bottom: the same silent loss this whole path exists
+          // to stop, one rung further down.
+          if (shrunk.isNotEmpty) bytes = shrunk;
+        } catch (e) {
+          debugPrint('[AddVehicle] compressWithList failed: $e');
+        }
+      }
+
+      if (bytes == null && original != null) {
+        if (original.length <= _rawPhotoCeiling) {
+          bytes = original;
+        } else {
+          debugPrint(
+            '[AddVehicle] ${file.path} is ${original.length} bytes and '
+            'would not compress — too large to send as it is',
+          );
+        }
+      }
+
+      // What each photograph did, for the report below. Sizes and
+      // extensions only: nothing here identifies the car or the owner.
+      final dot = file.path.lastIndexOf('.');
+
+      attempts.add({
+        'ext': dot < 0 ? '' : file.path.substring(dot + 1).toLowerCase(),
+        'raw': original?.length ?? -1,
+        'sent': bytes?.length ?? 0,
+      });
 
       if (bytes != null && bytes.isNotEmpty) photos.add(bytes);
 
@@ -1319,11 +1386,29 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     }
 
     if (photos.isEmpty) {
-      // Worth one line in the log, because from here on it is
-      // indistinguishable from a car nothing recognised.
       debugPrint(
         '[AddVehicle] no photographs could be prepared from '
         '${_galleryPicks.length} picked — nothing to scan',
+      );
+
+      // ── REPORTED, NOT JUST PRINTED ────────────────────────────────
+      //
+      // A debugPrint is only ever read by somebody holding the phone
+      // in Xcode. This one was reported by a user, on a device nobody
+      // here can attach to, and without this the only way to find out
+      // would be to ask them to reproduce it for us.
+      //
+      // AppLogger carries the platform and app version on its own, so
+      // "iOS only" shows up without anybody having to notice it.
+      unawaited(
+        AppLogger.logError(
+          error: 'vehicle scan prepared no photographs',
+          context: 'add_vehicle.scan',
+          meta: {
+            'picked': _galleryPicks.length,
+            'attempts': attempts,
+          },
+        ),
       );
     }
 
@@ -1337,6 +1422,11 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       _guess = guess;
       _applyGuess(guess);
       _scanning = false;
+
+      // Only when the scan actually ran to the end. A skipped scan
+      // found nothing because nobody waited for it, which is not a
+      // failure and must not be reported to anybody as one.
+      _scanFoundNothing = !_scanSkipped && !guess.hasGuess;
 
       // The one thing a skipped scan does not get to do. See
       // [_scanSkipped]: the form is already open and being typed into.
@@ -2437,7 +2527,10 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                 padding: const EdgeInsets.only(bottom: 24),
                 children: [
                   // What the photographs said, and a way to disown it.
-                  if (_guess.hasGuess) _guessBanner(),
+                  if (_guess.hasGuess)
+                    _guessBanner()
+                  else if (_scanFoundNothing)
+                    _scanFailedNote(),
 
                   // ── ON BOTH STEPS, DELIBERATELY ───────────────
                   //
@@ -3187,6 +3280,49 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   /// prefilled form with no explanation is the version people accept
   /// without reading; naming the guess as a guess is what makes the
   /// fields under it get checked.
+  /// Shown when the scan finished and recognised nothing.
+  ///
+  /// Deliberately not an error dialog and not red. Nothing has gone
+  /// wrong for the person reading it - the form below works perfectly
+  /// well typed in by hand, which is what it is telling them to do.
+  /// What it must NOT do is leave them staring at an empty form
+  /// wondering whether the app is broken, which is what happened
+  /// before and what got reported.
+  Widget _scanFailedNote() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F4F4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE4E4E4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            size: 20,
+            color: Color(0xFF6B6B6B),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'We could not read your photos well enough to fill this '
+              'in. Add the details below, or enter your registration '
+              'and tap search.',
+              style: TextStyle(
+                fontSize: 13.5,
+                height: 1.35,
+                color: Color(0xFF4A4A4A),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _guessBanner() {
     const gold = Color(0xFFAE9159);
 
