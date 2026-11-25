@@ -227,7 +227,17 @@ class UserProvider extends ChangeNotifier {
           deviceToken: token,
           userId: userId,
         );
-        print('✅ Device token associated with user $userId> token: $token');
+        // The token itself is NOT logged.
+        //
+        // `print` is not stripped from release builds - it runs on
+        // every customer's handset and writes to the iOS unified log
+        // and to logcat. A push token in there is a credential sitting
+        // in a file anybody with the device can read, and it buys
+        // whoever finds it the ability to push to that handset.
+        //
+        // The user id is enough to tell two devices apart when
+        // something goes wrong, which is all this line was for.
+        print('✅ Device token associated with user $userId');
       }
     } catch (e) {
       print('❌ Error setting up notifications: $e');

@@ -1,6 +1,7 @@
 import 'package:drivelife/routes.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/widgets/formatted_text.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -215,10 +216,20 @@ class _CommentItemState extends State<CommentItem> {
                   CircleAvatar(
                     radius: widget.isReply ? 14 : 18,
                     backgroundColor: Colors.grey.shade300,
+                    // Cached on disk and decoded to the size drawn.
+                    // It was a plain NetworkImage, which does neither:
+                    // every avatar in a comment thread was fetched
+                    // again from cold on each launch, and a 1000px
+                    // photograph was decoded whole to fill a 36-point
+                    // circle. See ProfileAvatar for the long version.
                     backgroundImage:
                         (c['profile_image'] != null &&
                             c['profile_image'].toString().isNotEmpty)
-                        ? NetworkImage(c['profile_image'])
+                        ? _avatar(
+                            context,
+                            c['profile_image'].toString(),
+                            widget.isReply ? 14 : 18,
+                          )
                         : null,
                     // Conditional, like the image it guards — see the
                     // note in ChatProfileCache.
@@ -251,10 +262,17 @@ class _CommentItemState extends State<CommentItem> {
                         child: CircleAvatar(
                           radius: 7,
                           backgroundColor: Colors.grey.shade200,
+                          // 7 points across, and it was decoding the
+                          // owner's full-size photograph to draw it -
+                          // once per comment in the list.
                           backgroundImage:
                               (ownerProfileImage != null &&
                                   ownerProfileImage.toString().isNotEmpty)
-                              ? NetworkImage(ownerProfileImage)
+                              ? _avatar(
+                                  context,
+                                  ownerProfileImage.toString(),
+                                  7,
+                                )
                               : null,
                           child:
                               (ownerProfileImage == null ||
@@ -553,4 +571,26 @@ class _CommentItemState extends State<CommentItem> {
       ),
     );
   }
+}
+
+/// A cached, size-bounded avatar image for a CircleAvatar.
+///
+/// The same idiom as [ProfileAvatar], as a function, because these two
+/// call sites are inside CircleAvatars that already carry their own
+/// children and error handling and would not survive being replaced
+/// wholesale.
+///
+/// Width ONLY: ResizeImage defaults to ResizeImagePolicy.exact, which
+/// honours both dimensions and squashes anything that is not square -
+/// and a profile photograph rarely is.
+ImageProvider _avatar(BuildContext context, String url, double radius) {
+  final pixels = (radius * 2 * MediaQuery.devicePixelRatioOf(context))
+      .round()
+      .clamp(32, 512);
+
+  return ResizeImage(
+    CachedNetworkImageProvider(url),
+    width: pixels,
+    allowUpscaling: false,
+  );
 }
