@@ -248,7 +248,15 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
         onTap: _pick,
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 36),
+          // Horizontal padding, which it had none of - so the two
+          // line caption underneath ran edge to edge and touched the
+          // border on both sides.
+          //
+          // 24 rather than the 20 the page uses, because this text is
+          // inside a box that already has its own border: matching
+          // the page gutter would have put the words level with the
+          // outline and read as cramped even when it was not.
+          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFFD8D8D8)),
