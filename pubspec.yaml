@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 4.8.6+5
+version: 4.8.6+7
 # version: 4.7.9+109
 
 environment:
@@ -35,6 +35,10 @@ dependencies:
   video_player_web: ^2.0.16
   cached_network_image: ^3.3.1
   visibility_detector: ^0.4.0+2
+  # Stops the screen dimming while a long-form video plays. Flutter
+  # has no built-in for this and it is two native calls per platform,
+  # so a tiny well-kept package beats a hand-rolled method channel.
+  wakelock_plus: ^1.2.8
   flutter_secure_storage: ^9.2.2
   pinch_zoom_release_unzoom: ^1.0.1
   provider: ^6.1.5+1

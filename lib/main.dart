@@ -6,6 +6,7 @@ import 'package:drivelife/providers/location_access_provider.dart';
 import 'package:drivelife/providers/registration_provider.dart';
 import 'package:drivelife/providers/pending_tags_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/providers/video_upload_provider.dart';
 import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:drivelife/providers/upload_post_provider.dart';
 import 'package:drivelife/screens/chat/ChatProfileCache.dart';
@@ -308,6 +309,10 @@ void main() async {
         // Above the navigator so a gallery upload outlives the screen that
         // started it.
         ChangeNotifierProvider(create: (_) => GalleryUploadProvider()),
+        // Same reason, and it matters more here: a long-form video is
+        // gigabytes, and losing an hour of upload because somebody
+        // left the screen is not a recoverable mistake.
+        ChangeNotifierProvider(create: (_) => VideoUploadProvider()),
         ChangeNotifierProvider(create: (_) => RegistrationProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => UnreadCountProvider()),

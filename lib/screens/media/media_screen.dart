@@ -13,6 +13,13 @@ import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/screens/media/all_galleries_screen.dart';
 import 'package:drivelife/providers/gallery_upload_provider.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
+import 'package:drivelife/api/videos_api.dart';
+import 'package:drivelife/models/long_video.dart';
+import 'package:drivelife/screens/media/all_videos_screen.dart';
+import 'package:drivelife/screens/media/video_upload_screen.dart';
+import 'package:drivelife/screens/media/video_watch_screen.dart';
+import 'package:drivelife/services/watch_progress.dart';
+import 'package:drivelife/widgets/media/video_upload_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
@@ -63,6 +70,18 @@ class _MediaScreenState extends State<MediaScreen>
 
   EventGalleriesResponse _galleries = const EventGalleriesResponse();
   bool _loadingGalleries = true;
+
+  /// DriveLife's own long-form videos, and how far through each of
+  /// them this person has watched.
+  List<LongVideo> _videos = const [];
+  Map<String, int> _watched = const {};
+  bool _loadingVideos = true;
+
+  /// Whether to offer the Upload control.
+  ///
+  /// A courtesy only. The endpoints check the role themselves - see
+  /// dl_videos_is_admin - because a hidden button is not a permission.
+  bool _canUploadVideos = false;
   String? _galleriesError;
 
   List<PopularImage> _popular = [];
@@ -120,7 +139,12 @@ class _MediaScreenState extends State<MediaScreen>
   }
 
   Future<void> _loadAll() {
-    return Future.wait([_loadPending(), _loadGalleries(), _loadPopular()]);
+    return Future.wait([
+      _loadPending(),
+      _loadGalleries(),
+      _loadVideos(),
+      _loadPopular(),
+    ]);
   }
 
   Future<void> _loadPending() async {
@@ -146,6 +170,75 @@ class _MediaScreenState extends State<MediaScreen>
         _loadingPending = false;
       });
     }
+  }
+
+  /// The videos row.
+  ///
+  /// Never throws and never shows an error: this section is an extra
+  /// on a screen that works without it, so a failure hides the row
+  /// rather than putting a retry button in front of somebody who came
+  /// here to look at photographs.
+  Future<void> _loadVideos() async {
+    try {
+      final videos = await VideosAPI.list(limit: 10);
+      final watched = await WatchProgress.positions();
+      final permission = await VideosAPI.uploadPermission();
+
+      if (!mounted) return;
+
+      setState(() {
+        _videos = videos;
+        _watched = watched;
+        // Both, not either: an administrator on a server with no
+        // Stream token would get a button that can only fail.
+        _canUploadVideos = permission.canUpload && permission.configured;
+        _loadingVideos = false;
+      });
+    } catch (e) {
+      debugPrint('MediaScreen._loadVideos failed: $e');
+
+      if (!mounted) return;
+
+      setState(() {
+        _videos = const [];
+        _loadingVideos = false;
+      });
+    }
+  }
+
+  Future<void> _openAllVideos() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AllVideosScreen()));
+
+    // Watching, liking or uploading in there changes this row too.
+    if (mounted) await _loadVideos();
+  }
+
+  Future<void> _uploadVideo() async {
+    final published = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const VideoUploadScreen()));
+
+    // Only reload when something actually landed. Backing out of the
+    // uploader should not cost a round trip.
+    if (published == true && mounted) await _loadVideos();
+  }
+
+  Future<void> _openVideo(LongVideo video) async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => VideoWatchScreen(video: video)));
+
+    if (!mounted) return;
+
+    // The whole row, not just the watch positions.
+    //
+    // Positions alone was the bug: somebody who liked or commented
+    // while watching came back to the old counts, and pulling to
+    // refresh did not always help because the response was being
+    // served from a cache - see the headers on dl_videos_list.
+    await _loadVideos();
   }
 
   Future<void> _loadGalleries() async {
@@ -247,18 +340,22 @@ class _MediaScreenState extends State<MediaScreen>
       body: NotificationListener<ScrollNotification>(
         onNotification: widget.chrome?.handle ?? (_) => false,
         child: RefreshIndicator(
-        color: theme.primaryColor,
-        onRefresh: _loadAll,
-        child: ListView(
-          padding: const EdgeInsets.only(top: 8, bottom: 24),
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            _SearchRow(onGalleryCreated: _loadAll),
-            ..._pendingSection(theme),
-            ..._gallerySection(),
-            ..._popularSection(),
-          ],
-        ),
+          color: theme.primaryColor,
+          onRefresh: _loadAll,
+          child: ListView(
+            padding: const EdgeInsets.only(top: 8, bottom: 24),
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              _SearchRow(onGalleryCreated: _loadAll),
+              // Uploads in flight, above everything. They are the one
+              // thing on this screen somebody is actively waiting on.
+              const VideoUploadTiles(),
+              ..._pendingSection(theme),
+              ..._gallerySection(),
+              ..._videoSection(),
+              ..._popularSection(),
+            ],
+          ),
         ),
       ),
     );
@@ -346,6 +443,51 @@ class _MediaScreenState extends State<MediaScreen>
           ),
         ),
       _GalleryRow(galleries: _galleries.data, onTap: _openGallery),
+      const SizedBox(height: 28),
+    ];
+  }
+
+  List<Widget> _videoSection() {
+    if (_loadingVideos) {
+      return const [
+        _SectionHeader(title: 'Videos'),
+        _GalleryRowSkeleton(),
+        SizedBox(height: 28),
+      ];
+    }
+
+    // Nothing to show hides the row entirely, same as Galleries - an
+    // empty "Videos" heading is worse than no heading.
+    //
+    // Except for an administrator, who needs somewhere to put the
+    // first one. For them an empty section is the way in rather than
+    // a dead end.
+    if (_videos.isEmpty && !_canUploadVideos) return const [];
+
+    return [
+      _SectionHeader(
+        title: 'Videos',
+        // "See all" here, like Galleries, rather than Upload. Upload
+        // is a button of its own below - see _UploadVideoButton for
+        // why it stopped being a word in a header.
+        actionLabel: _videos.isEmpty ? null : 'See all',
+        onAction: _videos.isEmpty ? null : _openAllVideos,
+      ),
+      if (_videos.isEmpty)
+        const Padding(
+          padding: EdgeInsets.fromLTRB(_hPadding, 0, _hPadding, 12),
+          child: Text(
+            'No videos yet. Upload one and it appears here once '
+            'Cloudflare has finished processing it.',
+            style: TextStyle(fontSize: 13, color: Colors.grey),
+          ),
+        )
+      else
+        _VideoRow(videos: _videos, watched: _watched, onTap: _openVideo),
+      if (_canUploadVideos) ...[
+        const SizedBox(height: 14),
+        _UploadVideoButton(onTap: _uploadVideo),
+      ],
       const SizedBox(height: 28),
     ];
   }
@@ -793,6 +935,241 @@ class _GalleryRow extends StatelessWidget {
           gallery: galleries[index],
           onTap: () => onTap(galleries[index]),
         ),
+      ),
+    );
+  }
+}
+
+/// The way an administrator adds a video.
+///
+/// ── WHY IT IS NOT A WORD IN THE SECTION HEADER ──────────────────────
+///
+/// It was "Upload", in the same small grey slot where every other
+/// section says "See all" - so it looked like a link rather than the
+/// only way to do the one thing this section exists for, and it sat
+/// in the corner of the screen furthest from the thumb.
+///
+/// Full width, gold, with an icon and a sentence under it. It is
+/// shown to perhaps three people in the world and it should be
+/// impossible for any of them to miss.
+class _UploadVideoButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _UploadVideoButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: _MediaScreenState._hPadding,
+      ),
+      child: Material(
+        color: const Color(0xFFAE9159),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.video_call_rounded,
+                  color: Colors.white,
+                  size: 26,
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Upload a video',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Any length. Admins only.',
+                        style: TextStyle(color: Colors.white70, fontSize: 12.5),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, color: Colors.white70),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The Videos row: the Galleries slider, carrying videos.
+///
+/// Same card width, same image height, same gaps and same padding, so
+/// the two rows line up down the page rather than almost lining up.
+class _VideoRow extends StatelessWidget {
+  final List<LongVideo> videos;
+
+  /// Seconds watched, by post id. Absent means not started.
+  final Map<String, int> watched;
+
+  final ValueChanged<LongVideo> onTap;
+
+  const _VideoRow({
+    required this.videos,
+    required this.watched,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: _GalleryRow._imageHeight + 56,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(
+          horizontal: _MediaScreenState._hPadding,
+        ),
+        itemCount: videos.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 14),
+        itemBuilder: (context, index) {
+          final video = videos[index];
+
+          return _VideoCard(
+            video: video,
+            watchedSeconds: watched[video.postId] ?? 0,
+            onTap: () => onTap(video),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _VideoCard extends StatelessWidget {
+  final LongVideo video;
+  final int watchedSeconds;
+  final VoidCallback onTap;
+
+  const _VideoCard({
+    required this.video,
+    required this.watchedSeconds,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final length = video.lengthLabel;
+
+    // Only a real, partial position counts. Zero is "not started" and
+    // anything at or past the end is "finished" - neither deserves a
+    // bar, and a full bar on a finished video is just clutter.
+    final showProgress =
+        watchedSeconds > 0 &&
+        video.durationSeconds > 0 &&
+        watchedSeconds < video.durationSeconds;
+
+    return SizedBox(
+      width: _GalleryRow._cardWidth,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            // One clip for the card, so the progress bar at the
+            // bottom is cut by the same rounded rectangle as the
+            // artwork. With a clip of its own, a corner radius on a
+            // four-point bar gets clamped and the ends stay square
+            // while the picture curves away behind them.
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              children: [
+                _NetworkThumb(
+                  url: video.thumbnailUrl,
+                  width: _GalleryRow._cardWidth,
+                  height: _GalleryRow._imageHeight,
+                ),
+
+                // The play button, centred on the artwork. It is the
+                // whole reason this card reads as a video rather than a
+                // photograph.
+                Positioned.fill(
+                  child: Center(
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white70, width: 1.5),
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 30,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // How far through they got, hugging the bottom edge of
+                // the artwork.
+                if (showProgress)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: LinearProgressIndicator(
+                      value: watchedSeconds / video.durationSeconds,
+                      minHeight: 4,
+                      // Darker than white24, which disappeared over a
+                      // pale frame - leaving a gold bar that stopped
+                      // in mid-air with nothing behind it.
+                      backgroundColor: Colors.black26,
+                      valueColor: const AlwaysStoppedAnimation(
+                        Color(0xFFAE9159),
+                      ),
+                    ),
+                  ),
+
+                Positioned.fill(
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: onTap,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            video.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            // The length, or where they are up to once they have
+            // started. "12:04 left" answers the question somebody
+            // returning to a video is actually asking.
+            showProgress
+                ? '${LongVideo.formatPosition(video.durationSeconds - watchedSeconds)} left'
+                : length,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          ),
+        ],
       ),
     );
   }
