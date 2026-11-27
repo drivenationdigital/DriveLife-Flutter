@@ -74,13 +74,36 @@ class VideosAPI {
   }
 
   /// The videos for the row on the media tab.
-  static Future<List<LongVideo>> list({int limit = 10, String? search}) async {
+  /// The videos, newest first.
+  ///
+  /// [podcast] filters by publisher: true for podcast episodes only,
+  /// false for everything that is not one, null - the default - for no
+  /// opinion, which is what every caller that predates the podcast
+  /// passes without knowing it.
+  /// [creatorId] narrows to one creator's videos, for their page.
+  static Future<List<LongVideo>> list({
+    int limit = 10,
+    String? search,
+    bool? podcast,
+    int? creatorId,
+    bool featured = false,
+    /// Videos from the creators on this person's front page: the ones
+    /// DriveLife features plus the ones they follow.
+    bool home = false,
+  }) async {
     final term = search?.trim() ?? '';
 
     final uri = Uri.parse('$_base/videos').replace(
       queryParameters: {
         'limit': '$limit',
         if (term.isNotEmpty) 'search': term,
+        // Left out entirely when null, so the request is byte for byte
+        // what it was before the podcast existed - and the server's
+        // "no opinion" branch is the one that runs.
+        if (podcast != null) 'podcast': podcast ? '1' : '0',
+        if (creatorId != null && creatorId > 0) 'creator': '$creatorId',
+        if (featured) 'featured': '1',
+        if (home) 'home': '1',
       },
     );
 
@@ -336,12 +359,81 @@ class VideosAPI {
   /// when the screen opens - see dl_videos_record_view for why.
   /// Quiet on failure: a lost view is not worth telling anybody
   /// about, and certainly not worth interrupting a video for.
-  static Future<int?> markViewed(String postId) async {
+  /// Creates a video post that points at YouTube.
+  ///
+  /// Nothing is uploaded and nothing is processed, so unlike
+  /// [startUpload] this returns a finished, published video - which is
+  /// why it hands back a [LongVideo] rather than an id and an upload
+  /// URL.
+  ///
+  /// Returns the video on success, or a message to show on failure.
+  /// Both, rather than null, because the two failures worth telling
+  /// somebody apart are "that is not a YouTube link" and "that video
+  /// is already here", and a null cannot say which.
+  static Future<({LongVideo? video, String? message})> createYoutube({
+    required String url,
+    required String title,
+    String description = '',
+    /// Optional, because YouTube will not tell us - see the note on
+    /// the length field in video_upload_screen.dart. Zero or null
+    /// leaves the server's duration at 0, and the first person to
+    /// watch fills it in.
+    int durationSeconds = 0,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_base/videos/youtube'),
+        headers: await _headers(),
+        body: jsonEncode({
+          'url': url,
+          'title': title,
+          'description': description,
+          if (durationSeconds > 0) 'duration': durationSeconds,
+        }),
+      );
+
+      final body = jsonDecode(response.body);
+
+      if (body is! Map) {
+        return (video: null, message: 'Could not add that video.');
+      }
+
+      if (response.statusCode == 200 && body['success'] == true) {
+        return (
+          video: LongVideo.fromJson(Map<String, dynamic>.from(body)),
+          message: null,
+        );
+      }
+
+      return (
+        video: null,
+        message: '${body['message'] ?? 'Could not add that video.'}',
+      );
+    } catch (e) {
+      debugPrint('[videos] createYoutube failed: $e');
+
+      return (video: null, message: 'Could not reach the server.');
+    }
+  }
+
+  /// Counts a view, and - for a YouTube video that does not know its
+  /// own length yet - tells the server what the player reported.
+  ///
+  /// The server only accepts [durationSeconds] when it currently has
+  /// none, so this cannot rewrite a known duration. See
+  /// dl_videos_record_view.
+  static Future<int?> markViewed(String postId, {int? durationSeconds}) async {
     try {
       final response = await http
           .post(
             Uri.parse('$_base/videos/$postId/viewed'),
             headers: await _headers(),
+            // Only sent when there is something to say. An endpoint
+            // that has always been called with no body should not
+            // start receiving "null" on every view.
+            body: durationSeconds != null && durationSeconds > 0
+                ? jsonEncode({'duration': durationSeconds})
+                : null,
           )
           .timeout(ApiConfig.requestTimeout);
 

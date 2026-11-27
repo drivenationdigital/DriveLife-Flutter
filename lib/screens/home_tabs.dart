@@ -47,7 +47,7 @@ import 'package:drivelife/config/feature_flags.dart';
 import 'package:drivelife/screens/roads/add_road_screen.dart';
 import 'package:drivelife/screens/roads/roads_list_screen.dart';
 import 'package:drivelife/screens/media/new_gallery_screen.dart';
-import 'package:drivelife/screens/media/media_screen.dart';
+import 'package:drivelife/screens/watch/watch_screen.dart';
 import 'package:drivelife/services/auth_service.dart';
 import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
@@ -422,8 +422,22 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
       // Handed the shell's scroll listener like every other
       // destination. Without it this screen scrolled in silence and
       // the bottom bar sat there through all of it.
+      // ── WATCH, WHERE THE MEDIA TAB USED TO BE ──────────────────
+      //
+      // Same slot, same feature flag, same position in the bar - the
+      // order here and the constants in BottomNavProvider are matched
+      // by INDEX, so swapping the screen rather than moving the slot
+      // is what keeps every other destination where it was.
+      //
+      // MediaScreen is still reachable on its route (routes.dart) and
+      // still owns the video sections; it is simply not a tab any
+      // more. See kShowGallerySections in media_screen.dart for what
+      // is parked inside it.
       if (FeatureFlags.mediaTab)
-        MediaScreen(chrome: _chrome)
+        // Handed the shell's scroll listener like every other
+        // destination. Without it this screen scrolled in silence and
+        // the bottom bar sat there through all of it.
+        WatchScreen(chrome: _chrome)
       else
         const SizedBox.shrink(),
 
@@ -1276,9 +1290,27 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         ),
         DlNavItem(
           label: 'Garage',
-          // A real icon at last. This was a borrowed Material glyph
-          // because assets/app-icons had no car.
-          icon: (sel) => svg('assets/nav-icons/02-garage.svg', sel),
+          // ── THE TAG BADGE LIVES HERE NOW ──────────────────────
+          //
+          // It was on the media tab, because that is where approving
+          // a photo of your car used to happen. That queue moved to
+          // Garage > My Garage, so the badge followed it - a count
+          // pointing at a tab that no longer has the thing being
+          // counted is worse than no count.
+          //
+          // Unseen rather than the whole pending queue: a badge
+          // mirroring every outstanding tag would never clear, and a
+          // dot that is always on is one people stop reading.
+          icon: (sel) => Consumer<PendingTagsProvider>(
+            builder: (context, tags, child) => _BadgedIcon(
+              count: tags.unseen,
+              color: theme.primaryColor,
+              child: child!,
+            ),
+            // A real icon at last. This was a borrowed Material glyph
+            // because assets/app-icons had no car.
+            child: svg('assets/nav-icons/02-garage.svg', sel),
+          ),
         ),
         DlNavItem(
           label: 'Map',
@@ -1296,19 +1328,14 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           icon: (sel) => svg('assets/nav-icons/04-groups.svg', sel),
         ),
         DlNavItem(
-          label: 'Media',
-          // Carries the unseen-tag count. Unseen rather than the whole
-          // pending queue: a badge mirroring every outstanding tag would
-          // never clear, and a dot that is always on is one people stop
-          // reading.
-          icon: (sel) => Consumer<PendingTagsProvider>(
-            builder: (context, tags, child) => _BadgedIcon(
-              count: tags.unseen,
-              color: theme.primaryColor,
-              child: child!,
-            ),
-            child: svg('assets/nav-icons/05-media.svg', sel),
-          ),
+          label: 'Watch',
+          // The media icon still, because this is still the media
+          // slot - videos, creators and the podcast rather than
+          // galleries. A new glyph can replace it without anything
+          // else here changing.
+          //
+          // No badge any more: it moved to Garage with the tag queue.
+          icon: (sel) => svg('assets/nav-icons/05-media.svg', sel),
         ),
         // No Search item. It moved to the For You pill row — see
         // _CustomTabBar in posts_screen.dart. 06-search.svg is still in

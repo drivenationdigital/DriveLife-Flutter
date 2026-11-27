@@ -31,6 +31,24 @@ import 'package:shimmer/shimmer.dart';
 /// up the others. A section that comes back *empty* hides itself; one that
 /// *fails* shows an inline message with a retry, so a total outage reads as
 /// broken rather than as a blank page.
+/// Whether the gallery half of this screen is shown.
+///
+/// ── WHY A FLAG AND NOT A DELETION ───────────────────────────────────
+///
+/// Galleries, the gallery search, "create a gallery" and the popular
+/// images grid are all parked rather than removed: the feature is not
+/// cancelled, it is waiting for a clearer idea of what it should be.
+/// Deleting several hundred lines and recovering them from git later
+/// is a worse trade than one flag that turns them back on.
+///
+/// What is NOT parked: the video sections, and the uploads-in-flight
+/// tiles above them.
+///
+/// Images of you has MOVED rather than been hidden - it is on the
+/// garage's My Garage tab now, beside the cars it is about. See
+/// garage_list_screen.dart.
+const bool kShowGallerySections = false;
+
 class MediaScreen extends StatefulWidget {
   /// The shell's scroll listener.
   ///
@@ -346,14 +364,17 @@ class _MediaScreenState extends State<MediaScreen>
             padding: const EdgeInsets.only(top: 8, bottom: 24),
             physics: const AlwaysScrollableScrollPhysics(),
             children: [
-              _SearchRow(onGalleryCreated: _loadAll),
+              if (kShowGallerySections)
+                _SearchRow(onGalleryCreated: _loadAll),
               // Uploads in flight, above everything. They are the one
               // thing on this screen somebody is actively waiting on.
               const VideoUploadTiles(),
-              ..._pendingSection(theme),
-              ..._gallerySection(),
+              // Images of you lives on the garage tab now - see
+              // kShowGallerySections.
+              if (kShowGallerySections) ..._pendingSection(theme),
+              if (kShowGallerySections) ..._gallerySection(),
               ..._videoSection(),
-              ..._popularSection(),
+              if (kShowGallerySections) ..._popularSection(),
             ],
           ),
         ),

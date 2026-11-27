@@ -2,8 +2,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/api/garage_api.dart';
 import 'package:drivelife/models/user_model.dart';
 import 'package:drivelife/providers/account_provider.dart';
+import 'package:drivelife/providers/pending_tags_provider.dart';
 import 'package:drivelife/providers/theme_provider.dart';
 import 'package:drivelife/screens/garage/add_vehicle_screen.dart';
+import 'package:drivelife/screens/media/images_of_you_screen.dart';
 import 'package:drivelife/utils/navigation_helper.dart';
 import 'package:drivelife/widgets/garage/vehicle_card.dart';
 import 'package:drivelife/widgets/nav/chrome_visibility.dart';
@@ -199,6 +201,84 @@ class _GarageListScreenState extends State<GarageListScreen>
 
   // ── layout ───────────────────────────────────────────────────────────
 
+  /// The way in to approving photos of your cars.
+  ///
+  /// Hidden entirely when there is nothing waiting. An empty queue
+  /// with a cheerful "nothing to review" is a row that costs space on
+  /// every visit to say nothing.
+  Widget _imagesOfYouCard(ThemeProvider theme) {
+    final pending = context.watch<PendingTagsProvider>().pending;
+
+    if (pending == 0) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () async {
+          await NavigationHelper.navigateTo(
+            context,
+            const ImagesOfYouScreen(),
+          );
+
+          if (mounted) {
+            await context.read<PendingTagsProvider>().refresh();
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: theme.primaryColor.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: theme.primaryColor.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.photo_library_outlined,
+                size: 22,
+                color: theme.primaryColor,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Images of you',
+                      style: TextStyle(
+                        color: theme.textColor,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      pending == 1
+                          ? '1 photo waiting to be reviewed'
+                          : '$pending photos waiting to be reviewed',
+                      style: TextStyle(
+                        color: theme.subtextColor,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: theme.subtextColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
@@ -318,6 +398,18 @@ class _GarageListScreenState extends State<GarageListScreen>
     final vehicles = _shelves[_shelf]!;
 
     return [
+      // ── IMAGES OF YOU, WHICH USED TO LIVE ON THE MEDIA TAB ──────
+      //
+      // Approving a photo somebody tagged your car in is a thing you
+      // do about YOUR CARS, so it belongs next to them rather than in
+      // a gallery browser. It was the one part of the media tab worth
+      // keeping while the rest of that screen is parked.
+      //
+      // Above the shelves deliberately: it is a queue with somebody
+      // waiting at the other end of it, and a queue below the fold is
+      // a queue nobody clears.
+      SliverToBoxAdapter(child: _imagesOfYouCard(theme)),
+
       SliverToBoxAdapter(child: _shelfPills(theme)),
 
       if (vehicles.isEmpty)

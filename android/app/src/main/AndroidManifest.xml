@@ -1,7 +1,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.app.carcalendar">
     <uses-permission
         android:name="android.permission.INTERNET"/>
+    <!-- ── BACKGROUND VIDEO AUDIO ─────────────────────────────────
+         An app in the background is a process Android may freeze and
+         then kill, and the player goes quiet with it. A foreground
+         service with a media notification is the only thing that
+         prevents that, and these are what it needs.
+
+         MEDIA_PLAYBACK is the typed permission Android 14 requires to
+         go with foregroundServiceType="mediaPlayback" below; without
+         it the service is refused at start.
+
+         See lib/services/video_audio_handler.dart. -->
+    <uses-permission
+        android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <!-- Notifications and location -->
     <uses-permission
         android:name="android.permission.ACCESS_FINE_LOCATION"/>
@@ -148,6 +166,37 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2"/>
+
+        <!-- ── THE MEDIA SESSION ──────────────────────────────────
+             audio_service ships an empty manifest of its own, so the
+             service and the media-button receiver have to be declared
+             by the app.
+
+             tools:ignore="Instantiatable" because lint cannot see
+             that these classes come from the plugin's AAR rather than
+             from this module. -->
+        <service
+            android:name="com.ryanheise.audioservice.AudioService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true"
+            tools:ignore="Instantiatable">
+            <intent-filter>
+                <action
+                    android:name="android.media.browse.MediaBrowserService"/>
+            </intent-filter>
+        </service>
+
+        <!-- Headset play/pause and the buttons on a steering wheel,
+             which is not a far-fetched thing for this app. -->
+        <receiver
+            android:name="com.ryanheise.audioservice.MediaButtonReceiver"
+            android:exported="true"
+            tools:ignore="Instantiatable">
+            <intent-filter>
+                <action
+                    android:name="android.intent.action.MEDIA_BUTTON"/>
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

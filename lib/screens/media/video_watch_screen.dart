@@ -6,6 +6,8 @@ import 'package:drivelife/api/interactions_api.dart';
 import 'package:drivelife/models/long_video.dart';
 import 'package:drivelife/screens/comments_bottom_sheet.dart';
 import 'package:drivelife/screens/media/video_edit_screen.dart';
+import 'package:drivelife/services/video_audio_handler.dart';
+import 'package:drivelife/widgets/expandable_text.dart';
 import 'package:drivelife/services/watch_progress.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,6 +16,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 
 /// Watching one long-form video.
 ///
@@ -42,8 +45,136 @@ class VideoWatchScreen extends StatefulWidget {
   State<VideoWatchScreen> createState() => _VideoWatchScreenState();
 }
 
-class _VideoWatchScreenState extends State<VideoWatchScreen> {
+class _VideoWatchScreenState extends State<VideoWatchScreen>
+    with WidgetsBindingObserver {
+  // ── TWO PLAYERS, ONE SCREEN ──────────────────────────────────────
+  //
+  // A video either lives in Cloudflare Stream, where it is a file we
+  // hand to video_player, or on YouTube, where it is an iframe in a
+  // WebView. Only one of these is ever non-null - see _video.isYoutube
+  // - and everything below the picture is identical either way:
+  // likes, comments, the author row, progress, view counting, delete.
+  //
+  // So the alternative to this was two watch screens with one player
+  // each and seven hundred lines of social UI copied between them,
+  // which is the version that quietly drifts apart. The players differ
+  // in four things - position, duration, playing, and how to issue a
+  // command - so those four are behind the facade below and the rest
+  // of the screen does not know which player it has.
   VideoPlayerController? _controller;
+
+  YoutubePlayerController? _yt;
+
+  // ── WHY YOUTUBE STATE IS MIRRORED INTO FIELDS ────────────────────
+  //
+  // video_player holds its position in a ValueNotifier, so a build
+  // method can simply read it. The embed cannot: position arrives on
+  // a stream and currentTime is a Future that crosses into
+  // JavaScript, which is no use during layout. So the last reported
+  // values are kept here.
+  Duration _ytPosition = Duration.zero;
+  Duration _ytDuration = Duration.zero;
+  PlayerState _ytState = PlayerState.unknown;
+
+  StreamSubscription<YoutubeVideoState>? _ytPositionSub;
+  StreamSubscription<YoutubePlayerValue>? _ytValueSub;
+
+  /// Drives the hide-controls clock for the embed.
+  ///
+  /// The Cloudflare path gets this free: its listener fires several
+  /// times a second whatever the state, so a timestamp checked on each
+  /// tick is enough. The embed's position stream only emits while the
+  /// video is actually playing, so there would be nothing to check
+  /// against on a video that has just been un-paused.
+  Timer? _ytTicker;
+
+  bool get _isYoutube => _video.isYoutube;
+
+  /// Whether there is a player to issue commands to.
+  bool get _ready =>
+      _isYoutube ? _yt != null : (_controller?.value.isInitialized ?? false);
+
+  Duration get _position =>
+      _isYoutube ? _ytPosition : (_controller?.value.position ?? Duration.zero);
+
+  /// How long it runs.
+  ///
+  /// Falls back to the duration the server sent, which for a YouTube
+  /// video is how the scrubber has a scale at all in the second before
+  /// the player's metadata lands - and, on the very first play of a
+  /// newly added one, is zero because nobody knows yet.
+  Duration get _total {
+    if (_isYoutube) {
+      return _ytDuration != Duration.zero
+          ? _ytDuration
+          : Duration(seconds: _video.durationSeconds);
+    }
+
+    return _controller?.value.duration ?? Duration.zero;
+  }
+
+  bool get _playing => _isYoutube
+      ? _ytState == PlayerState.playing
+      : (_controller?.value.isPlaying ?? false);
+
+  Future<void> _playerPlay() async {
+    if (_isYoutube) {
+      _yt?.playVideo();
+
+      return;
+    }
+
+    await _controller?.play();
+  }
+
+  Future<void> _playerPause() async {
+    if (_isYoutube) {
+      _yt?.pauseVideo();
+
+      return;
+    }
+
+    await _controller?.pause();
+  }
+
+  Future<void> _playerSeek(Duration to) async {
+    final target = to < Duration.zero ? Duration.zero : to;
+
+    if (_isYoutube) {
+      // allowSeekAhead, so a seek past what is buffered actually moves
+      // rather than being clamped to the loaded range.
+      await _yt?.seekTo(
+        seconds: target.inMilliseconds / 1000,
+        allowSeekAhead: true,
+      );
+
+      // Optimistic. The next emission from the position stream is up
+      // to 200ms away, and a scrubber that does not move until then
+      // reads as a control that missed.
+      if (mounted) setState(() => _ytPosition = target);
+
+      return;
+    }
+
+    await _controller?.seekTo(target);
+  }
+
+  Future<void> _playerSpeed(double rate) async {
+    if (_isYoutube) {
+      await _yt?.setPlaybackRate(rate);
+
+      return;
+    }
+
+    // Only while playing. setPlaybackSpeed on a paused controller
+    // starts it again on some platforms, which is a surprising thing
+    // for a speed button to do. The embed has no such habit.
+    final controller = _controller;
+
+    if (controller != null && controller.value.isPlaying) {
+      await controller.setPlaybackSpeed(rate);
+    }
+  }
 
   bool _preparing = true;
   String? _error;
@@ -73,6 +204,14 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
   static const int _viewAfterSeconds = 5;
 
   bool _scrubbing = false;
+
+  /// Where the finger is during a drag, in seconds.
+  ///
+  /// Only read while [_scrubbing]. The Cloudflare player seeks on
+  /// every frame of the drag so its position IS this; the embed does
+  /// not, so the label has to be driven from here instead - see the
+  /// note in _scrubber.
+  double _scrubTo = 0;
 
   /// The first few comments, shown inline under the video.
   List<dynamic> _comments = const [];
@@ -116,6 +255,11 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
   @override
   void initState() {
     super.initState();
+
+    // For the wakelock, which must follow whether this screen is in
+    // FRONT of somebody as well as whether something is playing. See
+    // _syncWakelock.
+    WidgetsBinding.instance.addObserver(this);
 
     _video = widget.video;
 
@@ -248,8 +392,42 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
     // a second after playback begins.
     final resume = await WatchProgress.positionFor(_video.postId);
 
+    if (!mounted) return;
+
+    if (_isYoutube) {
+      await _prepareYoutube(resume);
+
+      return;
+    }
+
     final controller = VideoPlayerController.networkUrl(
       Uri.parse(_video.videoUrl),
+      // ── THE ONE THING THAT MAKES BACKGROUND AUDIO WORK ─────────
+      //
+      // video_player installs a lifecycle observer of its OWN unless
+      // this is set, and that observer does exactly this:
+      //
+      //     if (state == AppLifecycleState.paused) {
+      //       _wasPlayingBeforePause = _controller.value.isPlaying;
+      //       _controller.pause();
+      //     }
+      //
+      // So minimising the app paused the video from the Dart side,
+      // above every bit of native configuration - the iOS background
+      // mode, the Android foreground service, the media session, all
+      // of it correct and all of it beaten to the punch.
+      //
+      // Setting this does ONE thing: it stops that observer being
+      // installed. Nothing else changes.
+      //
+      // ── AND ONLY HERE ──────────────────────────────────────────
+      //
+      // Not in the feed. A clip in a scrolling feed SHOULD stop when
+      // the app goes away - it is muted, it autoplays, and nobody
+      // asked for it. This screen is the opposite: one video, sound
+      // on, playing because somebody pressed play. Only that deserves
+      // to carry on.
+      videoPlayerOptions: VideoPlayerOptions(allowBackgroundPlayback: true),
     );
 
     try {
@@ -291,6 +469,28 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
       _preparing = false;
     });
 
+    // ── THE LOCK SCREEN, AND BACKGROUND AUDIO WITH IT ────────────
+    //
+    // Here rather than when the screen opened: a lock-screen entry
+    // for a video that turned out not to play is a notification
+    // somebody has to dismiss for nothing.
+    //
+    // Null when the media session could not start - see main.dart.
+    // The video plays regardless; it simply does not survive being
+    // backgrounded on Android, and has no lock-screen controls.
+    //
+    // Cloudflare only. The YouTube path never reaches this line
+    // because it returns in _prepare long before - which is correct
+    // twice over: a suspended WebView stops anyway, and YouTube's
+    // terms prohibit background playback.
+    VideoAudioHandler.instance?.attach(
+      controller: controller,
+      id: _video.postId,
+      title: _video.title,
+      artist: _video.authorName,
+      artUri: _video.thumbnailUrl,
+    );
+
     await controller.play();
 
     if (_speed != 1) await controller.setPlaybackSpeed(_speed);
@@ -298,6 +498,169 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
     // Start the clock. Without this the controls opened and stayed,
     // because nothing had marked when they appeared.
     _revealControls();
+  }
+
+  /// Starting the embed.
+  ///
+  /// Shorter than the Cloudflare path and in one place better than it:
+  /// the resume position is handed over as startSeconds, so the video
+  /// begins where it left off instead of starting at zero and seeking
+  /// a moment later. There is nothing to initialise and nothing that
+  /// can fail locally - a dead video id is reported by the player
+  /// itself, through the error on YoutubePlayerValue.
+  Future<void> _prepareYoutube(int? resume) async {
+    final id = _youtubeId();
+
+    if (id == null) {
+      setState(() {
+        _preparing = false;
+        _error = 'This video has no YouTube id.';
+      });
+
+      return;
+    }
+
+    // Never past the end, for the same reason the Cloudflare path
+    // guards it: a stored position from a video that has since been
+    // replaced by a shorter one would start at the credits.
+    final total = _video.durationSeconds;
+    final usable =
+        resume != null && resume > 0 && (total <= 0 || resume < total - 5);
+
+    final controller = YoutubePlayerController.fromVideoId(
+      videoId: id,
+      autoPlay: true,
+      startSeconds: usable ? resume.toDouble() : null,
+      params: const YoutubePlayerParams(
+        // YoutubePlayer forces these off on mobile when a builder is
+        // supplied. Set here as well so the desktop and web builds
+        // behave the same, rather than growing YouTube's own controls
+        // underneath ours.
+        showControls: false,
+        showFullscreenButton: false,
+        // ── AND THE REST OF YOUTUBE'S CHROME ─────────────────────
+        //
+        // showControls: false removes the control BAR. It does not
+        // remove everything: tap the picture and YouTube still brings
+        // up its own title, channel avatar and share button over the
+        // top of the video, and its own tap-to-pause fires underneath
+        // our overlay - so one tap could reveal our controls and
+        // pause the video at the same time.
+        //
+        // modestbranding used to help with that and does nothing at
+        // all now; YouTube retired it.
+        //
+        // pointer-events: none is the thing that works. The package
+        // writes it straight onto the iframe (see its
+        // assets/player.html), so taps never reach YouTube's player
+        // and there is nothing to summon its chrome. Every control is
+        // ours, in the Flutter overlay above, and those are untouched
+        // because they were never inside the WebView.
+        //
+        // Playback is unaffected: play, pause, seek and rate all go
+        // through the JavaScript API, which CSS has no say over.
+        //
+        // This hides YouTube's INTERFACE. It does not strip the
+        // branding out of the video, which is both impossible from
+        // here and against their terms - nothing below tries.
+        pointerEvents: PointerEvents.none,
+        // Keeps the end-of-video grid to the same channel instead of
+        // offering the whole of YouTube. It cannot be switched off
+        // altogether - see the note at the foot of this file.
+        strictRelatedVideos: true,
+        showVideoAnnotations: false,
+        playsInline: true,
+        // Twice the 100ms default. The scrubber shows whole seconds
+        // and every emission crosses a JavaScript bridge.
+        videoStateUpdateInterval: 200,
+      ),
+    );
+
+    if (usable) _resumedFrom = resume;
+
+    _ytPositionSub = controller.videoStateStream.listen(_onYoutubePosition);
+    _ytValueSub = controller.stream.listen(_onYoutubeValue);
+
+    _ytTicker = Timer.periodic(
+      const Duration(milliseconds: 400),
+      (_) => _maybeHideControls(),
+    );
+
+    setState(() {
+      _yt = controller;
+      _preparing = false;
+    });
+
+    _revealControls();
+  }
+
+  /// The id to play.
+  ///
+  /// Prefers the column the server sends. Falls back to pulling it out
+  /// of the URL, so a build of the app that is newer than the server
+  /// still plays videos whose payload predates the youtube_id field.
+  String? _youtubeId() {
+    final sent = _video.youtubeId.trim();
+
+    if (sent.isNotEmpty) return sent;
+
+    final url = _video.videoUrl.trim();
+
+    if (url.isEmpty) return null;
+
+    if (RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(url)) return url;
+
+    return YoutubePlayerController.convertUrlToId(url);
+  }
+
+  void _onYoutubePosition(YoutubeVideoState state) {
+    _ytPosition = state.position;
+
+    _afterPosition();
+  }
+
+  void _onYoutubeValue(YoutubePlayerValue value) {
+    _ytState = value.playerState;
+
+    final duration = value.metaData.duration;
+
+    final learned = duration != Duration.zero && duration != _ytDuration;
+
+    if (learned) _ytDuration = duration;
+
+    // ── TELLING THE APP HOW LONG IT IS ───────────────────────────
+    //
+    // A YouTube video is created not knowing its own length, because
+    // YouTube will not say without the Data API. The player does know,
+    // a second after it loads - so the card and the countdown get the
+    // real number from here, and _countView sends it to the server so
+    // the next person does not have to wait for it either.
+    if (learned && _video.durationSeconds == 0 && mounted) {
+      _video = _video.copyWith(durationSecondsOverride: duration.inSeconds);
+    }
+
+    _syncWakelock();
+
+    if (_playing) _playingSince ??= DateTime.now();
+
+    // Pausing and finishing both bring the controls back and leave
+    // them up. The Cloudflare path gets this from its tick arriving
+    // regardless of state; the embed's stream goes quiet when paused,
+    // so it is said here instead.
+    if (value.playerState == PlayerState.paused ||
+        value.playerState == PlayerState.ended) {
+      _showControls = true;
+      _shownAt = null;
+    }
+
+    // The player reports a bad id, a video that is private, or one
+    // the owner has blocked from embedding. All three look the same to
+    // somebody watching: it will not play.
+    if (value.hasError && _error == null) {
+      _error = 'This video cannot be played here.';
+    }
+
+    if (mounted) setState(() {});
   }
 
   /// Seconds of playback since this screen opened.
@@ -311,35 +674,63 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
 
   DateTime? _playingSince;
 
-  /// Keeps the screen on while something is playing, and lets it
-  /// sleep again the moment it is not.
+  /// Keeps the screen on while somebody is WATCHING, and lets it
+  /// sleep the moment they are not.
   ///
   /// ── WHY IT FOLLOWS PLAYBACK AND NOT THE SCREEN ──────────────────
   ///
   /// Enabling on open and disabling on dispose is simpler and wrong:
   /// a video paused halfway while somebody reads the comments would
   /// hold the screen awake indefinitely, and a phone left on this
-  /// screen in a pocket would never lock. The wakelock is for
-  /// WATCHING, so it tracks exactly that.
+  /// screen in a pocket would never lock.
+  ///
+  /// ── AND WHY PLAYING IS NO LONGER ENOUGH ON ITS OWN ──────────────
+  ///
+  /// Because the audio now carries on when the app is in the
+  /// background - see VideoAudioHandler. "Playing" and "being watched"
+  /// used to be the same thing and are not any more: somebody who
+  /// locks their phone and keeps listening wants the screen OFF, and
+  /// a wakelock held through that is the whole battery.
+  ///
+  /// So this takes both: playing, AND this screen actually in front of
+  /// somebody. Backgrounding releases it without touching playback;
+  /// coming back takes it again if the video is still going.
   ///
   /// Guarded by [_wakelockOn] because the tick fires several times a
   /// second and each call is a platform channel round trip.
-  void _followPlaybackWithWakelock(bool playing) {
-    if (playing == _wakelockOn) return;
+  void _syncWakelock() {
+    final want = _playing && _foreground;
 
-    _wakelockOn = playing;
+    if (want == _wakelockOn) return;
+
+    _wakelockOn = want;
 
     // Never awaited and never fatal. A phone that refuses to hold the
     // screen on - some Android power-saving modes do - should dim,
     // not crash the player.
     unawaited(
-      WakelockPlus.toggle(enable: playing).catchError(
-        (Object e) => debugPrint('[video] wakelock: $e'),
-      ),
+      WakelockPlus.toggle(
+        enable: want,
+      ).catchError((Object e) => debugPrint('[video] wakelock: $e')),
     );
   }
 
   bool _wakelockOn = false;
+
+  /// Whether this screen is in front of somebody right now.
+  bool _foreground = true;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    _foreground = state == AppLifecycleState.resumed;
+
+    // Deliberately only the wakelock. Playback is left exactly as it
+    // was, which is the point of the feature - the lock screen takes
+    // over from here.
+    _syncWakelock();
+  }
 
   /// How fast it plays.
   ///
@@ -356,14 +747,7 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
 
     setState(() => _speed = next);
 
-    // Only while playing. setPlaybackSpeed on a paused controller
-    // starts it again on some platforms, which is a surprising thing
-    // for a speed button to do.
-    final controller = _controller;
-
-    if (controller != null && controller.value.isPlaying) {
-      await controller.setPlaybackSpeed(next);
-    }
+    await _playerSpeed(next);
   }
 
   /// "1x", or "1.5x" - never "1.0x".
@@ -374,7 +758,18 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
   }
 
   Future<void> _countView() async {
-    final count = await VideosAPI.markViewed(_video.postId);
+    // The duration goes with it for a YouTube video the server does
+    // not know the length of yet. The server only accepts it when it
+    // currently has none, so this cannot rewrite a known value - see
+    // dl_videos_record_view.
+    final learned = _isYoutube && widget.video.durationSeconds == 0
+        ? _total.inSeconds
+        : null;
+
+    final count = await VideosAPI.markViewed(
+      _video.postId,
+      durationSeconds: learned,
+    );
 
     if (count == null || !mounted) return;
 
@@ -386,29 +781,35 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
 
     if (controller == null || !controller.value.isInitialized) return;
 
-    // The clock starts the first time it is genuinely playing.
-    if (controller.value.isPlaying) {
-      _playingSince ??= DateTime.now();
-    }
+    _syncWakelock();
 
-    _followPlaybackWithWakelock(controller.value.isPlaying);
+    _afterPosition();
+  }
+
+  /// Everything that happens because the position moved.
+  ///
+  /// Shared by both players deliberately. Progress, view counting and
+  /// the hide-controls clock are decisions about WATCHING, and nothing
+  /// about any of them depends on where the bytes came from - so there
+  /// is one copy, reading through the facade at the top of this class.
+  void _afterPosition() {
+    // The clock starts the first time it is genuinely playing.
+    if (_playing) _playingSince ??= DateTime.now();
 
     // Redraw for the scrubber and the time labels.
     if (mounted && !_scrubbing) setState(() {});
 
     // And take the controls away once they have had their moment.
-    // Here rather than on a timer, so it cannot be left un-armed -
-    // see the note on _shownAt.
+    // Here rather than on a timer for the Cloudflare player, so it
+    // cannot be left un-armed - see the note on _shownAt.
     _maybeHideControls();
 
-    final seconds = controller.value.position.inSeconds;
+    final seconds = _position.inSeconds;
 
     // Counted from time ACTUALLY PLAYED, not from the position -
     // otherwise resuming at 40:00 would count a view the instant the
     // screen opened, before a single frame had been shown.
-    if (!_counted &&
-        controller.value.isPlaying &&
-        _playedSeconds >= _viewAfterSeconds) {
+    if (!_counted && _playing && _playedSeconds >= _viewAfterSeconds) {
       _counted = true;
 
       unawaited(_countView());
@@ -422,13 +823,25 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
       WatchProgress.save(
         postId: _video.postId,
         seconds: seconds,
-        durationSeconds: controller.value.duration.inSeconds,
+        durationSeconds: _total.inSeconds,
       ),
     );
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+
+    // Before the controller is disposed, because the handler holds a
+    // listener on it - and before anything else, because a media
+    // notification outliving the screen it belongs to is the worst
+    // way this feature could fail.
+    //
+    // Unconditional: detach on a handler that is not attached is a
+    // no-op, and leaving this to a flag is how notifications get
+    // stranded.
+    VideoAudioHandler.instance?.detach();
+
     // Unconditionally, whatever state playback was in. A wakelock
     // left on after the screen is gone is a flat battery by lunchtime
     // and there is nothing left to turn it off.
@@ -442,25 +855,32 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
       );
     }
 
+    // One last save on the way out, read through the facade BEFORE
+    // either player is torn down. The listeners throttle to whole
+    // seconds, so leaving mid-second would otherwise lose up to a
+    // second - which does not matter - but leaving while PAUSED would
+    // lose the pause position, which does.
+    if (_ready) {
+      unawaited(
+        WatchProgress.save(
+          postId: _video.postId,
+          seconds: _position.inSeconds,
+          durationSeconds: _total.inSeconds,
+        ),
+      );
+    }
+
     final controller = _controller;
 
     if (controller != null) {
       controller.removeListener(_onTick);
-
-      // One last save on the way out. The listener throttles to whole
-      // seconds, so leaving mid-second would otherwise lose up to a
-      // second - which does not matter - but leaving while PAUSED
-      // would lose the pause position, which does.
-      unawaited(
-        WatchProgress.save(
-          postId: _video.postId,
-          seconds: controller.value.position.inSeconds,
-          durationSeconds: controller.value.duration.inSeconds,
-        ),
-      );
-
       controller.dispose();
     }
+
+    _ytTicker?.cancel();
+    unawaited(_ytPositionSub?.cancel());
+    unawaited(_ytValueSub?.cancel());
+    _yt?.close();
 
     super.dispose();
   }
@@ -518,21 +938,17 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
   }
 
   void _togglePlay() {
-    final controller = _controller;
+    if (!_ready) return;
 
-    if (controller == null) return;
+    final wasPlaying = _playing;
 
-    final wasPlaying = controller.value.isPlaying;
+    unawaited(wasPlaying ? _playerPause() : _playerPlay());
 
-    setState(() {
-      wasPlaying ? controller.pause() : controller.play();
-    });
-
-    // Re-applied on resume. Playing a controller resets its rate to
-    // 1x on iOS, so without this the speed silently reverts every
-    // time somebody pauses to read a comment.
+    // Re-applied on resume. Playing a video_player controller resets
+    // its rate to 1x on iOS, so without this the speed silently
+    // reverts every time somebody pauses to read a comment.
     if (!wasPlaying && _speed != 1) {
-      unawaited(controller.setPlaybackSpeed(_speed));
+      unawaited(_playerSpeed(_speed));
     }
 
     // Pausing keeps them up; playing starts the countdown again.
@@ -540,33 +956,25 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
   }
 
   Future<void> _skip(int seconds) async {
-    final controller = _controller;
+    if (!_ready) return;
 
-    if (controller == null) return;
+    final target = _position + Duration(seconds: seconds);
+    final total = _total;
 
-    final target = controller.value.position + Duration(seconds: seconds);
-    final total = controller.value.duration;
-
-    await controller.seekTo(
-      target < Duration.zero
-          ? Duration.zero
-          : (target > total ? total : target),
-    );
+    await _playerSeek(total > Duration.zero && target > total ? total : target);
 
     _revealControls();
   }
 
   Future<void> _restart() async {
-    final controller = _controller;
-
-    if (controller == null) return;
+    if (!_ready) return;
 
     await WatchProgress.clear(_video.postId);
-    await controller.seekTo(Duration.zero);
+    await _playerSeek(Duration.zero);
 
     if (mounted) setState(() => _resumedFrom = null);
 
-    await controller.play();
+    await _playerPlay();
   }
 
   Future<void> _like() async {
@@ -588,7 +996,10 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
     // Put it back if the server disagreed.
     if (result == null) {
       setState(() {
-        _video = _video.copyWith(liked: wasLiked, likeCount: widget.video.likeCount);
+        _video = _video.copyWith(
+          liked: wasLiked,
+          likeCount: widget.video.likeCount,
+        );
       });
     }
   }
@@ -651,121 +1062,175 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
             : Brightness.light,
       ),
       child: Scaffold(
-      backgroundColor: theme.backgroundColor,
-      appBar: _header(theme),
-      // ── NO APP BAR ────────────────────────────────────────────────
-      //
-      // It cost a whole toolbar's height above the picture, which
-      // pushed the controls below the fold - so the first thing
-      // somebody had to do to work out how to play a video was
-      // scroll. On a screen whose entire job is one video, that is
-      // the wrong thing to spend the top of the screen on.
-      //
-      // Back is still there twice over: the swipe gesture, which iOS
-      // gives us for free on a pushed route, and the chevron drawn
-      // over the picture with the rest of the controls.
-      // ── INSIDE THE SAFE AREA ──────────────────────────────────────
-      //
-      // Taking the app bar away left nothing holding the picture
-      // clear of the status bar, so the top of every video ran under
-      // the clock and the battery.
-      //
-      // Full-bleed under the status bar is a real pattern - YouTube
-      // does it - but only when the player owns the whole screen and
-      // the chrome fades with the controls. This one scrolls, with a
-      // title and comments beneath, so the picture has a top edge and
-      // a bottom edge and both belong on screen.
-      // SafeArea no longer wraps the top: the header is an AppBar now
-      // and insets itself. Wrapping both would inset twice and leave
-      // a status bar's worth of gap above the title.
-      body: SafeArea(
-        top: false,
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            _stage(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── ONE TITLE, NOT TWO ──────────────────────────
-                  //
-                  // There was a large heading here AND the title
-                  // again inside the artwork row underneath it. The
-                  // heading is gone: the artwork row already carries
-                  // the title, the channel and the view count in the
-                  // space the heading alone was using.
-                  _authorRow(),
-                  if (_video.description.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      _video.description,
-                      style: TextStyle(
-                        color: theme.subtextColor,
-                        fontSize: 14,
-                        height: 1.45,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  // The scrubber stays below the video. It needs room
-                  // to be dragged accurately and a thin bar over a
-                  // moving picture is hard to hit; the transport
-                  // buttons moved onto the picture instead.
-                  _scrubber(),
-                  const SizedBox(height: 2),
-                  _transportRow(theme),
-                  // Where they came back in, and a way not to.
-                  //
-                  // Start again lost its home when the social row
-                  // went; this is where it belonged all along, next
-                  // to the sentence it answers.
-                  if (_resumedFrom != null) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Resumed from '
-                            '${LongVideo.formatPosition(_resumedFrom!)}',
-                            style: TextStyle(
-                              color: theme.subtextColor,
-                              fontSize: 12,
-                            ),
+        backgroundColor: theme.backgroundColor,
+        appBar: _header(theme),
+        // ── NO APP BAR ────────────────────────────────────────────────
+        //
+        // It cost a whole toolbar's height above the picture, which
+        // pushed the controls below the fold - so the first thing
+        // somebody had to do to work out how to play a video was
+        // scroll. On a screen whose entire job is one video, that is
+        // the wrong thing to spend the top of the screen on.
+        //
+        // Back is still there twice over: the swipe gesture, which iOS
+        // gives us for free on a pushed route, and the chevron drawn
+        // over the picture with the rest of the controls.
+        // ── INSIDE THE SAFE AREA ──────────────────────────────────────
+        //
+        // Taking the app bar away left nothing holding the picture
+        // clear of the status bar, so the top of every video ran under
+        // the clock and the battery.
+        //
+        // Full-bleed under the status bar is a real pattern - YouTube
+        // does it - but only when the player owns the whole screen and
+        // the chrome fades with the controls. This one scrolls, with a
+        // title and comments beneath, so the picture has a top edge and
+        // a bottom edge and both belong on screen.
+        // SafeArea no longer wraps the top: the header is an AppBar now
+        // and insets itself. Wrapping both would inset twice and leave
+        // a status bar's worth of gap above the title.
+        body: SafeArea(
+          top: false,
+          // ── THE PICTURE STAYS PUT ──────────────────────────────────
+          //
+          // A ListView with the stage as its first child let the video
+          // scroll off the top, and for the YouTube embed that is not
+          // just a shame - it PAUSES.
+          //
+          // The embed is a WebView hoisted into an overlay and
+          // positioned against a placeholder through a LayerLink. When
+          // the placeholder leaves the screen the link stops being
+          // composited, the overlay hides its child, and an Android
+          // platform view that is not being drawn gets suspended -
+          // which YouTube reports as a pause. The package knows this
+          // shape of problem: there is a comment in it about a
+          // "spurious pause from WebView relayout".
+          //
+          // Pinning the stage means it never leaves, so there is
+          // nothing to suspend. It is what every video app does, and it
+          // is better for the Cloudflare player too - the description
+          // and the comments scroll UNDER the video now rather than
+          // pushing it away.
+          child: CustomScrollView(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _StageHeader(
+                  height: _stageHeight(context),
+                  child: _stage(),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── ONE TITLE, NOT TWO ──────────────────────────
+                      //
+                      // There was a large heading here AND the title
+                      // again inside the artwork row underneath it. The
+                      // heading is gone: the artwork row already carries
+                      // the title, the channel and the view count in the
+                      // space the heading alone was using.
+                      _authorRow(),
+                      if (_video.description.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        // ── CLIPPED, BECAUSE OF WHERE THESE COME FROM ──
+                        //
+                        // A DriveLife upload's description is a line or
+                        // two, typed by whoever uploaded it. A video
+                        // pulled from a channel carries YOUTUBE's
+                        // description - which is chapter timestamps,
+                        // affiliate links, social handles and a sponsor
+                        // read, and can run to hundreds of lines.
+                        //
+                        // Unclipped, that pushed the scrubber, the
+                        // transport row and the comments so far down the
+                        // page that the controls for the video were
+                        // somewhere below the sponsor's discount code.
+                        ExpandableText(
+                          _video.description,
+                          maxLines: 3,
+                          style: TextStyle(
+                            color: theme.subtextColor,
+                            fontSize: 14,
+                            height: 1.45,
                           ),
-                        ),
-                        InkWell(
-                          onTap: _restart,
-                          borderRadius: BorderRadius.circular(6),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 4,
-                            ),
-                            child: Text(
-                              'Start again',
-                              style: TextStyle(
-                                color: theme.subtextColor,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
+                          toggleStyle: TextStyle(
+                            color: theme.textColor,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          // The brand gold, which is what every other
+                          // tappable thing in the app is.
+                          linkStyle: TextStyle(
+                            color: theme.primaryColor,
+                            fontSize: 14,
+                            height: 1.45,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  _commentsSection(),
-                  const SizedBox(height: 24),
-                ],
+                      const SizedBox(height: 10),
+                      // The scrubber stays below the video. It needs room
+                      // to be dragged accurately and a thin bar over a
+                      // moving picture is hard to hit; the transport
+                      // buttons moved onto the picture instead.
+                      _scrubber(),
+                      const SizedBox(height: 2),
+                      _transportRow(theme),
+                      // Where they came back in, and a way not to.
+                      //
+                      // Start again lost its home when the social row
+                      // went; this is where it belonged all along, next
+                      // to the sentence it answers.
+                      if (_resumedFrom != null) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Resumed from '
+                                '${LongVideo.formatPosition(_resumedFrom!)}',
+                                style: TextStyle(
+                                  color: theme.subtextColor,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            InkWell(
+                              onTap: _restart,
+                              borderRadius: BorderRadius.circular(6),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 4,
+                                ),
+                                child: Text(
+                                  'Start again',
+                                  style: TextStyle(
+                                    color: theme.subtextColor,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      _commentsSection(),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
               ),
-            ),
-        ],
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -838,8 +1303,8 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
   /// Five slots, evenly spread, with play twice the size of the rest.
   /// That weighting is the whole reason the row reads at a glance.
   Widget _transportRow(ThemeProvider theme) {
-    final playing = _controller?.value.isPlaying ?? false;
-    final ready = _controller != null;
+    final playing = _playing;
+    final ready = _ready;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -905,6 +1370,12 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
         // than something every viewer does to their own copy - so
         // there is nothing for a viewer to press.
         //
+        // A fullscreen button lived here for a while and was taken
+        // out again: between the device rotation, the system bars and
+        // a WebView being re-laid-out mid-playback it was never
+        // reliable, and an unreliable mode switch is worse than no
+        // mode switch.
+        //
         // The space is kept rather than removed. Without it the play
         // button stops being the centre of the row, and a transport
         // row whose play button is off-centre reads as broken even
@@ -914,8 +1385,81 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
     );
   }
 
+  /// How tall the picture is, for either player.
+  ///
+  /// Lifted out of the stage because the pinned header has to know it
+  /// before it builds its child - a sliver declares its extent, it
+  /// does not discover it.
+  ///
+  /// The cap is 62% of the screen either way, so the controls under a
+  /// tall video are never pushed off the bottom.
+  double _stageHeight(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final controller = _controller;
+
+    // 16:9 for the embed always - the iframe API never reports a
+    // video's real shape. For Cloudflare, the video's own ratio once
+    // it is known, and 16:9 until then so the poster frame does not
+    // sit in a box of the wrong shape and jump.
+    final ratio = _isYoutube || controller == null
+        ? 16 / 9
+        : (controller.value.isInitialized ? _pictureRatio(controller) : 16 / 9);
+
+    return (screen.width / ratio).clamp(0.0, screen.height * 0.62);
+  }
+
+  /// The shape of the picture, guarded.
+  ///
+  /// aspectRatio is 0 or NaN for a controller that initialised without
+  /// a usable track, and laying out against that throws.
+  double _pictureRatio(VideoPlayerController controller) {
+    final ratio = controller.value.aspectRatio;
+
+    return ratio > 0 && ratio.isFinite ? ratio : 16 / 9;
+  }
+
+  /// The picture itself, sized to fill as much of its box as its own
+  /// shape allows.
+  ///
+  /// ── WHY THIS IS NOT A FittedBox ────────────────────────────────
+  ///
+  /// It was: a FittedBox with BoxFit.contain around a SizedBox of the
+  /// video's pixel dimensions. That scales down and never scales UP.
+  ///
+  /// RenderFittedBox sizes ITSELF to constraints.constrain(childSize),
+  /// and Center hands it LOOSE constraints - so when the child's
+  /// natural size is smaller than the space available, the FittedBox
+  /// simply takes the child's size and the scale factor comes out as
+  /// 1. The video then renders at its raw size, centred, with black
+  /// all round it.
+  ///
+  /// Which is not hypothetical: an adaptive HLS stream reports the
+  /// size of the rendition it is CURRENTLY playing, so the first
+  /// seconds of any video on a slow connection are a small track, and
+  /// on a tablet the stage is big enough that nothing clamps it back
+  /// into shape.
+  ///
+  /// AspectRatio has no such behaviour: given loose constraints it
+  /// takes the largest size that satisfies the ratio, which is the
+  /// thing that was wanted all along. VideoPlayer is a texture and
+  /// fills whatever box it is handed, so the ratio is the only input
+  /// needed and value.size is not read at all.
+  Widget _picture(VideoPlayerController controller) {
+    return Center(
+      child: AspectRatio(
+        // The whole picture, never cropped. A video is somebody's
+        // framing and cutting the edges off it to fill a box is the
+        // one thing not to do here.
+        aspectRatio: _pictureRatio(controller),
+        child: VideoPlayer(controller),
+      ),
+    );
+  }
+
   /// The video, or whatever stands in for it.
   Widget _stage() {
+    if (_isYoutube) return _youtubeStage();
+
     final controller = _controller;
 
     // ── ONE HEIGHT, WHATEVER SHAPE THE VIDEO IS ──────────────────
@@ -936,7 +1480,6 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
     // it is identical for every video on a given device. That is the
     // whole point: the controls underneath sit in the same place
     // every time.
-    final screen = MediaQuery.sizeOf(context);
 
     // ── A CAP, NOT A FIXED HEIGHT ────────────────────────────────
     //
@@ -952,20 +1495,7 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
     // The cost is that the controls no longer sit at the same height
     // for every video. That was worth having while the alternative
     // was letterboxing; it is not worth a screen of blank page.
-    final tallest = screen.height * 0.62;
-
-    final ratio = controller != null && controller.value.isInitialized
-        ? controller.value.aspectRatio
-        // 16:9 until the video says otherwise, so the poster frame
-        // does not sit in a box of the wrong shape and then jump.
-        : 16 / 9;
-
-    // Guarded: aspectRatio is 0 or NaN for a controller that
-    // initialised without a usable track, and dividing by it gives
-    // an infinite height that throws during layout.
-    final natural = ratio > 0 ? screen.width / ratio : screen.width * 9 / 16;
-
-    final stageHeight = natural.clamp(0.0, tallest);
+    final stageHeight = _stageHeight(context);
 
     return Container(
       height: stageHeight,
@@ -989,32 +1519,17 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
             CachedNetworkImage(
               imageUrl: _video.thumbnailUrl,
               fit: BoxFit.contain,
-              errorWidget: (_, __, ___) => const ColoredBox(
-                color: Color(0xFF1C1C1C),
-              ),
+              errorWidget: (_, __, ___) =>
+                  const ColoredBox(color: Color(0xFF1C1C1C)),
             )
           else
             const ColoredBox(color: Color(0xFF1C1C1C)),
 
           if (controller != null && controller.value.isInitialized)
-            Center(
-              child: FittedBox(
-                // The whole picture, never cropped. A video is
-                // somebody's framing and cutting the edges off it to
-                // fill a box is the one thing not to do here.
-                fit: BoxFit.contain,
-                child: SizedBox(
-                  width: controller.value.size.width,
-                  height: controller.value.size.height,
-                  child: VideoPlayer(controller),
-                ),
-              ),
-            ),
+            _picture(controller),
 
           if (_preparing)
-            const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
+            const Center(child: CircularProgressIndicator(color: Colors.white)),
 
           if (_error != null)
             Container(
@@ -1056,10 +1571,113 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
     );
   }
 
+  /// The embed, and our controls over it.
+  ///
+  /// ── WHY THIS IS NOT THE STAGE ABOVE ──────────────────────────────
+  ///
+  /// Two reasons, both about who owns the picture.
+  ///
+  /// The height. The Cloudflare stage measures the video and sizes
+  /// itself to it, so a portrait clip gets height and a wide one has
+  /// no empty page underneath. The iframe API never reports a video's
+  /// native dimensions, and the aspect ratio has to be declared before
+  /// the video loads, so there is nothing to measure. 16:9 it is,
+  /// capped the same way, with YouTube fitting the picture inside it.
+  ///
+  /// The poster frame. The Cloudflare stage draws the thumbnail
+  /// underneath the video the whole time, which on a slow connection
+  /// is the difference between a poster and a black rectangle. Here it
+  /// would be drawn OVER the video: on mobile the WebView lives in an
+  /// OverlayPortal and the builder's widgets are rendered into that
+  /// same overlay, above it. So there is no poster here - the embed
+  /// shows YouTube's own until it starts, which is the same picture.
+  Widget _youtubeStage() {
+    final controller = _yt;
+    final height = _stageHeight(context);
+
+    if (controller == null || _error != null) {
+      return Container(
+        height: height,
+        width: double.infinity,
+        color: Colors.black,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(24),
+        child: _error != null
+            ? Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+              )
+            : const CircularProgressIndicator(color: Colors.white),
+      );
+    }
+
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: YoutubePlayer(
+        controller: controller,
+        // The video's own ratio, not the box's. The SizedBox above
+        // caps the height, and on the rare screen where the cap bites
+        // the player pillarboxes inside it, which is correct.
+        aspectRatio: 16 / 9,
+        // ── NO FULLSCREEN, INCLUDING BY ACCIDENT ─────────────────
+        //
+        // Both of these default to TRUE, which was a loose end left
+        // by taking the fullscreen feature out: a vertical drag on
+        // the picture still put the package into ITS fullscreen, and
+        // the button that used to come back out of it is gone.
+        //
+        // autoFullScreen does the same on rotation. The app is locked
+        // to portrait so it cannot fire today, which is exactly the
+        // kind of thing that stops being true later.
+        enableFullScreenOnVerticalDrag: false,
+        autoFullScreen: false,
+        // Ours, not YouTube's. Supplying this is also what makes the
+        // package pass showControls: false and put these widgets in
+        // the overlay ABOVE the WebView, which is the only place a
+        // Flutter widget reliably draws over a platform view.
+        builder: (context, player, _) => Stack(
+          fit: StackFit.expand,
+          children: [
+            // On mobile this stands in for the WebView underneath. It
+            // is kept so the desktop and web paths, where it is the
+            // real player, lay out from this same code.
+            player,
+
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _tapPicture,
+              ),
+            ),
+
+            if (_ytState == PlayerState.buffering ||
+                _ytState == PlayerState.unStarted)
+              const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: !_showControls,
+                child: AnimatedOpacity(
+                  opacity: _showControls ? 1 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: _overlay(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// The controls drawn on top of the video.
   Widget _overlay() {
-    final controller = _controller;
-    final playing = controller?.value.isPlaying ?? false;
+    final playing = _playing;
+    final ready = _ready;
 
     return Container(
       // A scrim, not a flat wash: the middle of the picture stays
@@ -1088,7 +1706,7 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
                 _overlayButton(
                   Icons.replay_10_rounded,
                   34,
-                  controller == null ? null : () => _skip(-15),
+                  ready ? () => _skip(-15) : null,
                 ),
                 const SizedBox(width: 26),
                 _overlayButton(
@@ -1096,13 +1714,13 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
                       ? Icons.pause_circle_filled_rounded
                       : Icons.play_circle_fill_rounded,
                   64,
-                  controller == null ? null : _togglePlay,
+                  ready ? _togglePlay : null,
                 ),
                 const SizedBox(width: 26),
                 _overlayButton(
                   Icons.forward_10_rounded,
                   34,
-                  controller == null ? null : () => _skip(15),
+                  ready ? () => _skip(15) : null,
                 ),
               ],
             ),
@@ -1120,20 +1738,26 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
       color: Colors.white,
       // Shadow rather than a plate behind each button: it keeps the
       // picture visible and still reads against a white frame.
-      style: IconButton.styleFrom(
-        shadowColor: Colors.black,
-        elevation: 6,
-      ),
+      style: IconButton.styleFrom(shadowColor: Colors.black, elevation: 6),
     );
   }
 
+  /// The bar and the two time labels.
   Widget _scrubber() {
     final theme = Provider.of<ThemeProvider>(context);
 
-    final controller = _controller;
+    final active = theme.textColor;
+    final inactive = theme.dividerColor;
+    final label = theme.subtextColor;
 
-    final position = controller?.value.position.inSeconds ?? 0;
-    final total = controller?.value.duration.inSeconds ?? _video.durationSeconds;
+    final total = _total.inSeconds;
+
+    // While dragging the embed, the label follows the finger rather
+    // than the player - because the player is not being moved until
+    // the finger lifts. See onChanged below.
+    final position = _scrubbing && _isYoutube
+        ? _scrubTo.round()
+        : _position.inSeconds;
 
     final usable = total > 0;
 
@@ -1142,28 +1766,51 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
         SliderTheme(
           data: SliderThemeData(
             trackHeight: 3,
-            activeTrackColor: theme.textColor,
-            inactiveTrackColor: theme.dividerColor,
-            thumbColor: theme.textColor,
+            activeTrackColor: active,
+            inactiveTrackColor: inactive,
+            thumbColor: active,
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
           ),
           child: Slider(
-            value: usable
-                ? position.clamp(0, total).toDouble()
-                : 0,
+            value: usable ? position.clamp(0, total).toDouble() : 0,
             max: usable ? total.toDouble() : 1,
             // Dragging must not fight the position listener redrawing
             // underneath it, so ticks stop repainting while scrubbing.
-            onChangeStart: usable ? (_) => _scrubbing = true : null,
+            onChangeStart: usable
+                ? (value) => setState(() {
+                    _scrubbing = true;
+                    _scrubTo = value;
+                  })
+                : null,
+            // ── ONE SEEKS AS YOU DRAG, ONE SEEKS WHEN YOU LET GO ──
+            //
+            // Seeking on every frame of the drag is right for
+            // video_player: the file is local to the decoder and the
+            // picture follows the finger.
+            //
+            // It is wrong for the embed. Each seek is a call across a
+            // JavaScript bridge into the iframe player, and firing one
+            // per pixel makes it stutter and sometimes drop the last
+            // one - which leaves the video somewhere other than where
+            // the finger stopped. So the drag only moves the label,
+            // and the seek happens once, on release.
             onChanged: usable
                 ? (value) => setState(() {
-                    controller?.seekTo(Duration(seconds: value.round()));
+                    _scrubTo = value;
+
+                    if (!_isYoutube) {
+                      unawaited(_playerSeek(Duration(seconds: value.round())));
+                    }
                   })
                 : null,
             onChangeEnd: usable
-                ? (_) {
-                    _scrubbing = false;
+                ? (value) async {
+                    if (_isYoutube) {
+                      await _playerSeek(Duration(seconds: value.round()));
+                    }
+
+                    if (mounted) setState(() => _scrubbing = false);
 
                     // Restart the clock, so the controls do not
                     // disappear the instant the finger lifts, and do
@@ -1180,18 +1827,12 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
             children: [
               Text(
                 LongVideo.formatPosition(position),
-                style: TextStyle(
-                  color: theme.subtextColor,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: label, fontSize: 12),
               ),
               Text(
                 // Counts down, like every player people already use.
                 usable ? '-${LongVideo.formatPosition(total - position)}' : '',
-                style: TextStyle(
-                  color: theme.subtextColor,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: label, fontSize: 12),
               ),
             ],
           ),
@@ -1251,10 +1892,7 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
                 ].join('  ·  '),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: theme.subtextColor,
-                  fontSize: 13,
-                ),
+                style: TextStyle(color: theme.subtextColor, fontSize: 13),
               ),
             ],
           ),
@@ -1576,5 +2214,48 @@ class _VideoWatchScreenState extends State<VideoWatchScreen> {
     if (gap.inMinutes > 0) return '${gap.inMinutes}m';
 
     return 'now';
+  }
+}
+
+/// Holds the video at the top of the screen while the rest scrolls.
+///
+/// A fixed extent rather than a collapsing one: the stage is already
+/// capped at 62% of the screen, and a video that shrinks as somebody
+/// reads is a video they have to stop reading to watch.
+class _StageHeader extends SliverPersistentHeaderDelegate {
+  const _StageHeader({required this.height, required this.child});
+
+  final double height;
+  final Widget child;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    // Sized explicitly. A pinned header is given its extent, but its
+    // CHILD is not, and the stage fits the picture into whatever box
+    // it is handed.
+    return SizedBox(height: height, child: child);
+  }
+
+  @override
+  bool shouldRebuild(_StageHeader old) {
+    // The height changes once, when a Cloudflare video reports its
+    // real shape and the 16:9 guess is replaced. Returning false
+    // would leave the header at the guess for good.
+    //
+    // The child is a new widget on every frame of playback anyway -
+    // the scrubber and the overlay live in there - so this is
+    // effectively always true. Comparing both keeps the contract
+    // honest rather than hard-coding the answer.
+    return old.height != height || old.child != child;
   }
 }

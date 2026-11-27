@@ -61,6 +61,19 @@
 		<string>This app needs microphone access to record videos with audio</string>
 		<key>UIBackgroundModes</key>
 		<array>
+			<!-- Lets a long-form video keep playing its audio once the
+			     app leaves the screen.
+			
+			     This is all iOS needs for the sound itself: the
+			     video_player plugin already puts the audio session in
+			     the Playback category (FVPVideoPlayerPlugin.m) and
+			     installs no lifecycle handlers, so it does not pause
+			     itself. Without this key, though, iOS suspends the app
+			     and the audio stops with it.
+			
+			     The lock-screen controls come from audio_service - see
+			     lib/services/video_audio_handler.dart. -->
+			<string>audio</string>
 			<string>fetch</string>
 			<string>processing</string>
 			<string>remote-notification</string>

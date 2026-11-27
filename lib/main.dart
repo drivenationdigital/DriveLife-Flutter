@@ -14,11 +14,13 @@ import 'package:drivelife/screens/chat/SupabaseClasses.dart';
 import 'package:drivelife/services/analytics_service.dart';
 import 'package:drivelife/services/app_error_logger.dart';
 import 'package:drivelife/services/auth_service.dart';
+import 'package:drivelife/services/video_audio_handler.dart';
 import 'package:drivelife/services/firebase_messaging_service.dart';
 import 'package:drivelife/utils/analytics_route_observer.dart';
 import 'package:drivelife/utils/deeplinks_helper.dart';
 import 'dart:async' show unawaited;
 
+import 'package:audio_service/audio_service.dart';
 import 'package:drivelife/api/chat_key_api.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -217,6 +219,47 @@ void main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  // ── THE MEDIA SESSION, FOR BACKGROUND VIDEO AUDIO ─────────────────
+  //
+  // Starts the machinery that lets a long-form video keep playing when
+  // the app is not on screen, and puts it on the lock screen. Nothing
+  // plays because of this call - it only makes the service available
+  // for VideoWatchScreen to attach a player to.
+  //
+  // ── AND WHY IT CANNOT THROW ───────────────────────────────────────
+  //
+  // This runs on the launch path for EVERY user, including the ones
+  // who will never open a video. AudioService.init touches
+  // notification channels and a foreground service, and both are
+  // things an OS or a vendor ROM can refuse.
+  //
+  // So a failure here leaves instance null and is logged and forgotten.
+  // Every caller treats null as "no lock screen" and plays the video
+  // anyway. Losing a nicety is acceptable; failing to start the app
+  // over one is not.
+  try {
+    VideoAudioHandler.instance = await AudioService.init(
+      builder: VideoAudioHandler.new,
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'com.app.drivelife.playback',
+        androidNotificationChannelName: 'Video playback',
+        androidNotificationChannelDescription:
+            'Controls for a DriveLife video playing in the background',
+        // The notification is the foreground service's, so it stays
+        // for as long as something is playing and cannot be swiped
+        // away mid-video.
+        androidNotificationOngoing: true,
+        // And it releases on pause, so a video paused and forgotten
+        // does not hold a foreground service all day.
+        androidStopForegroundOnPause: true,
+        fastForwardInterval: VideoAudioHandler.skipInterval,
+        rewindInterval: VideoAudioHandler.skipInterval,
+      ),
+    );
+  } catch (e) {
+    debugPrint('[audio] media session unavailable: $e');
+  }
 
   // Reprints build-time crashes with our own frames and the widget the
   // framework blames, because the default dump is forty frames of

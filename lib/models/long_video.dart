@@ -58,6 +58,42 @@ class LongVideo {
   /// draws whatever thumbnailUrl holds.
   final bool hasCustomThumbnail;
 
+  /// Where the video actually lives: 'cloudflare' or 'youtube'.
+  ///
+  /// ── WHY A STRING AND NOT A BOOL ─────────────────────────────────
+  ///
+  /// isYoutube would do everything the app needs today, and would be
+  /// the wrong shape the first time a third source appears. The server
+  /// sends a word; this keeps the word.
+  ///
+  /// Defaults to Cloudflare, so a payload from a server that has not
+  /// been updated yet - and every row created before this existed -
+  /// reads correctly rather than as an unknown kind.
+  final String source;
+
+  /// Whether this is the hero on the Watch tab.
+  ///
+  /// One video carries it at a time - see dl_videos_set_featured in
+  /// endpoints/videos.php. Nothing is featured on a fresh
+  /// installation, and the screen falls back to the newest video
+  /// until somebody chooses one.
+  final bool isFeatured;
+
+  /// Whether this is an episode of the DriveLife podcast.
+  ///
+  /// Decided entirely by who published it - see DL_PODCAST_USER_IDS in
+  /// endpoints/videos.php. There is no podcast flag on an upload and
+  /// nothing for anybody to tick: the same video published by somebody
+  /// else would simply not be an episode.
+  final bool isPodcast;
+
+  /// The eleven-character YouTube id, for a YouTube-backed video.
+  ///
+  /// Empty for a Cloudflare one. The watch screen prefers this over
+  /// parsing [videoUrl], and falls back to parsing when an older
+  /// server sends the URL without the id.
+  final String youtubeId;
+
   const LongVideo({
     required this.postId,
     required this.title,
@@ -74,9 +110,17 @@ class LongVideo {
     this.authorId = 0,
     this.viewCount = 0,
     this.hasCustomThumbnail = false,
+    this.source = 'cloudflare',
+    this.youtubeId = '',
+    this.isPodcast = false,
+    this.isFeatured = false,
   });
 
   bool get isPlayable => videoUrl.isNotEmpty;
+
+  /// Whether this one plays in a YouTube embed rather than from
+  /// Cloudflare Stream.
+  bool get isYoutube => source == 'youtube';
 
   /// Duration as somebody reads it: "8:04", or "1:12:30" past an hour.
   ///
@@ -132,6 +176,14 @@ class LongVideo {
     int? commentCount,
     bool? liked,
     int? viewCount,
+    /// The real length, once something has found it out.
+    ///
+    /// A YouTube video is created not knowing how long it is - see
+    /// dl_videos_create_youtube - and the watch screen learns it from
+    /// the player's metadata a second after opening. Named apart from
+    /// the field so the ordinary no-argument copyWith keeps whatever
+    /// duration it already had.
+    int? durationSecondsOverride,
   }) {
     return LongVideo(
       postId: postId,
@@ -139,7 +191,7 @@ class LongVideo {
       description: description,
       thumbnailUrl: thumbnailUrl,
       videoUrl: videoUrl,
-      durationSeconds: durationSeconds,
+      durationSeconds: durationSecondsOverride ?? durationSeconds,
       publishedAt: publishedAt,
       likeCount: likeCount ?? this.likeCount,
       commentCount: commentCount ?? this.commentCount,
@@ -149,6 +201,10 @@ class LongVideo {
       authorId: authorId,
       viewCount: viewCount ?? this.viewCount,
       hasCustomThumbnail: hasCustomThumbnail,
+      source: source,
+      youtubeId: youtubeId,
+      isPodcast: isPodcast,
+      isFeatured: isFeatured,
     );
   }
 
@@ -194,6 +250,12 @@ class LongVideo {
       authorId: asInt(json['author_id']),
       viewCount: asInt(json['view_count']),
       hasCustomThumbnail: asBool(json['has_custom_thumbnail']),
+      source: '${json['source'] ?? 'cloudflare'}'.trim().isEmpty
+          ? 'cloudflare'
+          : '${json['source'] ?? 'cloudflare'}'.trim(),
+      youtubeId: '${json['youtube_id'] ?? ''}'.trim(),
+      isPodcast: asBool(json['is_podcast']),
+      isFeatured: asBool(json['is_featured']),
     );
   }
 }
