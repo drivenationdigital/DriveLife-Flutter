@@ -90,6 +90,11 @@ class VideosAPI {
     /// Videos from the creators on this person's front page: the ones
     /// DriveLife features plus the ones they follow.
     bool home = false,
+    /// Only the creators this person follows - narrower than [home],
+    /// which also carries DriveLife's editorial picks.
+    bool following = false,
+    /// true for Shorts only, false to leave them out, null for both.
+    bool? shorts,
   }) async {
     final term = search?.trim() ?? '';
 
@@ -104,6 +109,8 @@ class VideosAPI {
         if (creatorId != null && creatorId > 0) 'creator': '$creatorId',
         if (featured) 'featured': '1',
         if (home) 'home': '1',
+        if (following) 'following': '1',
+        if (shorts != null) 'shorts': shorts ? '1' : '0',
       },
     );
 

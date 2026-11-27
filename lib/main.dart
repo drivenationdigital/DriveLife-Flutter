@@ -67,28 +67,39 @@ final rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 class BottomNavProvider extends ChangeNotifier {
   // ── bottom bar destinations, in the order they appear ──────────────
   //
-  // Renumbered when the bar was reordered to Home, Garage, Map, Groups,
-  // Media, Search. Renumbering is safe BECAUSE everything navigates by
-  // name — `BottomNavProvider.garage` follows the constant wherever it
-  // moves, where a literal 4 would silently start opening the map.
+  // Home, Watch, Garage, Map, Groups.
+  //
+  // Renumbered twice now, and safe both times BECAUSE everything
+  // navigates by NAME — `BottomNavProvider.garage` follows the
+  // constant wherever it moves, where a literal 1 would silently
+  // start opening something else.
+  //
+  // Three things are matched by position and must agree: these
+  // constants, the destinations list in _buildDestinations, and the
+  // DlNavItem list in _navItems. There is an assert on the count, but
+  // nothing can catch two lists of the right LENGTH in the wrong
+  // order - so they are edited together or not at all.
   static const int home = 0;
+
+  /// Watch: videos, creators and the podcast.
+  ///
+  /// Second, where Garage used to be. It was `photos` and sat last,
+  /// from when the tab was galleries - the name changed with the tab
+  /// and the number changed with the running order.
+  static const int watch = 1;
 
   /// Garage, where Account used to be.
   ///
   /// The account avatar moved to the header — it is a thing you ARE, not a
   /// place you go, and it was spending a fifth of the bar to say so. The
   /// garage is a place you go.
-  static const int garage = 1;
+  static const int garage = 2;
 
   /// The map. Still called `discover` because that is what the screen
   /// and its route are called; only the label on the bar says Map.
-  static const int discover = 2;
+  static const int discover = 3;
 
-  static const int groups = 3;
-
-  /// Photos. Labelled Media on the bar, since it holds galleries and
-  /// video as well as stills.
-  static const int photos = 4;
+  static const int groups = 4;
 
   // Search is NOT a bottom-bar destination. It lives in the For You
   // pill row, beside Your week / Following / Latest, and is pushed as
@@ -101,7 +112,11 @@ class BottomNavProvider extends ChangeNotifier {
 
   /// How many destinations there are. The shell asserts its own list
   /// against this, because the two are matched by position.
-  static const int destinationCount = photos + 1;
+  ///
+  /// Derived from the LAST one rather than written as a number, so a
+  /// destination added at the end cannot be forgotten here. Groups is
+  /// last now; it was photos, before Watch took second place.
+  static const int destinationCount = groups + 1;
 
   // ── sections of Home, in the order of its top tab row ──────────────
   static const int forYou = 0;
@@ -207,11 +222,23 @@ void main() async {
   // landscape design. Allowing the rotation does not produce a wide
   // version of a screen, it produces a squashed tall one.
   //
-  // This is the Flutter-side lock and it is the one that matters at
-  // runtime, but it is not the only place: the native manifests set it
-  // too, so the OS never starts the app in landscape before this line
-  // runs. See android/app/src/main/AndroidManifest.xml and
-  // ios/Runner/Info.plist.
+  // ── THIS LINE IS THE LOCK. THE PLIST IS NOT. ────────────────────
+  //
+  // The lock lives HERE and nowhere else, which is deliberate: the one
+  // screen that does have a landscape design - the video player's
+  // fullscreen - widens this list while it is open and puts it back
+  // when it closes, and it can only do that if the limit is a runtime
+  // one.
+  //
+  // ios/Runner/Info.plist therefore PERMITS landscape. On iOS that
+  // array is the hard limit this call is intersected with, so a
+  // portrait-only plist would silently drop the player's request and
+  // fullscreen would never rotate. It is not a second lock and it is
+  // not redundant with this one.
+  //
+  // Anything else that calls setPreferredOrientations is responsible
+  // for restoring these two values - see _restorePortrait in
+  // lib/screens/media/video_watch_screen.dart.
   //
   // portraitDown is included on Android, where some devices and docks
   // use it, and ignored on iPhone, which does not offer it.

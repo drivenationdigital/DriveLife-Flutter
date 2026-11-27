@@ -45,7 +45,19 @@ class _CreatorScreenState extends State<CreatorScreen> {
   bool _following = false;
 
   List<LongVideo> _videos = const [];
+  List<LongVideo> _shorts = const [];
   bool _loading = true;
+
+  /// Which tab is open.
+  ///
+  /// Split by [LongVideo.isShort], which the server decided once when
+  /// each video was stored - a Short in a 16:9 row is mostly black
+  /// bars, and a row of them next to full videos makes both look
+  /// wrong.
+  bool _showingShorts = false;
+
+  /// What the open tab shows.
+  List<LongVideo> get _current => _showingShorts ? _shorts : _videos;
 
   /// Seconds watched, by post id. Absent means not started.
   Map<String, int> _watched = const {};
@@ -60,24 +72,29 @@ class _CreatorScreenState extends State<CreatorScreen> {
   Future<void> _load() async {
     // Together: the list is useless a moment before the marks on it,
     // and two sequential awaits would show the rows then move them.
-    final results = await Future.wait([
-      VideosAPI.list(limit: 50, creatorId: widget.creator.id),
+    // Both tabs at once. Fetching the second when it is opened would
+    // mean a spinner on a tap that looks like it should be instant,
+    // and a creator's catalogue is fifty rows at most.
+    final results = await (
+      VideosAPI.list(limit: 50, creatorId: _creator.id, shorts: false),
+      VideosAPI.list(limit: 50, creatorId: _creator.id, shorts: true),
       WatchProgress.positions(),
-    ]);
+    ).wait;
 
     if (!mounted) return;
 
     setState(() {
-      _videos = results[0] as List<LongVideo>;
-      _watched = results[1] as Map<String, int>;
+      _videos = results.$1;
+      _shorts = results.$2;
+      _watched = results.$3;
       _loading = false;
     });
   }
 
   Future<void> _open(LongVideo video) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => VideoWatchScreen(video: video)),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => VideoWatchScreen(video: video)));
 
     // Watching moves the view count and can fill in a duration the
     // server did not have.
@@ -110,20 +127,18 @@ class _CreatorScreenState extends State<CreatorScreen> {
     // externalApplication so the YouTube app takes it when installed.
     // An in-app webview would mean signing in again to subscribe,
     // which is the one thing that has to work here.
-    final opened = await launchUrl(
-      target,
-      mode: LaunchMode.externalApplication,
-    ).catchError((Object e) {
-      debugPrint('[creator] subscribe launch failed: $e');
+    final opened = await launchUrl(target, mode: LaunchMode.externalApplication)
+        .catchError((Object e) {
+          debugPrint('[creator] subscribe launch failed: $e');
 
-      return false;
-    });
+          return false;
+        });
 
     if (opened || !mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Could not open YouTube.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Could not open YouTube.')));
   }
 
   /// Follow, or stop.
@@ -235,10 +250,10 @@ class _CreatorScreenState extends State<CreatorScreen> {
             const SizedBox(height: 12),
             if (_loading)
               const _VideoListSkeleton()
-            else if (_videos.isEmpty)
+            else if (_current.isEmpty)
               _empty(theme)
             else
-              for (final video in _videos)
+              for (final video in _current)
                 VideoListRow(
                   video: video,
                   subtitle: _subtitle(video),
@@ -480,25 +495,56 @@ class _CreatorScreenState extends State<CreatorScreen> {
   // ── The list ───────────────────────────────────────────────────────
 
   Widget _videosHeader(ThemeProvider theme) {
+    // ── BOTH TABS, ALWAYS ────────────────────────────────────────
+    //
+    // This used to collapse to a plain "Videos" heading when a
+    // creator had no Shorts, on the reasoning that one tab is not a
+    // choice.
+    //
+    // It is worse in practice: the page changes SHAPE depending on
+    // whose it is, so somebody who taps Shorts on one creator and
+    // then opens another finds the control gone and no explanation
+    // of where it went. A tab that says 0 answers the question the
+    // missing tab raises.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          Expanded(
-            child: DlHeading('Videos', fontSize: 21, color: theme.textColor),
-          ),
-          // Silent while loading rather than flashing "0 videos" and
-          // then correcting itself.
-          if (!_loading)
-            Text(
-              _videos.length == 1 ? '1 video' : '${_videos.length} videos',
-              style: TextStyle(
-                color: theme.subtextColor,
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+          _tab(theme, 'Videos', _videos.length, !_showingShorts),
+          const SizedBox(width: 10),
+          _tab(theme, 'Shorts', _shorts.length, _showingShorts),
         ],
+      ),
+    );
+  }
+
+  Widget _tab(ThemeProvider theme, String label, int count, bool on) {
+    return GestureDetector(
+      onTap: () => setState(() => _showingShorts = label == 'Shorts'),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+        decoration: BoxDecoration(
+          // Selected inverts against the page, the same rule the
+          // Watch tab's chips follow.
+          color: on ? theme.textColor : theme.backgroundColor,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: on ? theme.textColor : theme.dividerColor,
+            width: 1.4,
+          ),
+        ),
+        child: Text(
+          // The count is in the tab rather than beside it: with two
+          // of them, a single number off to the right belongs to
+          // neither.
+          _loading ? label : '$label  $count',
+          style: TextStyle(
+            color: on ? theme.backgroundColor : theme.textColor,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }
@@ -520,8 +566,10 @@ class _CreatorScreenState extends State<CreatorScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(32, 30, 32, 32),
       child: Text(
-        'Nothing from them yet.\nTheir videos appear here as they are '
-        'pulled in.',
+        _showingShorts
+            ? 'No Shorts from them yet.'
+            : 'Nothing from them yet.\nTheir videos appear here as they '
+                  'are pulled in.',
         textAlign: TextAlign.center,
         style: TextStyle(
           color: theme.subtextColor,

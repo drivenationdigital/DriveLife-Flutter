@@ -190,7 +190,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
   static const int _dHome = BottomNavProvider.home;
   static const int _dDiscover = BottomNavProvider.discover;
   static const int _dGroups = BottomNavProvider.groups;
-  static const int _dPhotos = BottomNavProvider.photos;
+  static const int _dWatch = BottomNavProvider.watch;
   static const int _dGarage = BottomNavProvider.garage;
 
   /// The destinations whose scrolling is allowed to move the bottom bar.
@@ -213,7 +213,7 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
     _dHome,
     _dGroups,
     _dGarage,
-    _dPhotos,
+    _dWatch,
   };
 
   // Garage is a destination again, in the slot Account used to hold. The
@@ -505,10 +505,14 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
       // Positional, and matched to BottomNavProvider's constants by
       // the assert below. The order here IS the order on the bar.
       _buildHome(theme),
+      // Watch is second now. It is the only one taken from _screens
+      // rather than built here - see the note on _screens - so the
+      // skip stays where it is and only its POSITION in this list
+      // moved.
+      ..._screens.skip(3).take(1),
       _buildGarage(theme),
       _buildDiscover(),
       _buildGroups(theme),
-      ..._screens.skip(3).take(1),
     ];
 
     assert(
@@ -1289,6 +1293,18 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
           icon: (sel) => svg('assets/nav-icons/01-home.svg', sel),
         ),
         DlNavItem(
+          label: 'Watch',
+          // app-icons, NOT nav-icons - the same split as Discover
+          // above. pubspec declares these one file at a time, so a
+          // typo here is a missing asset at runtime rather than a
+          // build error.
+          //
+          // Capital V, matching the file on disk: asset lookups are
+          // case-sensitive once bundled, whatever Windows does
+          // locally.
+          icon: (sel) => svg('assets/app-icons/07_Video.svg', sel),
+        ),
+        DlNavItem(
           label: 'Garage',
           // ── THE TAG BADGE LIVES HERE NOW ──────────────────────
           //
@@ -1326,16 +1342,6 @@ class _HomeTabsState extends State<HomeTabs> with WidgetsBindingObserver {
         DlNavItem(
           label: 'Groups',
           icon: (sel) => svg('assets/nav-icons/04-groups.svg', sel),
-        ),
-        DlNavItem(
-          label: 'Watch',
-          // The media icon still, because this is still the media
-          // slot - videos, creators and the podcast rather than
-          // galleries. A new glyph can replace it without anything
-          // else here changing.
-          //
-          // No badge any more: it moved to Garage with the tag queue.
-          icon: (sel) => svg('assets/nav-icons/05-media.svg', sel),
         ),
         // No Search item. It moved to the For You pill row — see
         // _CustomTabBar in posts_screen.dart. 06-search.svg is still in

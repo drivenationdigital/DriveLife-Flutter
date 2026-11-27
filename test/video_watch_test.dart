@@ -60,7 +60,7 @@ void main() {
       expect(await WatchProgress.positionFor('a'), isNull);
     });
 
-    test('finishing FORGETS it rather than storing the end', () async {
+    test('finishing offers no position to resume from', () async {
       // Being offered to resume at 9:50 of a ten minute video is the
       // app failing to notice you are done.
       await WatchProgress.save(
@@ -77,6 +77,56 @@ void main() {
       );
 
       expect(await WatchProgress.positionFor('a'), isNull);
+    });
+
+    test('finishing is REMEMBERED, not forgotten', () async {
+      // The distinction the "Watched" note is drawn from. Deleting
+      // the entry - which is what this used to do - made a finished
+      // video and one nobody had ever opened the same thing.
+      await WatchProgress.save(
+        postId: 'a',
+        seconds: 580,
+        durationSeconds: 600,
+      );
+
+      final all = await WatchProgress.positions();
+
+      expect(all['a'], WatchProgress.finished);
+    });
+
+    test('the finished mark is negative, so no bar can draw it', () async {
+      // Every progress bar in the app is guarded on a position above
+      // zero. That guard is the only reason this marker can live in
+      // the same map without a single call site changing, so it is
+      // worth a test of its own.
+      expect(WatchProgress.finished, lessThan(0));
+    });
+
+    test('a finished video can be started again and tracked', () async {
+      await WatchProgress.save(
+        postId: 'a',
+        seconds: 580,
+        durationSeconds: 600,
+      );
+      await WatchProgress.save(
+        postId: 'a',
+        seconds: 45,
+        durationSeconds: 600,
+      );
+
+      expect(await WatchProgress.positionFor('a'), 45);
+    });
+
+    test('starting again clears the finished mark too', () async {
+      await WatchProgress.save(
+        postId: 'a',
+        seconds: 580,
+        durationSeconds: 600,
+      );
+
+      await WatchProgress.clear('a');
+
+      expect((await WatchProgress.positions())['a'], isNull);
     });
 
     test('just before the slack window still counts as watching', () async {
@@ -132,6 +182,37 @@ void main() {
       WatchProgress.resetForTest();
 
       expect(await WatchProgress.positionFor('a'), 42);
+    });
+
+    test('the store is capped, and sheds finished marks first', () async {
+      // Positions used to be deleted on completion, so the store
+      // could only hold what was part-watched. Keeping them means it
+      // grows forever unless something stops it.
+      //
+      // 'keep' goes in first, which under a plain oldest-out rule
+      // would make it the FIRST casualty. It is the one thing here
+      // somebody would notice losing, so it has to be the last to
+      // go.
+      await WatchProgress.save(
+        postId: 'keep',
+        seconds: 120,
+        durationSeconds: 6000,
+      );
+
+      for (var i = 0; i < 600; i++) {
+        await WatchProgress.save(
+          postId: 'done-$i',
+          seconds: 590,
+          durationSeconds: 600,
+        );
+      }
+
+      final all = await WatchProgress.positions();
+
+      expect(all.length, lessThanOrEqualTo(500));
+      expect(all['keep'], 120, reason: 'a resume point outranks a badge');
+      expect(all['done-0'], isNull, reason: 'the oldest badge went first');
+      expect(all['done-599'], WatchProgress.finished);
     });
 
     test('a corrupt store reads as empty rather than throwing', () async {

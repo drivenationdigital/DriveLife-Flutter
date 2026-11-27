@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drivelife/models/long_video.dart';
 import 'package:drivelife/providers/theme_provider.dart';
+import 'package:drivelife/services/watch_progress.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -34,6 +35,9 @@ class VideoListRow extends StatelessWidget {
   /// Zero - the default - draws nothing, which is the right answer for
   /// a video nobody has started and for a caller that does not track
   /// it.
+  ///
+  /// [WatchProgress.finished] means watched to the end, which draws no
+  /// bar but does draw a note.
   final int watchedSeconds;
 
   @override
@@ -146,12 +150,98 @@ class VideoListRow extends StatelessWidget {
                         ),
                       ),
                     ],
+                    ?_status(theme),
                   ],
                 ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// "Resume · 12:04 left", "Watched", or nothing at all.
+  ///
+  /// ── WHY THIS IS NOT PART OF THE SUBTITLE ───────────────────────
+  ///
+  /// The subtitle is each screen's business - a creator page says "2
+  /// days ago · 1.2K views", the Watch tab says who made it - and it
+  /// is one line with an ellipsis. Folding a status into it would put
+  /// the two in competition for the same line, so on a narrow phone
+  /// whichever came second would simply be cut off.
+  ///
+  /// This line belongs to the ROW, derived from what it already
+  /// knows, which means every list that uses this row gets it without
+  /// any of them being edited - the same reasoning that put the row
+  /// here rather than in each screen.
+  ///
+  /// It costs no height. The artwork is 82 high and the text column
+  /// reaches about 79 with a two-line title and this line under it, so
+  /// the row is the same size it has always been.
+  Widget? _status(ThemeProvider theme) {
+    if (watchedSeconds == WatchProgress.finished) {
+      // Grey, not gold. Gold is the colour of "carry on here"
+      // throughout the app, and a video somebody has finished is a
+      // closed matter rather than an invitation.
+      return _note(
+        theme,
+        Icons.check_circle_rounded,
+        'Watched',
+        theme.subtextColor,
+      );
+    }
+
+    if (watchedSeconds <= 0) return null;
+
+    final total = video.durationSeconds;
+
+    // "12:04 left" is the question somebody returning to a video is
+    // actually asking, and it is the wording the media grid already
+    // uses. Without a duration there is no remainder to quote - a
+    // difference from an unknown total is not a time - so the word on
+    // its own has to do.
+    final label = total > watchedSeconds
+        ? 'Resume  ·  ${LongVideo.formatPosition(total - watchedSeconds)} left'
+        : 'Resume';
+
+    // The same gold as the progress bar directly above it, because
+    // they are the same fact said twice - once as a position and once
+    // in words.
+    return _note(
+      theme,
+      Icons.play_circle_outline_rounded,
+      label,
+      theme.primaryColor,
+    );
+  }
+
+  Widget _note(
+    ThemeProvider theme,
+    IconData icon,
+    String label,
+    Color colour,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: colour),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colour,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

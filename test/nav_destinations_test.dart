@@ -28,13 +28,16 @@ void main() {
       // it ever becomes a destination, add the constant first and this
       // will be waiting for it.
       expect(BottomNavProvider.home, 0);
+      // Watch, second. It was `photos` and sat last, from when the tab
+      // was galleries - the name changed with the tab and the number
+      // changed with the running order.
+      expect(BottomNavProvider.watch, 1);
       // Garage, where Account used to be. The account avatar moved to the
       // header: it is a thing you ARE, not a place you go, and it was
       // spending a fifth of the bar to say so.
-      expect(BottomNavProvider.garage, 1);
-      expect(BottomNavProvider.discover, 2);
-      expect(BottomNavProvider.groups, 3);
-      expect(BottomNavProvider.photos, 4);
+      expect(BottomNavProvider.garage, 2);
+      expect(BottomNavProvider.discover, 3);
+      expect(BottomNavProvider.groups, 4);
     });
 
     test('the count matches the names', () {
@@ -70,13 +73,15 @@ void main() {
     });
 
     test('a section index is not a destination index', () {
-      // The whole bug in one line: Events as a Home section is 1, and 1 as
-      // a destination is the Garage. Anything navigating with a bare number
-      // is one reorder away from being wrong — and this line has already
-      // had to be rewritten once, because the reorder that moved Garage to
-      // 1 moved Discover off it. The collision survived; only its victim
-      // changed.
-      expect(BottomNavProvider.events, BottomNavProvider.garage);
+      // The whole bug in one line: Events as a Home section is 1, and 1
+      // as a destination is Watch. Anything navigating with a bare
+      // number is one reorder away from being wrong.
+      //
+      // This line has now been rewritten TWICE. Discover held 1, then
+      // Garage, and now Watch. The collision has survived every
+      // reorder; only its victim changes - which is the argument for
+      // the constants rather than a fact about any one of them.
+      expect(BottomNavProvider.events, BottomNavProvider.watch);
     });
   });
 
@@ -137,7 +142,7 @@ void main() {
       // Leaving Home and coming back should land where it was left.
       final nav = BottomNavProvider()
         ..openHomeSection(BottomNavProvider.tracks)
-        ..setIndex(BottomNavProvider.photos);
+        ..setIndex(BottomNavProvider.watch);
 
       expect(nav.homeSection, BottomNavProvider.tracks);
 

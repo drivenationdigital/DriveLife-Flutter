@@ -203,6 +203,52 @@ class _VideoWatchScreenState extends State<VideoWatchScreen>
   /// that anybody who meant to watch is counted.
   static const int _viewAfterSeconds = 5;
 
+  /// Whether the picture has the whole screen.
+  ///
+  /// ── TWO MECHANISMS, ONE BEHAVIOUR ──────────────────────────────
+  ///
+  /// The Cloudflare picture is a texture this screen draws, so
+  /// fullscreen is this screen choosing to draw it over everything
+  /// else - see [_cloudflareFullscreen]. No route is pushed: one
+  /// screen means one copy of the state, the controls and the
+  /// scrubber rather than two that have to agree.
+  ///
+  /// The embed is a WebView the package owns, inside an OverlayPortal,
+  /// and it has its own fullscreen which expands that overlay to the
+  /// screen and keeps our controls above it. Reparenting a live
+  /// WebView ourselves would reload the video, so for the embed we
+  /// ask the package and follow.
+  ///
+  /// Shared either way: this flag, the orientation, the controls and
+  /// the way back out.
+  bool _fullscreen = false;
+
+  /// Whether fullscreen should be PORTRAIT for this video.
+  ///
+  /// ── A SHORT TURNED SIDEWAYS IS TWO BLACK BARS ──────────────────
+  ///
+  /// The first attempt at fullscreen forced landscape for everything,
+  /// which was written when every video here was 16:9. A Short is
+  /// 9:16: rotating the phone to watch one leaves a thin strip of
+  /// video between two enormous bars, and makes the person turn the
+  /// phone back to read anything.
+  ///
+  /// So the orientation follows the VIDEO. [LongVideo.isShort] is the
+  /// server's answer and the only one available for an embed - the
+  /// iframe API never reports a video's dimensions. For Cloudflare the
+  /// real ratio is known once the controller initialises, so a
+  /// portrait upload behaves like a Short without being flagged as
+  /// one.
+  bool get _prefersPortrait {
+    if (_video.isShort) return true;
+
+    final controller = _controller;
+
+    if (controller == null || !controller.value.isInitialized) return false;
+
+    return _pictureRatio(controller) < 1;
+  }
+
   bool _scrubbing = false;
 
   /// Where the finger is during a drag, in seconds.
@@ -581,6 +627,24 @@ class _VideoWatchScreenState extends State<VideoWatchScreen>
     _ytPositionSub = controller.videoStateStream.listen(_onYoutubePosition);
     _ytValueSub = controller.stream.listen(_onYoutubeValue);
 
+    // ── NOT EVERY EXIT COMES FROM OUR BUTTON ─────────────────────
+    //
+    // The package wraps the player in its own PopScope and leaves
+    // fullscreen on the back gesture, without telling whoever called
+    // enterFullScreen. So the orientation is restored from HERE, on
+    // the transition, rather than from _toggleFullscreen - that way
+    // every route out of fullscreen puts the phone back.
+    //
+    // Nothing else in either package registers this listener, so
+    // there is nobody to overwrite it.
+    controller.setFullScreenListener((full) {
+      if (!mounted) return;
+
+      setState(() => _fullscreen = full);
+
+      unawaited(full ? _allowFullscreenOrientation() : _restorePortrait());
+    });
+
     _ytTicker = Timer.periodic(
       const Duration(milliseconds: 400),
       (_) => _maybeHideControls(),
@@ -732,6 +796,48 @@ class _VideoWatchScreenState extends State<VideoWatchScreen>
     _syncWakelock();
   }
 
+  /// Redraws when the WINDOW changes shape.
+  ///
+  /// ── THE HALF-ROTATED SCREEN ────────────────────────────────────
+  ///
+  /// Entering fullscreen used to leave the player, now and then, laid
+  /// out down the left-hand 45% of a landscape screen with the rest
+  /// empty - a frame composed against the PORTRAIT metrics, still on
+  /// display after the window had already turned.
+  ///
+  /// The shape is the giveaway: everything sat inside a box the width
+  /// of the portrait screen, and the embed sat at the vertical centre
+  /// of the portrait HEIGHT, far below the middle of the landscape
+  /// one.
+  ///
+  /// The window turns a beat after the request to turn it, and the
+  /// frame that was already on screen stays there until something
+  /// draws another. With the Cloudflare player something always does
+  /// - it has a texture updating many times a second - which is why
+  /// this only ever showed up on the YouTube embed, where the picture
+  /// is drawn natively and the Flutter side can be completely idle.
+  /// Idle, it had no reason to lay out again, so the wrong frame
+  /// simply stayed up.
+  ///
+  /// So: any metrics change, while fullscreen, forces a fresh layout.
+  /// This is the backstop. [_settleOrientation] is the part that
+  /// stops the bad frame being composed in the first place, and
+  /// between them nothing has to be timed correctly.
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+
+    if (!_fullscreen) return;
+
+    // After the frame, not during it. didChangeMetrics arrives inside
+    // the engine's own window-metrics handling, and calling setState
+    // from there rebuilds in the middle of a layout that is already
+    // under way.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _fullscreen) setState(() {});
+    });
+  }
+
   /// How fast it plays.
   ///
   /// The one control on a podcast player that is not on a feed clip,
@@ -870,6 +976,18 @@ class _VideoWatchScreenState extends State<VideoWatchScreen>
       );
     }
 
+    // ── PUT THE PHONE BACK ───────────────────────────────────────
+    //
+    // A screen that is gone cannot restore anything, and an app left
+    // in landscape with its system bars hidden is a worse bug than
+    // whatever caused it. This covers the paths that do not go
+    // through the fullscreen button at all: a notification tap, a
+    // deep link, anything that pops this route while fullscreen is
+    // open.
+    if (_fullscreen) {
+      unawaited(_restorePortrait());
+    }
+
     final controller = _controller;
 
     if (controller != null) {
@@ -966,6 +1084,154 @@ class _VideoWatchScreenState extends State<VideoWatchScreen>
     _revealControls();
   }
 
+  // ── Fullscreen ───────────────────────────────────────────────────
+
+  /// Widens the orientation lock for as long as fullscreen is open.
+  ///
+  /// main.dart locks the whole app to portrait, which is right for a
+  /// feed and wrong for a film. [_restorePortrait] puts it back.
+  ///
+  /// A portrait video gets portraitUp ONLY rather than "whatever you
+  /// like": allowing both would flip a Short into landscape the moment
+  /// somebody tilts the phone, which is the one thing nobody wants
+  /// while watching one.
+  Future<void> _allowFullscreenOrientation() async {
+    await SystemChrome.setPreferredOrientations(
+      _prefersPortrait
+          ? const [DeviceOrientation.portraitUp]
+          : const [
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ],
+    );
+
+    // Sticky rather than plain immersive: a swipe at the edge brings
+    // the bars back for a moment and they go away again by
+    // themselves. Plain immersive gives them back permanently on the
+    // first accidental swipe, which leaves a status bar sitting over
+    // the video for the rest of the film.
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  /// Puts the orientation and the system bars back as the app had them.
+  Future<void> _restorePortrait() async {
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+
+    // ── manual WITH EVERY OVERLAY, NOT edgeToEdge ────────────────
+    //
+    // The first attempt restored edgeToEdge here, which was a guess
+    // and the wrong one - it is why the UI was broken after coming
+    // out of fullscreen.
+    //
+    // main.dart never calls setEnabledSystemUIMode at all, so the app
+    // runs in the platform default: bars visible, content laid out
+    // BELOW them. edgeToEdge draws content UNDER both bars instead,
+    // and because this call is global it did that to every screen in
+    // the app from the first time anybody opened fullscreen until the
+    // app was killed.
+    await SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: SystemUiOverlay.values,
+    );
+  }
+
+  /// Waits for the window to actually finish turning.
+  ///
+  /// setPreferredOrientations completes when the PLATFORM has been
+  /// told, not when the device has turned - the rotation and its
+  /// animation take a few hundred milliseconds more. Anything that
+  /// lays itself out in that gap measures the old screen.
+  ///
+  /// The window is read straight from the platform dispatcher rather
+  /// than from MediaQuery, deliberately: MediaQuery is the value this
+  /// widget tree has been GIVEN, which during the gap is exactly the
+  /// stale one being waited out.
+  ///
+  /// It gives up after 700ms and lets the caller carry on. A tablet,
+  /// a foldable or a desktop window may never turn at all, and a
+  /// fullscreen button that does nothing until a timer expires would
+  /// be a worse bug than the one this fixes - the backstop in
+  /// [didChangeMetrics] covers the late arrival either way.
+  Future<void> _settleOrientation({required bool portrait}) async {
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    final deadline = DateTime.now().add(const Duration(milliseconds: 700));
+
+    while (mounted && DateTime.now().isBefore(deadline)) {
+      final size = view.physicalSize;
+
+      // A zero size means the window is not currently measurable -
+      // mid-configuration-change on Android. There is nothing to
+      // compare against, so stop rather than spin for the full 700ms.
+      if (size.isEmpty) return;
+
+      if ((size.width < size.height) == portrait) return;
+
+      await Future<void>.delayed(const Duration(milliseconds: 16));
+    }
+  }
+
+  Future<void> _toggleFullscreen() async {
+    // ── THE EMBED'S OWN FULLSCREEN ───────────────────────────────
+    //
+    // lock: false because the rotation is OURS - the package's lock
+    // flag only tells its own didChangeMetrics handler whether it may
+    // react, and that handler is off anyway (autoFullScreen: false).
+    if (_isYoutube) {
+      final controller = _yt;
+
+      if (controller == null) return;
+
+      if (_fullscreen) {
+        // Out first, turn after. The listener restores the
+        // orientation, and the inline layout is the one the page was
+        // already laid out for, so there is nothing to wait for.
+        controller.exitFullScreen(lock: false);
+      } else {
+        // ── TURN FIRST, EXPAND SECOND ────────────────────────────
+        //
+        // The package computes its fullscreen rectangle from the
+        // screen size at the moment fullscreen is switched on. Doing
+        // that first and rotating afterwards means it measures the
+        // portrait screen and then has to be corrected; doing it in
+        // this order means it is only ever measured once, against the
+        // screen it will actually be shown on.
+        //
+        // The listener calls this again when the flag flips. It is
+        // the same two platform calls with the same arguments, so the
+        // second pair are no-ops - worth it to keep every route into
+        // fullscreen ending up in the same state.
+        await _allowFullscreenOrientation();
+        await _settleOrientation(portrait: _prefersPortrait);
+
+        if (!mounted) return;
+
+        controller.enterFullScreen(lock: false);
+      }
+
+      _revealControls();
+
+      return;
+    }
+
+    if (_fullscreen) {
+      await _restorePortrait();
+    } else {
+      await _allowFullscreenOrientation();
+    }
+
+    if (!mounted) return;
+
+    // The Cloudflare picture is an AspectRatio inside this screen's
+    // own tree, so it has no stale rectangle to correct - it simply
+    // lays out against whatever the screen turns out to be. No
+    // settle needed here.
+    setState(() => _fullscreen = !_fullscreen);
+    _revealControls();
+  }
+
   Future<void> _restart() async {
     if (!_ready) return;
 
@@ -1036,6 +1302,12 @@ class _VideoWatchScreenState extends State<VideoWatchScreen>
     // invisible against #111111 - its own version of the same
     // complaint.
     final theme = Provider.of<ThemeProvider>(context);
+
+    // Nothing but the picture. The embed does NOT come through here -
+    // its fullscreen is an overlay the package raises over this whole
+    // tree, so for YouTube the page below carries on existing,
+    // unseen, behind an opaque black fill.
+    if (_fullscreen && !_isYoutube) return _cloudflareFullscreen();
 
     // ── THE PAGE FOLLOWS THE APP. THE STAGE NEVER DOES. ───────────
     //
@@ -1402,11 +1674,29 @@ class _VideoWatchScreenState extends State<VideoWatchScreen>
     // it is known, and 16:9 until then so the poster frame does not
     // sit in a box of the wrong shape and jump.
     final ratio = _isYoutube || controller == null
-        ? 16 / 9
-        : (controller.value.isInitialized ? _pictureRatio(controller) : 16 / 9);
+        ? _declaredRatio
+        : (controller.value.isInitialized
+              ? _pictureRatio(controller)
+              : _declaredRatio);
 
     return (screen.width / ratio).clamp(0.0, screen.height * 0.62);
   }
+
+  /// The shape to lay out for before the video's own shape is known.
+  ///
+  /// ── WHY A SHORT CANNOT USE 16:9 ────────────────────────────────
+  ///
+  /// This used to be a flat 16 / 9, which is right for everything the
+  /// iframe API will not tell us about - and wrong for the one thing
+  /// the SERVER already told us about.
+  ///
+  /// A Short declared as 16:9 gets a 16:9 iframe, and YouTube then
+  /// pillarboxes the portrait video inside it: the picture ends up a
+  /// narrow strip down the middle of a letterboxed box, which is
+  /// about a fifth of the stage doing any work. Declaring 9:16
+  /// instead gives the strip the full height of the stage, inline and
+  /// in fullscreen both.
+  double get _declaredRatio => _video.isShort ? 9 / 16 : 16 / 9;
 
   /// The shape of the picture, guarded.
   ///
@@ -1620,7 +1910,10 @@ class _VideoWatchScreenState extends State<VideoWatchScreen>
         // The video's own ratio, not the box's. The SizedBox above
         // caps the height, and on the rare screen where the cap bites
         // the player pillarboxes inside it, which is correct.
-        aspectRatio: 16 / 9,
+        //
+        // This is also what the package lays fullscreen out against,
+        // so a Short has to declare 9:16 - see _declaredRatio.
+        aspectRatio: _declaredRatio,
         // ── NO FULLSCREEN, INCLUDING BY ACCIDENT ─────────────────
         //
         // Both of these default to TRUE, which was a loose end left
@@ -1725,7 +2018,132 @@ class _VideoWatchScreenState extends State<VideoWatchScreen>
               ],
             ),
           ),
+
+          // ── THE WAY IN AND THE WAY OUT ──────────────────────────
+          //
+          // Top right in fullscreen, so the bottom edge belongs to
+          // the scrubber; bottom right inline, where every player
+          // puts it and where there is nothing else.
+          //
+          // Positioned.fill + SafeArea(minimum:) rather than
+          // Positioned(right:, bottom:). The first attempt used
+          // right: 2, bottom: 0, which put half of a 44-point target
+          // off the screen and made the one control that comes BACK
+          // out of fullscreen the hardest thing on the screen to hit.
+          // The inset is now a floor the notch and the gesture bar
+          // can only widen.
+          Positioned.fill(
+            child: SafeArea(
+              minimum: const EdgeInsets.all(8),
+              child: Align(
+                alignment: _fullscreen
+                    ? Alignment.topRight
+                    : Alignment.bottomRight,
+                child: _overlayButton(
+                  _fullscreen
+                      ? Icons.fullscreen_exit_rounded
+                      : Icons.fullscreen_rounded,
+                  30,
+                  _toggleFullscreen,
+                ),
+              ),
+            ),
+          ),
+
+          // ── THE SCRUBBER COMES ONTO THE PICTURE, BUT ONLY HERE ──
+          //
+          // Inline it stays below the video: a thin bar over a moving
+          // picture is hard to hit, and there is a whole page under
+          // the stage to put it on.
+          //
+          // In fullscreen that page is not on screen, so without this
+          // there is no way to see where you are or to move - which
+          // would make fullscreen a downgrade for everything except
+          // looking at it.
+          if (_fullscreen)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(
+                top: false,
+                minimum: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+                child: _scrubber(onDark: true),
+              ),
+            ),
         ],
+      ),
+    );
+  }
+
+  /// The Cloudflare picture, with the screen to itself.
+  ///
+  /// ── A TREE, NOT A ROUTE ────────────────────────────────────────
+  ///
+  /// This replaces what [build] returns rather than pushing a second
+  /// screen. The controller is the same object either way, and
+  /// [VideoPlayer] is a texture - so the picture is reparented
+  /// without a reload, and there is exactly one copy of the position,
+  /// the controls and the scrubber, which cannot drift out of step
+  /// with a copy that does not exist.
+  Widget _cloudflareFullscreen() {
+    final controller = _controller;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      // Light icons, unconditionally. The bars are hidden by
+      // immersiveSticky, but a swipe brings them back over a black
+      // picture for a few seconds and dark-on-black is invisible.
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+      child: PopScope(
+        // Back comes OUT of fullscreen rather than off the screen.
+        // Both Android's back gesture and iOS's swipe would otherwise
+        // pop the whole route, which would leave the app in landscape
+        // with its bars hidden on a feed that is laid out for
+        // portrait.
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) unawaited(_toggleFullscreen());
+        },
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              const ColoredBox(color: Colors.black),
+
+              // AspectRatio, not FittedBox - see the note on
+              // _picture. This is the case that bug was worst in: the
+              // whole screen is loose space for a FittedBox to
+              // decline to use, which is exactly how a fullscreen
+              // video ended up a small rectangle in the middle of a
+              // black screen.
+              if (controller != null && controller.value.isInitialized)
+                _picture(controller),
+
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _tapPicture,
+                ),
+              ),
+
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: !_showControls,
+                  child: AnimatedOpacity(
+                    opacity: _showControls ? 1 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: _overlay(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1743,12 +2161,17 @@ class _VideoWatchScreenState extends State<VideoWatchScreen>
   }
 
   /// The bar and the two time labels.
-  Widget _scrubber() {
+  ///
+  /// [onDark] is for the fullscreen copy, which sits on the picture
+  /// rather than on the page. The theme colours are chosen to read
+  /// against the page and the page is not there - textColor on a
+  /// dark frame is a bar you cannot see.
+  Widget _scrubber({bool onDark = false}) {
     final theme = Provider.of<ThemeProvider>(context);
 
-    final active = theme.textColor;
-    final inactive = theme.dividerColor;
-    final label = theme.subtextColor;
+    final active = onDark ? Colors.white : theme.textColor;
+    final inactive = onDark ? Colors.white30 : theme.dividerColor;
+    final label = onDark ? Colors.white70 : theme.subtextColor;
 
     final total = _total.inSeconds;
 

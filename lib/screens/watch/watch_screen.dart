@@ -180,6 +180,7 @@ class _WatchScreenState extends State<WatchScreen> {
   // So each is fetched the first time its chip is tapped and kept
   // afterwards - the second tap is instant, and pull-to-refresh is
   // what re-reads it.
+  List<LongVideo> _followingVideos = const [];
   List<Creator> _allCreators = const [];
   List<LongVideo> _allEpisodes = const [];
   List<VideoPlaylist> _playlists = const [];
@@ -195,8 +196,8 @@ class _WatchScreenState extends State<WatchScreen> {
 
   /// Loads a tab's list, once.
   Future<void> _ensureTab(String filter, {bool force = false}) async {
-    // 'All' and 'Video' are both served by the list fetched on open.
-    if (filter == 'All' || filter == 'Video') return;
+    // 'All' is served by the lists fetched on open.
+    if (filter == 'All') return;
 
     if (!force && _loadedTabs.contains(filter)) return;
     if (_loadingTabs.contains(filter)) return;
@@ -204,7 +205,17 @@ class _WatchScreenState extends State<WatchScreen> {
     setState(() => _loadingTabs.add(filter));
 
     switch (filter) {
-      case 'Creators':
+      case 'Following':
+        // Newest first, from the creators this person follows and
+        // nobody else. Shorts included: somebody who followed a
+        // creator asked for what that creator makes.
+        final videos = await VideosAPI.list(limit: 50, following: true);
+
+        if (!mounted) return;
+
+        _followingVideos = videos;
+
+      case 'YouTube Creators':
         // Everybody, not just the featured ones - the front page row
         // is the editorial pick and this is the directory.
         final creators = await CreatorsAPI.list(limit: 100);
@@ -323,7 +334,15 @@ class _WatchScreenState extends State<WatchScreen> {
   }
 
   Future<void> _loadHomeVideos() async {
-    final videos = await VideosAPI.list(limit: 10, home: true, podcast: false);
+    final videos = await VideosAPI.list(
+      limit: 10,
+      home: true,
+      podcast: false,
+      // Shorts are their own thing and read badly in a 16:9 card -
+      // a portrait video letterboxed into a landscape box is mostly
+      // black. They are on the creator's page, under their own tab.
+      shorts: false,
+    );
 
     if (!mounted) return;
 
@@ -422,10 +441,20 @@ class _WatchScreenState extends State<WatchScreen> {
     if (mounted) await _loadEpisodes();
   }
 
+  // ── WHAT EACH ONE MEANS ──────────────────────────────────────────
+  //
+  // 'Following' was 'Video' and showed the whole library. It is the
+  // creators this person follows now - a tab named after a verb they
+  // performed, rather than one named after the medium every tab is
+  // made of.
+  //
+  // 'YouTube Creators' was 'Creators'. Longer, and worth it: every
+  // creator IS a YouTube channel, and saying so is what stops
+  // somebody expecting DriveLife members in there.
   static const List<String> _filters = [
     'All',
-    'Video',
-    'Creators',
+    'Following',
+    'YouTube Creators',
     'Podcast',
     'Playlists',
   ];
@@ -532,16 +561,13 @@ class _WatchScreenState extends State<WatchScreen> {
   /// What sits below the chips.
   List<Widget> _sections(ThemeProvider theme) {
     switch (_filter) {
-      case 'Video':
+      case 'Following':
         return [
           ..._listTab(
             theme,
-            loading: _loadingVideos,
-            // Every video, episodes included. This tab is "the
-            // library", and leaving things out of a list labelled
-            // Video would be the surprising choice.
-            items: _videos,
-            empty: 'No videos yet.',
+            loading: _loadingTabs.contains('Following'),
+            items: _followingVideos,
+            empty: 'Follow a creator and their videos appear here.',
             builder: (video) => VideoListRow(
               video: video,
               subtitle: _rowSubtitle(video),
@@ -551,7 +577,7 @@ class _WatchScreenState extends State<WatchScreen> {
           ),
         ];
 
-      case 'Creators':
+      case 'YouTube Creators':
         return _creatorsTab(theme);
 
       case 'Podcast':
@@ -655,7 +681,7 @@ class _WatchScreenState extends State<WatchScreen> {
   }
 
   List<Widget> _creatorsTab(ThemeProvider theme) {
-    if (_loadingTabs.contains('Creators')) {
+    if (_loadingTabs.contains('YouTube Creators')) {
       return const [_VideoListSkeleton()];
     }
 
@@ -663,7 +689,32 @@ class _WatchScreenState extends State<WatchScreen> {
       return [_emptyTab(theme, 'No creators yet.')];
     }
 
-    return _creatorRows(theme, _allCreators);
+    // ── TWO LISTS, NOT ONE SORTED ONE ────────────────────────────
+    //
+    // The picks first under their own heading, then everybody
+    // alphabetically. A single list ordered picks-first reads as an
+    // alphabetical list with a few things inexplicably out of order;
+    // a heading says why they are up there.
+    //
+    // The favourites appear in BOTH, deliberately: somebody looking
+    // up Carwow by name should find it under C whether or not it
+    // happens to be featured this week.
+    final favourites = _allCreators.where((c) => c.isFeatured).toList();
+
+    final everybody = [..._allCreators]
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    return [
+      if (favourites.isNotEmpty) ...[
+        _sectionHeader('Our favourites', theme, action: null),
+        const SizedBox(height: 8),
+        ..._creatorRows(theme, favourites),
+        const SizedBox(height: 22),
+      ],
+      _sectionHeader('All creators', theme, action: null),
+      const SizedBox(height: 8),
+      ..._creatorRows(theme, everybody),
+    ];
   }
 
   /// A creator as a row. Shared by the Creators tab and the search
@@ -1028,10 +1079,13 @@ class _WatchScreenState extends State<WatchScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // No action. The row already shows every featured creator,
-        // so "See all" would lead to the same list; choosing WHICH
-        // creators appear is done in wp-admin now, not here.
-        _sectionHeader('Favourite creators', theme, action: null),
+        // Straight to the directory. The row is the picks plus whoever
+        // this person follows; the tab is everybody.
+        _sectionHeader(
+          'Favourite creators',
+          theme,
+          action: () => _selectFilter('YouTube Creators'),
+        ),
         const SizedBox(height: 14),
         SizedBox(
           // Measured rather than guessed: 68 for the circle, 7 for
@@ -1071,7 +1125,7 @@ class _WatchScreenState extends State<WatchScreen> {
                                 border: Border.all(color: _gold, width: 2),
                               ),
                               padding: const EdgeInsets.all(2.5),
-                              child: _Avatar(
+                              child: _AvatarWithMark(
                                 name: creator.name,
                                 avatarUrl: creator.avatarUrl,
                                 // Keyed on the ROW id, not the linked
@@ -1751,6 +1805,64 @@ class _YouTubeMark extends StatelessWidget {
         size: 16,
         color: Colors.white,
       ),
+    );
+  }
+}
+
+/// A creator's circle with YouTube's mark on the corner.
+///
+/// Says what the thing behind the face IS without a word of text,
+/// which matters in a row where the only other label is a name - and
+/// the row sits on a tab called Watch, where "creator" could mean
+/// somebody who posts here.
+///
+/// Bottom right, outside the gold ring rather than inside it: within
+/// the ring it would sit on the picture and cover a face.
+class _AvatarWithMark extends StatelessWidget {
+  const _AvatarWithMark({
+    required this.name,
+    required this.colour,
+    this.avatarUrl = '',
+  });
+
+  final String name;
+  final Color colour;
+  final String avatarUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+
+    return Stack(
+      // So the badge can sit past the circle's edge without being
+      // cut off by the parent's bounds.
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(
+          child: _Avatar(name: name, colour: colour, avatarUrl: avatarUrl),
+        ),
+        Positioned(
+          right: -3,
+          bottom: -2,
+          child: Container(
+            width: 21,
+            height: 15,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF0000),
+              borderRadius: BorderRadius.circular(4),
+              // A ring in the page colour, so the mark reads as
+              // sitting ON the circle rather than touching it.
+              border: Border.all(color: theme.backgroundColor, width: 1.6),
+            ),
+            child: const Icon(
+              Icons.play_arrow_rounded,
+              size: 11,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

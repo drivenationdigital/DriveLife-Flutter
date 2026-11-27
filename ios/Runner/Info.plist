@@ -90,9 +90,26 @@
 		<string>LaunchScreen</string>
 		<key>UIMainStoryboardFile</key>
 		<string>Main</string>
+		<!-- ── PORTRAIT IS STILL THE LOCK, JUST NOT HERE ──────────
+		     The app is locked to portrait at runtime, in main.dart, and
+		     only the video player widens it - for as long as fullscreen
+		     is open and no longer.
+
+		     This list cannot do that job, because iOS treats it as the
+		     hard limit that setPreferredOrientations is intersected
+		     with. A portrait-only list meant the player's request for
+		     landscape was dropped without a word, so fullscreen on
+		     iPhone simply never rotated.
+
+		     So landscape is permitted here and refused at runtime.
+		     Taking a line out of this array would remove fullscreen
+		     rotation again; main.dart is the file to edit to change
+		     what the rest of the app allows. -->
 		<key>UISupportedInterfaceOrientations</key>
 		<array>
 			<string>UIInterfaceOrientationPortrait</string>
+			<string>UIInterfaceOrientationLandscapeLeft</string>
+			<string>UIInterfaceOrientationLandscapeRight</string>
 		</array>
 		<key>UISupportedInterfaceOrientations~ipad</key>
 		<array>

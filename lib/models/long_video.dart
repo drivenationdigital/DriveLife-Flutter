@@ -79,6 +79,13 @@ class LongVideo {
   /// until somebody chooses one.
   final bool isFeatured;
 
+  /// Whether YouTube calls this a Short.
+  ///
+  /// Decided once when the video is stored, not from its length -
+  /// Shorts were a minute, then three, and plenty of ordinary videos
+  /// are shorter than that. See dl_videos_is_youtube_short.
+  final bool isShort;
+
   /// Whether this is an episode of the DriveLife podcast.
   ///
   /// Decided entirely by who published it - see DL_PODCAST_USER_IDS in
@@ -114,6 +121,7 @@ class LongVideo {
     this.youtubeId = '',
     this.isPodcast = false,
     this.isFeatured = false,
+    this.isShort = false,
   });
 
   bool get isPlayable => videoUrl.isNotEmpty;
@@ -205,6 +213,7 @@ class LongVideo {
       youtubeId: youtubeId,
       isPodcast: isPodcast,
       isFeatured: isFeatured,
+      isShort: isShort,
     );
   }
 
@@ -256,6 +265,7 @@ class LongVideo {
       youtubeId: '${json['youtube_id'] ?? ''}'.trim(),
       isPodcast: asBool(json['is_podcast']),
       isFeatured: asBool(json['is_featured']),
+      isShort: asBool(json['is_short']),
     );
   }
 }
